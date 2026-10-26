@@ -1,0 +1,18 @@
+{
+  "name": "app-kinh-doanh",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CTG — App Quản lý Phòng Kinh doanh (12 phân hệ, 18 mẫu biểu, tài khoản nhân viên theo vai trò)",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "seed": "node server/seed.js",
+    "seed:demo": "node server/seed.js --demo",
+    "clear-demo": "node server/seed.js --clear-demo"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
+    "busboy": "^1.6.0",
+    "pg": "^8.23.1"
+  }
+}
