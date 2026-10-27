@@ -279,6 +279,29 @@ async function board(db, user, f) {
   return { projects, project: pid, buildings, building: bid, units, policy };
 }
 
+// ======================= CHI TIẾT BẢNG GIÁ THEO CĂN =======================
+// Giá sau thuế lấy từ bảng hàng (mode bang_hang) hoặc đơn giá × DT thông thủy (mode don_gia, cùng cách tính với B.pricing);
+// tách ngược ra giá trước thuế / tiền thuế theo % VAT của chính sách, đơn giá nền = trước thuế / DT thông thủy.
+async function priceSheet(db, user, id) {
+  if (!can(user, E.price_policy, 'r')) deny();
+  const pol = C.notFound(await db.one(`SELECT t.*, p.code project_code, p.name project_name FROM kd_price_policy t JOIN kd_project p ON p.id = t.project_id WHERE t.id = $1`, [+id]), 'chính sách');
+  const grp = String(pol.unit_group || '*').split(/[,;\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+  const units = await db.q(`SELECT u.id, u.code, u.floor, u.kind, u.position, u.area_tt, u.area_xd, u.price_net, u.list_price, u.maint_fee, u.total_price, u.status, b.code building, k.value pkg
+    FROM kd_unit u JOIN kd_building b ON b.id = u.building_id LEFT JOIN kd_package k ON k.id = u.package_id WHERE u.project_id = $1 ORDER BY b.code, u.floor, u.code`, [pol.project_id]);
+  const vat = pol.vat_pct ?? 5, mp = pol.maint_pct ?? 2;
+  const rows = units.filter(u => grp.includes('*') || grp.includes(String(u.building).toUpperCase())).map(u => {
+    const dg = pol.mode === 'don_gia';
+    const after = dg ? (pol.unit_price && u.area_tt ? Math.round(pol.unit_price * u.area_tt) : null) : u.price_net || (u.total_price && u.maint_fee ? u.total_price - u.maint_fee : null);
+    const before = after != null ? Math.round(after / (1 + vat / 100)) : null;
+    const maint = dg ? (after != null ? Math.round(after * mp / 100) : null) : u.maint_fee ?? (before != null ? Math.round(before * mp / 100) : null);
+    const total = (dg || !u.total_price ? (after != null ? after + (maint || 0) : null) : u.total_price);
+    return { unit_id: u.id, building: u.building, code: u.code, floor: u.floor, kind: u.kind, status: u.status, area_xd: u.area_xd, area_tt: u.area_tt,
+      base: before != null && u.area_tt ? Math.round(before / u.area_tt) : null, before, vat, tax: after != null ? after - before : null, after, pkg: u.pkg, maint,
+      total: total != null ? total + (+u.pkg || 0) : null };
+  });
+  return { policy: pol, rows };
+}
+
 // ======================= HỒ SƠ 360° =======================
 async function unit360(db, user, id) {
   const u = C.notFound(await db.one(`SELECT u.*, p.code project_code, p.name project_name, b.code building_code, b.name building_name FROM kd_unit u JOIN kd_project p ON p.id = u.project_id JOIN kd_building b ON b.id = u.building_id WHERE u.id = $1`, [+id]), 'căn');
@@ -555,4 +578,4 @@ async function monthly(db, period, projectId) {
   };
 }
 
-module.exports = { dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
+module.exports = { priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };

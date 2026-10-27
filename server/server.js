@@ -105,7 +105,7 @@ async function metaFor(user) {
   const lk = await C.lookups();
   for (const e of Object.values(ents)) for (const f of [...e.fields, ...(e.acts || []).flatMap(a => a.ask || [])]) if (f.opt) f.o = (lk[f.opt] || []).filter(x => x[2]).map(x => [x[0], x[1]]);
   const viewOk = v => !M.VIEW_ROLES[v] || user.role === 'admin' || M.VIEW_ROLES[v].includes(user.role);
-  const menu = M.MENU.map(([no, t, icon, items]) => [no, t, icon, items.map(([id, l]) => id.startsWith('e:') ? (ents[id.slice(2)].perm.r ? [id, ents[id.slice(2)].title, ents[id.slice(2)].icon, ents[id.slice(2)].code] : null) : viewOk(id) ? [id, l] : null).filter(Boolean)]).filter(m => m[3].length);
+  const menu = M.MENU.map(([no, t, icon, items]) => [no, t, icon, items.map(([id, l, code]) => id.startsWith('e:') ? (ents[id.slice(2)].perm.r ? [id, ents[id.slice(2)].title, ents[id.slice(2)].icon, ents[id.slice(2)].code] : null) : viewOk(id) ? [id, l, null, code] : null).filter(Boolean)]).filter(m => m[3].length);
   const settings = Object.fromEntries((await q("SELECT key, value FROM kd_setting WHERE key IN ('checklist_noxh','checklist_so_hong','checklist_ban_giao','schedule_presets','sla_hours','handover_pay_pct','bravo','bsc')")).map(r => [r.key, r.value]));
   return {
     me: user, roles: M.ROLES, menu, ents, virt: M.VIRT, piiRoles: M.PII_ROLES, settings, alertCat: V.ALERT_CAT, reports: V.REPORTS,
@@ -242,6 +242,7 @@ R('GET', '/api/drill/:key', async (req, res, u, p, qs) => send(res, 200, await V
 R('GET', '/api/alerts', async (req, res, u, p, qs) => send(res, 200, await V.alerts({ q, one }, u, { all: qs.all === '1' && (mgr(u)), project: qs.project })));
 R('GET', '/api/approvals', async (req, res, u) => send(res, 200, await V.approvals({ q, one }, u)));
 R('GET', '/api/board', async (req, res, u, p, qs) => send(res, 200, await V.board({ q, one }, u, qs)));
+R('GET', '/api/price-sheet/:id', async (req, res, u, p) => send(res, 200, await V.priceSheet({ q, one }, u, p.id)));
 R('GET', '/api/unit360/:id', async (req, res, u, p) => send(res, 200, await V.unit360({ q, one }, u, p.id)));
 R('GET', '/api/customer360/:id', async (req, res, u, p) => send(res, 200, await V.customer360({ q, one }, u, p.id)));
 R('GET', '/api/search', async (req, res, u, p, qs) => send(res, 200, await V.search({ q, one }, u, qs.q)));

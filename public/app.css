@@ -380,3 +380,25 @@ table.t.noclick tbody tr { cursor: default; }
   .ai-panel { top: 0; right: 0; bottom: 0; width: 100%; border-radius: 0; z-index: 95; }
   .ai-page { height: calc(100vh - var(--head) - 130px); }
 }
+
+/* 02. danh mục dự án (cây) / sản phẩm / chi tiết bảng giá */
+.tw-chev { display: inline-block; width: 16px; font-size: 11px; color: var(--muted2); transition: transform .15s; }
+.tw-chev.on { transform: rotate(90deg); color: var(--cobalt); }
+.tw-ic { width: 18px; margin-right: 6px; color: var(--amber); }
+table.tree tr.tw-p td { background: #f8fbff; font-size: 13.5px; }
+table.tree tr.tw-b td:first-child { padding-left: 34px; }
+table.tree tr.tw-u td:first-child { padding-left: 74px; }
+table.tree tr.tw-u td { color: var(--text); font-size: 12.5px; padding-top: 6px; padding-bottom: 6px; }
+table.tree tr.tw-u .tw-ic { color: var(--muted2); }
+table.tree td.tw-act { text-align: right; padding-top: 5px; padding-bottom: 5px; }
+.prod { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 14px; align-items: start; }
+.prod-nav .pn { padding: 6px; }
+.prod-nav .pn a { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; color: var(--text); cursor: pointer; font-size: 13px; }
+.prod-nav .pn a:hover { background: var(--cobalt-50); text-decoration: none; }
+.prod-nav .pn a.on { background: var(--cobalt); color: #fff; } .prod-nav .pn a.on i, .prod-nav .pn a.on small { color: #fff; }
+.prod-nav .pn a i { color: var(--amber); width: 16px; } .prod-nav .pn small { margin-left: auto; color: var(--muted); }
+table.prod-t tr.pg td { background: #fff8e6; font-weight: 600; }
+table.prod-t td.pi { padding-left: 30px; }
+.sheet-bar { flex-wrap: wrap; } .src.small { padding: 0 14px 10px; }
+table.sheet-t td.tax { background: #fdf0ef; }
+@media (max-width: 860px) { .prod { grid-template-columns: 1fr; } }

@@ -106,7 +106,7 @@ async function route() {
   const [, kind, name] = p.split('/');
   const main = $('#main'); if (!main) return;
   main.onclick = null; main.innerHTML = '<div class="empty">Đang tải…</div>';
-  const navId = kind === 'e' ? 'e:' + name : name === 'unit360' || name === 'cust360' ? 'lookup' : name;
+  const navId = kind === 'e' ? ({ project: 'projects', building: 'projects', unit: 'products' }[name] || 'e:' + name) : name === 'unit360' || name === 'cust360' ? 'lookup' : name === 'pricesheet' ? 'e:price_policy' : name;
   $$('[data-nav]').forEach(a => a.classList.toggle('on', a.dataset.nav === navId));
   const on = $(`[data-nav="${navId}"]`); $$('.mod').forEach(m => m.classList.remove('cur'));
   if (on) { on.closest('.mod').classList.add('open', 'cur'); }
@@ -303,6 +303,160 @@ function unitPop(u, after) {
   $('#u3', m.el).onclick = () => { m.close(); location.hash = `#/v/unit360?id=${u.id}`; };
   $('#ures', m.el) && ($('#ures', m.el).onclick = () => { m.close(); openForm('reservation', { preset: { unit_id: u.id, unit_id__l: u.code, hold_until: new Date(Date.parse(addDays(today(), 3) + 'T17:00:00+07:00')).toISOString() }, onSaved: row => { after(); openDetail('reservation', row.id); } }); });
 }
+
+// ======================= 02. DANH MỤC DỰ ÁN / SẢN PHẨM =======================
+const UST_C = { con_ban: 'g', giu_cho: 'a', da_coc: 'v', da_ky_hd: 'b', da_ban_giao: 't', tam_khoa: 'r' };
+const SOLD = new Set(['giu_cho', 'da_coc', 'da_ky_hd', 'da_ban_giao']);
+const optL = (ent, k, v) => M.ents[ent].fields.find(f => f.k === k)?.o?.find(o => o[0] === v)?.[1] || v || '';
+async function catalogData() {
+  const [p, b, u] = await Promise.all(['project', 'building', 'unit'].map(e => api('GET', `/api/e/${e}?limit=20000&sort=code`)));
+  const units = u.rows.sort((a, c) => a.code.localeCompare(c.code, 'vi', { numeric: true }));
+  const sum = list => ({ n: list.length, con: list.filter(x => x.status === 'con_ban').length, sold: list.filter(x => SOLD.has(x.status)).length,
+    tt: list.reduce((s, x) => s + (+x.area_tt || 0), 0), xd: list.reduce((s, x) => s + (+x.area_xd || 0), 0), dat: list.reduce((s, x) => s + (+x.area_dat || 0), 0), gia: list.reduce((s, x) => s + (+x.total_price || 0), 0) });
+  const buildings = b.rows.map(x => { const us = units.filter(v => v.building_id === x.id); return { ...x, units: us, s: sum(us) }; });
+  const projects = p.rows.map(x => { const bs = buildings.filter(v => v.project_id === x.id); const us = units.filter(v => v.project_id === x.id); return { ...x, buildings: bs, units: us, s: sum(us) }; });
+  return { projects, buildings, units, sum };
+}
+const bName = b => b.name && b.name.toUpperCase().includes(String(b.code).toUpperCase()) ? b.name : `Tòa ${b.code}${b.name ? ' · ' + b.name : ''}`;
+const unitMatch = (u, q) => !q || `${u.code} ${u.direction || ''} ${u.building_id__l || ''}`.toLowerCase().includes(q);
+
+// Danh mục dự án: bấm dự án → sổ ra tòa, bấm tòa → sổ ra căn
+V.projects = async main => {
+  const s = ST.cat ||= { open: new Set(), q: '' };
+  const pe = M.ents.project.perm, be = M.ents.building.perm, ue = M.ents.unit.perm;
+  const draw = async () => {
+    const d = await catalogData(), q = s.q.trim().toLowerCase();
+    // tìm kiếm: giữ nhánh có dự án / tòa / căn khớp và tự mở nhánh đó
+    const hitB = b => !q || `${b.code} ${b.name || ''}`.toLowerCase().includes(q) || b.units.some(u => unitMatch(u, q));
+    const hitP = p => !q || `${p.code} ${p.name}`.toLowerCase().includes(q) || p.buildings.some(hitB);
+    const isOpen = k => s.open.has(k) || (!!q && (k[0] === 'p' || !!d.buildings.find(b => 'b' + b.id === k)?.units.some(u => unitMatch(u, q))));
+    const stat = x => `<td class="num">${x.n}</td><td class="num">${x.con || ''}</td><td class="num">${x.sold || ''}</td><td class="num">${fnum(x.tt)}</td><td class="num">${fm(x.gia)}</td>`;
+    const chev = (k, has) => has ? `<i class="fa-solid fa-chevron-right tw-chev ${isOpen(k) ? 'on' : ''}"></i>` : '<i class="tw-chev"></i>';
+    const rows = d.projects.filter(hitP).map(p => {
+      let h = `<tr class="tw-p" data-t="p${p.id}"><td>${chev('p' + p.id, p.buildings.length)}${ico('fa-city', 'tw-ic')}<b>${esc(p.code)}</b> · ${esc(p.name)}</td><td>${esc(optL('project', 'kind', p.kind))}</td><td class="num">${p.buildings.length ? p.buildings.length + ' tòa' : ''}</td>${stat(p.s)}
+        <td class="tw-act">${be.c ? `<button class="btn sm ghost" data-add="building" data-p="${p.id}" title="Thêm tòa">${ico('fa-plus')} Tòa</button>` : ''}<button class="btn sm ghost" data-ed="project:${p.id}" title="Thông tin dự án">${ico('fa-pen-to-square')}</button></td></tr>`;
+      if (isOpen('p' + p.id)) h += p.buildings.filter(hitB).map(b => {
+        let r = `<tr class="tw-b" data-t="b${b.id}"><td>${chev('b' + b.id, b.units.length)}${ico('fa-building', 'tw-ic')}<b>${esc(bName(b))}</b></td><td>${esc(optL('building', 'kind', b.kind))}</td><td class="num">${b.floors ? b.floors + ' tầng' : ''}</td>${stat(b.s)}
+          <td class="tw-act">${ue.c ? `<button class="btn sm ghost" data-add="unit" data-p="${p.id}" data-b="${b.id}" data-bl="${esc(b.code)}" title="Thêm căn">${ico('fa-plus')} Căn</button>` : ''}<button class="btn sm ghost" data-ed="building:${b.id}" title="Thông tin tòa">${ico('fa-pen-to-square')}</button></td></tr>`;
+        if (isOpen('b' + b.id)) r += b.units.filter(u => unitMatch(u, q)).map(u => `<tr class="tw-u" data-u="${u.id}"><td>${ico('fa-door-open', 'tw-ic')}${esc(u.code)}</td><td>${esc(optL('unit', 'kind', u.kind))}${u.direction ? ` · <span class="muted">${esc(u.direction)}</span>` : ''}</td><td class="num">Tầng ${u.floor}</td>
+          <td colspan="3">${pill(USTAT[u.status] || u.status, UST_C[u.status])}</td><td class="num">${fnum(u.area_tt)}</td><td class="num">${fm(u.total_price)}</td><td></td></tr>`).join('');
+        return r;
+      }).join('');
+      return h;
+    }).join('');
+    const t = d.sum(d.units);
+    main.innerHTML = `<div class="page">${head('02', 'Danh mục dự án', 'fa-sitemap', `<button class="btn" id="cOpen">${ico('fa-angles-down')} Mở hết</button><button class="btn" id="cClose">${ico('fa-angles-up')} Thu gọn</button>${pe.c ? `<button class="btn pri" data-add="project">${ico('fa-plus')} Tạo dự án</button>` : ''}`)}
+      <div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="cq" placeholder="Tìm dự án, tòa, mã căn…" value="${esc(s.q)}"></div><span class="grow"></span><span class="small muted">${d.projects.length} dự án · ${d.buildings.length} tòa · ${d.units.length} căn — bấm dự án để xem tòa, bấm tòa để xem căn</span></div>
+      <div class="tbl-wrap"><table class="t tree"><thead><tr><th>Dự án / tòa / căn</th><th>Loại</th><th class="num">Quy mô</th><th class="num">Số căn</th><th class="num">Còn bán</th><th class="num">Đã giao dịch</th><th class="num">DT thông thủy (m²)</th><th class="num">Tổng giá trị (đ)</th><th></th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="9"><div class="empty">${q ? 'Không có dự án / tòa / căn khớp' : 'Chưa có dự án'}</div></td></tr>`}</tbody>
+      <tfoot><tr><td>Tổng</td><td></td><td></td>${stat(t)}<td></td></tr></tfoot></table></div></div></div>`;
+    const inp = $('#cq', main);
+    inp.oninput = debounce(() => { s.q = inp.value; draw().then(() => { const i = $('#cq', main); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }); }, 250);
+    $('#cOpen', main).onclick = () => { d.projects.forEach(p => s.open.add('p' + p.id)); d.buildings.forEach(b => s.open.add('b' + b.id)); draw(); };
+    $('#cClose', main).onclick = () => { s.open.clear(); draw(); };
+  };
+  ST.reload = draw;
+  main.onclick = run(async e => {
+    const add = e.target.closest('[data-add]');
+    if (add) {
+      const k = add.dataset.add, a = add.dataset;
+      if (k === 'building') s.open.add('p' + a.p);
+      if (k === 'unit') { s.open.add('p' + a.p); s.open.add('b' + a.b); }
+      return openForm(k, { preset: k === 'project' ? {} : k === 'building' ? { project_id: +a.p } : { project_id: +a.p, building_id: +a.b, building_id__l: a.bl }, onSaved: () => draw() });
+    }
+    const ed = e.target.closest('[data-ed]'); if (ed) { const [en, id] = ed.dataset.ed.split(':'); return openDetail(en, +id); }
+    const u = e.target.closest('tr[data-u]'); if (u) return openDetail('unit', +u.dataset.u);
+    const t = e.target.closest('tr[data-t]'); if (t) { const k = t.dataset.t; s.open.has(k) ? s.open.delete(k) : s.open.add(k); return draw(); }
+  });
+  await draw();
+};
+
+// Danh mục sản phẩm/căn hộ: nhóm theo dự án (trái), lưới căn nhóm theo tòa (phải)
+V.products = async (main, params) => {
+  const s = ST.prod ||= { project: '', q: '', st: '', shut: new Set() };
+  if (params.project) s.project = params.project;
+  const ue = M.ents.unit.perm;
+  const draw = async () => {
+    const d = await catalogData(), q = s.q.trim().toLowerCase();
+    const base = d.units.filter(u => !s.project || u.project_id === +s.project);
+    const us = base.filter(u => unitMatch(u, q) && (!s.st || u.status === s.st));
+    const cnt = {}; base.forEach(u => cnt[u.status] = (cnt[u.status] || 0) + 1);
+    const nums = x => `<td class="num">${x.dat ? fnum(x.dat) : ''}</td><td class="num">${x.xd ? fnum(x.xd) : ''}</td><td class="num">${fnum(x.tt)}</td>`;
+    const groups = d.buildings.filter(b => !s.project || b.project_id === +s.project).map(b => ({ b, us: us.filter(u => u.building_id === b.id) })).filter(g => g.us.length);
+    const body = groups.map(({ b, us: gu }) => {
+      const x = d.sum(gu), shut = s.shut.has(b.id), pj = d.projects.find(p => p.id === b.project_id);
+      return `<tr class="pg" data-g="${b.id}"><td colspan="3"><i class="fa-solid fa-chevron-right tw-chev ${shut ? '' : 'on'}"></i><b>${esc(bName(b))}</b> <span class="muted">— ${esc(pj?.code || '')} · ${gu.length} căn</span></td>${nums(x)}<td colspan="4"></td><td class="num">${fm(x.gia)}</td><td></td></tr>` +
+        (shut ? '' : gu.map(u => `<tr data-u="${u.id}"><td class="pi">${esc(u.code)}</td><td>${esc(optL('unit', 'kind', u.kind))}</td><td>${esc(optL('unit', 'position', u.position))}</td>${nums({ dat: u.area_dat, xd: u.area_xd, tt: u.area_tt })}
+          <td>${esc(pj?.code || '')}</td><td>Tòa ${esc(b.code)}</td><td class="num">${u.floor}</td><td>${esc(u.direction || '')}</td><td class="num">${fm(u.total_price)}</td><td>${pill(USTAT[u.status] || u.status, UST_C[u.status])}</td></tr>`).join(''));
+    }).join('');
+    const t = d.sum(us);
+    main.innerHTML = `<div class="page">${head('02', 'Danh mục sản phẩm/căn hộ', 'fa-door-open', `${M.imports.units ? `<button class="btn" id="pImp">${ico('fa-file-import')} Nhập bảng hàng</button>` : ''}${ue.x ? `<button class="btn" id="pXls">${ico('fa-file-excel')} Xuất Excel</button>` : ''}${ue.c ? `<button class="btn pri" id="pNew">${ico('fa-plus')} Tạo căn</button>` : ''}`, 'DA-01')}
+      <div class="prod"><div class="card prod-nav"><div class="hd"><h3>${ico('fa-folder-tree')} Nhóm dữ liệu</h3></div><div class="pn">
+        <a data-p="" class="${!s.project ? 'on' : ''}">${ico('fa-folder-open')} Tất cả dự án <small>${d.units.length}</small></a>
+        ${d.projects.map(p => `<a data-p="${p.id}" class="${+s.project === p.id ? 'on' : ''}">${ico('fa-table-list')} ${esc(p.name)} <small>${p.units.length || ''}</small></a>`).join('')}</div></div>
+      <div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="pq" placeholder="Tìm mã căn, hướng, tòa…" value="${esc(s.q)}"></div>
+        <select id="pst"><option value="">Mọi trạng thái</option>${Object.entries(USTAT).filter(([k]) => cnt[k]).map(([k, l]) => `<option value="${k}" ${s.st === k ? 'selected' : ''}>${l} (${cnt[k]})</option>`).join('')}</select>
+        <span class="grow"></span><span class="small muted">${us.length} căn · ${groups.length} tòa</span></div>
+      <div class="tbl-wrap"><table class="t prod-t"><thead><tr><th>Mã căn</th><th>Loại sản phẩm</th><th>Vị trí</th><th class="num">DT đất</th><th class="num">DT xây dựng</th><th class="num">DT thông thủy</th><th>Dự án</th><th>Tòa nhà</th><th class="num">Tầng</th><th>Hướng</th><th class="num">Tổng giá căn hộ</th><th>Trạng thái</th></tr></thead>
+      <tbody>${body || `<tr><td colspan="12"><div class="empty">Không có căn nào${q || s.st ? ' khớp bộ lọc' : ''}</div></td></tr>`}</tbody>
+      <tfoot><tr><td colspan="3">Tổng ${us.length} căn</td>${nums(t)}<td colspan="4"></td><td class="num">${fm(t.gia)}</td><td></td></tr></tfoot></table></div></div></div></div>`;
+    const inp = $('#pq', main);
+    inp.oninput = debounce(() => { s.q = inp.value; draw().then(() => { const i = $('#pq', main); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }); }, 250);
+    $('#pst', main).onchange = e => { s.st = e.target.value; draw(); };
+  };
+  ST.reload = draw;
+  main.onclick = run(async e => {
+    const p = e.target.closest('[data-p]'); if (p) { s.project = p.dataset.p; return draw(); }
+    const g = e.target.closest('tr[data-g]'); if (g) { const id = +g.dataset.g; s.shut.has(id) ? s.shut.delete(id) : s.shut.add(id); return draw(); }
+    const u = e.target.closest('tr[data-u]'); if (u) return openDetail('unit', +u.dataset.u);
+    if (e.target.closest('#pNew')) return openForm('unit', { preset: s.project ? { project_id: +s.project } : {}, onSaved: () => draw() });
+    if (e.target.closest('#pImp')) return importModal('units', draw);
+    if (e.target.closest('#pXls')) return download(`/api/export/unit?${qsOf({ project: s.project, status: s.st, q: s.q.trim() })}`);
+  });
+  await draw();
+};
+
+// Chi tiết bảng giá theo căn (giống «Chi tiết bảng giá» Bravo): trong ngăn chính sách và màn toàn trang
+const SHEET_COLS = [['building', 'Tòa nhà'], ['code', 'Căn hộ'], ['floor', 'Tầng', 'int'], ['kind', 'Loại'], ['base', 'Đơn giá nền (đ/m²)', 'money'], ['area_xd', 'DT xây dựng', 'num'], ['area_tt', 'DT thông thủy', 'num'],
+  ['before', 'Tổng tiền trước thuế', 'money'], ['vat', '% thuế', 'num'], ['tax', 'Tổng tiền thuế', 'money'], ['after', 'Tiền sau thuế', 'money'], ['pkg', 'Giá trị hoàn thiện', 'money'], ['maint', 'Phí bảo trì', 'money'], ['total', 'Tổng tiền', 'money'], ['status', 'Trạng thái']];
+const SHEET_SUM = ['area_xd', 'area_tt', 'before', 'tax', 'after', 'pkg', 'maint', 'total'];
+async function priceSheetInto(box, id, { full }) {
+  const d = await api('GET', `/api/price-sheet/${id}`), pol = d.policy;
+  const s = { q: '', b: '' }, blds = [...new Set(d.rows.map(r => r.building))];
+  const canRes = M.ents.reservation.perm.c;
+  const v = (r, [k, , t]) => k === 'kind' ? esc(optL('unit', 'kind', r.kind)) : k === 'status' ? pill(USTAT[r.status] || r.status, UST_C[r.status]) : k === 'vat' ? (r.vat ?? '') + '%' : t === 'money' ? fm(r[k]) : t === 'num' ? fnum(r[k]) : esc(r[k] ?? '');
+  const draw = () => {
+    const q = s.q.trim().toLowerCase(), rows = d.rows.filter(r => (!s.b || r.building === s.b) && (!q || r.code.toLowerCase().includes(q)));
+    $('#shT', box).innerHTML = rows.length ? `<table class="t sheet-t"><thead><tr>${canRes ? '<th>Giữ chỗ</th>' : ''}${SHEET_COLS.map(c => `<th class="${c[2] ? 'num' : ''}">${c[1]}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map(r => `<tr data-u="${r.unit_id}">${canRes ? `<td class="center">${r.status === 'con_ban' ? `<button class="btn sm ok" data-res="${r.unit_id}" data-code="${esc(r.code)}" title="Lập phiếu giữ chỗ">${ico('fa-play')}</button>` : ''}</td>` : ''}${SHEET_COLS.map(c => `<td class="${c[2] ? 'num' : ''} ${c[0] === 'vat' || c[0] === 'tax' ? 'tax' : ''}">${v(r, c)}</td>`).join('')}</tr>`).join('')}</tbody>
+      <tfoot><tr>${canRes ? '<td></td>' : ''}${SHEET_COLS.map((c, i) => `<td class="${c[2] ? 'num' : ''}">${i === 0 ? `Tổng ${rows.length} căn` : SHEET_SUM.includes(c[0]) ? (c[2] === 'money' ? fm : fnum)(rows.reduce((a, r) => a + (+r[c[0]] || 0), 0)) : ''}</td>`).join('')}</tr></tfoot></table>`
+      : '<div class="empty">Không có căn nào trong phạm vi chính sách</div>';
+    $('#shN', box).textContent = `${rows.length} căn`;
+    box._rows = rows;
+  };
+  box.innerHTML = `<div class="toolbar sheet-bar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="shQ" placeholder="Tìm mã căn…"></div>
+    ${blds.length > 1 ? `<select id="shB"><option value="">Mọi tòa</option>${blds.map(b => `<option value="${esc(b)}">Tòa ${esc(b)}</option>`).join('')}</select>` : ''}
+    <span class="grow"></span><span class="small muted" id="shN"></span>${!full ? `<a class="btn sm" href="#/v/pricesheet?id=${id}">${ico('fa-expand')} Mở toàn màn hình</a>` : ''}<button class="btn sm" id="shX">${ico('fa-file-excel')} Xuất Excel</button></div>
+    <div class="src small">${ico('fa-circle-info')} ${esc(pol.project_code)} · nhóm căn ${esc(pol.unit_group || '*')} · ${pol.mode === 'don_gia' ? `đơn giá ${fm(pol.unit_price)} đ/m² thông thủy` : 'giá từng căn theo bảng hàng'} · VAT ${pol.vat_pct ?? 5}% — tiền trước thuế, tiền thuế và đơn giá nền tách ngược từ giá sau thuế</div>
+    <div class="tbl-wrap" id="shT"></div>`;
+  $('#shQ', box).oninput = debounce(e => { s.q = e.target.value; draw(); }, 200);
+  $('#shB', box) && ($('#shB', box).onchange = e => { s.b = e.target.value; draw(); });
+  $('#shX', box).onclick = () => download('/api/export-rows', { title: `Chi tiết bảng giá ${pol.code} v${pol.version}`, cols: SHEET_COLS.map(c => c[0] === 'kind' || c[0] === 'status' ? [c[0] + '_l', c[1]] : c),
+    rows: box._rows.map(r => ({ ...r, kind_l: optL('unit', 'kind', r.kind), status_l: USTAT[r.status] || r.status })), sum: SHEET_SUM, file: 'bang_gia_' + pol.code });
+  box.onclick = run(async e => {
+    const b = e.target.closest('[data-res]');
+    if (b) { e.stopPropagation(); return openForm('reservation', { preset: { unit_id: +b.dataset.res, unit_id__l: b.dataset.code, hold_until: new Date(Date.parse(addDays(today(), 3) + 'T17:00:00+07:00')).toISOString() }, onSaved: row => openDetail('reservation', row.id) }); }
+    const tr = e.target.closest('tr[data-u]'); if (tr && full) location.hash = `#/v/unit360?id=${tr.dataset.u}`;
+  });
+  draw();
+}
+V.pricesheet = async (main, params) => {
+  const g = await api('GET', `/api/e/price_policy/${params.id}`), r = g.row;
+  main.innerHTML = `<div class="page">${head('02', `Chi tiết bảng giá — ${esc(r.code)} v${r.version}`, 'fa-tags', `<button class="btn" data-pol>${ico('fa-file-lines')} Thông tin chính sách</button><a class="btn" href="#/e/price_policy">${ico('fa-arrow-left')} Danh sách chính sách</a>`, 'DA-02')}
+    <div class="card"><div id="shBox"><div class="empty">Đang tải…</div></div></div></div>`;
+  main.onclick = e => { if (e.target.closest('[data-pol]')) openDetail('price_policy', r.id); };
+  await priceSheetInto($('#shBox', main), r.id, { full: true });
+};
 
 // ======================= 03. TRA CỨU 360° =======================
 V.lookup = async main => {

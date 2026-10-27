@@ -103,6 +103,7 @@ def('price_policy', {
     { k: 'mode', l: 'Cách tính giá', t: 'sel', req: 1, def: 'bang_hang', o: [['bang_hang', 'Theo giá từng căn trên bảng hàng'], ['don_gia', 'Đơn giá × diện tích thông thủy']] },
     money('unit_price', 'Đơn giá (đ/m² thông thủy)', { show: { mode: ['don_gia'] } }),
     { k: 'maint_pct', l: 'Phí bảo trì (%)', t: 'num', def: 2, show: { mode: ['don_gia'] } },
+    { k: 'vat_pct', l: 'Thuế GTGT (%)', t: 'num', def: 5, help: 'NOXH 5% — dùng tách giá trước thuế / tiền thuế trong chi tiết bảng giá' },
     { k: 'src_file', l: 'Tệp nguồn', t: 'text' },
     { k: 'discount', l: 'Ưu đãi / chiết khấu', t: 'long' },
     { k: 'pay_method', l: 'Phương thức thanh toán', t: 'long' },
@@ -664,7 +665,7 @@ def('template', {
 // menu (12 phân hệ). view = màn tự dựng; ent = danh sách thực thể
 const MENU = [
   ['01', 'Tổng quan điều hành', 'fa-gauge-high', [['dashboard', 'Dashboard'], ['ai', 'Trợ lý AI tra cứu'], ['alerts', 'Cảnh báo tồn đọng'], ['approvals', 'Hộp phê duyệt']]],
-  ['02', 'Dự án & giỏ hàng', 'fa-city', [['board', 'Bảng hàng'], ['e:unit'], ['e:project'], ['e:building'], ['e:price_policy'], ['e:package']]],
+  ['02', 'Dự án & giỏ hàng', 'fa-city', [['board', 'Bảng hàng'], ['projects', 'Danh mục dự án'], ['products', 'Danh mục sản phẩm/căn hộ', 'DA-01'], ['e:price_policy'], ['e:package']]],
   ['03', 'Khách hàng', 'fa-users', [['e:customer'], ['e:contact_log'], ['lookup', 'Tra cứu hồ sơ 360°']]],
   ['04', 'Giao dịch bán hàng', 'fa-handshake-angle', [['e:reservation'], ['e:noxh_check'], ['e:cancel_req']]],
   ['05', 'Hồ sơ & hợp đồng', 'fa-file-contract', [['e:contract'], ['signing', 'Lịch ký hợp đồng'], ['e:contract_change'], ['vault', 'Lưu trữ hồ sơ pháp lý']]],
