@@ -7,7 +7,7 @@ exports.http = { createServer() { throw new Error('no http'); } };
 exports.crypto = {
   randomBytes: n => { const a = new Uint8Array(n); globalThis.crypto.getRandomValues(a); return Buffer.from(a); },
   // N=1024 cho nhanh trong trình duyệt — mật khẩu demo chỉ dùng trong trình duyệt
-  scryptSync: (pw, salt, len) => Buffer.from(syncScrypt(Buffer.from(pw), Buffer.from(salt), 1024, 8, 1, len)),
+  scryptSync: (pw, salt, len, o) => Buffer.from(syncScrypt(Buffer.from(pw), Buffer.from(salt), o?.N || 1024, 8, 1, len)),
   timingSafeEqual: (a, b) => a.length === b.length && a.every((x, i) => x === b[i]),
   randomUUID: () => globalThis.crypto.randomUUID(),
 };

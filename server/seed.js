@@ -66,9 +66,11 @@ Ngày {ngay}
 ];
 
 // tài khoản Quản trị đăng nhập app nội bộ (admin) — chỉ lưu mã băm; đổi mật khẩu trong app (menu tên › Đổi mật khẩu)
-const ADMIN_PW_HASH = 'scrypt$3a37567eb4222622e37f2bdee0f1805a$4f0e8f6aaa78ba6621f0495c9c0138b61a1eb60a845427243b7e51f3e2a5bc0c';
+const ADMIN_PW_HASH = 'scrypt:16384$37264ef749e4b51d79f48f6b67f1709d$b5f6d5338787cb84a8f0efb88832dfa341643bc12a66e0768c8381981a54c930';
+const ADMIN_PW_OLD = ['scrypt$3a37567eb4222622e37f2bdee0f1805a$4f0e8f6aaa78ba6621f0495c9c0138b61a1eb60a845427243b7e51f3e2a5bc0c'];   // mã băm cũ không đăng nhập được trên bản demo → thay
 async function ensureAdmin(db) {
-  if (await db.one("SELECT 1 FROM kd_user WHERE lower(username) = 'admin'")) return;
+  const old = await db.one("SELECT id, pw_hash FROM kd_user WHERE lower(username) = 'admin'");
+  if (old) { if (ADMIN_PW_OLD.includes(old.pw_hash)) await db.q('UPDATE kd_user SET pw_hash = $1, must_change = false, active = true WHERE id = $2', [ADMIN_PW_HASH, old.id]); return; }
   const by = await db.one("SELECT id, username, full_name, role FROM kd_user WHERE role = 'admin' ORDER BY id LIMIT 1");
   const r = await IO.createUser(db, { username: 'admin', full_name: 'Quản trị hệ thống', role: 'admin', title: 'Quản trị hệ thống' }, by || C.SYS);
   await db.q('UPDATE kd_user SET pw_hash = $1, must_change = false WHERE id = $2', [ADMIN_PW_HASH, r.id]);

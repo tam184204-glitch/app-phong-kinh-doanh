@@ -251,7 +251,8 @@ function twoSheets(a, b) {
 
 // ---------- tài khoản ----------
 const hashPw = pw => { const salt = crypto.randomBytes(16); return 'scrypt$' + salt.toString('hex') + '$' + crypto.scryptSync(pw, salt, 32).toString('hex'); };
-const checkPw = (pw, h) => { if (!h) return false; const [, s, k] = h.split('$'); return crypto.timingSafeEqual(crypto.scryptSync(String(pw), Buffer.from(s, 'hex'), 32), Buffer.from(k, 'hex')); };
+// «scrypt:N$…» ghi rõ tham số N (mã băm dùng chung máy chủ và bản demo — demo mặc định N=1024); «scrypt$…» = mặc định của nơi tạo
+const checkPw = (pw, h) => { if (!h) return false; const [tag, s, k] = h.split('$'); const N = +tag.split(':')[1]; return crypto.timingSafeEqual(crypto.scryptSync(String(pw), Buffer.from(s, 'hex'), 32, N ? { N, maxmem: 64 << 20 } : undefined), Buffer.from(k, 'hex')); };
 async function createUser(db, d, by, { trial, pw } = {}) {
   const username = String(d.username || '').trim().toLowerCase();
   if (!/^[a-z0-9._-]{3,40}$/.test(username)) bad('Tên đăng nhập 3–40 ký tự: chữ không dấu, số, dấu chấm / gạch');
