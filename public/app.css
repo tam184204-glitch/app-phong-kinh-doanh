@@ -720,3 +720,13 @@ table.grid-bravo tbody tr:hover td { background: #dfeefc; }
 .main .card .tbl-wrap table.t thead th { position: sticky; top: 0; z-index: 3; }
 .drawer .tbl-wrap, .modal .tbl-wrap, .main .box360 .tbl-wrap { max-height: none; }
 @media print { .main .card .tbl-wrap { max-height: none; overflow: visible; } }
+/* bảng hàng dạng bảng: tô màu chữ trạng thái như sơ đồ tầng */
+.u-st { display: inline-block; padding: 1px 8px; border-radius: 6px; font-size: 12px; font-weight: 700; border: 1px solid transparent; }
+.u-st.con_ban { background: #e8f6ec; border-color: #b9e2c6; color: #145c33; }
+.u-st.giu_cho { background: #fff3d9; border-color: #f4d48e; color: #7a4d00; }
+.u-st.da_coc { background: #efe8fd; border-color: #d4c4f6; color: #4c2b99; }
+.u-st.da_ky_hd { background: #e3edfb; border-color: #b8cff0; color: #143866; }
+.u-st.da_ban_giao { background: #dcf2ef; border-color: #a9ddd6; color: #0d5a54; }
+.u-st.chua_mo_ban, .u-st.ngung_kd { background: #eef2f6; border-color: #d9e1ea; color: #5b6b7f; }
+.u-st.tam_khoa { background: #fdecea; border-color: #f4c3bd; color: #8f2a20; }
+.ph .seg { display: flex; gap: 6px; }
