@@ -486,7 +486,10 @@ async function handle(req, res) {
     const file = path.join(PUBLIC, pth === '/' ? 'index.html' : pth);
     if (!file.startsWith(PUBLIC)) return send(res, 403, 'Forbidden');
     fs.readFile(file, (err, buf) => {
-      if (err && pth.startsWith('/marketing/')) return send(res, 302, '', { Location: PUBLIC_SRC + url.pathname + url.search });   // tài nguyên trang công khai mới, chưa chép về
+      // tài nguyên trang công khai mới, chưa chép về: lấy từ trang gốc và trả về cùng tên miền (chuyển hướng thì ảnh 720° hỏng vì WebGL cần CORS)
+      if (err && pth.startsWith('/marketing/')) return fetch(PUBLIC_SRC + url.pathname + url.search, { signal: AbortSignal.timeout(60e3) })
+        .then(async r => r.ok ? send(res, 200, Buffer.from(await r.arrayBuffer()), { 'Content-Type': r.headers.get('content-type') || TYPES[path.extname(pth)] || 'application/octet-stream', 'Cache-Control': 'public, max-age=3600' }) : send(res, r.status, 'Not found', { 'Content-Type': 'text/plain' }))
+        .catch(() => send(res, 502, 'Không lấy được tài nguyên từ trang gốc', { 'Content-Type': 'text/plain; charset=utf-8' }));
       if (err) return fs.readFile(path.join(PUBLIC, 'index.html'), (e2, b2) => e2 ? send(res, 404, 'Not found') : send(res, 200, b2, { 'Content-Type': TYPES['.html'] }));
       send(res, 200, buf, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
     });
