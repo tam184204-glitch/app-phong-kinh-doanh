@@ -80,6 +80,11 @@ h1, h2, h3, h4 { color: var(--ink); margin: 0; }
 .mod { margin-bottom: 2px; }
 .mod > button { width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; border: 0; background: none; padding: 9px 10px; border-radius: 10px; cursor: pointer; color: #294765; font-weight: 650; font-size: 13.5px; }
 .mod > button:hover { background: var(--cobalt-50); }
+.mod > a.solo { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; color: #294765; font-weight: 650; font-size: 13.5px; }
+.mod > a.solo:hover { background: var(--cobalt-50); text-decoration: none; }
+.mod > a.solo .n { font-size: 10.5px; border-radius: 6px; background: #eef2f6; color: var(--muted); padding: 3px 0; min-width: 26px; text-align: center; font-weight: 800; }
+.mod > a.solo.on { color: var(--cobalt); background: linear-gradient(90deg, var(--cobalt-50), transparent); }
+.mod > a.solo.on .n { background: var(--cobalt); color: #fff; }
 .mod > button .n { font-size: 10.5px; border-radius: 6px; background: #eef2f6; color: var(--muted); padding: 3px 0; min-width: 26px; text-align: center; font-weight: 800; }
 .mod > button .chev { margin-left: auto; font-size: 10px; color: var(--muted2); transition: transform .2s; }
 .mod.open > button .chev { transform: rotate(90deg); }
