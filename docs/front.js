@@ -555,19 +555,6 @@ function syncTopScroll() {
 new MutationObserver(debounce(syncTopScroll, 60)).observe(document.documentElement, { childList: true, subtree: true });
 window.addEventListener('resize', debounce(syncTopScroll, 100));
 
-// ---------- hiệu ứng: đèn rọi theo chuột trên box, gợn sóng khi bấm ----------
-document.addEventListener('pointermove', e => {
-  const c = e.target.closest?.('.card, .cat-tile, .tower'); if (!c) return;
-  const r = c.getBoundingClientRect();
-  c.style.setProperty('--mx', `${e.clientX - r.left}px`); c.style.setProperty('--my', `${e.clientY - r.top}px`);
-}, { passive: true });
-document.addEventListener('pointerdown', e => {
-  const b = e.target.closest?.('.btn, .ibtn, .mod > button, .mod > a.solo, .cat-tile, .kpi'); if (!b || b.disabled) return;
-  const r = b.getBoundingClientRect(), s = document.createElement('span');
-  s.className = 'ripple'; s.style.cssText = `left:${e.clientX - r.left}px;top:${e.clientY - r.top}px;--rs:${Math.max(r.width, r.height) * 2.2}px`;
-  b.append(s); setTimeout(() => s.remove(), 650);
-});
-
 // ---- screens.js
 // Khung app, đăng nhập, điều hướng và các màn tổng hợp.
 'use strict';

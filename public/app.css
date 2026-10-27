@@ -686,3 +686,12 @@ table.t td.num { color: var(--ink); font-weight: 600; }
 }
 @media (max-width: 860px) { .main::before, .main::after { opacity: .2; } .login .hero::before, .login .hero::after { display: none; } }
 @media print { .main::before, .main::after, .top::after, .modal::before, .drawer::before { display: none !important; } .page > *, .grid > * { animation: none !important; } }
+
+/* ---------- bớt hiệu ứng động: không chạy/nhấp nháy, không nảy khi rê chuột — giữ màu, bóng, đổi nền khi rê ---------- */
+*, *::before, *::after { animation: none !important; }
+.ai-typing span { animation: aiDot 1s infinite ease-in-out !important; }
+.ai-typing span:nth-child(2) { animation-delay: .15s !important; } .ai-typing span:nth-child(3) { animation-delay: .3s !important; }
+.btn:hover, .btn:active, .btn:hover i, .btn.pri:hover, .btn.amb:hover, .ibtn:hover, .me:hover, .brand:hover img, .mod > button:hover, .mod > a.solo:hover,
+.kpi:hover, .cat-tile:hover, .tower:hover, .u:hover, .files a.f:hover, .note:hover, .ai-sug button:hover, .login .trial button:hover,
+.card:hover > .hd h3 i, .grid > .card:not(.kpi):hover { transform: none !important; }
+.kpi::after, .cat-tile::after, .tower::after, .files a.f::after, .ai-sug button::after, .btn.pri::after, .btn.amb::after, .side .foot::after, .bar > i::after, .ripple { display: none !important; }
