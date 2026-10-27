@@ -104,7 +104,7 @@ def('price_policy', {
   purpose: 'Quản lý phiên bản giá và ưu đãi', users: 'Trưởng phòng / nhân sự được phân quyền',
   how: 'Tạo nháp → trình duyệt → phát hành → tự áp dụng cho giao dịch mới',
   rules: 'Không sửa phiên bản đã phát hành; chính sách hết hạn không tự áp dụng',
-  c: ['truong_phong'], a: ['lanh_dao'], files: [['phe_duyet', 'Quyết định / tờ trình phê duyệt', 1], ['nguon', 'Tệp nguồn (PDF)']], fields: [
+  c: ['truong_phong'], a: ['lanh_dao'], files: [['phe_duyet', 'Quyết định / tờ trình phê duyệt'], ['nguon', 'Tệp nguồn (PDF)']], fields: [
     { k: 'code', l: 'Mã chính sách', t: 'text', req: 1, help: 'CSBH-2026-01' },
     { k: 'version', l: 'Phiên bản', t: 'int', ro: 1, def: 1 },
     { k: 'project_id', l: 'Dự án', t: 'ref', ref: 'project', req: 1 },
