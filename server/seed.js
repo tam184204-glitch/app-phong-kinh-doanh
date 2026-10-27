@@ -159,6 +159,14 @@ async function ensureTemplates() {
     const qhMoi = '<div class="qh"><b>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</b><br><b class="tn">Độc lập - Tự do - Hạnh phúc</b></div>';
     const cccdCu = '<td>Ngày cấp: {ngay_cap}</td><td>Nơi cấp: {noi_cap}</td></tr></table>', cccdMoi = '<td>Ngày cấp: {ngay_cap}</td></tr></table>\n<p>Nơi cấp: {noi_cap}</p>';
     await db.q('UPDATE kd_template SET content = replace(replace(content, $1, $2), $3, $4) WHERE strpos(content, $1) > 0 OR strpos(content, $3) > 0', [qhCu, qhMoi, cccdCu, cccdMoi]);
+    // danh mục giấy tờ NOXH theo mẫu biên bản bàn giao (có số lượng): đổi danh mục mặc định cũ + hồ sơ chưa đụng tới danh mục
+    const { checklist_noxh_cu: ckCu, checklist_noxh: ckMoi } = require('./meta').SETTINGS;
+    if (JSON.stringify((await db.one("SELECT value FROM kd_setting WHERE key = 'checklist_noxh'"))?.value) === JSON.stringify(ckCu))
+      await db.q("UPDATE kd_setting SET value = $1 WHERE key = 'checklist_noxh'", [JSON.stringify(ckMoi)]);
+    const itemsMoi = JSON.stringify(ckMoi._all.map(s => ({ ...B.ckItem(s), st: '', note: '', on: null })));
+    for (const n of await db.q('SELECT id, items FROM kd_noxh_check'))
+      if (Array.isArray(n.items) && n.items.length === ckCu._all.length && n.items.every((x, i) => x.n === ckCu._all[i] && !x.st && !x.note && x.qty == null))
+        await db.q('UPDATE kd_noxh_check SET items = $1 WHERE id = $2', [itemsMoi, n.id]);
     await db.q("UPDATE kd_reservation SET reg_at = coalesce(created_at, reg_date::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh') WHERE reg_at IS NULL");
     // phiếu lập trước khi có mẫu «Phiếu đăng ký căn hộ»: chép thông tin khách + suy ra trạng thái căn / tiến trình
     await db.q(`UPDATE kd_reservation r SET cust_name = k.full_name, id_no = k.id_no, id_date = k.id_date, id_place = k.id_place, address = k.address, phone = k.phone
@@ -366,7 +374,7 @@ async function loadDemo() {
       inc('Nhật ký tư vấn');
     }
     // hồ sơ NOXH (checklist)
-    const ck = (await C.setting('checklist_noxh', db))._all;
+    const ck = (await C.setting('checklist_noxh', db))._all.map(s => B.ckItem(s).n);
     const mkNoxh = async (d, sts, extra = {}) => (await C.create('noxh_check', { reservation_id: d.res.id, grp: 'cong_nhan', items: ck.map((n, i) => ({ n, st: sts[i] ?? 'da_nhan', note: '' })), received_on: D(-10), doi_tuong: 'Người lao động đang làm việc tại các doanh nghiệp trong và ngoài khu công nghiệp', confirm_org: 'Công ty TNHH Samsung Display Việt Nam',
       housing: 'Chưa có nhà ở thuộc sở hữu của hộ gia đình', income: 'Có thu nhập bình quân hàng tháng thực nhận không quá 25 triệu đồng', province: 'Bắc Ninh', commune: 'Yên Trung', job: 'Người lao động làm việc tại doanh nghiệp', ...extra }, hs, o())).row;
     { const n = await mkNoxh(ctsDeals[14], []); await C.act('noxh_check', n.id, 'review', hs, { step: 'kiem_tra_1', conclusion: 'dat', note: 'Đủ giấy tờ' }, { db, demo: true }); await C.submit('noxh_check', n.id, hs, { db, demo: true }); await C.approve('noxh_check', n.id, tp, { ok: true, db }); }

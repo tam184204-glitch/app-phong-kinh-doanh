@@ -5,6 +5,7 @@
 // in biên bản giao nhận hồ sơ (danh mục giấy tờ + số lượng).
 const C = require('./core');
 const IO = require('./io');
+const B = require('./biz');
 const { E, PII_ROLES } = require('./meta');
 const { q, one } = require('./db');
 const { buildXlsx } = require('./xlsx');
@@ -115,42 +116,55 @@ const IMPORT = {
 };
 IO.IMPORTS.mau4 = IMPORT;
 
-// ---------- biên bản giao nhận hồ sơ ----------
+// ---------- biên bản bàn giao tài liệu hồ sơ mua nhà ----------
+// theo mẫu giấy của phòng Kinh doanh: in từ phiếu đăng ký (danh sách GD-01) hoặc từ hồ sơ mua NOXH (GD-02);
+// danh mục giấy tờ + số lượng lấy ở hồ sơ NOXH của phiếu, chưa lập hồ sơ thì in danh mục mặc định để điền tay
+const CTY = { name: 'Công ty cổ phần Cát Tường', addr: 'Tầng 3 tòa CTN, đường Lý Thái Tổ, Phường Tiền Ninh Vệ, TP Bắc Ninh, Tỉnh Bắc Ninh', place: 'Bắc Ninh' };
 const esc = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-async function printHandover(id, user) {
-  const { row: n } = await C.get('noxh_check', id, user, { reveal: true });
-  const pii = canSee(user);
-  const k = await one('SELECT full_name, phone, id_no, id_date, id_place, address FROM kd_customer WHERE id = $1', [n.customer_id]);
-  const u = n.unit_id ? await one('SELECT u.code, p.name project, p.investor FROM kd_unit u JOIN kd_project p ON p.id = u.project_id WHERE u.id = $1', [n.unit_id]) : null;
-  const by = await one('SELECT full_name FROM kd_user WHERE id = $1', [n.owner_id || user.id]);
-  const items = (n.items || []).filter(x => x.st !== 'thieu');
-  const total = items.reduce((a, x) => a + (+x.qty || 0), 0);
-  const d = new Date(Date.now() + 7 * 3600e3);
-  const DOTS = '……………………';
-  const body = `<div class="qh"><b>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</b><br><b class="tn">Độc lập - Tự do - Hạnh phúc</b></div>
-<h2>BIÊN BẢN GIAO NHẬN HỒ SƠ</h2><div class="c"><i>(Hồ sơ đăng ký ${n.reg_kind === 'thue' ? 'thuê' : n.reg_kind === 'thue_mua' ? 'thuê mua' : 'mua'} nhà ở xã hội${u ? ` — ${esc(u.project)}` : ''})</i></div>
-<p>Hôm nay, ngày ${pad(d.getUTCDate())} tháng ${pad(d.getUTCMonth() + 1)} năm ${d.getUTCFullYear()}, chúng tôi gồm:</p>
-<p class="h">BÊN GIAO HỒ SƠ (Người đăng ký):</p>
-<p>Ông (Bà): <b>${esc(k.full_name)}</b></p>
-<table class="kv3"><tr><td>Số CCCD: ${pii ? esc(k.id_no) || DOTS : '(ẩn)'}</td><td>Ngày cấp: ${pii && k.id_date ? dmy(k.id_date) : DOTS}</td></tr></table>
-<p>Địa chỉ: ${esc(k.address) || DOTS}</p><p>Số điện thoại: ${esc(k.phone)}</p>
-${u || n.unit_text ? `<p>Căn hộ đăng ký: <b>${esc(u?.code || n.unit_text)}</b></p>` : ''}
-<p class="h">BÊN NHẬN HỒ SƠ:</p>
-<p>${esc(u?.investor || 'Công ty CP Cát Tường')}</p><p>Người nhận: <b>${esc(by?.full_name || '')}</b> — Phòng Kinh doanh</p>
-<p>Bên giao đã bàn giao cho Bên nhận các hồ sơ, giấy tờ sau:</p>
-<table class="b"><tr class="th"><td style="width:10%">STT</td><td>Tên giấy tờ / hồ sơ</td><td style="width:14%">Số lượng (bản)</td><td style="width:26%">Ghi chú</td></tr>
-${items.map((x, i) => `<tr><td class="c">${i + 1}</td><td>${esc(x.n)}</td><td class="c">${x.qty ?? ''}</td><td>${esc(x.note)}${x.st === 'can_sua' ? `${x.note ? '; ' : ''}cần bổ sung / sửa` : ''}</td></tr>`).join('')}
-<tr><td></td><td><b>Tổng cộng</b></td><td class="c"><b>${total || ''}</b></td><td></td></tr></table>
-<p class="j">Bên nhận đã kiểm tra số lượng hồ sơ nêu trên. Việc giao nhận hồ sơ không thay thế kết quả xét duyệt của cơ quan có thẩm quyền. Biên bản được lập thành 02 bản có giá trị như nhau, mỗi bên giữ 01 bản.</p>
-<table class="sign"><tr><td><b>BÊN GIAO</b><br><i>(Ký, ghi rõ họ tên)</i><br><br><br><br><b>${esc(k.full_name)}</b></td><td><b>BÊN NHẬN</b><br><i>(Ký, ghi rõ họ tên)</i><br><br><br><br><b>${esc(by?.full_name || '')}</b></td></tr></table>`;
-  await C.audit({ q }, 'noxh_check', n.id, 'in_bien_ban_giao_nhan', null, null, user);
-  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Biên bản giao nhận hồ sơ – ${esc(k.full_name)}</title><style>
-    @page{size:A4;margin:20mm 15mm 20mm 30mm} body{font:13pt/1.4 "Times New Roman",serif;color:#000;max-width:165mm;margin:auto}
-    .qh{text-align:center;font-size:13pt;line-height:1.3} .qh .tn{font-size:14pt;display:inline-block;padding-bottom:2pt;border-bottom:1px solid #000}
-    p{margin:3pt 0} h2{text-align:center;font-size:14pt;margin:14pt 0 2pt} .c{text-align:center} .j{text-align:justify} .h{font-weight:bold;margin-top:8pt}
-    table{border-collapse:collapse;width:100%;margin:4pt 0} table.b td{border:1px solid #000;padding:3pt 6pt} table.b .th td{font-weight:bold;text-align:center}
-    table.kv3{width:auto} table.kv3 td{padding:0 24pt 0 0} tr,table.sign{page-break-inside:avoid} table.sign{margin-top:14pt} table.sign td{width:50%;text-align:center;vertical-align:top}
-    ${IO.EDIT_CSS}</style></head><body>${IO.editBar(`Biên bản giao nhận hồ sơ NOXH #${n.id}`)}${IO.editDoc(body)}</body></html>`;
+async function printHandover(kind, id, user) {
+  if (!['reservation', 'noxh'].includes(kind)) bad('Loại bản in không hợp lệ');
+  let r = null, n = null;
+  if (kind === 'reservation') {
+    r = (await C.get('reservation', id, user, { reveal: true })).row;
+    const nid = (await one('SELECT id FROM kd_noxh_check WHERE reservation_id = $1 OR (reservation_id IS NULL AND customer_id = $2) ORDER BY (reservation_id = $1) DESC NULLS LAST, id DESC LIMIT 1', [r.id, r.customer_id]))?.id;
+    if (nid) n = (await C.get('noxh_check', nid, user, { reveal: true })).row;
+  } else {
+    n = (await C.get('noxh_check', id, user, { reveal: true })).row;
+    if (n.reservation_id) r = (await C.get('reservation', n.reservation_id, user, { reveal: true })).row;
+  }
+  const pii = canSee(user), hide = v => pii ? v : (v ? '(ẩn)' : '');
+  const k = await one('SELECT full_name, phone, tax_code, bank_account FROM kd_customer WHERE id = $1', [r?.customer_id || n?.customer_id]) || {};
+  const unitId = r?.unit_id || n?.unit_id;
+  const u = unitId ? await one('SELECT u.code, p.name project FROM kd_unit u JOIN kd_project p ON p.id = u.project_id WHERE u.id = $1', [unitId]) : null;
+  const pj = u?.project || (n?.unit_text ? (await one("SELECT name FROM kd_project WHERE upper(code) = upper(split_part($1, '-', 1))", [n.unit_text]))?.name : null);
+  const by = await one('SELECT full_name FROM kd_user WHERE id = $1', [n?.owner_id || user.id]);
+  const items = n ? (n.items || []).filter(x => x.st !== 'thieu') : await B.defaultList({ q, one }, 'checklist_noxh', '_all');
+  const day = String(n?.received_on || C.today()).slice(0, 10).split('-');
+  const DOTS = '……………………………';
+  const val = v => v ? esc(v) : DOTS;
+  const body = `<table class="hd"><tr><td><b>${CTY.name.toUpperCase()}</b></td><td><b>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</b><br><b class="tn">Độc lập - Tự do - Hạnh phúc</b><br><i>${CTY.place}, ngày ${day[2]} tháng ${day[1]} năm ${day[0]}</i></td></tr></table>
+<h2>BIÊN BẢN BÀN GIAO TÀI LIỆU</h2>
+<h3>HỒ SƠ MUA NHÀ DỰ ÁN ${esc(pj ? (/nhà ở xã hội/i.test(pj) ? pj : 'Nhà ở xã hội ' + pj).toUpperCase() : DOTS)}</h3>
+<p><b>Bên giao:</b></p>
+<table class="kv"><tr><td>Họ và tên:</td><td>${val(r?.cust_name || k.full_name)}</td><td class="r">SĐT: ${val(r?.phone || k.phone)}</td></tr>
+<tr><td>MST CN:</td><td colspan="2">${val(hide(r?.tax_code || k.tax_code))}</td></tr>
+<tr><td>TK Ngân hàng:</td><td colspan="2">${val(hide(r?.bank_account || k.bank_account))}</td></tr>
+<tr><td>Mã căn hộ:</td><td colspan="2">${val(u?.code || n?.unit_text)}</td></tr></table>
+<p><b>Bên Nhận: ${CTY.name}</b></p>
+<p>Người đại diện: ${val(by?.full_name)}</p>
+<p>Địa chỉ: ${CTY.addr}</p>
+<p>Chi tiết tài liệu bàn giao:</p>
+<table class="b"><tr class="th"><td style="width:9%">STT</td><td>Nội dung</td><td style="width:16%">SỐ LƯỢNG</td><td style="width:27%">GHI CHÚ</td></tr>
+${items.map((x, i) => `<tr><td class="c">${i + 1}</td><td>${esc(x.n)}</td><td class="c">${x.qty ?? ''}</td><td>${esc(x.note)}</td></tr>`).join('')}</table>
+<table class="sign"><tr><td><b>BÊN GIAO</b></td><td><b>BÊN NHẬN</b></td></tr></table>`;
+  await C.audit({ q }, n ? 'noxh_check' : 'reservation', n?.id || r.id, 'in_bien_ban_giao_nhan', null, null, user);
+  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Biên bản bàn giao tài liệu – ${esc(r?.cust_name || k.full_name)}</title><style>
+    @page{size:A4;margin:20mm 15mm 20mm 25mm} body{font:13pt/1.4 "Times New Roman",serif;color:#000;max-width:170mm;margin:auto}
+    p{margin:4pt 0} h2{text-align:center;font-size:15pt;margin:16pt 0 2pt} h3{text-align:center;font-size:13.5pt;margin:0 0 10pt} .c{text-align:center} .r{text-align:right}
+    table{border-collapse:collapse;width:100%;margin:4pt 0} table.hd td{vertical-align:top;text-align:center;width:42%;font-size:12pt} table.hd td:first-child{white-space:nowrap} table.hd td+td{width:58%} table.hd .tn{display:inline-block;padding-bottom:1pt;border-bottom:1px solid #000}
+    table.kv td{padding:2pt 0;vertical-align:top} table.kv td:first-child{width:24%} table.b td{border:1px solid #000;padding:5pt 6pt;vertical-align:middle} table.b .th td{font-weight:bold;text-align:center}
+    tr,table.sign{page-break-inside:avoid} table.sign{margin-top:6pt} table.sign td{width:50%;text-align:center;vertical-align:top;height:90pt}
+    ${IO.EDIT_CSS}</style></head><body>${IO.editBar(`Biên bản bàn giao tài liệu${n ? ` · hồ sơ NOXH #${n.id}` : ' · chưa lập hồ sơ NOXH — danh mục mặc định, số lượng điền tay'}`)}${IO.editDoc(body)}</body></html>`;
 }
 
 module.exports = { data, xlsx, printHandover };

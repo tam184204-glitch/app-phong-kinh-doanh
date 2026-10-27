@@ -137,10 +137,12 @@ async function handoverCond(db, unitId) {
   return { contract: c, cond_contract: c?.status === 'da_ky', cond_pay: !!d && d.total > 0 && d.paid_pct >= pct && d.overdue === 0, debt: d, pct };
 }
 const isReq = n => /bắt buộc/i.test(n);
+// dòng danh mục «Tên giấy tờ | 2» → { n, qty }
+const ckItem = s => { const m = /^(.*?)\s*\|\s*(\d+)\s*$/.exec(String(s)); return m ? { n: m[1].trim(), qty: +m[2] } : { n: String(s).trim() }; };
 async function defaultList(db, key, by) {
   const v = await setting(key, db);
   const arr = Array.isArray(v) ? v : (v?.[by] || v?._all || []);
-  return arr.map(n => ({ n, st: '', note: '' }));
+  return arr.map(s => ({ ...ckItem(s), st: '', note: '' }));
 }
 
 // ======================= HỒ SƠ NOXH / GIAO DỊCH: tiến trình =======================
@@ -270,6 +272,12 @@ H.reservation = {
     if (r.reg_state === 'huy') { if (!['huy', 'het_han'].includes(r.status)) r.status = 'huy'; }
     else if (!opts.system && (!r.status || ['nhap', 'tu_choi'].includes(r.status))) r.status = r.deposit > 0 ? 'da_coc' : 'giu_cho';
     await linkCustomer(db, r, old, user, opts, demo);
+    // MST / tài khoản ghi ở phiếu mà hồ sơ khách còn trống → bổ sung cho khách
+    if (r.customer_id && !opts.check && (r.tax_code || r.bank_account)) {
+      const c = await raw(db, 'customer', r.customer_id), up = {};
+      for (const f of ['tax_code', 'bank_account']) if (r[f] && !c[f]) up[f] = r[f];
+      if (Object.keys(up).length) await sys(db, 'customer', c.id, up, user, 'cap_nhat_tu_phieu_dang_ky');
+    }
     if (changedUnit && !opts.system) {
       // căn còn trống (Còn bán / Chưa mở bán) mới lập phiếu được — căn chưa mở bán tự mở bán khi lưu phiếu
       if (!FREE_UNIT.includes(u.status)) bad(`Căn ${u.code} đang «${await C.optLabel(C.F.unit.status, u.status)}» — không giữ chỗ được`);
@@ -321,7 +329,7 @@ H.reservation = {
 const REG_ORDER = ['tiep_nhan', 'cho_xet_duyet', 'du_dk', 'da_ky'];
 // khách trên phiếu: chọn sẵn → điền ô trống từ hồ sơ; chưa chọn → khớp theo CCCD rồi SĐT, không có thì tạo hồ sơ khách mới
 async function linkCustomer(db, r, old, user, opts, demo) {
-  const K = ['cust_name', 'id_no', 'id_date', 'id_place', 'address', 'phone'], CK = { cust_name: 'full_name' };
+  const K = ['cust_name', 'id_no', 'id_date', 'id_place', 'address', 'phone', 'tax_code', 'bank_account'], CK = { cust_name: 'full_name' };
   if (r.customer_id && (!old || old.customer_id !== r.customer_id)) {
     const c = await raw(db, 'customer', r.customer_id);
     if (c) for (const k of K) if (r[k] == null || r[k] === '') r[k] = c[CK[k] || k];
@@ -337,7 +345,7 @@ async function linkCustomer(db, r, old, user, opts, demo) {
   const c = (r.id_no && await db.one('SELECT id FROM kd_customer WHERE upper(id_no) = upper($1) ORDER BY id LIMIT 1', [r.id_no]))
     || await db.one("SELECT id FROM kd_customer WHERE regexp_replace($1,'\\D','','g') IN (regexp_replace(phone,'\\D','','g'), regexp_replace(coalesce(phone2,''),'\\D','','g')) ORDER BY id LIMIT 1", [r.phone]);
   if (c) { r.customer_id = c.id; const k = await raw(db, 'customer', c.id); for (const f of K) if (r[f] == null || r[f] === '') r[f] = k[CK[f] || f]; r.cust_code = k.code; return; }
-  const nk = (await create('customer', { code: r.cust_code || undefined, full_name: r.cust_name, phone: r.phone, id_no: r.id_no, id_date: r.id_date, id_place: r.id_place, address: r.address,
+  const nk = (await create('customer', { code: r.cust_code || undefined, full_name: r.cust_name, phone: r.phone, id_no: r.id_no, id_date: r.id_date, id_place: r.id_place, address: r.address, tax_code: r.tax_code, bank_account: r.bank_account,
     kind: 'giao_dich', source: r.source === 'dai_ly' ? 'dai_ly' : r.source === 'ctv' ? 'ctv' : 'truc_tiep', agent_id: r.agent_id, owner_id: r.owner_id || user?.id },
     user, { db, system: true, demo, note: 'Tự tạo từ phiếu đăng ký căn hộ' })).row;
   r.customer_id = nk.id; r.cust_code = nk.code;
@@ -349,6 +357,9 @@ const grpOf = t => { const s = String(t || '').toLowerCase(); if (!s.trim()) ret
   return /thu nhập thấp|nghèo/.test(s) ? 'cn_thu_nhap_thap' : /sĩ quan|quân nhân|công an|quân đội/.test(s) ? 'luc_luong_vt' : /doanh nghiệp|khu công nghiệp|công nhân/.test(s) ? 'cong_nhan' : /cán bộ|công chức|viên chức/.test(s) ? 'can_bo' : 'khac'; };
 H.noxh_check = {
   async beforeSave(r, old, { db, warn }) {
+    // hồ sơ lập xong → gắn vào phiếu đăng ký đang hiệu lực của khách (cùng căn nếu đã chọn căn) để in biên bản / cập nhật tiến trình từ phiếu
+    if (!r.reservation_id && r.customer_id) r.reservation_id = (await db.one(`SELECT id FROM kd_reservation WHERE customer_id = $1 AND status IN ('cho_duyet','giu_cho','qua_han','da_coc','chuyen_hd')
+      AND ($2::int IS NULL OR unit_id = $2) ORDER BY id DESC LIMIT 1`, [r.customer_id, r.unit_id ?? null]))?.id ?? null;
     if (r.reservation_id) { const s = await raw(db, 'reservation', r.reservation_id); r.customer_id = s.customer_id; r.unit_id = s.unit_id; }
     if (!r.reg_kind) r.reg_kind = 'mua';
     if (!r.grp) r.grp = grpOf(r.doi_tuong) || bad('Chọn nhóm đối tượng hoặc ghi đối tượng chính sách');
@@ -759,4 +770,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, pricing, normSchedule, writeSchedule, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { ckItem, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, pricing, normSchedule, writeSchedule, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

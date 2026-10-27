@@ -152,6 +152,7 @@ def('customer', {
     { k: 'phone2', l: 'Điện thoại khác', t: 'text' },
     { k: 'email', l: 'Email', t: 'text' },
     { k: 'tax_code', l: 'Mã số thuế', t: 'text', pii: 1, help: 'MST cá nhân (thường trùng số CCCD)' },
+    { k: 'bank_account', l: 'Tài khoản ngân hàng', t: 'text', pii: 1, help: 'Số tài khoản - Ngân hàng (VD 0070101168008 - Ngân hàng MB)' },
     { k: 'kind', l: 'Phân loại', t: 'sel', def: 'tiem_nang', o: [['tiem_nang', 'Tiềm năng', 'a'], ['giao_dich', 'Đã giao dịch', 'g']] },
     { k: 'stage', l: 'Tình trạng', t: 'sel', def: 'moi', o: [['moi', 'Mới', 's'], ['dang_cham_soc', 'Đang chăm sóc', 'b'], ['hen_tham_quan', 'Hẹn tham quan', 'v'], ['quan_tam_cao', 'Quan tâm cao', 'g'], ['khong_nhu_cau', 'Không có nhu cầu', 'r'],
       // sau mở bán: hồ sơ mua nhà → ký HĐMB → thanh toán → bàn giao → thanh lý
@@ -206,7 +207,7 @@ def('reservation', {
     { k: 'code', l: 'Mã phiếu', t: 'code', prefix: 'GD-{Y}-', pad: 4 },
     { k: 'unit_id', l: 'Mã căn hộ', t: 'ref', ref: 'unit', req: 1, filter: 'con_ban,chua_mo_ban', fill: { price: 'total_price' } },
     { k: 'customer_id', l: 'Khách hàng đã có', t: 'ref', ref: 'customer', help: 'Chọn khách có sẵn để điền nhanh — để trống: hệ thống tự khớp theo CCCD / SĐT hoặc tạo khách mới',
-      fill: { cust_code: 'code', cust_name: 'full_name', id_no: 'id_no', id_date: 'id_date', id_place: 'id_place', address: 'address', phone: 'phone' } },
+      fill: { cust_code: 'code', cust_name: 'full_name', id_no: 'id_no', id_date: 'id_date', id_place: 'id_place', address: 'address', phone: 'phone', tax_code: 'tax_code', bank_account: 'bank_account' } },
     { k: 'cust_code', l: 'Mã khách hàng', t: 'text', help: 'Để trống → lấy mã khách đã có (khớp CCCD / SĐT) hoặc tự cấp mã mới (KH000001…)' },
     { k: 'cust_name', l: 'Họ tên khách hàng', t: 'text', req: 1 },
     { k: 'id_no', l: 'Căn cước công dân', t: 'text', pii: 1 },
@@ -214,6 +215,8 @@ def('reservation', {
     { k: 'id_place', l: 'Nơi cấp', t: 'text', pii: 1 },
     { k: 'address', l: 'Địa chỉ', t: 'text' },
     { k: 'phone', l: 'Số điện thoại', t: 'text', req: 1, help: '09xxxxxxxx' },
+    { k: 'tax_code', l: 'Mã số thuế cá nhân', t: 'text', pii: 1, help: 'In trên biên bản bàn giao hồ sơ' },
+    { k: 'bank_account', l: 'Tài khoản ngân hàng', t: 'text', pii: 1, help: 'Số tài khoản - Ngân hàng (VD 0070101168008 - Ngân hàng MB)' },
     money('price', 'Tổng giá bán căn hộ', { help: 'Tự lấy theo Danh mục sản phẩm khi chọn căn — sửa tay được' }),
     { k: 'reg_state', l: 'Trạng thái căn hộ', t: 'sel', req: 1, def: 'giu_cho', o: REG_ST },
     { k: 'progress', l: 'Tiến trình giao dịch', t: 'sel', req: 1, def: 'tiep_nhan', o: REG_PROG },
@@ -233,6 +236,7 @@ def('reservation', {
   lock: ['chuyen_hd', 'het_han', 'huy', 'cho_duyet'], lockKeep: ['note', 'progress', 'reg_state'],
   flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'giu_cho' } },
   acts: [
+    { k: 'print_bbgn', l: 'In biên bản giao nhận hồ sơ', icon: 'fa-file-signature', from: '*', roles: ALL, url: '/print/handover/reservation/:id' },
     { k: 'deposit', l: 'Ghi nhận đặt cọc', icon: 'fa-money-bill-wave', from: ['giu_cho', 'qua_han'], roles: ['ban_hang', 'truong_phong'], ask: [money('deposit', 'Số tiền đặt cọc', { req: 1 }), { k: 'deposit_on', l: 'Ngày đặt cọc', t: 'date', req: 1, def: 'today' }] },
     { k: 'extend', l: 'Gia hạn giữ chỗ', icon: 'fa-clock-rotate-left', from: ['giu_cho', 'qua_han'], roles: MGR, ask: [{ k: 'hold_until', l: 'Hạn giữ chỗ mới', t: 'dt', req: 1 }, { k: 'reason', l: 'Lý do', t: 'long', req: 1 }] },
     { k: 'release', l: 'Giải phóng căn', icon: 'fa-unlock', from: ['giu_cho', 'qua_han'], roles: MGR, danger: 1, ask: [{ k: 'reason', l: 'Lý do / phương án xử lý tiền đã nộp', t: 'long', req: 1 }] },
@@ -293,7 +297,7 @@ def('noxh_check', {
     owner('Người tiếp nhận'),
   ], list: ['id', 'received_on', 'customer_id', 'unit_id', 'doi_tuong', 'items', 'result', 'supplement_due', 'status'],
   lock: ['da_duyet', 'cho_duyet'], flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'da_duyet', no: 'tu_choi' }, submitLabel: 'Trình xét duyệt', needAll: 'items' },
-  acts: [{ k: 'print_bbgn', l: 'In biên bản giao nhận hồ sơ', icon: 'fa-print', from: '*', roles: ALL, url: '/print/noxh/:id' },
+  acts: [{ k: 'print_bbgn', l: 'In biên bản giao nhận hồ sơ', icon: 'fa-print', from: '*', roles: ALL, url: '/print/handover/noxh/:id' },
     { k: 'review', l: 'Ghi bước kiểm tra', icon: 'fa-clipboard-check', from: ['nhap', 'cho_duyet'], roles: ['ho_so', 'truong_phong'],
     ask: [{ k: 'step', l: 'Bước', t: 'sel', req: 1, o: [['kiem_tra_1', 'Kiểm tra lần 1'], ['kiem_tra_cheo', 'Kiểm tra chéo'], ['doi_chieu_goc', 'Đối chiếu bản gốc']] }, { k: 'conclusion', l: 'Kết luận', t: 'sel', req: 1, o: [['dat', 'Đạt'], ['can_bo_sung', 'Cần bổ sung']] }, { k: 'note', l: 'Ghi chú', t: 'long' }] }],
 });
@@ -756,7 +760,10 @@ const LOOKUPS = {
   bo_phan: [['cskh', 'CSKH'], ['ky_thuat', 'Kỹ thuật'], ['kinh_doanh', 'Kinh doanh'], ['ke_toan', 'Kế toán'], ['ban_quan_ly', 'Ban quản lý tòa nhà']],
 };
 const SETTINGS = {
-  checklist_noxh: { _all: ['Đơn đăng ký mua NOXH (mẫu hiện hành)', 'CCCD người đứng đơn và vợ/chồng', 'Giấy xác nhận đối tượng', 'Giấy xác nhận thực trạng nhà ở', 'Giấy xác nhận thu nhập', 'Giấy đăng ký kết hôn / xác nhận độc thân', 'Xác nhận cư trú'] },
+  // theo mẫu «Biên bản bàn giao tài liệu hồ sơ mua nhà»: mỗi dòng «Tên giấy tờ | số lượng mặc định»
+  checklist_noxh: { _all: ['Đơn đăng ký mua nhà | 1', 'Xác nhận đối tượng mua nhà | 2', 'Xác nhận về điều kiện nhà ở | 2', 'Xác nhận về điều kiện thu nhập | 2', 'Bảng kê lương 12 tháng | 2',
+    'CMND/CCCD photo, chứng thực (Vợ và Chồng) | 2', 'Đăng ký kết hôn | 1', 'Xác nhận thông tin cư trú | 2', 'Bản cam kết | 1', 'Giấy khai sinh | 4'] },
+  checklist_noxh_cu: { _all: ['Đơn đăng ký mua NOXH (mẫu hiện hành)', 'CCCD người đứng đơn và vợ/chồng', 'Giấy xác nhận đối tượng', 'Giấy xác nhận thực trạng nhà ở', 'Giấy xác nhận thu nhập', 'Giấy đăng ký kết hôn / xác nhận độc thân', 'Xác nhận cư trú'] },   // danh mục trước 27/10 — chỉ để nhận ra dữ liệu chưa sửa khi nâng cấp
   checklist_so_hong: ['Đơn đăng ký cấp GCN (mẫu hiện hành)', 'Hợp đồng mua bán bản chính', 'Biên bản bàn giao căn hộ', 'Biên bản thanh lý / xác nhận hoàn thành nghĩa vụ tài chính', 'CCCD chủ hợp đồng (và đồng sở hữu)', 'Giấy tờ hôn nhân', 'Tờ khai lệ phí trước bạ', 'Tờ khai thuế TNCN (nếu có)'],
   checklist_ban_giao: ['Biên bản bàn giao (bắt buộc)', 'Phiếu kiểm tra hiện trạng (bắt buộc)', 'Tài liệu hướng dẫn sử dụng', 'Chìa khóa', 'Thẻ từ / thẻ cư dân', 'Khách ký xác nhận hoàn tất (bắt buộc)'],
   sla_hours: { khan: 24, cao: 48, thuong: 72 },
@@ -773,7 +780,7 @@ const SETTINGS = {
 const VIRT = {
   id: 'Số', created_by: 'Người lập', created_at: 'Ngày lập', stage: 'Tiến trình giao dịch', paid: 'Đã thu', pay_status: 'Tình trạng kỳ thu',
   actual: 'Thực thu', gap: 'Chênh lệch', promise_st: 'Tình trạng cam kết', defects_open: 'Tồn tại chưa đóng', days_in: 'Ngày xử lý nội bộ',
-  days_out: 'Ngày tại cơ quan', sla: 'SLA', project: 'Dự án', building: 'Tòa', stt: 'STT', prints: 'In bản đăng ký',
+  days_out: 'Ngày tại cơ quan', sla: 'SLA', project: 'Dự án', building: 'Tòa', stt: 'STT', prints: 'In bản đăng ký / biên bản',
 };
 
 module.exports = { M4, PROSPECT_ST, VIRT,  ROLES, ALL, MGR, PII_ROLES, E, MENU, VIEW_ROLES, LOOKUPS, SETTINGS, UNIT_ST };

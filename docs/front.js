@@ -105,7 +105,7 @@ function cell(ent, k, row) {
   if (f) return { html: show(f, row), num: ['money', 'num', 'int'].includes(f.t) };
   const v = row[k];
   if (k === 'created_by') return { html: esc(row.created_by__l || '') };
-  if (k === 'prints') return { html: `<span class="nowrap"><button type="button" class="btn sm" data-print="dang_ky_can" title="In bản đăng ký căn hộ (chọn mẫu in)">${ico('fa-print')} Căn hộ</button> <button type="button" class="btn sm" data-print="dang_ky_noi_that" title="In bản đăng ký nội thất (chọn mẫu in)">${ico('fa-couch')} Nội thất</button></span>` };
+  if (k === 'prints') return { html: `<span class="nowrap"><button type="button" class="btn sm" data-print="dang_ky_can" title="In bản đăng ký căn hộ (chọn mẫu in)">${ico('fa-print')} Căn hộ</button> <button type="button" class="btn sm" data-print="dang_ky_noi_that" title="In bản đăng ký nội thất (chọn mẫu in)">${ico('fa-couch')} Nội thất</button> <button type="button" class="btn sm" data-print="bien_ban" title="In biên bản bàn giao tài liệu hồ sơ mua nhà">${ico('fa-file-signature')} Biên bản</button></span>` };
   if (k === 'created_at') return { html: dmy(v) };
   if (VIRT_MONEY.has(k)) return { html: v == null ? '' : `<span class="${k === 'gap' ? (v < 0 ? 'neg' : v > 0 ? 'pos' : '') : ''}">${fm(v)}</span>`, num: true };
   if (k === 'promise_st') return { html: v ? pill(v, /Thất/.test(v) ? 'r' : /Đúng/.test(v) ? 'g' : /một phần/.test(v) ? 'a' : 'b') : '' };
@@ -154,6 +154,7 @@ function checkRows(items, qty) {
     + `<div class="it"><div class="row"><input data-ck-new placeholder="+ Thêm giấy tờ khác…" style="flex:1"><button type="button" class="btn sm" data-ck-add>Thêm</button></div></div>`;
 }
 function readCheck(el) { return $$('.it[data-i]', el).map(r => { const q = $('[data-ck=qty]', r); return { n: $('[data-ck=n]', r).value, st: $('[data-ck=st]', r).value, note: $('[data-ck=note]', r).value, ...(q ? { qty: q.value.trim() } : {}) }; }); }
+const ckItem = s => { const m = /^(.*?)\s*\|\s*(\d+)\s*$/.exec(String(s)); return m ? { n: m[1].trim(), qty: +m[2] } : { n: String(s).trim() }; };
 const sugList = (id, xs) => `<datalist id="${id}">${xs.map(x => `<option value="${esc(x)}">`).join('')}</datalist>`;
 // bảng nhập nhiều dòng (VD thành viên hộ gia đình): mỗi cột là ô chữ / ô chọn / ô chữ có gợi ý
 function gridRows(f, rows) {
@@ -309,7 +310,8 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [] } = {}
     if (!ckF) return; const el = $(`[name="${ckF.k}"]`, form); const cur = readCheck(el);
     if (cur.some(x => x.st || x.note)) return;
     const s = M.settings[ckF.src]; let list = Array.isArray(s) ? s : s?.[readField(form, fields.find(f => f.k === ckF.srcBy) || {})] || s?._all || [];
-    if (list.length && JSON.stringify(list) !== JSON.stringify(cur.map(x => x.n))) el.innerHTML = checkRows(list.map(n => ({ n, st: '', note: '' })), 'qty' in el.dataset);
+    list = list.map(ckItem);   // «Tên giấy tờ | 2» → số lượng mặc định
+    if (list.length && JSON.stringify(list.map(x => x.n)) !== JSON.stringify(cur.map(x => x.n))) el.innerHTML = checkRows(list.map(x => ({ ...x, st: '', note: '' })), 'qty' in el.dataset);
   };
   wireInputs(form, () => { vis(); });
   // chọn căn / khách → tự điền các ô liên quan (giá theo danh mục sản phẩm, thông tin khách)
@@ -624,7 +626,9 @@ async function listView(main, ent, params = {}) {
       toast(`Thành công ${r.ok}${r.errors.length ? ` · lỗi ${r.errors.length}: ${r.errors.slice(0, 2).map(x => '#' + x.id + ' ' + x.msg).join('; ')}` : ''}`, !!r.errors.length);
       S.sel.clear(); updateBadges(); return load();
     }
-    const pb = t.closest('[data-print]'); if (pb) return printPick(+pb.closest('tr[data-id]').dataset.id, pb.dataset.print);
+    const pb = t.closest('[data-print]');
+    if (pb?.dataset.print === 'bien_ban') return window.open(`/print/handover/reservation/${pb.closest('tr[data-id]').dataset.id}`, '_blank');
+    if (pb) return printPick(+pb.closest('tr[data-id]').dataset.id, pb.dataset.print);
     const tr = t.closest('tbody tr[data-id]'); if (tr && !t.matches('input')) return openDetail(ent, +tr.dataset.id);
   });
   $('#q', main).oninput = debounce(e => { S.q = e.target.value; load(); }, 300);
