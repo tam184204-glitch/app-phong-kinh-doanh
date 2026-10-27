@@ -201,6 +201,17 @@ R('GET', '/api/pii/reservation/:id', async (req, res, u, p) => {
 });
 R('GET', '/api/templates', async (req, res, u, p, qs) => {
   // ?res=<phiếu đăng ký> → chỉ mẫu hợp với căn của phiếu (dự án / tòa / số phòng ngủ)
+  if (qs.all && qs.res) {
+    const r = await one('SELECT unit_id FROM kd_reservation WHERE id = $1', [+qs.res]);
+    const ts = await q("SELECT code, name, kind, scope, bedrooms FROM kd_template WHERE active AND kind IN ('dang_ky_can','dang_ky_noi_that') ORDER BY id");
+    const fit = new Set([...await IO.regTemplates('dang_ky_can', r?.unit_id), ...await IO.regTemplates('dang_ky_noi_that', r?.unit_id)].map(t => t.code));
+    const out = new Map();
+    for (const t of ts) {
+      const key = t.name.replace(/\s*–?\s*hoàn thiện căn hộ \d phòng ngủ$/, '');   // 2PN / 3PN cùng một file → một lựa chọn
+      const o = out.get(key); if (!o || (!o.fit && fit.has(t.code))) out.set(key, { code: t.code, kind: t.kind, label: key === t.name ? t.name : key + ' – hoàn thiện căn hộ', fit: fit.has(t.code) });
+    }
+    return send(res, 200, [...out.values()]);
+  }
   if (qs.kind && qs.res) { const r = await one('SELECT unit_id FROM kd_reservation WHERE id = $1', [+qs.res]); return send(res, 200, (await IO.regTemplates(qs.kind, r?.unit_id)).map(t => ({ code: t.code, name: t.name, kind: t.kind }))); }
   send(res, 200, await q('SELECT code, name, kind FROM kd_template WHERE active AND ($1::text IS NULL OR kind = $1) ORDER BY id', [qs.kind || null]));
 });

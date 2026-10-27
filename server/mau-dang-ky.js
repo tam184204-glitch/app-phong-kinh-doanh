@@ -99,20 +99,15 @@ const D_CUOI = n => `Đợt ${n}: Chậm nhất 10 ngày kể từ ngày Bên Mu
 
 // scope: mã dự án / mã tòa áp dụng; bedrooms: số phòng ngủ áp dụng (trống = mọi căn)
 const MAU_DANG_KY = () => [
-  { code: 'DK-MUA-TNS', name: 'Đơn đăng ký mua căn hộ – Thống Nhất Smart City (tòa G)', kind: 'dang_ky_can', scope: 'TNS',
+  { code: 'DK-MUA-TNS', name: 'Đơn đăng ký G – mua căn hộ (Thống Nhất Smart City)', kind: 'dang_ky_can', scope: 'TNS',
     content: donMua({ ...TN, dot: [D1, 'Đợt 2: Trong vòng 60 ngày kể từ ngày Bên Bán phát hành thông báo bàn giao gửi Bên Mua, Bên Mua có trách nhiệm thanh toán 65% giá trị căn hộ và 2% phí bảo trì.', D_CUOI(3)] }) },
-  { code: 'DK-MUA-CTS', name: 'Đơn đăng ký mua căn hộ – Cát Tường Smart City (tòa O, K)', kind: 'dang_ky_can', scope: 'CTS',
+  { code: 'DK-MUA-CTS', name: 'Đơn đăng ký O – mua căn hộ (Cát Tường Smart City)', kind: 'dang_ky_can', scope: 'CTS',
     content: donMua({ ...CT, dot: [D1, 'Đợt 2: Trong vòng 60 ngày kể từ ngày đóng tiền đợt 1, Bên Mua có trách nhiệm thanh toán cho Bên Bán 40% giá trị Căn Hộ.',
       'Đợt 3: Trong vòng 10 ngày kể từ ngày Bên Bán phát hành thông báo bàn giao gửi Bên Mua, Bên Mua có trách nhiệm thanh toán 25% giá trị căn hộ và 2% phí bảo trì.', D_CUOI(4)] }) },
-  { code: 'DK-NT-TNS-2PN', name: 'Đơn đăng ký hoàn thiện căn hộ 2 phòng ngủ – Thống Nhất (tòa G)', kind: 'dang_ky_noi_that', scope: 'TNS', bedrooms: 2,
+  { code: 'DK-NT-TNS-2PN', name: 'Đơn đăng ký G (NT) – hoàn thiện căn hộ 2 phòng ngủ', kind: 'dang_ky_noi_that', scope: 'TNS', bedrooms: 2,
     content: donNoiThat({ ...TN, gia: 320000000, phong: PN2 }) },
-  { code: 'DK-NT-TNS-3PN', name: 'Đơn đăng ký hoàn thiện căn hộ 3 phòng ngủ – Thống Nhất (tòa G)', kind: 'dang_ky_noi_that', scope: 'TNS', bedrooms: 3,
+  { code: 'DK-NT-TNS-3PN', name: 'Đơn đăng ký G (NT) – hoàn thiện căn hộ 3 phòng ngủ', kind: 'dang_ky_noi_that', scope: 'TNS', bedrooms: 3,
     content: donNoiThat({ ...TN, gia: 380000000, phong: PN3 }) },
-  // tòa O, K: chưa có file nội thất riêng — dùng danh mục + giá gói của «Đơn đăng ký G (NT).xlsx», chủ đầu tư Cát Tường
-  { code: 'DK-NT-CTS-2PN', name: 'Đơn đăng ký hoàn thiện căn hộ 2 phòng ngủ – Cát Tường (tòa O, K)', kind: 'dang_ky_noi_that', scope: 'CTS', bedrooms: 2,
-    content: donNoiThat({ ...CT, gia: 320000000, phong: PN2 }) },
-  { code: 'DK-NT-CTS-3PN', name: 'Đơn đăng ký hoàn thiện căn hộ 3 phòng ngủ – Cát Tường (tòa O, K)', kind: 'dang_ky_noi_that', scope: 'CTS', bedrooms: 3,
-    content: donNoiThat({ ...CT, gia: 380000000, phong: PN3 }) },
 ];
 const MAU_CU = ['MAU-DKCH-01', 'MAU-DKCH-02', 'MAU-DKNT-01'];   // mẫu khung cũ — tắt khi nạp mẫu chuẩn
 
