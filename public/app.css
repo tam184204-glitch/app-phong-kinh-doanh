@@ -714,3 +714,9 @@ table.grid-bravo th, table.grid-bravo td { border-right: 1px solid #e3e9f1; bord
 table.grid-bravo th { background: #f1f5fa; }
 table.grid-bravo td:first-child { color: var(--cobalt-d); font-weight: 600; }
 table.grid-bravo tbody tr:hover td { background: #dfeefc; }
+
+/* cố định dòng tiêu đề: bảng trong trang tự cuộn trong khung cao vừa màn hình → tiêu đề (th sticky) luôn hiện khi kéo xuống */
+.main .card .tbl-wrap { max-height: max(320px, calc(100vh - var(--head, 64px) - 230px)); }
+.main .card .tbl-wrap table.t thead th { position: sticky; top: 0; z-index: 3; }
+.drawer .tbl-wrap, .modal .tbl-wrap, .main .box360 .tbl-wrap { max-height: none; }
+@media print { .main .card .tbl-wrap { max-height: none; overflow: visible; } }
