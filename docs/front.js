@@ -272,7 +272,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title } = {}) {
   }).join('')}</form>`;
   const canSubmit = E.flow && !E.direct && !id && E.flow.submit.includes(E.fields.find(f => f.k === E.flow.field)?.def);
   const m = modal({ title: title || (id ? `Sửa ${E.one} ${esc(rec.code || rec.number || '')}` : `${E.code ? `<span class="tag">${E.code}</span> ` : ''}Tạo ${E.one}`), wide: fields.length > 8 || fields.some(wide),
-    body, foot: `<button class="btn" data-x>Hủy</button><button class="btn" id="fCheck">${ico('fa-list-check')} Kiểm tra</button><button class="btn pri" id="fSave">${ico('fa-floppy-disk')} ${id ? 'Lưu' : E.direct ? `Lưu ${E.one}` : 'Lưu nháp'}</button>${canSubmit ? `<button class="btn amb" id="fSub">${ico('fa-paper-plane')} Lưu & ${esc(E.flow.submitLabel || 'trình duyệt')}</button>` : ''}` });
+    body, foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="fSave">${ico('fa-floppy-disk')} ${id ? 'Lưu' : E.direct ? `Lưu ${E.one}` : 'Lưu nháp'}</button>${canSubmit ? `<button class="btn amb" id="fSub">${ico('fa-paper-plane')} Lưu & ${esc(E.flow.submitLabel || 'trình duyệt')}</button>` : ''}` });
   const form = $('form', m.el);
   const sch = $('[data-sched]', form);
   if (sch) schedEditor(sch, rec.new_schedule || [], { total: () => readField(form, E.fields.find(f => f.k === 'value_after')) || rec.value_before || 0 });
@@ -312,7 +312,6 @@ async function openForm(ent, { id, preset = {}, onSaved, title } = {}) {
     for (const f of fields) if (!isShown(f, { ...rec, ...data }) && f.k in data && !f.ro) data[f.k] = null;
     return id ? api('PUT', `/api/e/${ent}/${id}${check ? '?check=1' : ''}`, data) : api('POST', `/api/e/${ent}${check ? '?check=1' : ''}`, data);
   };
-  $('#fCheck', m.el).onclick = async () => { try { const r = await send(true); errBox.innerHTML = r.warnings?.length ? '' : `<div class="okbar">${ico('fa-circle-check')} Dữ liệu hợp lệ — có thể lưu.</div>`; showWarn(r.warnings); } catch (e) { showErr(e); } };
   const save = async (andSubmit) => {
     const btns = $$('.mf .btn', m.el); btns.forEach(b => b.disabled = true);
     try {
