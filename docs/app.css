@@ -402,3 +402,4 @@ table.prod-t td.pi { padding-left: 30px; }
 .sheet-bar { flex-wrap: wrap; } .src.small { padding: 0 14px 10px; }
 table.sheet-t td.tax { background: #fdf0ef; }
 @media (max-width: 860px) { .prod { grid-template-columns: 1fr; } }
+table.cust-t td.wrap { min-width: 240px; }

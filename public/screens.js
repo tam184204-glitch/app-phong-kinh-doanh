@@ -416,6 +416,52 @@ V.products = async (main, params) => {
   await draw();
 };
 
+// Danh mục khách hàng (kiểu Bravo): nhóm theo dự án (trái) — dự án quan tâm + dự án của căn đã giao dịch; lưới khách hàng (phải)
+V.customers = async (main, params) => {
+  const s = ST.cust ||= { project: '', q: '', st: '' };
+  if (params.project) s.project = params.project;
+  const ce = M.ents.customer.perm;
+  const CC = [['full_name', 'Tên'], ['code', 'Mã'], ['units', 'Căn hộ'], ['address', 'Địa chỉ'], ['phone', 'Điện thoại'], ['email', 'Email'], ['tax_code', 'Mã số thuế'], ['stage', 'Tình trạng'], ['bravo_id', 'ID']];
+  const draw = async () => {
+    const get = async e => M.ents[e]?.perm.r ? (await api('GET', `/api/e/${e}?limit=20000`)).rows : [];
+    const [cs, us, hd, gc, pj] = await Promise.all([get('customer'), get('unit'), get('contract'), get('reservation'), get('project')]);
+    const unit = new Map(us.map(u => [u.id, u])), link = new Map();
+    const add = (cid, uid) => { const u = unit.get(uid); if (!u) return; const l = link.get(cid) || link.set(cid, new Map()).get(cid); l.set(u.id, u); };
+    hd.filter(c => !['huy', 'thanh_ly'].includes(c.status)).forEach(c => add(c.customer_id, c.unit_id));
+    gc.filter(r => ['cho_duyet', 'giu_cho', 'qua_han', 'da_coc', 'chuyen_hd'].includes(r.status)).forEach(r => add(r.customer_id, r.unit_id));
+    const rows = cs.map(c => { const ul = [...(link.get(c.id) || new Map()).values()]; return { ...c, ul, units: ul.map(u => u.code).join(', '), pids: new Set([...ul.map(u => u.project_id), c.interest_project].filter(Boolean)) }; })
+      .sort((a, b) => a.full_name.localeCompare(b.full_name, 'vi'));
+    const q = s.q.trim().toLowerCase();
+    const base = rows.filter(r => !s.project || r.pids.has(+s.project));
+    const list = base.filter(r => (!s.st || r.stage === s.st) && (!q || `${r.full_name} ${r.code} ${r.units} ${r.phone || ''} ${r.address || ''} ${r.email || ''} ${r.bravo_id || ''}`.toLowerCase().includes(q)));
+    const cnt = {}; base.forEach(r => cnt[r.stage] = (cnt[r.stage] || 0) + 1);
+    const stO = M.ents.customer.fields.find(f => f.k === 'stage').o;
+    const cellOf = (r, k) => k === 'stage' ? (r.stage ? pill(optL('customer', 'stage', r.stage), stO.find(o => o[0] === r.stage)?.[2]) : '') : k === 'full_name' ? `${ico('fa-user', 'tw-ic')}${esc(r.full_name)}${r.is_demo ? ' <span class="tag demo">thử</span>' : ''}` : k === 'bravo_id' ? `<span class="muted">${esc(r.bravo_id || '')}</span>` : esc(r[k] || '');
+    main.innerHTML = `<div class="page">${head('02', 'Danh mục khách hàng', 'fa-address-book', `${M.imports.customers ? `<button class="btn" id="kImp">${ico('fa-file-import')} Nhập Excel (Bravo)</button>` : ''}${ce.x ? `<button class="btn" id="kXls">${ico('fa-file-excel')} Xuất Excel</button>` : ''}${ce.c ? `<button class="btn pri" id="kNew">${ico('fa-plus')} Tạo khách hàng</button>` : ''}`, 'KH-01')}
+      <div class="prod"><div class="card prod-nav"><div class="hd"><h3>${ico('fa-folder-tree')} Nhóm dữ liệu</h3></div><div class="pn">
+        <a data-p="" class="${!s.project ? 'on' : ''}">${ico('fa-folder-open')} Tất cả khách hàng <small>${rows.length}</small></a>
+        ${pj.map(p => { const n = rows.filter(r => r.pids.has(p.id)).length; return `<a data-p="${p.id}" class="${+s.project === p.id ? 'on' : ''}">${ico('fa-table-list')} ${esc(p.name)} <small>${n || ''}</small></a>`; }).join('')}</div></div>
+      <div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="kq" placeholder="Tìm tên, mã, căn, điện thoại, địa chỉ, ID…" value="${esc(s.q)}"></div>
+        <select id="kst"><option value="">Mọi tình trạng</option>${stO.filter(o => cnt[o[0]]).map(o => `<option value="${o[0]}" ${s.st === o[0] ? 'selected' : ''}>${esc(o[1])} (${cnt[o[0]]})</option>`).join('')}</select>
+        <span class="grow"></span><span class="small muted">${list.length} khách hàng</span></div>
+      <div class="tbl-wrap"><table class="t cust-t"><thead><tr>${CC.map(([, l]) => `<th>${l}</th>`).join('')}</tr></thead>
+      <tbody>${list.map(r => `<tr data-c="${r.id}">${CC.map(([k]) => `<td class="${k === 'address' ? 'wrap' : ''}">${cellOf(r, k)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${CC.length}"><div class="empty">Không có khách hàng nào${q || s.st ? ' khớp bộ lọc' : ''}</div></td></tr>`}</tbody></table></div></div></div></div>`;
+    const inp = $('#kq', main);
+    inp.oninput = debounce(() => { s.q = inp.value; draw().then(() => { const i = $('#kq', main); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }); }, 250);
+    $('#kst', main).onchange = e => { s.st = e.target.value; draw(); };
+    main._list = list;
+  };
+  ST.reload = draw;
+  main.onclick = run(async e => {
+    const p = e.target.closest('[data-p]'); if (p) { s.project = p.dataset.p; return draw(); }
+    const tr = e.target.closest('tr[data-c]'); if (tr) return openDetail('customer', +tr.dataset.c);
+    if (e.target.closest('#kNew')) return openForm('customer', { preset: s.project ? { interest_project: +s.project } : {}, onSaved: row => { draw(); openDetail('customer', row.id); } });
+    if (e.target.closest('#kImp')) return importModal('customers', draw);
+    if (e.target.closest('#kXls')) return download('/api/export-rows', { title: 'Danh mục khách hàng', cols: CC.map(([k, l]) => [k === 'stage' ? 'stage_l' : k, l]), rows: main._list.map(r => ({ ...r, stage_l: optL('customer', 'stage', r.stage) })), file: 'danh_muc_khach_hang' });
+  });
+  await draw();
+};
+
 // Chi tiết bảng giá theo căn (giống «Chi tiết bảng giá» Bravo): trong ngăn chính sách và màn toàn trang
 const SHEET_COLS = [['building', 'Tòa nhà'], ['code', 'Căn hộ'], ['floor', 'Tầng', 'int'], ['kind', 'Loại'], ['base', 'Đơn giá nền (đ/m²)', 'money'], ['area_xd', 'DT xây dựng', 'num'], ['area_tt', 'DT thông thủy', 'num'],
   ['before', 'Tổng tiền trước thuế', 'money'], ['vat', '% thuế', 'num'], ['tax', 'Tổng tiền thuế', 'money'], ['after', 'Tiền sau thuế', 'money'], ['pkg', 'Giá trị hoàn thiện', 'money'], ['maint', 'Phí bảo trì', 'money'], ['total', 'Tổng tiền', 'money'], ['status', 'Trạng thái']];
