@@ -3,6 +3,7 @@
 // công nợ tính từ lịch thanh toán hiệu lực + chứng từ thu (Bravo), không ai sửa tay số thực thu.
 const C = require('./core');
 const { ACTIVE_RES } = require('./schema');
+const { PROSPECT_ST } = require('./meta');
 const { bad, raw, sys, create, setting, today, addDays, dayDiff, dmy, fmtMoney, labelOf } = C;
 
 // ======================= CÔNG NỢ =======================
@@ -199,6 +200,8 @@ H.price_policy = {
 
 const digits = s => String(s || '').replace(/\D/g, '');
 H.customer = {
+  // ?group=tiem_nang → chỉ tình trạng tìm khách; ?group=sau_ban → chỉ tình trạng sau mở bán
+  where(qs) { if (qs.group === 'tiem_nang') return { sql: 'coalesce(t.stage, $1) = ANY($2)', params: ['moi', PROSPECT_ST] }; if (qs.group === 'sau_ban') return { sql: 'NOT (coalesce(t.stage, $1) = ANY($2))', params: ['moi', PROSPECT_ST] }; },
   async beforeSave(r, old, { db, warn }) {
     r.full_name = r.full_name?.replace(/\s+/g, ' ').trim();
     if (r.phone) { const p = digits(r.phone); if (p.length < 9 || p.length > 12) bad('Điện thoại không hợp lệ'); r.phone = p.replace(/^84(?=\d{9}$)/, '0'); }

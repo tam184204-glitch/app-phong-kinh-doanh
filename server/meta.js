@@ -57,6 +57,8 @@ def('building', {
     { k: 'note', l: 'Ghi chú', t: 'long' },
   ], list: ['project_id', 'code', 'name', 'kind', 'floors', 'units_total'], uniq: [['project_id', 'code']],
 });
+// tình trạng giai đoạn tìm khách (03 Khách hàng tiềm năng); các tình trạng còn lại = sau mở bán (02 Danh mục khách hàng)
+const PROSPECT_ST = ['moi', 'dang_cham_soc', 'hen_tham_quan', 'quan_tam_cao', 'khong_nhu_cau'];
 const UNIT_ST = [['chua_mo_ban', 'Chưa mở bán', 's'], ['con_ban', 'Còn bán', 'g'], ['giu_cho', 'Đang giữ chỗ', 'a'], ['da_coc', 'Đã đặt cọc', 'v'],
   ['da_ky_hd', 'Đã ký hợp đồng', 'b'], ['da_ban_giao', 'Đã bàn giao', 't'], ['tam_khoa', 'Tạm khóa', 'r'], ['ngung_kd', 'Ngừng kinh doanh', 's']];
 def('unit', {
@@ -672,7 +674,7 @@ def('template', {
 const MENU = [
   ['01', 'Tổng quan điều hành', 'fa-gauge-high', [['dashboard', 'Dashboard'], ['ai', 'Trợ lý AI tra cứu'], ['alerts', 'Cảnh báo tồn đọng'], ['approvals', 'Hộp phê duyệt']]],
   ['02', 'Dự án & giỏ hàng', 'fa-city', [['board', 'Bảng hàng'], ['projects', 'Danh mục dự án'], ['products', 'Danh mục sản phẩm/căn hộ', 'DA-01'], ['customers', 'Danh mục khách hàng', 'KH-01'], ['e:price_policy']]],
-  ['03', 'Khách hàng', 'fa-users', [['e:customer'], ['e:contact_log'], ['lookup', 'Tra cứu hồ sơ 360°']]],
+  ['03', 'Khách hàng', 'fa-users', [['e:customer?group=tiem_nang', 'Khách hàng tiềm năng'], ['e:contact_log'], ['lookup', 'Tra cứu hồ sơ 360°']]],
   ['04', 'Giao dịch bán hàng', 'fa-handshake-angle', [['e:reservation'], ['e:noxh_check'], ['e:cancel_req']]],
   ['05', 'Hồ sơ & hợp đồng', 'fa-file-contract', [['e:contract'], ['signing', 'Lịch ký hợp đồng'], ['e:contract_change'], ['vault', 'Lưu trữ hồ sơ pháp lý']]],
   ['06', 'Công nợ & kế hoạch thu', 'fa-sack-dollar', [['ledger', 'Sổ công nợ căn hộ'], ['e:installment'], ['e:receipt'], ['e:collect_plan'], ['e:debt_call'], ['e:refund']]],
@@ -717,4 +719,4 @@ const VIRT = {
   days_out: 'Ngày tại cơ quan', sla: 'SLA', project: 'Dự án', building: 'Tòa',
 };
 
-module.exports = { VIRT,  ROLES, ALL, MGR, PII_ROLES, E, MENU, VIEW_ROLES, LOOKUPS, SETTINGS, UNIT_ST };
+module.exports = { PROSPECT_ST, VIRT,  ROLES, ALL, MGR, PII_ROLES, E, MENU, VIEW_ROLES, LOOKUPS, SETTINGS, UNIT_ST };

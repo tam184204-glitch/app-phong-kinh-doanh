@@ -106,7 +106,7 @@ async function route() {
   const [, kind, name] = p.split('/');
   const main = $('#main'); if (!main) return;
   main.onclick = null; main.innerHTML = '<div class="empty">Đang tải…</div>';
-  const navId = kind === 'e' ? ({ project: 'projects', building: 'projects', unit: 'products' }[name] || 'e:' + name) : name === 'unit360' || name === 'cust360' ? 'lookup' : name === 'pricesheet' ? 'e:price_policy' : name;
+  const navId = kind === 'e' ? ({ project: 'projects', building: 'projects', unit: 'products' }[name] || 'e:' + name + (params.group ? '?group=' + params.group : '')) : name === 'unit360' || name === 'cust360' ? 'lookup' : name === 'pricesheet' ? 'e:price_policy' : name;
   $$('[data-nav]').forEach(a => a.classList.toggle('on', a.dataset.nav === navId));
   const on = $(`[data-nav="${navId}"]`); $$('.mod').forEach(m => m.classList.remove('cur'));
   if (on) { on.closest('.mod').classList.add('open', 'cur'); }
@@ -433,13 +433,14 @@ function stageGo(k, name) {
   location.hash = `#/e/${k === 'contracts' ? 'contract' : k}?q=${encodeURIComponent(name)}`;
 }
 // Danh mục khách hàng (kiểu Bravo): nhóm theo dự án (trái) — dự án quan tâm + dự án của căn đã giao dịch; lưới khách hàng (phải)
+const PROSPECT = new Set(['moi', 'dang_cham_soc', 'hen_tham_quan', 'quan_tam_cao', 'khong_nhu_cau']);
 V.customers = async (main, params) => {
   const s = ST.cust ||= { project: '', q: '', st: '' };
   if (params.project) s.project = params.project;
   const ce = M.ents.customer.perm;
   const CC = [['full_name', 'Tên'], ['code', 'Mã'], ['units', 'Căn hộ'], ['address', 'Địa chỉ'], ['phone', 'Điện thoại'], ['email', 'Email'], ['tax_code', 'Mã số thuế'], ['stage', 'Tình trạng']];
   const draw = async () => {
-    const get = async e => M.ents[e]?.perm.r ? (await api('GET', `/api/e/${e}?limit=20000`)).rows : [];
+    const get = async e => M.ents[e]?.perm.r ? (await api('GET', `/api/e/${e}?limit=20000${e === 'customer' ? '&group=sau_ban' : ''}`)).rows : [];   // 02 chỉ khách sau mở bán; khách tiềm năng ở 03
     const [cs, us, hd, gc, pj] = await Promise.all([get('customer'), get('unit'), get('contract'), get('reservation'), get('project')]);
     const unit = new Map(us.map(u => [u.id, u])), link = new Map();
     const add = (cid, uid) => { const u = unit.get(uid); if (!u) return; const l = link.get(cid) || link.set(cid, new Map()).get(cid); l.set(u.id, u); };
@@ -451,7 +452,7 @@ V.customers = async (main, params) => {
     const base = rows.filter(r => !s.project || r.pids.has(+s.project));
     const list = base.filter(r => (!s.st || r.stage === s.st) && (!q || `${r.full_name} ${r.code} ${r.units} ${r.phone || ''} ${r.address || ''} ${r.email || ''} ${r.bravo_id || ''}`.toLowerCase().includes(q)));
     const cnt = {}; base.forEach(r => cnt[r.stage] = (cnt[r.stage] || 0) + 1);
-    const stO = M.ents.customer.fields.find(f => f.k === 'stage').o;
+    const stO = M.ents.customer.fields.find(f => f.k === 'stage').o.filter(o => !PROSPECT.has(o[0]));
     const cellOf = (r, k) => k === 'stage' ? (r.stage ? pill(optL('customer', 'stage', r.stage), stO.find(o => o[0] === r.stage)?.[2]) + (STAGE_LINKS[r.stage] || []).filter(([v]) => ['ledger', 'signing', 'ready'].includes(v) || M.ents[v === 'contracts' ? 'contract' : v]?.perm.r).map(([v, l]) => ` <a class="stl" data-go="${v}" data-n="${esc(r.full_name)}" title="Mở ${esc(l)}">${ico('fa-arrow-up-right-from-square')} ${esc(l)}</a>`).join('') : '') : k === 'full_name' ? `${ico('fa-user', 'tw-ic')}${esc(r.full_name)}${r.is_demo ? ' <span class="tag demo">thử</span>' : ''}` : esc(r[k] || '');
     main.innerHTML = `<div class="page">${head('02', 'Danh mục khách hàng', 'fa-address-book', `${M.imports.customers ? `<button class="btn" id="kImp">${ico('fa-file-import')} Nhập Excel (Bravo)</button>` : ''}${ce.x ? `<button class="btn" id="kXls">${ico('fa-file-excel')} Xuất Excel</button>` : ''}${ce.c ? `<button class="btn pri" id="kNew">${ico('fa-plus')} Tạo khách hàng</button>` : ''}`, 'KH-01')}
       <div class="prod"><div class="card prod-nav"><div class="hd"><h3>${ico('fa-folder-tree')} Nhóm dữ liệu</h3></div><div class="pn">
@@ -472,7 +473,7 @@ V.customers = async (main, params) => {
     const p = e.target.closest('[data-p]'); if (p) { s.project = p.dataset.p; return draw(); }
     const go = e.target.closest('[data-go]'); if (go) return stageGo(go.dataset.go, go.dataset.n);
     const tr = e.target.closest('tr[data-c]'); if (tr) return openDetail('customer', +tr.dataset.c);
-    if (e.target.closest('#kNew')) return openForm('customer', { preset: s.project ? { interest_project: +s.project } : {}, onSaved: row => { draw(); openDetail('customer', row.id); } });
+    if (e.target.closest('#kNew')) return openForm('customer', { preset: { stage: 'da_nop_hsmn', ...(s.project ? { interest_project: +s.project } : {}) }, onSaved: row => { draw(); openDetail('customer', row.id); } });
     if (e.target.closest('#kImp')) return importModal('customers', draw);
     if (e.target.closest('#kXls')) return download('/api/export-rows', { title: 'Danh mục khách hàng', cols: CC.map(([k, l]) => [k === 'stage' ? 'stage_l' : k, l]), rows: main._list.map(r => ({ ...r, stage_l: optL('customer', 'stage', r.stage) })), file: 'danh_muc_khach_hang' });
   });
