@@ -221,12 +221,12 @@ def('reservation', {
     { k: 'reg_date', l: 'Ngày đăng ký', t: 'date', hide: 1 },   // = ngày của reg_at (giờ VN), giữ cho giá / hoa hồng / kiểm tra hạn
     { k: 'hold_until', l: 'Hạn giữ chỗ', t: 'dt', help: 'Để trống = giữ đến khi ký HĐMB / hủy đăng ký' },
     { k: 'policy_id', l: 'Chính sách áp dụng', t: 'ref', ref: 'price_policy', ro: 1 },
-    money('deposit', 'Số tiền đặt cọc'),
+    money('deposit', 'Số tiền đặt cọc', { hide: 1 }),   // bỏ khỏi phiếu đăng ký — ghi qua nút «Ghi nhận đặt cọc»
     { k: 'deposit_on', l: 'Ngày đặt cọc', t: 'date' },
     { k: 'docs_deadline', l: 'Hạn hoàn thiện hồ sơ', t: 'date' },
     { k: 'source', l: 'Nguồn bán', t: 'sel', req: 1, def: 'truc_tiep', o: [['truc_tiep', 'Trực tiếp'], ['dai_ly', 'Đại lý / sàn'], ['ctv', 'Cộng tác viên']] },
     { k: 'agent_id', l: 'Đại lý / CTV', t: 'ref', ref: 'agent', show: { source: ['dai_ly', 'ctv'] } },
-    owner('Người thực hiện'),
+    owner('Người thực hiện', { hide: 1 }),   // tự lấy người lập phiếu
     { k: 'status', l: 'Tình trạng phiếu', t: 'sel', o: RES_ST, ro: 1, def: 'nhap' },
   ], list: ['stt', 'unit_id', 'cust_name', 'id_no', 'id_date', 'id_place', 'address', 'phone', 'price', 'reg_state', 'progress', 'note', 'prints'],
   lock: ['chuyen_hd', 'het_han', 'huy', 'cho_duyet'], lockKeep: ['note', 'progress', 'reg_state'],
