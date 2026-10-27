@@ -123,7 +123,7 @@ const IMPORTS = {
   },
   customers: {
     title: 'Khách hàng', roles: ['truong_phong', 'ho_so'],
-    spec: { full_name: A('ho ten', 'ten khach hang', 'khach hang', 'ten'), code: A('ma', 'ma khach hang', 'ma kh'), tax_code: A('ma so thue', 'mst'), bravo_id: A('id', 'id bravo'), phone: A('dien thoai', 'so dien thoai', 'sdt'), phone2: A('dien thoai khac', 'sdt 2'), email: A('email'), id_no: A('cccd', 'so cccd', 'giay to dinh danh', 'cmnd'),
+    spec: { full_name: A('ho ten', 'ten khach hang', 'khach hang', 'ten'), code: A('ma', 'ma khach hang', 'ma kh'), tax_code: A('ma so thue', 'mst'), phone: A('dien thoai', 'so dien thoai', 'sdt'), phone2: A('dien thoai khac', 'sdt 2'), email: A('email'), id_no: A('cccd', 'so cccd', 'giay to dinh danh', 'cmnd'),
       id_date: A('ngay cap'), id_place: A('noi cap'), birth: A('ngay sinh'), address: A('dia chi'), source: A('nguon khach', 'nguon'), interest: A('du an quan tam'), owner: A('nhan vien phu trach', 'phu trach'), note: A('ghi chu') },
     sample: [['Nguyễn Văn A', 'CTS-O-0101', '', '6508782', '0912345678', '', 'a@example.com', '001234567890', '01/02/2021', 'Cục CS QLHC về TTXH', '12/05/1990', 'Yên Phong, Bắc Ninh', 'Trực tiếp', 'CTS', 'thu.banhang', '']],
     async row(r, ctx) {
@@ -132,7 +132,7 @@ const IMPORTS = {
       const pj = r.interest ? await ctx.db.one('SELECT id FROM kd_project WHERE upper(code) = upper($1) OR name ILIKE $1', [String(r.interest).trim()]) : null;
       const code = r.code ? String(r.code).trim() : '';
       if (code && await ctx.db.one('SELECT 1 FROM kd_customer WHERE upper(code) = upper($1)', [code])) bad(`Mã khách hàng «${code}» đã có`);
-      await C.create('customer', { code, tax_code: r.tax_code, bravo_id: r.bravo_id, full_name: r.full_name, phone: r.phone, phone2: r.phone2, email: r.email, id_no: r.id_no, id_date: r.id_date, id_place: r.id_place, birth: r.birth, address: r.address,
+      await C.create('customer', { code, tax_code: r.tax_code, full_name: r.full_name, phone: r.phone, phone2: r.phone2, email: r.email, id_no: r.id_no, id_date: r.id_date, id_place: r.id_place, birth: r.birth, address: r.address,
         source: r.source || 'truc_tiep', interest_project: pj?.id, owner_id: owner?.id || ctx.user.id, note: r.note }, ctx.user, { db: ctx.db, demo: ctx.demo, keepCode: !!code });
       return 'them';
     },
@@ -242,7 +242,7 @@ function importTemplate(kind) {
   const I = IMPORTS[kind] || bad('Loại nhập không hợp lệ');
   const LBL = {
     units: ['Mã dự án', 'Mã tòa', 'Mã căn', 'Tầng', 'Loại sản phẩm', 'Số phòng ngủ', 'Diện tích thông thủy', 'Diện tích xây dựng', 'Hướng', 'Vị trí', 'Đơn giá', 'Giá căn hộ sau thuế', 'Phí bảo trì', 'Tổng giá căn hộ', 'Thời gian dự kiến bàn giao', 'Mở bán (x)'],
-    customers: ['Họ tên', 'Mã khách hàng', 'Mã số thuế', 'ID Bravo', 'Điện thoại', 'Điện thoại khác', 'Email', 'Số CCCD', 'Ngày cấp', 'Nơi cấp', 'Ngày sinh', 'Địa chỉ', 'Nguồn khách', 'Dự án quan tâm', 'Nhân viên phụ trách', 'Ghi chú'],
+    customers: ['Họ tên', 'Mã khách hàng', 'Mã số thuế', 'Điện thoại', 'Điện thoại khác', 'Email', 'Số CCCD', 'Ngày cấp', 'Nơi cấp', 'Ngày sinh', 'Địa chỉ', 'Nguồn khách', 'Dự án quan tâm', 'Nhân viên phụ trách', 'Ghi chú'],
     leads: ['Họ tên', 'Điện thoại', 'Email', 'Kênh', 'Dự án quan tâm', 'Nội dung trao đổi', 'Ngày liên hệ', 'Ngày nhắc tiếp', 'Nhân viên phụ trách'],
     contracts: ['Số hợp đồng', 'Loại hợp đồng', 'Mã căn', 'Điện thoại khách hàng', 'Đồng sở hữu', 'Giá trị hợp đồng', 'Ngày ký', 'Nhân viên phụ trách', 'Mã đại lý'],
     receipts: ['Số chứng từ', 'Ngày chứng từ', 'Số hợp đồng', 'Số tiền', 'Nội dung', 'Đợt'],

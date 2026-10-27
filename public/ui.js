@@ -262,10 +262,10 @@ async function openForm(ent, { id, preset = {}, onSaved, title } = {}) {
     for (const f of E.fields) if (rec[f.k] === undefined && f.def !== undefined && !f.ro) rec[f.k] = f.def === 'me' ? M.me.id : f.def === 'today' ? today() : f.def === 'now' ? new Date().toISOString() : f.def;
   }
   const lockKeep = perm?.locked ? new Set(perm.lockKeep || []) : null;
-  const fields = E.fields.filter(f => !(f.ro && !id) && !(f.t === 'code' && !id) && !(f.t === 'json' && f.k !== 'new_schedule'));
+  const fields = E.fields.filter(f => !(f.ro && !id) && !(f.t === 'code' && !id && !f.manual) && !(f.t === 'json' && f.k !== 'new_schedule'));
   const wide = f => ['long', 'check', 'json'].includes(f.t) || !!f.pick || !!f.upload;
   const body = `${E.note ? `<div class="warnbar">${ico('fa-circle-info')}<span>${esc(E.note)}</span></div>` : ''}${lockKeep ? `<div class="lockbar">${ico('fa-lock')} Bản ghi đã chốt — chỉ sửa được: ${[...lockKeep].map(k => E.fields.find(f => f.k === k)?.l).join(', ')}</div>` : ''}<div id="ferr"></div><form class="form" autocomplete="off">${fields.map(f => {
-    const ro = f.ro || f.t === 'code' || (lockKeep && !lockKeep.has(f.k)) || (f.pii && id && !M.piiRoles.includes(M.me.role) && rec[f.k]);
+    const ro = f.ro || (f.t === 'code' && !f.manual) || (lockKeep && !lockKeep.has(f.k)) || (f.pii && id && !M.piiRoles.includes(M.me.role) && rec[f.k]);
     return `<div class="fld ${wide(f) ? 'wide' : ''}" data-f="${f.k}"><label for="f_${f.k}">${esc(f.l)}${f.req && !ro ? '<span class="req">*</span>' : ''}${f.pii ? ` <span class="tag" title="Dữ liệu cá nhân — chỉ người có quyền được xem">${ico('fa-shield-halved')} định danh</span>` : ''}</label>${input(f, rec[f.k], rec, { ro })}${f.help ? `<div class="help">${esc(f.help)}</div>` : ''}</div>`;
   }).join('')}</form>`;
   const canSubmit = E.flow && !id && E.flow.submit.includes(E.fields.find(f => f.k === E.flow.field)?.def);
@@ -275,7 +275,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title } = {}) {
   const sch = $('[data-sched]', form);
   if (sch) schedEditor(sch, rec.new_schedule || [], { total: () => readField(form, E.fields.find(f => f.k === 'value_after')) || rec.value_before || 0 });
   const vis = () => { const cur = collect(true); for (const f of fields) { const box = $(`[data-f="${f.k}"]`, form); if (box) box.classList.toggle('hidden', !isShown(f, cur)); } };
-  const collect = (all) => { const out = {}; for (const f of fields) { if (f.ro || f.t === 'code') continue; if (lockKeep && !lockKeep.has(f.k)) continue; const v = readField(form, f); if (v !== undefined) out[f.k] = v; } return all ? { ...rec, ...out } : out; };
+  const collect = (all) => { const out = {}; for (const f of fields) { if (f.ro || (f.t === 'code' && !f.manual)) continue; if (lockKeep && !lockKeep.has(f.k)) continue; const v = readField(form, f); if (v !== undefined) out[f.k] = v; } return all ? { ...rec, ...out } : out; };
   // checklist theo nhóm / mẫu
   const ckF = fields.find(f => f.t === 'check' && f.src);
   const fillCheck = () => {

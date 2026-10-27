@@ -424,7 +424,7 @@ V.customers = async (main, params) => {
       .sort((a, b) => a.full_name.localeCompare(b.full_name, 'vi'));
     const q = s.q.trim().toLowerCase();
     const base = rows.filter(r => !s.project || r.pids.has(+s.project));
-    const list = base.filter(r => (!s.st || r.stage === s.st) && (!q || `${r.full_name} ${r.code} ${r.units} ${r.phone || ''} ${r.address || ''} ${r.email || ''} ${r.bravo_id || ''}`.toLowerCase().includes(q)));
+    const list = base.filter(r => (!s.st || r.stage === s.st) && (!q || `${r.full_name} ${r.code} ${r.units} ${r.phone || ''} ${r.address || ''} ${r.email || ''}`.toLowerCase().includes(q)));
     const cnt = {}; base.forEach(r => cnt[r.stage] = (cnt[r.stage] || 0) + 1);
     const stO = M.ents.customer.fields.find(f => f.k === 'stage').o.filter(o => !PROSPECT.has(o[0]));
     const cellOf = (r, k) => k === 'stage' ? esc(optL('customer', 'stage', r.stage)) : k === 'full_name' ? `${esc(r.full_name)}${r.is_demo ? ' <span class="tag demo">thử</span>' : ''}` : esc(r[k] || '');

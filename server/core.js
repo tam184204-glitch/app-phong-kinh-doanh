@@ -290,7 +290,7 @@ function ctxOf(db, user, opts = {}) { return { db, user, demo: !!opts.demo, warn
 async function normalize(e, input, user, db, { creating, old, system } = {}) {
   const out = {};
   for (const f of e.fields) {
-    if (f.t === 'code') continue;
+    if (f.t === 'code' && !f.manual) continue;
     if ((f.ro || f.hide) && !system) continue;
     if (!(f.k in input)) continue;
     if (f.pii && !creating && !system && !PII_ROLES.includes(user.role) && user.role !== 'admin') {
@@ -298,6 +298,7 @@ async function normalize(e, input, user, db, { creating, old, system } = {}) {
     }
     if (f.pii && typeof input[f.k] === 'string' && input[f.k].startsWith('•')) continue;
     out[f.k] = await normField(f, input[f.k], db);
+    if (f.t === 'code' && out[f.k] == null) delete out[f.k];       // mã để trống → tự cấp, không xóa mã cũ
   }
   return out;
 }
@@ -316,6 +317,7 @@ const pgMsg = (err, e) => {
       kd_installment_seq: 'Trùng số kỳ thu trong hợp đồng',
       kd_customer_phone: 'Số điện thoại đã thuộc hồ sơ khách hàng khác',
       kd_customer_idno: 'Số giấy tờ định danh đã thuộc hồ sơ khách hàng khác',
+      kd_customer_code_uq: 'Mã khách hàng đã tồn tại',
     }[err.constraint];
     return nice || `Trùng dữ liệu${m ? `: ${m[1].replace(/upper\(|\)/g, '')} = ${m[2]}` : ''} (đã có ${e?.one || 'bản ghi'} này)`;
   }
@@ -339,7 +341,11 @@ async function create(entKey, input, user, opts = {}) {
     if (H[entKey]?.beforeSave) await H[entKey].beforeSave(rec, null, ctx);
     requireFields(e, rec);
     if (opts.check) return { ok: true, warnings: ctx.warn };
-    for (const f of e.fields) if (f.t === 'code' && !rec[f.k]) rec[f.k] = input[f.k] && (opts.system || opts.keepCode) ? input[f.k] : await nextCode(db, f);
+    for (const f of e.fields) if (f.t === 'code' && !rec[f.k]) {
+      if (input[f.k] && (opts.system || opts.keepCode)) { rec[f.k] = input[f.k]; continue; }
+      do rec[f.k] = await nextCode(db, f);                                  // mã nhập tay có thể đã chiếm số kế tiếp
+      while (f.manual && await db.one(`SELECT 1 AS x FROM ${e.table} WHERE ${f.k} = $1`, [rec[f.k]]));
+    }
     const keys = Object.keys(rec).filter(k => F[entKey][k]);
     const vals = keys.map(k => { const f = F[entKey][k]; return (f.t === 'check' || f.t === 'json') && rec[k] != null ? JSON.stringify(rec[k]) : rec[k]; });
     const row = await db.one(`INSERT INTO ${e.table} (${[...keys, 'created_by', 'is_demo', 'created_at'].join(', ')}) VALUES (${[...keys, 1, 2, 3].map((_, i) => '$' + (i + 1)).join(', ')}) RETURNING *`,

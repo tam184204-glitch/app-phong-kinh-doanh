@@ -145,8 +145,8 @@ def('customer', {
   purpose: 'Tạo một hồ sơ khách hàng thống nhất', users: 'Nhân viên kinh doanh / hồ sơ',
   how: 'Tìm khách cũ → nếu chưa có thì tạo → kiểm tra trùng → liên kết giao dịch',
   rules: 'Chỉ người có quyền được xem dữ liệu định danh; cảnh báo trùng điện thoại/giấy tờ',
-  c: ['ban_hang', 'truong_phong', 'ho_so', 'cskh'], own: ['ban_hang'], search: ['code', 'full_name', 'phone', 'phone2', 'bravo_id'], fields: [
-    { k: 'code', l: 'Mã khách hàng', t: 'code', prefix: 'KH', pad: 6 },
+  c: ['ban_hang', 'truong_phong', 'ho_so', 'cskh'], own: ['ban_hang'], search: ['code', 'full_name', 'phone', 'phone2'], fields: [
+    { k: 'code', l: 'Mã khách hàng', t: 'code', prefix: 'KH', pad: 6, manual: 1, help: 'Để trống → hệ thống tự cấp (KH000001…)' },
     { k: 'full_name', l: 'Họ tên', t: 'text', req: 1 },
     { k: 'phone', l: 'Điện thoại', t: 'text', req: 1, help: '09xxxxxxxx' },
     { k: 'phone2', l: 'Điện thoại khác', t: 'text' },
@@ -171,8 +171,7 @@ def('customer', {
     { k: 'noxh_group', l: 'Nhóm đối tượng NOXH', t: 'sel', opt: 'nhom_noxh' },
     owner(),
     { k: 'note', l: 'Ghi chú', t: 'long' },
-    { k: 'bravo_id', l: 'ID Bravo', t: 'text', help: 'ID khách hàng bên Bravo — để đối chiếu khi đồng bộ' },
-  ], list: ['full_name', 'code', 'address', 'phone', 'email', 'tax_code', 'stage', 'bravo_id'],
+  ], list: ['full_name', 'code', 'address', 'phone', 'email', 'tax_code', 'stage'],
 });
 def('contact_log', {
   title: 'Nhật ký tư vấn – liên hệ', one: 'nhật ký', code: 'KH-02', mod: '03', icon: 'fa-comments', disp: "to_char(t.at,'DD/MM/YYYY HH24:MI')",
