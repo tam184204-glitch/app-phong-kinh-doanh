@@ -199,7 +199,11 @@ R('GET', '/api/pii/reservation/:id', async (req, res, u, p) => {
   await C.audit({ q }, 'reservation', g.row.id, 'xem_dinh_danh', null, null, u);
   send(res, 200, Object.fromEntries(M.E.reservation.fields.filter(f => f.pii).map(f => [f.k, g.row[f.k]])));
 });
-R('GET', '/api/templates', async (req, res, u, p, qs) => send(res, 200, await q('SELECT code, name, kind FROM kd_template WHERE active AND ($1::text IS NULL OR kind = $1) ORDER BY id', [qs.kind || null])));
+R('GET', '/api/templates', async (req, res, u, p, qs) => {
+  // ?res=<phiếu đăng ký> → chỉ mẫu hợp với căn của phiếu (dự án / tòa / số phòng ngủ)
+  if (qs.kind && qs.res) { const r = await one('SELECT unit_id FROM kd_reservation WHERE id = $1', [+qs.res]); return send(res, 200, (await IO.regTemplates(qs.kind, r?.unit_id)).map(t => ({ code: t.code, name: t.name, kind: t.kind }))); }
+  send(res, 200, await q('SELECT code, name, kind FROM kd_template WHERE active AND ($1::text IS NULL OR kind = $1) ORDER BY id', [qs.kind || null]));
+});
 R('POST', '/api/bulk/:ent/:op', async (req, res, u, p) => {
   const { ids = [], ok, comment } = await readJson(req); const out = { ok: 0, errors: [] };
   for (const id of ids.slice(0, 500)) {

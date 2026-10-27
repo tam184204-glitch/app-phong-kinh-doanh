@@ -11,6 +11,7 @@ const { migrate } = require('./schema');
 const C = require('./core');
 const B = require('./biz');
 const IO = require('./io');
+const { MAU_DANG_KY, MAU_CU } = require('./mau-dang-ky');
 
 const SEED = path.join(__dirname, '..', 'data', 'seed');
 const FILES = path.join(__dirname, '..', 'data', 'files');
@@ -149,6 +150,10 @@ async function ensureTemplates() {
   await tx(async db => {
     const sysU = await db.one("SELECT * FROM kd_user WHERE role = 'admin' ORDER BY id LIMIT 1") || C.SYS;
     for (const t of REG_TEMPLATES()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });
+    // mẫu chuẩn theo file Excel phòng Kinh doanh: lần đầu nạp thì tắt các mẫu khung cũ
+    let moi = 0;
+    for (const t of MAU_DANG_KY()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) { await C.create('template', { ...t, active: true }, sysU, { db, system: true }); moi++; }
+    if (moi) await db.q('UPDATE kd_template SET active = false WHERE code = ANY($1)', [MAU_CU]);
     await db.q("UPDATE kd_reservation SET reg_at = coalesce(created_at, reg_date::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh') WHERE reg_at IS NULL");
     // phiếu lập trước khi có mẫu «Phiếu đăng ký căn hộ»: chép thông tin khách + suy ra trạng thái căn / tiến trình
     await db.q(`UPDATE kd_reservation r SET cust_name = k.full_name, id_no = k.id_no, id_date = k.id_date, id_place = k.id_place, address = k.address, phone = k.phone

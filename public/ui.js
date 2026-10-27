@@ -414,8 +414,9 @@ async function scheduleModal(contractId, after) {
 // in bản đăng ký từ phiếu GD-01: chọn mẫu in (Quản trị › Mẫu biểu, loại «Bản đăng ký căn hộ / nội thất»)
 async function printPick(id, kind) {
   const L = { dang_ky_can: 'bản đăng ký căn hộ', dang_ky_noi_that: 'bản đăng ký nội thất' }[kind];
-  const ts = await api('GET', `/api/templates?kind=${kind}`);
-  if (!ts.length) return toast(`Chưa có mẫu ${L} — tạo ở Quản trị › Mẫu biểu`, true);
+  const ts = await api('GET', `/api/templates?kind=${kind}&res=${id}`);
+  if (!ts.length) return toast(`Chưa có mẫu ${L} cho căn này — tạo ở Quản trị › Mẫu biểu`, true);
+  if (ts.length === 1) return window.open(`/print/reservation/${id}?kind=${kind}&tpl=${encodeURIComponent(ts[0].code)}`, '_blank');   // chỉ một mẫu hợp → in luôn
   const m = modal({ title: `${ico('fa-print')} In ${L}`, narrow: true, body: `<div class="small muted mb">Chọn mẫu in</div>${ts.map((t, i) => `<label class="chk" style="display:flex;padding:6px 0"><input type="radio" name="tpl" value="${esc(t.code)}" ${i ? '' : 'checked'}> <b>${esc(t.name)}</b>&nbsp;<span class="muted small">${esc(t.code)}</span></label>`).join('')}`,
     foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="pOk">${ico('fa-print')} In</button>` });
   $('#pOk', m.el).onclick = () => { const c = $('input[name=tpl]:checked', m.el).value; m.close(); window.open(`/print/reservation/${id}?kind=${kind}&tpl=${encodeURIComponent(c)}`, '_blank'); };
