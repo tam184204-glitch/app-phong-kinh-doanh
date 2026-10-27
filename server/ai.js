@@ -180,7 +180,7 @@ async function execTool(b, user) {
 
 // ---------- hội thoại (giữ trên máy chủ, nguyên văn, chỉ nối thêm) ----------
 const CONV = new Map();   // id → { user_id, messages, turns, at }
-setInterval(() => { const lim = Date.now() - 3 * 3600e3; for (const [k, c] of CONV) if (c.at < lim) CONV.delete(k); }, 10 * 60e3).unref();
+setInterval(() => { const lim = Date.now() - 3 * 3600e3; for (const [k, c] of CONV) if (c.at < lim) CONV.delete(k); }, 10 * 60e3).unref?.();   // ?. — bản demo chạy trong trình duyệt không có unref
 
 async function ask(user, { conv, text }) {
   if (!enabled()) bad('Chưa cấu hình ANTHROPIC_API_KEY trong file .env — Trợ lý AI đang tắt.');
