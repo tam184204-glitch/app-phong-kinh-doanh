@@ -22,7 +22,7 @@ const shimPlugin = {
 };
 await build({
   entryPoints: [path.join(ROOT, 'demo/entry.js')], outfile: path.join(OUT, 'demo.js'),
-  bundle: true, format: 'esm', platform: 'browser', target: 'es2022', minify: true, charset: 'ascii',
+  bundle: true, format: 'esm', loader: { '.xlsx': 'binary' }, platform: 'browser', target: 'es2022', minify: true, charset: 'ascii',
   inject: [S('process.js')], define: { __dirname: '"/server"' }, plugins: [shimPlugin], logLevel: 'warning',
 });
 
