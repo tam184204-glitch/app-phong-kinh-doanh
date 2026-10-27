@@ -650,20 +650,30 @@ async function importModal(kind, after) {
 }
 
 // ---------- thanh kéo ngang phía trên bảng rộng (đồng bộ với thanh dưới) ----------
+// chỉ bên đang được kéo mới điều khiển bên kia (không «giành nhau» gây giật); quãng kéo hai thanh bằng nhau
 function syncTopScroll() {
   $$('.tbl-wrap').forEach(w => {
     let bar = w.previousElementSibling;
     if (!bar?.classList.contains('top-scroll')) {
       bar = document.createElement('div'); bar.className = 'top-scroll'; bar.innerHTML = '<div></div>'; w.before(bar);
-      bar.onscroll = () => { if (w.scrollLeft !== bar.scrollLeft) w.scrollLeft = bar.scrollLeft; };
-      w.addEventListener('scroll', () => { if (bar.scrollLeft !== w.scrollLeft) bar.scrollLeft = w.scrollLeft; });
+      let lead = null, t = 0;
+      const follow = (src, dst) => () => {
+        if (lead && lead !== src) return;
+        lead = src; clearTimeout(t); t = setTimeout(() => { lead = null; }, 120);
+        if (Math.abs(dst.scrollLeft - src.scrollLeft) > 0.5) dst.scrollLeft = src.scrollLeft;
+      };
+      bar.addEventListener('scroll', follow(bar, w), { passive: true });
+      w.addEventListener('scroll', follow(w, bar), { passive: true });
     }
-    bar.style.display = w.scrollWidth > w.clientWidth + 1 ? '' : 'none';
-    bar.firstChild.style.width = w.scrollWidth + 'px';
-    bar.scrollLeft = w.scrollLeft;
+    const range = w.scrollWidth - w.clientWidth;
+    bar.style.display = range > 1 ? '' : 'none';
+    const inner = range + bar.clientWidth + 'px';
+    if (bar.firstChild.style.width !== inner) bar.firstChild.style.width = inner;
+    if (Math.abs(bar.scrollLeft - w.scrollLeft) > 0.5) bar.scrollLeft = w.scrollLeft;
   });
 }
-new MutationObserver(debounce(syncTopScroll, 60)).observe(document.documentElement, { childList: true, subtree: true });
+// chỉ dựng lại khi nội dung trang đổi — bỏ qua thay đổi bên trong chính thanh kéo
+new MutationObserver(debounce(syncTopScroll, 80)).observe($('#app') || document.body, { childList: true, subtree: true });
 window.addEventListener('resize', debounce(syncTopScroll, 100));
 
 // ---- screens.js
