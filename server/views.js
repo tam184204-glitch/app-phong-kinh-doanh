@@ -275,7 +275,7 @@ async function board(db, user, f) {
     FROM kd_unit u WHERE u.building_id = $1 ORDER BY u.floor DESC, u.code`, [bid]) : [];
   // khách hàng: chỉ người có quyền xem khách mới thấy tên
   if (!can(user, E.customer, 'r')) units.forEach(u => { u.customer = u.customer ? '•••' : null; });
-  const policy = await db.one("SELECT code, version, start_on, end_on, src_file FROM kd_price_policy WHERE project_id = $1 AND status = 'phat_hanh' AND start_on <= $2 AND end_on >= $2 ORDER BY start_on DESC LIMIT 1", [pid, today()]);
+  const policy = await db.one("SELECT code, version, start_on, end_on, src_file FROM kd_price_policy WHERE $1 = ANY(project_ids) AND status = 'phat_hanh' AND start_on <= $2 AND end_on >= $2 ORDER BY start_on DESC LIMIT 1", [pid, today()]);
   return { projects, project: pid, buildings, building: bid, units, policy };
 }
 
@@ -284,10 +284,10 @@ async function board(db, user, f) {
 // tách ngược ra giá trước thuế / tiền thuế theo % VAT của chính sách, đơn giá nền = trước thuế / DT thông thủy.
 async function priceSheet(db, user, id) {
   if (!can(user, E.price_policy, 'r')) deny();
-  const pol = C.notFound(await db.one(`SELECT t.*, p.code project_code, p.name project_name FROM kd_price_policy t JOIN kd_project p ON p.id = t.project_id WHERE t.id = $1`, [+id]), 'chính sách');
+  const pol = C.notFound(await db.one(`SELECT t.*, (SELECT string_agg(p.code, ', ' ORDER BY array_position(t.project_ids, p.id)) FROM kd_project p WHERE p.id = ANY(t.project_ids)) project_code FROM kd_price_policy t WHERE t.id = $1`, [+id]), 'chính sách');
   const grp = String(pol.unit_group || '*').split(/[,;\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
   const units = await db.q(`SELECT u.id, u.code, u.floor, u.kind, u.position, u.area_tt, u.area_xd, u.price_net, u.list_price, u.maint_fee, u.total_price, u.base_price, u.pretax, u.vat_pct, u.tax_amt, u.finish_value, u.status, b.code building, coalesce(u.finish_value, k.value) pkg
-    FROM kd_unit u JOIN kd_building b ON b.id = u.building_id LEFT JOIN kd_package k ON k.id = u.package_id WHERE u.project_id = $1 ORDER BY b.code, u.floor, u.code`, [pol.project_id]);
+    FROM kd_unit u JOIN kd_building b ON b.id = u.building_id LEFT JOIN kd_package k ON k.id = u.package_id WHERE u.project_id = ANY($1) ORDER BY b.code, u.floor, u.code`, [pol.project_ids || []]);
   const vat = pol.vat_pct ?? 5, mp = pol.maint_pct ?? 2;
   const rows = units.filter(u => grp.includes('*') || grp.includes(String(u.building).toUpperCase()) || grp.includes(String(u.code).toUpperCase())).map(u => {
     const dg = pol.mode === 'don_gia';

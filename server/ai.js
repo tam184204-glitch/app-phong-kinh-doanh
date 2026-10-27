@@ -23,7 +23,7 @@ const catalog = () => Object.values(M.E).map(e => {
   const fs = e.fields.filter(f => !f.hide && !f.pii && !SKIP_T.has(f.t)).map(f => {
     let s = `${f.k}(${f.l}`;
     if (f.t === 'sel' && f.o) s += ': ' + f.o.map(o => `${o[0]}=${o[1]}`).join(', ');
-    else if (f.t === 'ref') s += ' → ' + f.ref;
+    else if (f.t === 'ref' || f.t === 'refs') s += ' → ' + f.ref;
     return s + ')';
   });
   return `■ ${e.key} — ${e.title}${e.code ? ` [${e.code}]` : ''}, phân hệ ${e.mod}\n  ${fs.join('; ')}`;
@@ -105,7 +105,7 @@ function compactRow(ent, r) {
     if (v == null || v === '' || k.endsWith('__l') || ['is_demo', 'created_by', 'updated_by', 'updated_at'].includes(k)) continue;
     const f = F[k];
     if (f && SKIP_T.has(f.t)) continue;
-    if (f && (f.t === 'ref' || f.t === 'user')) { out[k] = r[k + '__l'] ? `${r[k + '__l']} (id ${v})` : v; continue; }
+    if (f && (f.t === 'ref' || f.t === 'refs' || f.t === 'user')) { out[k] = r[k + '__l'] ? `${r[k + '__l']} (id ${v})` : v; continue; }
     if (f && f.t === 'sel' && f.o) { out[k] = f.o.find(o => o[0] === v)?.[1] || v; continue; }
     out[k] = typeof v === 'string' && v.length > 400 ? v.slice(0, 400) + '…' : v;
   }

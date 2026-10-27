@@ -4,7 +4,7 @@
 const { E, ROLES, LOOKUPS, SETTINGS } = require('./meta');
 
 const SQLT = { text: 'text', long: 'text', sel: 'text', month: 'text', code: 'text', int: 'integer', num: 'numeric', money: 'numeric(18,0)',
-  date: 'date', dt: 'timestamptz', ref: 'integer', user: 'integer', bool: 'boolean', check: 'jsonb', json: 'jsonb' };
+  date: 'date', dt: 'timestamptz', ref: 'integer', refs: 'integer[]', user: 'integer', bool: 'boolean', check: 'jsonb', json: 'jsonb' };
 const lit = v => `'${String(v).replace(/'/g, "''")}'`;
 const ACTIVE_RES = "('cho_duyet','giu_cho','qua_han','da_coc','chuyen_hd')";
 
@@ -80,6 +80,9 @@ const SPECIAL = [
   `CREATE INDEX IF NOT EXISTS kd_installment_c ON kd_installment (contract_id) WHERE active`,
   `CREATE INDEX IF NOT EXISTS kd_receipt_c ON kd_receipt (contract_id) WHERE status = 'hop_le'`,
   `CREATE UNIQUE INDEX IF NOT EXISTS kd_customer_phone ON kd_customer (regexp_replace(phone, '\\D', '', 'g'))`,
+  // chính sách giá trước đây chỉ 1 dự án → chép sang danh sách dự án
+  `UPDATE kd_price_policy SET project_ids = ARRAY[project_id] WHERE project_ids IS NULL AND project_id IS NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS kd_price_policy_pids ON kd_price_policy USING gin (project_ids)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS kd_customer_idno ON kd_customer (upper(id_no)) WHERE id_no IS NOT NULL`,
 ];
 // CHECK nghiệp vụ thêm (ngoài money ≥ 0 và giá trị danh sách chọn)

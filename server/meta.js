@@ -107,7 +107,8 @@ def('price_policy', {
   c: ['truong_phong'], a: ['lanh_dao'], files: [['phe_duyet', 'Quyết định / tờ trình phê duyệt'], ['nguon', 'Tệp nguồn (PDF)']], fields: [
     { k: 'code', l: 'Mã chính sách', t: 'text', req: 1, help: 'CSBH-2026-01' },
     { k: 'version', l: 'Phiên bản', t: 'int', ro: 1, def: 1 },
-    { k: 'project_id', l: 'Dự án', t: 'ref', ref: 'project', req: 1 },
+    { k: 'project_ids', l: 'Dự án', t: 'refs', ref: 'project', req: 1, help: 'Chọn được nhiều dự án cùng áp dụng một chính sách' },
+    { k: 'project_id', l: 'Dự án chính', t: 'ref', ref: 'project', hide: 1 },   // = dự án đầu tiên trong project_ids (giữ cho chỗ cần 1 dự án)
     { k: 'mode', l: 'Cách tính giá', t: 'sel', hide: 1, def: 'bang_hang', o: [['bang_hang', 'Theo giá từng căn trên bảng hàng'], ['don_gia', 'Đơn giá × diện tích thông thủy']] },
     money('unit_price', 'Đơn giá (đ/m² thông thủy)', { show: { mode: ['don_gia'] } }),
     { k: 'maint_pct', l: 'Phí bảo trì (%)', t: 'num', def: 2, show: { mode: ['don_gia'] } },
@@ -122,7 +123,7 @@ def('price_policy', {
     { k: 'unit_group', l: 'Căn hộ áp dụng', t: 'text', req: 1, def: '*', pick: 'units', help: 'Tích chọn tòa / từng căn trong bảng — * = cả dự án' },
     { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'nhap', o: [['nhap', 'Nháp', 's'], ['cho_duyet', 'Chờ duyệt', 'a'], ['phat_hanh', 'Đã phát hành', 'g'], ['tu_choi', 'Từ chối', 'r'], ['thay_the', 'Đã thay thế', 's']] },
     { k: 'parent_id', l: 'Phiên bản trước', t: 'ref', ref: 'price_policy', ro: 1 },
-  ], list: ['code', 'version', 'project_id', 'unit_group', 'start_on', 'end_on', 'status'],
+  ], list: ['code', 'version', 'project_ids', 'unit_group', 'start_on', 'end_on', 'status'],
   lock: ['phat_hanh', 'thay_the', 'cho_duyet'], flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'phat_hanh' }, submitLabel: 'Trình duyệt' },
   acts: [{ k: 'new_version', l: 'Tạo phiên bản mới', icon: 'fa-code-branch', from: ['phat_hanh'], roles: ['truong_phong'] }],
 });

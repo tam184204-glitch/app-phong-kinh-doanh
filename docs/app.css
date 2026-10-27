@@ -734,3 +734,12 @@ table.grid-bravo tbody tr:hover td { background: #dfeefc; }
 /* dòng tổng theo tòa và dòng tổng cuối: chữ đậm, rõ */
 table.prod-t tr.pg td, table.prod-t tr.pg td .muted, table.prod-t tfoot td { font-weight: 800; color: var(--ink); }
 table.prod-t tfoot td { font-weight: 800 !important; color: var(--ink) !important; }
+
+/* ô chọn nhiều (thẻ) */
+.combo.multi .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 38px; padding: 4px 8px; border: 1px solid #cfdbe8; border-radius: 10px; background: #fff; cursor: text; }
+.combo.multi .chip { display: inline-flex; align-items: center; gap: 2px; padding: 3px 2px 3px 9px; border-radius: 6px; background: var(--cobalt-50); font-size: 13px; white-space: nowrap; }
+.combo.multi .chip button { border: 0; background: none; color: var(--muted2); cursor: pointer; padding: 0 5px; }
+.combo.multi .chip button:hover { color: #c0392b; }
+.combo.multi .chips input[data-combo], .combo.multi .chips input[data-combo]:focus { flex: 1; width: auto; min-width: 140px; border: 0 !important; outline: 0; box-shadow: none !important; padding: 4px 2px; height: 28px; background: transparent; }
+.combo.multi .chips:focus-within { border-color: rgba(245, 166, 35, .75); box-shadow: 0 0 0 4px var(--glow-a); }
+.combo.multi .opts { top: calc(100% + 2px); }

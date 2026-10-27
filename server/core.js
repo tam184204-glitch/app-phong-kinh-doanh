@@ -104,6 +104,13 @@ async function normField(f, v, db, label = f.l) {
       if (!await db.one(`SELECT 1 FROM ${E[f.ref].table} WHERE id = $1`, [id])) bad(`${label}: không tìm thấy ${E[f.ref].one} #${id}`);
       return id;
     }
+    case 'refs': {
+      const ids = [...new Set((Array.isArray(v) ? v : String(v).split(/[,;]+/)).map(x => +x).filter(Boolean))];
+      if (ids.some(id => !Number.isInteger(id))) bad(`${label}: mã liên kết không hợp lệ`);
+      const n = ids.length ? (await db.one(`SELECT count(*) n FROM ${E[f.ref].table} WHERE id = ANY($1)`, [ids])).n : 0;
+      if (n !== ids.length) bad(`${label}: có ${E[f.ref].one} không tồn tại`);
+      return ids.length ? ids : null;
+    }
     case 'user': {
       const id = +v; const u = Number.isInteger(id) && await db.one('SELECT id, role, active FROM kd_user WHERE id = $1', [id]);
       if (!u) bad(`${label}: không tìm thấy nhân viên`);
@@ -156,6 +163,7 @@ function labelCols(e) {
   const out = [];
   for (const f of e.fields) {
     if (f.t === 'ref') out.push(`(SELECT ${dispOf(f.ref, 'x')} FROM ${E[f.ref].table} x WHERE x.id = t.${f.k}) AS "${f.k}__l"`);
+    if (f.t === 'refs') out.push(`(SELECT string_agg(${dispOf(f.ref, 'x')}, ', ' ORDER BY array_position(t.${f.k}, x.id)) FROM ${E[f.ref].table} x WHERE x.id = ANY(t.${f.k})) AS "${f.k}__l"`);
     if (f.t === 'user') out.push(`(SELECT full_name FROM kd_user x WHERE x.id = t.${f.k}) AS "${f.k}__l"`);
   }
   out.push('(SELECT full_name FROM kd_user x WHERE x.id = t.created_by) AS "created_by__l"');
@@ -207,12 +215,13 @@ async function list(entKey, user, qs = {}, { db = { q, one }, limit } = {}) {
     if (F[entKey].contract_id) parts.push('(SELECT k.full_name||\' \'||k.phone FROM kd_contract c JOIN kd_customer k ON k.id = c.customer_id WHERE c.id = t.contract_id)');
     add(`concat_ws(' ', t.id::text, ${parts.join(', ') || "''"}) ILIKE $1`, `%${String(qs.q).trim()}%`);
   }
-  const pj = projExpr(e); if (qs.project && pj) add(`${pj} = $1`, +qs.project);
+  const pj = projExpr(e); if (qs.project && F[entKey].project_ids) add('$1 = ANY(t.project_ids)', +qs.project); else if (qs.project && pj) add(`${pj} = $1`, +qs.project);
   const bd = buildingExpr(e); if (qs.building && bd) add(`${bd} = $1`, +qs.building);
   for (const [k, v] of Object.entries(qs)) {
     if (!k.startsWith('f_') || v === '') continue;
     const f = F[entKey][k.slice(2)]; if (!f) continue;
     if (f.t === 'bool') add(`coalesce(t.${f.k}, false) = $1`, v === '1' || v === 'true');
+    else if (f.t === 'refs') add(`$1 = ANY(t.${f.k})`, +v);
     else if (f.t === 'ref' || f.t === 'user' || f.t === 'int') add(`t.${f.k} = $1`, +v);
     else add(`t.${f.k} = $1`, v);
   }

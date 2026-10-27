@@ -26,7 +26,7 @@ async function exportList(entKey, user, qs) {
   const cols = [];
   for (const k of keys) {
     const f = C.F[entKey][k];
-    if (f) cols.push([f.t === 'ref' || f.t === 'user' ? k + '__l' : k, f.l, f.t === 'sel' ? null : f.t, f]);
+    if (f) cols.push([f.t === 'ref' || f.t === 'refs' || f.t === 'user' ? k + '__l' : k, f.l, f.t === 'sel' ? null : f.t, f]);
     else if (VIRT[k]) cols.push([k === 'created_by' ? 'created_by__l' : k, VIRT[k], ['paid', 'actual', 'gap'].includes(k) ? 'money' : null]);
   }
   for (const r of rows) for (const c of cols) if (c[3]?.t === 'sel') r[c[0]] = await C.optLabel(c[3], r[c[0]]);

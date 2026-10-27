@@ -67,7 +67,7 @@ async function recomputeUnit(db, unitId, user) {
 // ======================= GIÁ =======================
 async function pricing(db, unit, on = today()) {
   const b = await db.one('SELECT code FROM kd_building WHERE id = $1', [unit.building_id]);
-  const pols = await db.q("SELECT * FROM kd_price_policy WHERE status = 'phat_hanh' AND project_id = $1 AND start_on <= $2 AND end_on >= $2 ORDER BY start_on DESC, version DESC", [unit.project_id, on]);
+  const pols = await db.q("SELECT * FROM kd_price_policy WHERE status = 'phat_hanh' AND $1 = ANY(project_ids) AND start_on <= $2 AND end_on >= $2 ORDER BY start_on DESC, version DESC", [unit.project_id, on]);
   const pol = pols.find(p => { const g = String(p.unit_group || '*').split(/[,;\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean); return g.includes('*') || g.includes(String(b?.code).toUpperCase()) || g.includes(String(unit.code).toUpperCase()); });
   if (!pol) return { policy: null, price: unit.total_price || null };
   if (pol.mode === 'don_gia') { const base = Math.round(pol.unit_price * unit.area_tt); return { policy: pol, price: base + Math.round(base * (pol.maint_pct ?? 2) / 100) }; }
@@ -186,11 +186,12 @@ H.price_policy = {
     if (r.start_on && r.end_on && r.end_on < r.start_on) bad('Ngày kết thúc phải sau ngày bắt đầu');
     if (r.mode === 'don_gia' && !(r.unit_price > 0)) bad('Cần đơn giá (đ/m²) khi tính theo đơn giá');
     r.unit_group = r.unit_group ? String(r.unit_group).toUpperCase().replace(/\s+/g, '') : '*';
+    r.project_id = r.project_ids?.[0] ?? null;   // dự án chính = dự án chọn đầu tiên
   },
   async afterApprove(r, ok, { db, user }) { if (ok && r.parent_id) await sys(db, 'price_policy', r.parent_id, { status: 'thay_the' }, user, 'thay_the', `Thay bằng phiên bản ${r.version}`); },
   acts: {
     async new_version(r, d, { db, user, demo }) {
-      const keep = ['code', 'project_id', 'unit_group', 'mode', 'unit_price', 'maint_pct', 'discount', 'pay_method', 'bank_policy', 'target', 'start_on', 'end_on', 'src_file'];
+      const keep = ['code', 'project_ids', 'unit_group', 'mode', 'unit_price', 'maint_pct', 'discount', 'pay_method', 'bank_policy', 'target', 'start_on', 'end_on', 'src_file'];
       const n = (await create('price_policy', { ...Object.fromEntries(keep.map(k => [k, r[k]])), version: r.version + 1, parent_id: r.id, status: 'nhap' }, user, { db, system: true, demo })).row;
       return { open: ['price_policy', n.id], msg: `Đã tạo phiên bản ${n.version} (nháp). Phiên bản đang phát hành giữ nguyên tới khi bản mới được duyệt.` };
     },

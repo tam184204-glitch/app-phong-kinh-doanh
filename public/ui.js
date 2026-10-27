@@ -86,7 +86,7 @@ function show(f, row, { plain } = {}) {
     case 'month': return mmy(v);
     case 'bool': return v ? (plain ? 'Có' : `<span style="color:var(--g)">${ico('fa-circle-check')}</span>`) : (plain ? '' : `<span class="muted">${ico('fa-circle-minus')}</span>`);
     case 'sel': { const o = optOf(f, v); return plain ? (o?.[1] ?? v) : o?.[2] ? pill(o[1], o[2]) : esc(o?.[1] ?? v); }
-    case 'ref': case 'user': return esc(row[f.k + '__l'] ?? '#' + v);
+    case 'ref': case 'refs': case 'user': return esc(row[f.k + '__l'] ?? '#' + v);
     case 'check': { const n = v.filter(x => x.st === 'da_nhan').length, bad = v.filter(x => ['thieu', 'can_sua'].includes(x.st)).length; return plain ? `${n}/${v.length}` : `<span class="${bad ? 'neg' : ''}">${n}/${v.length}${bad ? ` · thiếu ${bad}` : ''}</span>`; }
     case 'json': return plain ? JSON.stringify(v) : '<span class="muted">(xem chi tiết)</span>';
     case 'long': return plain ? v : esc(v).replace(/\n/g, '<br>');
@@ -133,6 +133,8 @@ function input(f, v, rec = {}, { ro, id } = {}) {
     case 'bool': return `<label class="chk" style="height:38px"><input type="checkbox" ${nm} ${v ? 'checked' : ''}> Có</label>`;
     case 'user': { const us = M.users.filter(u => (u.active || u.id === v) && (!f.roles || f.roles.includes(u.role) || u.role === 'admin')); return `<select ${nm}><option value="">— chọn —</option>${us.map(u => `<option value="${u.id}" ${u.id === v ? 'selected' : ''}>${esc(u.full_name)} · ${esc(roleName(u.role))}</option>`).join('')}</select>`; }
     case 'ref': return `<div class="combo" data-ref="${f.ref}" ${f.filter ? `data-filter="${f.filter}"` : ''} ${f.dep ? `data-dep="${f.dep}"` : ''}><input type="text" placeholder="Gõ để tìm ${esc(M.ents[f.ref].one)}…" value="${esc(rec[f.k + '__l'] ?? '')}" autocomplete="off" data-combo><input type="hidden" ${nm} value="${esc(v ?? '')}"><button type="button" class="x" tabindex="-1" title="Bỏ chọn">${ico('fa-xmark')}</button></div>`;
+    case 'refs': { const ids = v || [], ls = String(rec[f.k + '__l'] ?? '').split(', '), lab = (id, i) => { const p = f.ref === 'project' && M.projects.find(x => x.id === id); return p ? `${p.code} · ${p.name}` : ids.length === ls.length ? ls[i] : '#' + id; };
+      return `<div class="combo multi" data-ref="${f.ref}" data-multi><div class="chips">${ids.map((id, i) => `<span class="chip" data-id="${id}">${esc(lab(id, i))}<button type="button" tabindex="-1" title="Bỏ">${ico('fa-xmark')}</button></span>`).join('')}<input type="text" placeholder="${ids.length ? 'Thêm' : 'Gõ để tìm'} ${esc(M.ents[f.ref].one)}…" autocomplete="off" data-combo></div><input type="hidden" ${nm} value="${esc(ids.join(','))}"></div>`; }
     case 'check': return `<div class="cklist" ${nm}>${checkRows(v || [])}</div>`;
     case 'json': return f.k === 'new_schedule' ? `<div data-sched ${nm}></div>` : `<div class="ro">${show(f, rec)}</div>`;
     default: return `<input ${nm} value="${esc(v ?? '')}" autocomplete="off">`;
@@ -177,34 +179,49 @@ function readField(root, f) {
     case 'dt': return parseDt(el.value) || null;
     case 'month': return parseMonth(el.value) || null;
     case 'ref': case 'user': return el.value ? +el.value : null;
+    case 'refs': return el.value ? el.value.split(',').map(Number) : null;
     case 'check': return readCheck(el);
     case 'json': return el._get ? el._get() : undefined;
     default: return el.value.trim() || null;
   }
 }
 function combo(c, root, onChange) {
-  const txt = $('[data-combo]', c), hid = $('input[type=hidden]', c), ref = c.dataset.ref;
+  const txt = $('[data-combo]', c), hid = $('input[type=hidden]', c), ref = c.dataset.ref, multi = 'multi' in c.dataset;
   let box = null, items = [], cur = -1;
   const close = () => { box?.remove(); box = null; };
-  const pickIt = it => { hid.value = it.id; txt.value = it.label; close(); hid.dispatchEvent(new Event('change', { bubbles: true })); onChange && onChange(); };
+  // chọn nhiều: mỗi lựa chọn thành 1 thẻ, ô ẩn giữ danh sách id cách nhau dấu phẩy
+  const ids = () => hid.value ? hid.value.split(',').map(Number) : [];
+  const changed = () => { if (multi) txt.placeholder = `${ids().length ? 'Thêm' : 'Gõ để tìm'} ${M.ents[ref].one}…`; hid.dispatchEvent(new Event('change', { bubbles: true })); onChange && onChange(); };
+  const pickIt = it => {
+    if (!multi) { hid.value = it.id; txt.value = it.label; close(); changed(); return; }
+    if (!ids().includes(it.id)) { hid.value = [...ids(), it.id].join(','); txt.insertAdjacentHTML('beforebegin', `<span class="chip" data-id="${it.id}">${esc(it.label)}<button type="button" tabindex="-1" title="Bỏ">${ico('fa-xmark')}</button></span>`); }
+    txt.value = ''; changed(); load();
+  };
+  const unpick = chip => { hid.value = ids().filter(x => x !== +chip.dataset.id).join(','); chip.remove(); changed(); };
   const load = debounce(async () => {
     const p = new URLSearchParams({ q: txt.value.trim() });
     if (c.dataset.filter) p.set('filter', c.dataset.filter);
     if (c.dataset.dep) { const d = $(`[name="${c.dataset.dep}"]`, root)?.value; if (d) { p.set('dep', c.dataset.dep); p.set('depv', d); } }
     try { items = await api('GET', `/api/opts/${ref}?${p}`); } catch { items = []; }
+    if (multi) items = items.filter(it => !ids().includes(it.id));
     if (document.activeElement !== txt) return;
     close(); box = document.createElement('div'); box.className = 'opts'; cur = -1;
-    box.innerHTML = items.length ? items.map((it, i) => `<div data-i="${i}"><span>${esc(it.label)}</span><small>${esc(it.sub || '')}</small></div>`).join('') : `<div class="muted">Không tìm thấy${c.dataset.filter === 'con_ban' ? ' căn còn bán' : ''}</div>`;
+    box.innerHTML = items.length ? items.map((it, i) => `<div data-i="${i}"><span>${esc(it.label)}</span><small>${esc(it.sub || '')}</small></div>`).join('') : `<div class="muted">${multi && ids().length && !txt.value.trim() ? 'Đã chọn hết' : 'Không tìm thấy'}${c.dataset.filter === 'con_ban' ? ' căn còn bán' : ''}</div>`;
     box.onmousedown = e => { const d = e.target.closest('[data-i]'); if (d) { e.preventDefault(); pickIt(items[+d.dataset.i]); } };
     c.append(box);
   }, 200);
-  txt.addEventListener('focus', load); txt.addEventListener('input', () => { hid.value = ''; load(); });
-  txt.addEventListener('blur', () => setTimeout(() => { close(); if (!hid.value) txt.value = ''; }, 150));
+  txt.addEventListener('focus', load); txt.addEventListener('input', () => { if (!multi) hid.value = ''; load(); });
+  txt.addEventListener('blur', () => setTimeout(() => { close(); if (multi || !hid.value) txt.value = ''; }, 150));
   txt.addEventListener('keydown', e => {
     if (!box) return; const ds = $$('[data-i]', box);
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); cur = Math.max(0, Math.min(ds.length - 1, cur + (e.key === 'ArrowDown' ? 1 : -1))); ds.forEach((d, i) => d.classList.toggle('on', i === cur)); ds[cur]?.scrollIntoView({ block: 'nearest' }); }
     if (e.key === 'Enter' && cur >= 0) { e.preventDefault(); pickIt(items[cur]); }
   });
+  if (multi) {
+    c.addEventListener('mousedown', e => { const b = e.target.closest('.chip button'); if (b) { e.preventDefault(); unpick(b.parentElement); } else if (!e.target.closest('.opts') && e.target !== txt) { e.preventDefault(); txt.focus(); } });
+    txt.addEventListener('keydown', e => { if (e.key === 'Backspace' && !txt.value) { const last = $$('.chip', c).pop(); if (last) unpick(last); } });
+    return;
+  }
   $('.x', c).onclick = () => { hid.value = ''; txt.value = ''; hid.dispatchEvent(new Event('change', { bubbles: true })); onChange && onChange(); txt.focus(); };
 }
 
@@ -298,7 +315,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title } = {}) {
 
 // ---------- bảng chọn căn áp dụng (chính sách giá): giá trị = '*' | mã tòa (cả tòa) | mã căn, cách nhau dấu phẩy ----------
 async function unitPicker(el, root) {
-  const projEl = $('[name="project_id"]', root), hid = $('input[type=hidden]', el), box = $('.upick-bd', el);
+  const projEl = $('[name="project_ids"]', root) || $('[name="project_id"]', root), hid = $('input[type=hidden]', el), box = $('.upick-bd', el);
   let units = [], sel = new Set(String(hid.value || '*').toUpperCase().split(/[,;\s]+/).filter(Boolean)), loadedFor = null, q = '';
   const KIND = Object.fromEntries(M.ents.unit.fields.find(f => f.k === 'kind').o);
   const blds = () => [...new Set(units.map(u => u.b))];
@@ -321,9 +338,9 @@ async function unitPicker(el, root) {
   const setVal = picked => { hid.value = norm(picked); sel = new Set(hid.value.split(',').filter(Boolean)); draw(); };
   const draw = () => {
     if (!projEl?.value) { box.innerHTML = '<div class="muted small">Chọn dự án trước — danh sách căn hộ của dự án hiện ở đây.</div>'; return; }
-    if (!units.length) { box.innerHTML = '<div class="muted small">Dự án chưa có căn hộ trong danh mục sản phẩm.</div>'; return; }
+    if (!units.length) { box.innerHTML = '<div class="muted small">Dự án đã chọn chưa có căn hộ trong danh mục sản phẩm.</div>'; return; }
     const on = units.filter(isOn), tot = on.reduce((s, u) => s + (+u.total_price || 0), 0);
-    box.innerHTML = `<div class="upick-sum"><b>Đã chọn ${on.length}/${units.length} căn</b> · tổng giá ${fm(tot)} đ <span class="grow"></span><div class="search upick-s"><i class="fa-solid fa-magnifying-glass"></i><input type="text" class="upick-q" placeholder="Tìm mã căn, tầng, loại, trạng thái…" value="${esc(q)}"></div><span class="small muted upick-n"></span><button type="button" class="btn sm" data-all="q" hidden></button><button type="button" class="btn sm" data-all="1">Chọn cả dự án</button><button type="button" class="btn sm ghost" data-all="0">Bỏ chọn hết</button></div>
+    box.innerHTML = `<div class="upick-sum"><b>Đã chọn ${on.length}/${units.length} căn</b> · tổng giá ${fm(tot)} đ <span class="grow"></span><div class="search upick-s"><i class="fa-solid fa-magnifying-glass"></i><input type="text" class="upick-q" placeholder="Tìm mã căn, tầng, loại, trạng thái…" value="${esc(q)}"></div><span class="small muted upick-n"></span><button type="button" class="btn sm" data-all="q" hidden></button><button type="button" class="btn sm" data-all="1">Chọn tất cả</button><button type="button" class="btn sm ghost" data-all="0">Bỏ chọn hết</button></div>
       <div class="tbl-wrap upick-t"><table class="t compact noclick"><thead><tr><th style="width:30px"></th><th>Mã căn</th><th>Tòa</th><th class="num">Tầng</th><th>Loại</th><th class="num">DT thông thủy</th><th class="num">Giá sau thuế</th><th class="num">Phí bảo trì</th><th class="num">Tổng giá căn hộ</th><th>Trạng thái</th></tr></thead><tbody>
       ${blds().map(b => { const all = units.filter(u => u.b === b), n = all.filter(isOn).length;
         return `<tr class="pg" data-g="${esc(b)}"><td><input type="checkbox" data-b="${esc(b)}" ${n === all.length ? 'checked' : ''}></td><td colspan="9"><b>Tòa ${esc(b)}</b> <span class="muted">— chọn ${n}/${all.length} căn</span></td></tr>` +
@@ -334,7 +351,7 @@ async function unitPicker(el, root) {
   };
   const load = async () => {
     const pid = projEl?.value || ''; if (pid === loadedFor) return draw(); loadedFor = pid; units = [];
-    if (pid) { box.innerHTML = '<div class="muted small">Đang tải danh sách căn…</div>'; units = (await api('GET', `/api/e/unit?project=${pid}&limit=20000`)).rows.map(u => ({ ...u, b: String(u.building_id__l || '').split(' · ')[0].toUpperCase() })).sort((a, c) => a.code.localeCompare(c.code, 'vi', { numeric: true })); }
+    if (pid) { box.innerHTML = '<div class="muted small">Đang tải danh sách căn…</div>'; units = (await Promise.all(pid.split(',').map(p => api('GET', `/api/e/unit?project=${p}&limit=20000`)))).flatMap(r => r.rows).map(u => ({ ...u, b: String(u.building_id__l || '').split(' · ')[0].toUpperCase() })).sort((a, c) => a.code.localeCompare(c.code, 'vi', { numeric: true })); }
     draw();
   };
   box.addEventListener('input', e => { if (!e.target.matches('.upick-q')) return; e.stopPropagation(); q = e.target.value.trim().toLowerCase(); applyQ(); });
@@ -348,7 +365,12 @@ async function unitPicker(el, root) {
     setVal(picked);
   });
   box.addEventListener('click', e => { const a = e.target.closest('[data-all]'); if (a) setVal(a.dataset.all === '1' ? [...units] : a.dataset.all === 'q' ? [...new Set([...units.filter(isOn), ...units.filter(hit)])] : []); });   // «q» = thêm các căn tìm được
-  projEl && projEl.addEventListener('change', () => { if (loadedFor !== null && projEl.value !== loadedFor) { hid.value = '*'; sel = new Set(['*']); } load(); });
+  // đổi dự án: giữ các tòa / căn đã chọn còn thuộc dự án đang chọn, không còn gì thì về tất cả
+  projEl && projEl.addEventListener('change', async () => {
+    if (loadedFor === null || projEl.value === loadedFor) return load();
+    await load(); const keep = [...sel].filter(s => s !== '*' && units.some(u => u.b === s || u.code.toUpperCase() === s));
+    hid.value = keep.length && !sel.has('*') ? keep.join(',') : '*'; sel = new Set(hid.value.split(',')); draw();
+  });
   await load();
 }
 
