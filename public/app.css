@@ -768,3 +768,11 @@ table.prod-t tfoot td { font-weight: 800 !important; color: var(--ink) !importan
 .m4t td.wrap { white-space: normal; min-width: 200px; }
 .m4t tr.m4head td { border-top: 1px solid #c9d6e6; }
 .m4t tbody tr:hover td { background: #f6f9fd; }
+
+/* tiêu đề nhóm trong form (Bên mua / Bên bán / Thông tin chi tiết…) */
+.form .fsec { grid-column: 1 / -1; margin: 10px 0 -2px; padding: 6px 10px; border-radius: 8px; background: #e8f3fb; color: #1e4e8c; font-weight: 700; font-size: 13px; }
+.form .fsec:first-child { margin-top: 0; }
+/* theo dõi chi trả: còn ≤ 30 ngày tô vàng, quá hạn tô đỏ */
+.pyt th { white-space: normal; min-width: 90px; vertical-align: middle; }
+.pyt td.wrap { white-space: normal; min-width: 180px; }
+.pyt tr.warn td { background: #fff8e6; } .pyt tr.neg td { background: #fff1f0; } .pyt tr.neg td.due { color: #c0392b; font-weight: 700; }

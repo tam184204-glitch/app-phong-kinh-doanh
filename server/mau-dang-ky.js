@@ -64,7 +64,8 @@ const PN3 = [
 const LA = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
 const so = n => String(n).replace('.', ',');
 
-function donNoiThat({ cdt, ten, du_an, gia, phong }) {
+// giá gói: theo Danh mục sản phẩm (giá trị hoàn thiện của căn → gói hoàn thiện gắn với căn); trống cả hai thì lấy giá mặc định NT_GIA của mẫu
+function donNoiThat({ cdt, ten, du_an, phong }) {
   const rows = phong.map(([ten, items], i) => `<tr class="grp"><td class="c">${LA[i]}</td><td colspan="6"><b>${ten}</b></td></tr>\n` +
     items.map(([t, cl, kt, dv], j) => `<tr><td class="c">${j + 1}</td><td>${t}</td><td>${cl}</td>${kt ? kt.map(x => `<td class="c">${so(x)}</td>`).join('') : '<td></td><td></td><td></td>'}<td class="c">${dv}</td><td class="c">1</td><td></td></tr>`).join('\n')).join('\n');
   return `${quoc_hieu}
@@ -76,8 +77,8 @@ function donNoiThat({ cdt, ten, du_an, gia, phong }) {
 ${khach}
 <p class="h">2. Thông tin gói hoàn thiện căn hộ</p>
 <p>Mã căn hộ: <b>{ma_can}</b></p>
-<p>Tổng giá trị gói hoàn thiện: <b>${gia.toLocaleString('vi-VN')}</b> đồng <i>(giá đã bao gồm VAT)</i></p>
-<p>Bằng chữ: <i>${moneyWords(gia)}</i></p>
+<p>Tổng giá trị gói hoàn thiện: <b>{gia_tri_hoan_thien}</b> đồng <i>(giá đã bao gồm VAT)</i></p>
+<p>Bằng chữ: <i>{gia_tri_hoan_thien_chu}</i></p>
 <p>Chi tiết gói hoàn thiện:</p>
 <table class="b sm">
 <tr class="th"><td rowspan="2">STT</td><td rowspan="2">Tên hàng</td><td rowspan="2">Chất liệu gỗ</td><td colspan="3">Kích thước (m)</td><td rowspan="2">Đơn vị tính</td><td rowspan="2">Số lượng</td><td rowspan="2">Ghi chú</td></tr>
@@ -107,10 +108,12 @@ const MAU_DANG_KY = () => [
     content: donMua({ ...CT, dot: [D1, 'Đợt 2: Trong vòng 60 ngày kể từ ngày đóng tiền đợt 1, Bên Mua có trách nhiệm thanh toán cho Bên Bán 40% giá trị Căn Hộ.',
       'Đợt 3: Trong vòng 10 ngày kể từ ngày Bên Bán phát hành thông báo bàn giao gửi Bên Mua, Bên Mua có trách nhiệm thanh toán 25% giá trị căn hộ và 2% phí bảo trì.', D_CUOI(4)] }) },
   { code: 'DK-NT-TNS-2PN', name: 'Đơn đăng ký G (NT) – hoàn thiện căn hộ 2 phòng ngủ', kind: 'dang_ky_noi_that', scope: 'TNS', bedrooms: 2,
-    content: donNoiThat({ ...TN, gia: 320000000, phong: PN2 }) },
+    content: donNoiThat({ ...TN, phong: PN2 }) },
   { code: 'DK-NT-TNS-3PN', name: 'Đơn đăng ký G (NT) – hoàn thiện căn hộ 3 phòng ngủ', kind: 'dang_ky_noi_that', scope: 'TNS', bedrooms: 3,
-    content: donNoiThat({ ...TN, gia: 380000000, phong: PN3 }) },
+    content: donNoiThat({ ...TN, phong: PN3 }) },
 ];
+// giá gói hoàn thiện theo file Excel — chỉ dùng khi căn chưa có giá trị hoàn thiện / gói hoàn thiện trong Danh mục sản phẩm
+const NT_GIA = { 'DK-NT-TNS-2PN': 320000000, 'DK-NT-TNS-3PN': 380000000 };
 const MAU_CU = ['MAU-DKCH-01', 'MAU-DKCH-02', 'MAU-DKNT-01'];   // mẫu khung cũ — tắt khi nạp mẫu chuẩn
 
-module.exports = { MAU_DANG_KY, MAU_CU };
+module.exports = { MAU_DANG_KY, MAU_CU, NT_GIA };

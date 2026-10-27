@@ -189,6 +189,7 @@ const ALERT_CAT = {
   phe_duyet: 'Chờ tôi phê duyệt', giu_cho: 'Giữ chỗ quá hạn / sắp hết hạn', noxh: 'Hồ sơ NOXH quá hạn bổ sung', ky_hd: 'Hợp đồng chưa ký đúng hẹn',
   no_qua_han: 'Khách hàng chậm thanh toán', den_han: 'Kỳ thu đến hạn ≤ 7 ngày', cam_ket: 'Cam kết thanh toán đến hẹn / thất hẹn', lien_he: 'Lịch liên hệ lại',
   ban_giao: 'Căn chưa bàn giao', ton_tai: 'Tồn tại quá hạn khắc phục', so_hong: 'Hồ sơ cấp sổ tồn đọng', cskh: 'Phản ánh, khiếu nại chưa giải quyết', ke_hoach: 'Kế hoạch thu chưa lập / chưa duyệt',
+  chi_tra: 'Đến hạn chi trả thanh lý (báo trước 30 ngày)',
 };
 async function alerts(db, user, f = {}) {
   const t = today(), out = [];
@@ -200,6 +201,14 @@ async function alerts(db, user, f = {}) {
   for (const r of await db.q(`SELECT r.id, r.code, r.status, r.hold_until, r.owner_id, u.code unit, u.id unit_id, k.full_name, own.full_name who FROM kd_reservation r JOIN kd_unit u ON u.id = r.unit_id JOIN kd_customer k ON k.id = r.customer_id LEFT JOIN kd_user own ON own.id = r.owner_id
     WHERE (r.status = 'qua_han' OR (r.status IN ('giu_cho','da_coc') AND r.hold_until < now() + interval '24 hours')) ${w}`, p))
     push('giu_cho', r.status === 'qua_han' ? 'r' : 'a', `${r.unit} · ${r.full_name} — ${r.status === 'qua_han' ? 'đã quá hạn giữ chỗ, cần gia hạn / giải phóng / lập HĐ' : 'hết hạn giữ chỗ trong 24h'}`, 'reservation', r.id, String(r.hold_until).slice(0, 10), r.who, r.unit_id, r.owner_id);
+  // hủy giao dịch / thanh lý: chưa chi tiền mà ngày dự kiến chi trả còn ≤ 30 ngày hoặc đã qua
+  for (const r of await db.q(`SELECT t.id, t.code, t.pay_due, t.pay_amount, u.code unit, u.id unit_id, coalesce(k.full_name, rs.cust_name) full_name, own.full_name who, t.created_by
+    FROM kd_cancel_req t LEFT JOIN kd_reservation rs ON rs.id = t.reservation_id LEFT JOIN kd_contract c ON c.id = t.contract_id LEFT JOIN kd_unit u ON u.id = coalesce(c.unit_id, rs.unit_id)
+    LEFT JOIN kd_customer k ON k.id = coalesce(c.customer_id, rs.customer_id) LEFT JOIN kd_user own ON own.id = t.created_by
+    WHERE t.status <> 'tu_choi' AND coalesce(t.pay_status, 'chua_chi') IN ('chua_chi','mot_phan') AND t.pay_due <= $${p.length + 1}::date + 30 ${w}`, [...p, t])) {
+    const late = r.pay_due < t;
+    push('chi_tra', late ? 'r' : r.pay_due <= addDays(t, 7) ? 'a' : 'b', `${r.unit || ''} · ${r.full_name || ''} — ${late ? 'quá hạn chi trả' : 'đến hạn chi trả'} ${r.pay_amount ? fmtMoney(r.pay_amount) + 'đ ' : ''}ngày ${C.dmy(r.pay_due)} (${r.code})`, 'cancel_req', r.id, r.pay_due, r.who, r.unit_id, r.created_by);
+  }
   for (const r of await db.q(`SELECT n.id, n.supplement_due, n.owner_id, u.code unit, u.id unit_id, k.full_name, own.full_name who FROM kd_noxh_check n JOIN kd_customer k ON k.id = n.customer_id LEFT JOIN kd_unit u ON u.id = n.unit_id LEFT JOIN kd_user own ON own.id = n.owner_id
     WHERE n.status IN ('nhap','tu_choi') AND n.result = 'can_bo_sung' AND n.supplement_due <= $${p.length + 1}::date + 3 ${w}`, [...p, t]))
     push('noxh', r.supplement_due < t ? 'r' : 'a', `${r.unit || ''} · ${r.full_name} — hồ sơ NOXH cần bổ sung, hạn ${C.dmy(r.supplement_due)}`, 'noxh_check', r.id, r.supplement_due, r.who, r.unit_id, r.owner_id);
@@ -283,6 +292,16 @@ async function board(db, user, f) {
 // ======================= CHI TIẾT BẢNG GIÁ THEO CĂN =======================
 // Giá sau thuế lấy từ bảng hàng (mode bang_hang) hoặc đơn giá × DT thông thủy (mode don_gia, cùng cách tính với B.pricing);
 // tách ngược ra giá trước thuế / tiền thuế theo % VAT của chính sách, đơn giá nền = trước thuế / DT thông thủy.
+// bảng theo dõi hủy giao dịch, thanh lý hợp đồng và chi trả tiền (theo file Excel của phòng Kinh doanh)
+async function payouts(db, user, f = {}) {
+  if (!can(user, E.cancel_req, 'r')) deny();
+  const p = []; const w = uf(f, p);
+  return db.q(`SELECT t.id, t.code, t.kind, t.status, t.money_plan, t.liquidate_on, t.wait_days, t.pay_due, t.pay_amount, t.acct_status, t.acct_on, t.pay_status, t.paid_on, t.note,
+      c.number contract_no, c.status contract_status, u.code unit, pj.code project, coalesce(k.full_name, r.cust_name) customer, coalesce(k.phone, r.phone) phone
+    FROM kd_cancel_req t LEFT JOIN kd_reservation r ON r.id = t.reservation_id LEFT JOIN kd_contract c ON c.id = t.contract_id
+    LEFT JOIN kd_unit u ON u.id = coalesce(c.unit_id, r.unit_id) LEFT JOIN kd_project pj ON pj.id = u.project_id
+    LEFT JOIN kd_customer k ON k.id = coalesce(c.customer_id, r.customer_id) WHERE true ${w} ORDER BY t.pay_due NULLS LAST, t.id DESC`, p);
+}
 async function priceSheet(db, user, id) {
   if (!can(user, E.price_policy, 'r')) deny();
   const pol = C.notFound(await db.one(`SELECT t.*, (SELECT string_agg(p.code, ', ' ORDER BY array_position(t.project_ids, p.id)) FROM kd_project p WHERE p.id = ANY(t.project_ids)) project_code FROM kd_price_policy t WHERE t.id = $1`, [+id]), 'chính sách');
@@ -581,4 +600,4 @@ async function monthly(db, period, projectId) {
   };
 }
 
-module.exports = { priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
+module.exports = { payouts, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };

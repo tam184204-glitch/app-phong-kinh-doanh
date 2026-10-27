@@ -389,6 +389,12 @@ H.noxh_check = {
 
 H.cancel_req = {
   async beforeSave(r, old, { db }) {
+    // theo dõi chi trả: ngày dự kiến = ngày ký thanh lý + thời gian chờ; ghi ngày thì tự đổi tình trạng
+    if (r.wait_days == null) r.wait_days = 30;
+    r.pay_due = r.liquidate_on ? C.addDays(r.liquidate_on, +r.wait_days || 0) : null;
+    if (r.acct_on && r.acct_status !== 'da') r.acct_status = 'da';
+    if (r.paid_on && !['da_chi', 'mot_phan'].includes(r.pay_status)) r.pay_status = 'da_chi';
+    if (r.pay_status === 'da_chi' && !r.paid_on) bad('Ghi «Ngày chi tiền thực tế» khi tình trạng là Đã chi');
     if (!r.reservation_id && !r.contract_id) bad('Chọn phiếu giữ chỗ hoặc hợp đồng cần xử lý');
     if (r.contract_id && !r.reservation_id) r.reservation_id = (await raw(db, 'contract', r.contract_id)).reservation_id;
     if (r.reservation_id && r.contract_id) { const c = await raw(db, 'contract', r.contract_id); if (c.reservation_id && c.reservation_id !== r.reservation_id) bad('Hợp đồng không thuộc phiếu giữ chỗ đã chọn'); }
@@ -427,8 +433,20 @@ H.cancel_req = {
 };
 
 H.contract = {
+  // danh sách theo nhóm: ?group=can_ho | lien_ke
+  where(qs) { if (['can_ho', 'lien_ke'].includes(qs.group)) return { sql: 't.ptype = $1', params: [qs.group] }; },
   async beforeSave(r, old, { db, opts }) {
-    r.number = r.number?.trim().toUpperCase().replace(/\s+/g, '');
+    r.number = r.number?.trim().toUpperCase().replace(/\s+/g, '') || null;
+    // phân loại theo loại căn
+    if (!old || old.unit_id !== r.unit_id || !r.ptype) { const u0 = await raw(db, 'unit', r.unit_id); if (u0) r.ptype = ['lien_ke', 'shophouse'].includes(u0.kind) ? 'lien_ke' : 'can_ho'; }
+    // số hợp đồng để trống → HDCH.YYMM-0001 / HDLK.YYMM-0001
+    if (!r.number) {
+      const d = String(r.contract_on || today()), pre = `${r.ptype === 'lien_ke' ? 'HDLK' : 'HDCH'}.${d.slice(2, 4)}${d.slice(5, 7)}-`;
+      const last = await db.one("SELECT max(substring(number from '\\d+$')::int) n FROM kd_contract WHERE number LIKE $1", [pre + '%']);
+      r.number = pre + String((last?.n || 0) + 1).padStart(4, '0');
+    }
+    if (r.pretax > 0 && r.vat_pct != null && r.vat_amt == null) r.vat_amt = Math.round(r.pretax * r.vat_pct / 100);
+    if (r.pretax > 0 && r.after_tax == null) r.after_tax = r.pretax + (r.vat_amt || 0);
     if (!(r.value > 0)) bad('Giá trị hợp đồng phải > 0');
     if (!old || old.unit_id !== r.unit_id) {
       const u = await raw(db, 'unit', r.unit_id);

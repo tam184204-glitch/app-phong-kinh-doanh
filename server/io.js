@@ -366,7 +366,7 @@ async function printReservation(id, user, kind, tplCode) {
   const k = r.customer_id ? await one('SELECT tax_code FROM kd_customer WHERE id = $1', [r.customer_id]) : null;
   const pol = r.policy_id ? await one('SELECT code, version FROM kd_price_policy WHERE id = $1', [r.policy_id]) : null;
   const lab = (f, v) => E.reservation.fields.find(x => x.k === f).o.find(o => o[0] === v)?.[1] || '';
-  const finish = u.finish_value ?? u.pk_value;
+  const finish = u.finish_value ?? u.pk_value ?? require('./mau-dang-ky').NT_GIA[tpl.code];
   // giá căn theo công thức đơn đăng ký Excel: trước thuế = ROUND(DT × đơn giá, -3); VAT 5%; bảo trì = ROUND(trước thuế × 2%, -3); tổng = ROUND(cộng, -3)
   // đơn giá lấy ở Danh mục sản phẩm; căn chưa có thì suy ra từ giá sau thuế
   const r3 = v => Math.round(v / 1000) * 1000, area = +(u.area_tt || 0), net = +(u.price_net || 0);

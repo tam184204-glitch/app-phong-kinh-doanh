@@ -156,6 +156,11 @@ async function ensureTemplates() {
     for (const t of MAU_DANG_KY()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) { await C.create('template', { ...t, active: true }, sysU, { db, system: true }); moi++; }
     if (moi) await db.q('UPDATE kd_template SET active = false WHERE code = ANY($1)', [MAU_CU]);
     // mẫu đã nạp trước 27/10: đổi quốc hiệu «o0o» sang thể thức NĐ 30 + tách «Nơi cấp» xuống dòng (chỉ thay đúng đoạn cũ, giữ phần đã sửa tay)
+    // mẫu G (NT) nạp trước 27/10 ghi cứng giá gói → đổi sang trường trộn (giá theo Danh mục sản phẩm)
+    for (const [code, gia] of Object.entries(require('./mau-dang-ky').NT_GIA)) {
+      const a = `<b>${gia.toLocaleString('vi-VN')}</b>`, w = `<i>${require('./io').moneyWords(gia)}</i>`;
+      await db.q('UPDATE kd_template SET content = replace(replace(content, $1, $2), $3, $4) WHERE code = $5 AND strpos(content, $1) > 0', [a, '<b>{gia_tri_hoan_thien}</b>', w, '<i>{gia_tri_hoan_thien_chu}</i>', code]);
+    }
     const qhCu = '<div class="c"><b>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</b><br><b>Độc lập – Tự do – Hạnh phúc</b><br>-------o0o------</div>';
     const qhMoi = '<div class="qh"><b>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</b><br><b class="tn">Độc lập - Tự do - Hạnh phúc</b></div>';
     const cccdCu = '<td>Ngày cấp: {ngay_cap}</td><td>Nơi cấp: {noi_cap}</td></tr></table>', cccdMoi = '<td>Ngày cấp: {ngay_cap}</td></tr></table>\n<p>Nơi cấp: {noi_cap}</p>';
@@ -168,6 +173,9 @@ async function ensureTemplates() {
     for (const n of await db.q('SELECT id, items FROM kd_noxh_check'))
       if (Array.isArray(n.items) && n.items.length === ckCu._all.length && n.items.every((x, i) => x.n === ckCu._all[i] && !x.st && !x.note && x.qty == null))
         await db.q('UPDATE kd_noxh_check SET items = $1 WHERE id = $2', [itemsMoi, n.id]);
+    // hợp đồng có trước khi chia 2 loại: phân loại theo loại căn
+    await db.q("UPDATE kd_contract c SET ptype = CASE WHEN u.kind IN ('lien_ke','shophouse') THEN 'lien_ke' ELSE 'can_ho' END FROM kd_unit u WHERE u.id = c.unit_id AND c.ptype IS NULL");
+    await db.q("UPDATE kd_cancel_req SET wait_days = 30 WHERE wait_days IS NULL");
     await db.q("UPDATE kd_reservation SET reg_at = coalesce(created_at, reg_date::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh') WHERE reg_at IS NULL");
     // phiếu lập trước khi có mẫu «Phiếu đăng ký căn hộ»: chép thông tin khách + suy ra trạng thái căn / tiến trình
     await db.q(`UPDATE kd_reservation r SET cust_name = k.full_name, id_no = k.id_no, id_date = k.id_date, id_place = k.id_place, address = k.address, phone = k.phone
