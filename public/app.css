@@ -403,3 +403,9 @@ table.prod-t td.pi { padding-left: 30px; }
 table.sheet-t td.tax { background: #fdf0ef; }
 @media (max-width: 860px) { .prod { grid-template-columns: 1fr; } }
 table.cust-t td.wrap { min-width: 240px; }
+.top-scroll { overflow-x: auto; overflow-y: hidden; height: 14px; border-bottom: 1px solid var(--line2); }
+.top-scroll > div { height: 1px; }
+.top-scroll { scrollbar-width: auto; scrollbar-color: #8a8f98 #eef2f6; }
+.top-scroll::-webkit-scrollbar { height: 12px; }
+.top-scroll::-webkit-scrollbar-track { background: #eef2f6; }
+.top-scroll::-webkit-scrollbar-thumb { background: #8a8f98; border-radius: 6px; border: 2px solid #eef2f6; }

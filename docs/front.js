@@ -518,6 +518,23 @@ async function importModal(kind, after) {
   $('#iDry', m.el).onclick = go(true); $('#iGo', m.el).onclick = go(false);
 }
 
+// ---------- thanh kéo ngang phía trên bảng rộng (đồng bộ với thanh dưới) ----------
+function syncTopScroll() {
+  $$('.tbl-wrap').forEach(w => {
+    let bar = w.previousElementSibling;
+    if (!bar?.classList.contains('top-scroll')) {
+      bar = document.createElement('div'); bar.className = 'top-scroll'; bar.innerHTML = '<div></div>'; w.before(bar);
+      bar.onscroll = () => { if (w.scrollLeft !== bar.scrollLeft) w.scrollLeft = bar.scrollLeft; };
+      w.addEventListener('scroll', () => { if (bar.scrollLeft !== w.scrollLeft) bar.scrollLeft = w.scrollLeft; });
+    }
+    bar.style.display = w.scrollWidth > w.clientWidth + 1 ? '' : 'none';
+    bar.firstChild.style.width = w.scrollWidth + 'px';
+    bar.scrollLeft = w.scrollLeft;
+  });
+}
+new MutationObserver(debounce(syncTopScroll, 60)).observe(document.documentElement, { childList: true, subtree: true });
+window.addEventListener('resize', debounce(syncTopScroll, 100));
+
 // ---- screens.js
 // Khung app, đăng nhập, điều hướng và các màn tổng hợp.
 'use strict';
