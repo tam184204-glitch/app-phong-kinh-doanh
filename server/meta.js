@@ -135,14 +135,15 @@ def('customer', {
   purpose: 'Tạo một hồ sơ khách hàng thống nhất', users: 'Nhân viên kinh doanh / hồ sơ',
   how: 'Tìm khách cũ → nếu chưa có thì tạo → kiểm tra trùng → liên kết giao dịch',
   rules: 'Chỉ người có quyền được xem dữ liệu định danh; cảnh báo trùng điện thoại/giấy tờ',
-  c: ['ban_hang', 'truong_phong', 'ho_so', 'cskh'], own: ['ban_hang'], search: ['code', 'full_name', 'phone', 'phone2'], fields: [
+  c: ['ban_hang', 'truong_phong', 'ho_so', 'cskh'], own: ['ban_hang'], search: ['code', 'full_name', 'phone', 'phone2', 'bravo_id'], fields: [
     { k: 'code', l: 'Mã khách hàng', t: 'code', prefix: 'KH', pad: 6 },
     { k: 'full_name', l: 'Họ tên', t: 'text', req: 1 },
     { k: 'phone', l: 'Điện thoại', t: 'text', req: 1, help: '09xxxxxxxx' },
     { k: 'phone2', l: 'Điện thoại khác', t: 'text' },
     { k: 'email', l: 'Email', t: 'text' },
+    { k: 'tax_code', l: 'Mã số thuế', t: 'text', pii: 1, help: 'MST cá nhân (thường trùng số CCCD)' },
     { k: 'kind', l: 'Phân loại', t: 'sel', def: 'tiem_nang', o: [['tiem_nang', 'Tiềm năng', 'a'], ['giao_dich', 'Đã giao dịch', 'g']] },
-    { k: 'stage', l: 'Tình trạng chăm sóc', t: 'sel', def: 'moi', o: [['moi', 'Mới', 's'], ['dang_cham_soc', 'Đang chăm sóc', 'b'], ['hen_tham_quan', 'Hẹn tham quan', 'v'], ['quan_tam_cao', 'Quan tâm cao', 'g'], ['khong_nhu_cau', 'Không có nhu cầu', 'r']] },
+    { k: 'stage', l: 'Tình trạng', t: 'sel', def: 'moi', o: [['moi', 'Mới', 's'], ['dang_cham_soc', 'Đang chăm sóc', 'b'], ['hen_tham_quan', 'Hẹn tham quan', 'v'], ['quan_tam_cao', 'Quan tâm cao', 'g'], ['khong_nhu_cau', 'Không có nhu cầu', 'r']] },
     { k: 'source', l: 'Nguồn khách', t: 'sel', opt: 'nguon_khach', req: 1 },
     { k: 'agent_id', l: 'Đại lý / CTV giới thiệu', t: 'ref', ref: 'agent' },
     { k: 'interest_project', l: 'Dự án quan tâm', t: 'ref', ref: 'project' },
@@ -156,7 +157,8 @@ def('customer', {
     { k: 'noxh_group', l: 'Nhóm đối tượng NOXH', t: 'sel', opt: 'nhom_noxh' },
     owner(),
     { k: 'note', l: 'Ghi chú', t: 'long' },
-  ], list: ['code', 'full_name', 'phone', 'kind', 'stage', 'source', 'owner_id'],
+    { k: 'bravo_id', l: 'ID Bravo', t: 'text', help: 'ID khách hàng bên Bravo — để đối chiếu khi đồng bộ' },
+  ], list: ['full_name', 'code', 'address', 'phone', 'email', 'tax_code', 'stage', 'bravo_id'],
 });
 def('contact_log', {
   title: 'Nhật ký tư vấn – liên hệ', one: 'nhật ký', code: 'KH-02', mod: '03', icon: 'fa-comments', disp: "to_char(t.at,'DD/MM/YYYY HH24:MI')",

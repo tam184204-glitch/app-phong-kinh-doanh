@@ -330,7 +330,7 @@ async function create(entKey, input, user, opts = {}) {
     if (H[entKey]?.beforeSave) await H[entKey].beforeSave(rec, null, ctx);
     requireFields(e, rec);
     if (opts.check) return { ok: true, warnings: ctx.warn };
-    for (const f of e.fields) if (f.t === 'code' && !rec[f.k]) rec[f.k] = input[f.k] && opts.system ? input[f.k] : await nextCode(db, f);
+    for (const f of e.fields) if (f.t === 'code' && !rec[f.k]) rec[f.k] = input[f.k] && (opts.system || opts.keepCode) ? input[f.k] : await nextCode(db, f);
     const keys = Object.keys(rec).filter(k => F[entKey][k]);
     const vals = keys.map(k => { const f = F[entKey][k]; return (f.t === 'check' || f.t === 'json') && rec[k] != null ? JSON.stringify(rec[k]) : rec[k]; });
     const row = await db.one(`INSERT INTO ${e.table} (${[...keys, 'created_by', 'is_demo', 'created_at'].join(', ')}) VALUES (${[...keys, 1, 2, 3].map((_, i) => '$' + (i + 1)).join(', ')}) RETURNING *`,
