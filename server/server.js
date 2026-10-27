@@ -399,7 +399,10 @@ async function handle(req, res) {
         if (!user) return r.html ? send(res, 302, '', { Location: '/' }) : send(res, 401, { error: 'Phiên đăng nhập đã hết — đăng nhập lại' });
         if (user.must_change && !r.allowMustChange) return send(res, 403, { error: 'Cần đổi mật khẩu trước khi làm việc', must_change: true });
       }
+      // tình trạng khách hàng tự đồng bộ: trước khi đọc danh sách khách, sau mỗi thao tác ghi
+      if (req.method === 'GET' && pth.startsWith('/api/e/customer')) await B.syncStages({ q, one });
       await r.fn(req, res, user, m.groups || {}, qs);
+      if (req.method !== 'GET' && user) B.syncStages({ q, one }).catch(e => console.error('syncStages', e.message));
     } catch (e) {
       if (e instanceof HttpError) return send(res, e.status, { error: e.message, fields: e.fields });
       console.error(new Date().toISOString(), req.method, pth, e);

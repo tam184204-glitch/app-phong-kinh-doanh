@@ -636,7 +636,37 @@ async function jobs(db) {
     if (k.cond_contract !== h.cond_contract || k.cond_pay !== h.cond_pay || st !== h.status) await sys(db, 'handover', h.id, { cond_contract: k.cond_contract, cond_pay: k.cond_pay, status: st }, null, 'cap_nhat_dieu_kien');
   }
   for (const c of await db.q("SELECT c.id FROM kd_contract c JOIN kd_reservation r ON r.id = c.reservation_id WHERE r.agent_id IS NOT NULL")) await refreshCommission(db, c.id, null);
+  await syncStages(db);
   return Date.now() - t0;
 }
 
-module.exports = { H, debtOf, PAY_ST, recomputeUnit, pricing, normSchedule, writeSchedule, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+// ======================= TÌNH TRẠNG KHÁCH HÀNG (tự đồng bộ theo giao dịch) =======================
+// Khách chưa có giao dịch giữ nguyên tình trạng tìm khách (03). Có giao dịch → tình trạng sau mở bán cao nhất đạt được:
+// HSMN → SXD duyệt → chờ ký → đã ký HĐMB → TT đợt 2/3 → chờ bàn giao → đã bàn giao → thanh lý → nộp hồ sơ sổ → ra sổ
+const STAGE_RANK = ['da_nop_hsmn', 'sxd_duyet', 'cho_ky_hdmb', 'da_ky_hdmb', 'tt_dot_2', 'tt_dot_3', 'cho_ban_giao', 'da_ban_giao', 'lam_don_thanh_ly', 'da_thanh_ly', 'da_nop_hs_so', 'da_ra_so'];
+let syncing = null;
+function syncStages(db) { return syncing ||= doSyncStages(db).finally(() => { syncing = null; }); }
+async function doSyncStages(db) {
+  const best = new Map(), bump = (cid, st) => { if (cid && STAGE_RANK.indexOf(st) > STAGE_RANK.indexOf(best.get(cid) ?? '')) best.set(cid, st); };
+  for (const r of await db.q("SELECT customer_id FROM kd_reservation WHERE status IN ('giu_cho','qua_han','da_coc','chuyen_hd')")) bump(r.customer_id, 'da_nop_hsmn');
+  for (const r of await db.q("SELECT customer_id, status FROM kd_noxh_check WHERE status <> 'tu_choi'")) bump(r.customer_id, r.status === 'da_duyet' ? 'sxd_duyet' : 'da_nop_hsmn');
+  const cts = await db.q("SELECT id, customer_id, status FROM kd_contract WHERE status NOT IN ('huy','tu_choi') AND kind <> 'hoan_thien'");
+  const D = await debtOf(db, cts.filter(c => c.status === 'da_ky').map(c => c.id));
+  for (const c of cts) {
+    if (c.status === 'thanh_ly') { bump(c.customer_id, 'da_thanh_ly'); continue; }
+    if (c.status !== 'da_ky') { bump(c.customer_id, 'cho_ky_hdmb'); continue; }
+    const paid = (D.get(c.id)?.inst || []).filter(i => i.amount > 0 && i.paid >= i.amount).length;   // số đợt đã thu đủ
+    bump(c.customer_id, paid >= 3 ? 'tt_dot_3' : paid >= 2 ? 'tt_dot_2' : 'da_ky_hdmb');
+  }
+  const own = new Map(cts.map(c => [c.id, c.customer_id]));
+  for (const r of await db.q("SELECT contract_id FROM kd_cancel_req WHERE kind = 'huy' AND status IN ('nhap','cho_duyet','da_duyet')")) bump(own.get(r.contract_id), 'lam_don_thanh_ly');
+  for (const h of await db.q("SELECT contract_id, status FROM kd_handover WHERE status <> 'chua_du_dk'")) bump(own.get(h.contract_id), ['da_ban_giao', 'hoan_tat'].includes(h.status) ? 'da_ban_giao' : 'cho_ban_giao');
+  for (const p of await db.q("SELECT coalesce(customer_id, (SELECT customer_id FROM kd_contract c WHERE c.id = contract_id)) cid, status FROM kd_pinkbook WHERE status IN ('da_nop','bo_sung','da_co_kq','da_giao_so')"))
+    bump(p.cid, ['da_co_kq', 'da_giao_so'].includes(p.status) ? 'da_ra_so' : 'da_nop_hs_so');
+  let n = 0;
+  for (const c of await db.q('SELECT id, stage FROM kd_customer WHERE id = ANY($1)', [[...best.keys()]]))
+    if (c.stage !== best.get(c.id)) { await sys(db, 'customer', c.id, { stage: best.get(c.id) }, null, 'cap_nhat_trang_thai', 'Tự đồng bộ theo giao dịch'); n++; }
+  return n;
+}
+
+module.exports = { syncStages, H, debtOf, PAY_ST, recomputeUnit, pricing, normSchedule, writeSchedule, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
