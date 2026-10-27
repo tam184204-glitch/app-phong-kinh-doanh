@@ -46,6 +46,7 @@ async function debtOf(db, ids) {
 const PAY_ST = { da_thu: 'Đã thu đủ', qua_han: 'Quá hạn', den_han: 'Đến hạn hôm nay', sap_den_han: 'Sắp đến hạn (≤7 ngày)', mot_phan: 'Thu một phần', chua_den_han: 'Chưa đến hạn' };
 
 // ======================= TRẠNG THÁI CĂN =======================
+const FREE_UNIT = ['con_ban', 'chua_mo_ban'];   // căn còn trống — lập phiếu đăng ký được
 async function recomputeUnit(db, unitId, user) {
   const u = unitId && await raw(db, 'unit', unitId); if (!u) return;
   let st;
@@ -265,8 +266,8 @@ H.reservation = {
     else if (!opts.system && (!r.status || ['nhap', 'tu_choi'].includes(r.status))) r.status = r.deposit > 0 ? 'da_coc' : 'giu_cho';
     await linkCustomer(db, r, old, user, opts, demo);
     if (changedUnit && !opts.system) {
-      if (!u.activated) bad(`Căn ${u.code} chưa được duyệt mở bán`);
-      if (u.status !== 'con_ban') bad(`Căn ${u.code} đang «${await C.optLabel(C.F.unit.status, u.status)}» — không giữ chỗ được`);
+      // căn còn trống (Còn bán / Chưa mở bán) mới lập phiếu được — căn chưa mở bán tự mở bán khi lưu phiếu
+      if (!FREE_UNIT.includes(u.status)) bad(`Căn ${u.code} đang «${await C.optLabel(C.F.unit.status, u.status)}» — không giữ chỗ được`);
     }
     if (r.hold_until && r.reg_date && new Date(Date.parse(r.hold_until) + 7 * 3600e3).toISOString().slice(0, 10) < r.reg_date) bad('Hạn giữ chỗ phải sau ngày đăng ký');
     if (!old && r.hold_until && Date.parse(r.hold_until) < Date.now() && !opts.system) bad('Hạn giữ chỗ đã qua');
@@ -286,11 +287,15 @@ H.reservation = {
   },
   async onSubmit(r, { db }) {
     const u = await raw(db, 'unit', r.unit_id);
-    if (u.status !== 'con_ban') bad(`Căn ${u.code} không còn trống (${await C.optLabel(C.F.unit.status, u.status)})`);
+    if (!FREE_UNIT.includes(u.status)) bad(`Căn ${u.code} không còn trống (${await C.optLabel(C.F.unit.status, u.status)})`);
   },
   async onApprove(r, ok) { return ok ? { status: r.deposit > 0 ? 'da_coc' : 'giu_cho' } : null; },
   async afterApprove(r, ok, { db, user }) { await recomputeUnit(db, r.unit_id, user); if (ok) await markCustomer(db, r.customer_id, user); },
   async afterSave(r, old, { db, user }) {
+    if (!old || old.unit_id !== r.unit_id) {
+      const u = await raw(db, 'unit', r.unit_id);
+      if (u && !u.activated && !u.lock) await sys(db, 'unit', u.id, { activated: true }, user, 'kich_hoat', 'Mở bán khi lập phiếu đăng ký căn hộ');
+    }
     if (!old || old.status !== r.status || old.unit_id !== r.unit_id || old.deposit !== r.deposit || old.reg_state !== r.reg_state) await recomputeUnit(db, r.unit_id, user);
     if (r.customer_id && ['giu_cho', 'da_coc', 'chuyen_hd'].includes(r.status)) await markCustomer(db, r.customer_id, user);
     if (old && old.unit_id !== r.unit_id) await recomputeUnit(db, old.unit_id, user);

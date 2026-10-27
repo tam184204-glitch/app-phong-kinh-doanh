@@ -207,7 +207,7 @@ function combo(c, root, onChange) {
     if (multi) items = items.filter(it => !ids().includes(it.id));
     if (document.activeElement !== txt) return;
     close(); box = document.createElement('div'); box.className = 'opts'; cur = -1;
-    box.innerHTML = items.length ? items.map((it, i) => `<div data-i="${i}"><span>${esc(it.label)}</span><small>${esc(it.sub || '')}</small></div>`).join('') : `<div class="muted">${multi && ids().length && !txt.value.trim() ? 'Đã chọn hết' : 'Không tìm thấy'}${c.dataset.filter === 'con_ban' ? ' căn còn bán' : ''}</div>`;
+    box.innerHTML = items.length ? items.map((it, i) => `<div data-i="${i}"><span>${esc(it.label)}</span><small>${esc(it.sub || '')}</small></div>`).join('') : `<div class="muted">${multi && ids().length && !txt.value.trim() ? 'Đã chọn hết' : 'Không tìm thấy'}${/con_ban/.test(c.dataset.filter || '') ? ' căn còn trống' : ''}</div>`;
     box.onmousedown = e => { const d = e.target.closest('[data-i]'); if (d) { e.preventDefault(); pickIt(items[+d.dataset.i]); } };
     c.append(box);
   }, 200);
