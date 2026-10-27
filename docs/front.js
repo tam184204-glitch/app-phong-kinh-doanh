@@ -879,7 +879,7 @@ V.approvals = async main => {
 // ======================= 02. BẢNG HÀNG =======================
 const USTAT = { con_ban: 'Còn bán', giu_cho: 'Giữ chỗ', da_coc: 'Đã cọc', da_ky_hd: 'Đã ký HĐ', da_ban_giao: 'Đã bàn giao', chua_mo_ban: 'Chưa mở bán', tam_khoa: 'Tạm khóa', ngung_kd: 'Ngừng KD' };
 V.board = async (main, params) => {
-  const s = ST.board ||= { project: '', building: '', st: '', kind: '', view: 'bang' };
+  const s = ST.board ||= { project: '', building: '', st: '', kind: '' };
   if (params.project) s.project = params.project;
   const draw = async () => {
     const d = await api('GET', `/api/board?${qsOf({ project: s.project, building: s.building })}`);
@@ -887,24 +887,16 @@ V.board = async (main, params) => {
     const cnt = {}; d.units.forEach(u => cnt[u.status] = (cnt[u.status] || 0) + 1);
     const floors = [...new Set(d.units.map(u => u.floor))].sort((a, b) => b - a);
     const kinds = [...new Set(d.units.map(u => u.kind))];
-    const pj = d.projects.find(p => p.id === d.project);
-    const vis = d.units.filter(u => !(s.st && s.st !== u.status) && !(s.kind && s.kind !== u.kind));
-    const rows = vis.slice().sort((a, b) => a.code.localeCompare(b.code, 'vi', { numeric: true })).map(u => ({ ...prodRow(u, pj), status: u.status, customer: u.customer }));
-    const sumT = c => c[3] ? prodCell({ [c[0]]: rows.reduce((a, r) => a + (+r[c[0]] || 0), 0) }, c) : '';
-    const table = `<div class="tbl-wrap"><table class="t grid-bravo board-t"><thead><tr><th>STT</th>${PROD_COLS.map(c => `<th class="${c[2] ? 'num' : ''}">${c[1]}</th>`).join('')}<th>Trạng thái</th><th>Khách hàng</th></tr></thead>
-      <tbody>${rows.map((r, i) => `<tr data-u="${r.id}" class="st-${r.status}"><td class="stt">${i + 1}</td>${PROD_COLS.map(c => `<td class="${c[2] ? 'num' : ''}">${prodCell(r, c)}</td>`).join('')}<td><span class="u-st ${r.status}">${USTAT[r.status] || r.status}</span></td><td>${esc(r.customer || '')}</td></tr>`).join('') || `<tr><td colspan="${PROD_COLS.length + 3}"><div class="empty">Không có căn nào</div></td></tr>`}</tbody>
-      <tfoot><tr><td></td><td colspan="2">Tổng ${rows.length} căn</td>${PROD_COLS.slice(2).map(c => `<td class="${c[2] ? 'num' : ''}">${sumT(c)}</td>`).join('')}<td></td><td></td></tr></tfoot></table></div>`;
-    main.innerHTML = `<div class="page">${head('02', 'Bảng hàng', 'fa-table-cells', `<div class="seg"><button class="btn sm ${s.view === 'bang' ? 'pri' : ''}" data-view="bang">${ico('fa-table')} Dạng bảng (như Excel)</button><button class="btn sm ${s.view === 'so_do' ? 'pri' : ''}" data-view="so_do">${ico('fa-table-cells')} Sơ đồ tầng</button></div>`)}
+    main.innerHTML = `<div class="page">${head('02', 'Bảng hàng', 'fa-table-cells', M.ents.reservation.perm.c ? `<span class="small muted">Bấm căn <b>Còn bán</b> để lập phiếu giữ chỗ</span>` : '')}
       <div class="card mb"><div class="toolbar" style="border:0"><select id="bp">${d.projects.filter(p => p.n).map(p => `<option value="${p.id}" ${p.id === d.project ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)} (${p.n} căn)</option>`).join('')}</select>
         <select id="bk"><option value="">Mọi loại căn</option>${kinds.map(k => `<option value="${k}" ${s.kind === k ? 'selected' : ''}>${esc(M.ents.unit.fields.find(f => f.k === 'kind').o.find(o => o[0] === k)?.[1] || k)}</option>`).join('')}</select>
         <span class="grow"></span>${d.policy ? `<span class="src">${ico('fa-tags')} Chính sách đang áp dụng: <b>${esc(d.policy.code)}</b> (${dmy(d.policy.start_on)} – ${dmy(d.policy.end_on)})${d.policy.src_file ? ' · ' + esc(d.policy.src_file) : ''}</span>` : '<span class="pill a">Chưa có chính sách giá đang phát hành</span>'}</div>
         <div style="padding:0 14px 12px"><div class="towers">${d.buildings.map(b => `<div class="tower ${b.id === d.building ? 'on' : ''}" data-b="${b.id}"><b>${esc(b.name || 'Tòa ' + b.code)}</b><small>${b.n} căn</small></div>`).join('')}</div></div></div>
-      <div class="card"><div class="toolbar"><div class="legend">${Object.entries(USTAT).filter(([k]) => cnt[k]).map(([k, l]) => `<span data-st="${k}" style="cursor:pointer;${s.st && s.st !== k ? 'opacity:.4' : ''}"><b class="u ${k}" style="width:12px;height:12px;min-height:0;padding:0;border-radius:3px"></b>${l} <b style="background:none;width:auto;height:auto;color:var(--ink)">${cnt[k]}</b></span>`).join('')}</div>${s.st ? '<button class="btn sm ghost" data-st="">Bỏ lọc</button>' : ''}<span class="grow"></span><span class="small muted">${M.ents.reservation.perm.c ? 'Bấm căn <b>Còn bán</b> để lập phiếu giữ chỗ · ' : ''}${d.units.length} căn · ${floors.length} tầng</span></div>
-      ${s.view === 'bang' ? table : `<div class="bd"><div class="floors">${floors.map(fl => `<div class="floor"><div class="fl">Tầng ${fl}</div><div class="us">${d.units.filter(u => u.floor === fl).map(u => `<div class="u ${u.status} ${(s.st && s.st !== u.status) || (s.kind && s.kind !== u.kind) ? 'dim' : ''}" data-u="${u.id}" title="${esc(u.code)} · ${USTAT[u.status]}${u.customer ? ' · ' + esc(u.customer) : ''}">${u.hold_until ? `<span class="hold">${ico('fa-clock')}</span>` : ''}<b>${esc(u.code.split('-').pop())}</b>${u.bedrooms || ''}PN${u.area_xd ? ` · XD ${fnum(u.area_xd)}` : ''}<br>TT ${fnum(u.area_tt)}m²<br>${fmB(u.total_price)}${u.door_dir || u.balcony_dir ? `<br>Cửa ${dirAb(u.door_dir)} · BC ${dirAb(u.balcony_dir)}` : ''}<div class="cu">${esc(u.customer || (u.door_dir ? '' : u.direction) || '')}</div></div>`).join('')}</div></div>`).join('') || '<div class="empty">Tòa chưa có căn</div>'}</div></div>`}</div></div>`;
+      <div class="card"><div class="toolbar"><div class="legend">${Object.entries(USTAT).filter(([k]) => cnt[k]).map(([k, l]) => `<span data-st="${k}" style="cursor:pointer;${s.st && s.st !== k ? 'opacity:.4' : ''}"><b class="u ${k}" style="width:12px;height:12px;min-height:0;padding:0;border-radius:3px"></b>${l} <b style="background:none;width:auto;height:auto;color:var(--ink)">${cnt[k]}</b></span>`).join('')}</div>${s.st ? '<button class="btn sm ghost" data-st="">Bỏ lọc</button>' : ''}<span class="grow"></span><span class="small muted">${d.units.length} căn · ${floors.length} tầng</span></div>
+      <div class="bd"><div class="floors">${floors.map(fl => `<div class="floor"><div class="fl">Tầng ${fl}</div><div class="us">${d.units.filter(u => u.floor === fl).map(u => `<div class="u ${u.status} ${(s.st && s.st !== u.status) || (s.kind && s.kind !== u.kind) ? 'dim' : ''}" data-u="${u.id}" title="${esc(u.code)} · ${USTAT[u.status]}${u.customer ? ' · ' + esc(u.customer) : ''}">${u.hold_until ? `<span class="hold">${ico('fa-clock')}</span>` : ''}<b>${esc(u.code.split('-').pop())}</b>${u.bedrooms || ''}PN · ${fnum(u.area_tt)}m²<br>${fmB(u.total_price)}<div class="cu">${esc(u.customer || u.direction || '')}</div></div>`).join('')}</div></div>`).join('') || '<div class="empty">Tòa chưa có căn</div>'}</div></div></div></div>`;
     $('#bp', main).onchange = e => { s.project = e.target.value; s.building = ''; draw(); };
     $('#bk', main).onchange = e => { s.kind = e.target.value; draw(); };
     main.onclick = run(async e => {
-      const v = e.target.closest('[data-view]'); if (v) { s.view = v.dataset.view; return draw(); }
       const b = e.target.closest('[data-b]'); if (b) { s.building = b.dataset.b; return draw(); }
       const st = e.target.closest('[data-st]'); if (st) { s.st = s.st === st.dataset.st ? '' : st.dataset.st; return draw(); }
       const u = e.target.closest('[data-u]'); if (u) return unitPop(d.units.find(x => x.id === +u.dataset.u), draw);
@@ -912,12 +904,11 @@ V.board = async (main, params) => {
   };
   await draw();
 };
-const dirAb = s => s ? String(s).trim().split(/\s+/).map(w => w[0].toUpperCase()).join('') : '—';   // Tây Nam → TN
 function unitPop(u, after) {
   const canRes = u.status === 'con_ban' && M.ents.reservation.perm.c;
-  const r = prodRow(u, M.projects.find(p => p.id === u.project_id));
   const m = modal({ title: `${ico('fa-door-open')} Căn ${esc(u.code)} ${pill(USTAT[u.status], { con_ban: 'g', giu_cho: 'a', da_coc: 'v', da_ky_hd: 'b', da_ban_giao: 't', tam_khoa: 'r' }[u.status])}`, narrow: true,
-    body: `<dl class="kv">${PROD_COLS.filter(c => c[0] !== 'code').map(c => `<div class="${c[0] === 'total' ? 'wide' : ''}"><dt>${c[1]}</dt><dd>${c[0] === 'total' ? `<b style="font-size:18px;color:var(--cobalt-d)">${prodCell(r, c)} đ</b>` : prodCell(r, c) || '—'}</dd></div>`).join('')}<div><dt>Tầng</dt><dd>${u.floor}</dd></div><div><dt>Dự kiến bàn giao</dt><dd>${esc(u.handover_plan || '')}</dd></div><div><dt>Khách hàng</dt><dd>${esc(u.customer || '—')}</dd></div>${u.hold_until ? `<div class="wide"><dt>Hạn giữ chỗ</dt><dd>${dmyhm(u.hold_until)}</dd></div>` : ''}</dl>`,
+    body: `<dl class="kv"><div><dt>Tầng</dt><dd>${u.floor}</dd></div><div><dt>Loại</dt><dd>${u.bedrooms || ''} phòng ngủ</dd></div><div><dt>Diện tích thông thủy</dt><dd>${fnum(u.area_tt)} m²</dd></div><div><dt>Hướng</dt><dd>${esc(u.direction || '')}</dd></div>
+      <div class="wide"><dt>Tổng giá căn hộ</dt><dd><b style="font-size:18px;color:var(--cobalt-d)">${fm(u.total_price)} đ</b></dd></div><div><dt>Dự kiến bàn giao</dt><dd>${esc(u.handover_plan || '')}</dd></div><div><dt>Khách hàng</dt><dd>${esc(u.customer || '—')}</dd></div>${u.hold_until ? `<div class="wide"><dt>Hạn giữ chỗ</dt><dd>${dmyhm(u.hold_until)}</dd></div>` : ''}</dl>`,
     foot: `<button class="btn" data-x>Đóng</button><button class="btn" id="u3">${ico('fa-building')} Hồ sơ 360°</button>${canRes ? `<button class="btn pri" id="ures">${ico('fa-hand-holding-hand')} Lập phiếu giữ chỗ</button>` : ''}` });
   $('#u3', m.el).onclick = () => { m.close(); location.hash = `#/v/unit360?id=${u.id}`; };
   $('#ures', m.el) && ($('#ures', m.el).onclick = () => { m.close(); openForm('reservation', { preset: { unit_id: u.id, unit_id__l: u.code, hold_until: new Date(Date.parse(addDays(today(), 3) + 'T17:00:00+07:00')).toISOString() }, onSaved: row => { after(); openDetail('reservation', row.id); } }); });
