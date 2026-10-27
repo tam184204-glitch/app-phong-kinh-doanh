@@ -416,6 +416,18 @@ V.products = async (main, params) => {
   await draw();
 };
 
+// tình trạng khách → màn nghiệp vụ liên quan (lọc sẵn theo tên khách)
+const STAGE_LINKS = {
+  sxd_duyet: [['contracts', 'Sổ theo dõi HĐ'], ['signing', 'Lịch ký HĐ'], ['contract_change', 'Điều chỉnh – phụ lục HĐ']],
+  da_ky_hdmb: [['ledger', 'Sổ công nợ căn hộ'], ['installment', 'Lịch thanh toán HĐ']],
+  tt_dot_2: [['installment', 'Lịch thanh toán HĐ']], tt_dot_3: [['installment', 'Lịch thanh toán HĐ']],
+};
+function stageGo(k, name) {
+  if (k === 'ledger') { (ST.ledger ||= { filter: '', q: '' }).q = name; location.hash = '#/v/ledger'; return; }
+  if (k === 'signing') { location.hash = '#/v/signing'; return; }
+  ST.list[k === 'contracts' ? 'contract' : k] = null;
+  location.hash = `#/e/${k === 'contracts' ? 'contract' : k}?q=${encodeURIComponent(name)}`;
+}
 // Danh mục khách hàng (kiểu Bravo): nhóm theo dự án (trái) — dự án quan tâm + dự án của căn đã giao dịch; lưới khách hàng (phải)
 V.customers = async (main, params) => {
   const s = ST.cust ||= { project: '', q: '', st: '' };
@@ -436,7 +448,7 @@ V.customers = async (main, params) => {
     const list = base.filter(r => (!s.st || r.stage === s.st) && (!q || `${r.full_name} ${r.code} ${r.units} ${r.phone || ''} ${r.address || ''} ${r.email || ''} ${r.bravo_id || ''}`.toLowerCase().includes(q)));
     const cnt = {}; base.forEach(r => cnt[r.stage] = (cnt[r.stage] || 0) + 1);
     const stO = M.ents.customer.fields.find(f => f.k === 'stage').o;
-    const cellOf = (r, k) => k === 'stage' ? (r.stage ? pill(optL('customer', 'stage', r.stage), stO.find(o => o[0] === r.stage)?.[2]) : '') : k === 'full_name' ? `${ico('fa-user', 'tw-ic')}${esc(r.full_name)}${r.is_demo ? ' <span class="tag demo">thử</span>' : ''}` : esc(r[k] || '');
+    const cellOf = (r, k) => k === 'stage' ? (r.stage ? pill(optL('customer', 'stage', r.stage), stO.find(o => o[0] === r.stage)?.[2]) + (STAGE_LINKS[r.stage] || []).filter(([v]) => v === 'ledger' || v === 'signing' || M.ents[v === 'contracts' ? 'contract' : v]?.perm.r).map(([v, l]) => ` <a class="stl" data-go="${v}" data-n="${esc(r.full_name)}" title="Mở ${esc(l)}">${ico('fa-arrow-up-right-from-square')} ${esc(l)}</a>`).join('') : '') : k === 'full_name' ? `${ico('fa-user', 'tw-ic')}${esc(r.full_name)}${r.is_demo ? ' <span class="tag demo">thử</span>' : ''}` : esc(r[k] || '');
     main.innerHTML = `<div class="page">${head('02', 'Danh mục khách hàng', 'fa-address-book', `${M.imports.customers ? `<button class="btn" id="kImp">${ico('fa-file-import')} Nhập Excel (Bravo)</button>` : ''}${ce.x ? `<button class="btn" id="kXls">${ico('fa-file-excel')} Xuất Excel</button>` : ''}${ce.c ? `<button class="btn pri" id="kNew">${ico('fa-plus')} Tạo khách hàng</button>` : ''}`, 'KH-01')}
       <div class="prod"><div class="card prod-nav"><div class="hd"><h3>${ico('fa-folder-tree')} Nhóm dữ liệu</h3></div><div class="pn">
         <a data-p="" class="${!s.project ? 'on' : ''}">${ico('fa-folder-open')} Tất cả khách hàng <small>${rows.length}</small></a>
@@ -454,6 +466,7 @@ V.customers = async (main, params) => {
   ST.reload = draw;
   main.onclick = run(async e => {
     const p = e.target.closest('[data-p]'); if (p) { s.project = p.dataset.p; return draw(); }
+    const go = e.target.closest('[data-go]'); if (go) return stageGo(go.dataset.go, go.dataset.n);
     const tr = e.target.closest('tr[data-c]'); if (tr) return openDetail('customer', +tr.dataset.c);
     if (e.target.closest('#kNew')) return openForm('customer', { preset: s.project ? { interest_project: +s.project } : {}, onSaved: row => { draw(); openDetail('customer', row.id); } });
     if (e.target.closest('#kImp')) return importModal('customers', draw);
