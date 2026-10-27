@@ -704,3 +704,7 @@ table.t tbody tr.sel td { background: var(--amber-50); }
 .kpi:hover { border-color: rgba(30, 78, 140, .22); background: linear-gradient(135deg, #f3f8ff, #e3eefb 60%, #fff6e6) !important; }
 .kpi.green:hover { border-color: rgba(78, 140, 84, .25); background: linear-gradient(135deg, #f3faf3, #e2f1e3 60%, #fbfdf6) !important; }
 .kpi.red:hover { border-color: rgba(192, 57, 43, .22); background: linear-gradient(135deg, #fff6f5, #fbe6e3 60%, #fffaf3) !important; }
+table.tree td.stt { color: var(--muted); font-variant-numeric: tabular-nums; width: 1%; }
+table.tree tr.tw-b td:first-child, table.tree tr.tw-u td:first-child { padding-left: 12px; }
+table.tree tr.tw-b td:nth-child(3) { padding-left: 34px; }
+table.tree tr.tw-u td:nth-child(3) { padding-left: 74px; }

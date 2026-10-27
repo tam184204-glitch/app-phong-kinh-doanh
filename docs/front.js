@@ -892,13 +892,13 @@ V.projects = async main => {
     const isOpen = k => s.open.has(k) || (!!q && (k[0] === 'p' || !!d.buildings.find(b => 'b' + b.id === k)?.units.some(u => unitMatch(u, q))));
     const stat = x => `<td class="num">${x.n}</td><td class="num">${x.con || ''}</td><td class="num">${x.sold || ''}</td><td class="num">${fnum(x.tt)}</td><td class="num">${fm(x.gia)}</td>`;
     const chev = (k, has) => has ? `<i class="fa-solid fa-chevron-right tw-chev ${isOpen(k) ? 'on' : ''}"></i>` : '<i class="tw-chev"></i>';
-    const rows = d.projects.filter(hitP).map(p => {
-      let h = `<tr class="tw-p" data-t="p${p.id}"><td>${chev('p' + p.id, p.buildings.length)}${ico('fa-city', 'tw-ic')}<b>${esc(p.code)}</b> · ${esc(p.name)}</td><td>${esc(optL('project', 'kind', p.kind))}</td><td class="num">${p.buildings.length ? p.buildings.length + ' tòa' : ''}</td>${stat(p.s)}
+    const rows = d.projects.filter(hitP).map((p, pi) => {
+      let h = `<tr class="tw-p" data-t="p${p.id}"><td class="stt">${pi + 1}</td><td><b>${esc(p.code)}</b></td><td>${chev('p' + p.id, p.buildings.length)}${ico('fa-city', 'tw-ic')}<b>${esc(p.name)}</b></td><td>${esc(optL('project', 'kind', p.kind))}</td><td class="num">${p.buildings.length ? p.buildings.length + ' tòa' : ''}</td>${stat(p.s)}
         <td class="tw-act">${be.c ? `<button class="btn sm ghost" data-add="building" data-p="${p.id}" title="Thêm tòa">${ico('fa-plus')} Tòa</button>` : ''}<button class="btn sm ghost" data-ed="project:${p.id}" title="Thông tin dự án">${ico('fa-pen-to-square')}</button></td></tr>`;
-      if (isOpen('p' + p.id)) h += p.buildings.filter(hitB).map(b => {
-        let r = `<tr class="tw-b" data-t="b${b.id}"><td>${chev('b' + b.id, b.units.length)}${ico('fa-building', 'tw-ic')}<b>${esc(bName(b))}</b></td><td>${esc(optL('building', 'kind', b.kind))}</td><td class="num">${b.floors ? b.floors + ' tầng' : ''}</td>${stat(b.s)}
+      if (isOpen('p' + p.id)) h += p.buildings.filter(hitB).map((b, bi) => {
+        let r = `<tr class="tw-b" data-t="b${b.id}"><td class="stt">${pi + 1}.${bi + 1}</td><td>${esc(b.code)}</td><td>${chev('b' + b.id, b.units.length)}${ico('fa-building', 'tw-ic')}<b>${esc(bName(b))}</b></td><td>${esc(optL('building', 'kind', b.kind))}</td><td class="num">${b.floors ? b.floors + ' tầng' : ''}</td>${stat(b.s)}
           <td class="tw-act">${ue.c ? `<button class="btn sm ghost" data-add="unit" data-p="${p.id}" data-b="${b.id}" data-bl="${esc(b.code)}" title="Thêm căn">${ico('fa-plus')} Căn</button>` : ''}<button class="btn sm ghost" data-ed="building:${b.id}" title="Thông tin tòa">${ico('fa-pen-to-square')}</button></td></tr>`;
-        if (isOpen('b' + b.id)) r += b.units.filter(u => unitMatch(u, q)).map(u => `<tr class="tw-u" data-u="${u.id}"><td>${ico('fa-door-open', 'tw-ic')}${esc(u.code)}</td><td>${esc(optL('unit', 'kind', u.kind))}${u.direction ? ` · <span class="muted">${esc(u.direction)}</span>` : ''}</td><td class="num">Tầng ${u.floor}</td>
+        if (isOpen('b' + b.id)) r += b.units.filter(u => unitMatch(u, q)).map((u, ui) => `<tr class="tw-u" data-u="${u.id}"><td class="stt">${pi + 1}.${bi + 1}.${ui + 1}</td><td>${esc(u.code)}</td><td>${ico('fa-door-open', 'tw-ic')}Căn ${esc(u.code.split('-').pop())}</td><td>${esc(optL('unit', 'kind', u.kind))}${u.direction ? ` · <span class="muted">${esc(u.direction)}</span>` : ''}</td><td class="num">Tầng ${u.floor}</td>
           <td colspan="3">${pill(USTAT[u.status] || u.status, UST_C[u.status])}</td><td class="num">${fnum(u.area_tt)}</td><td class="num">${fm(u.total_price)}</td><td></td></tr>`).join('');
         return r;
       }).join('');
@@ -907,9 +907,9 @@ V.projects = async main => {
     const t = d.sum(d.units);
     main.innerHTML = `<div class="page">${head('02', 'Danh mục dự án', 'fa-sitemap', `<button class="btn" id="cOpen">${ico('fa-angles-down')} Mở hết</button><button class="btn" id="cClose">${ico('fa-angles-up')} Thu gọn</button>${pe.c ? `<button class="btn pri" data-add="project">${ico('fa-plus')} Tạo dự án</button>` : ''}`)}
       <div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="cq" placeholder="Tìm dự án, tòa, mã căn…" value="${esc(s.q)}"></div><span class="grow"></span><span class="small muted">${d.projects.length} dự án · ${d.buildings.length} tòa · ${d.units.length} căn — bấm dự án để xem tòa, bấm tòa để xem căn</span></div>
-      <div class="tbl-wrap"><table class="t tree"><thead><tr><th>Dự án / tòa / căn</th><th>Loại</th><th class="num">Quy mô</th><th class="num">Số căn</th><th class="num">Còn bán</th><th class="num">Đã giao dịch</th><th class="num">DT thông thủy (m²)</th><th class="num">Tổng giá trị (đ)</th><th></th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="9"><div class="empty">${q ? 'Không có dự án / tòa / căn khớp' : 'Chưa có dự án'}</div></td></tr>`}</tbody>
-      <tfoot><tr><td>Tổng</td><td></td><td></td>${stat(t)}<td></td></tr></tfoot></table></div></div></div>`;
+      <div class="tbl-wrap"><table class="t tree"><thead><tr><th>STT</th><th>Mã</th><th>Dự án / tòa / căn</th><th>Loại</th><th class="num">Quy mô</th><th class="num">Số căn</th><th class="num">Còn bán</th><th class="num">Đã giao dịch</th><th class="num">DT thông thủy (m²)</th><th class="num">Tổng giá trị (đ)</th><th></th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="11"><div class="empty">${q ? 'Không có dự án / tòa / căn khớp' : 'Chưa có dự án'}</div></td></tr>`}</tbody>
+      <tfoot><tr><td></td><td>Tổng</td><td></td><td></td><td></td>${stat(t)}<td></td></tr></tfoot></table></div></div></div>`;
     const inp = $('#cq', main);
     inp.oninput = debounce(() => { s.q = inp.value; draw().then(() => { const i = $('#cq', main); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }); }, 250);
     $('#cOpen', main).onclick = () => { d.projects.forEach(p => s.open.add('p' + p.id)); d.buildings.forEach(b => s.open.add('b' + b.id)); draw(); };
