@@ -75,6 +75,14 @@ async function boot(pgliteUrl) {
   }
   // mẫu in đơn đăng ký chuẩn (thêm 27/10/2026) — giống máy thật: nạp mẫu còn thiếu, tắt mẫu khung cũ
   try { await require('../server/seed').ensureTemplates(); } catch (e) { console.warn('mẫu in', e); }
+  // hồ sơ mua NOXH theo Mẫu 4 (87 hộ — họ tên, SĐT, ngày sinh, CMND, CCCD là dữ liệu giả); nạp như «Nhập file Mẫu 4»
+  if ((await one('SELECT count(*) n FROM kd_noxh_check WHERE doi_tuong IS NOT NULL')).n < 80) {
+    say('Đang nạp hồ sơ mua NOXH (Mẫu 4)…');
+    try {
+      const IO = require('../server/io'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1");
+      await IO.importFile('mau4', { name: 'Mau 4 - demo (du lieu gia).xlsx', buffer: Buffer.from(require('../data/seed/Mau 4 - demo (du lieu gia).xlsx')) }, u);
+    } catch (e) { console.warn('nạp Mẫu 4', e); }
+  }
   // tòa K dự án CTS (thêm 27/10/2026, chưa có căn)
   if (!(await one("SELECT 1 FROM kd_building b JOIN kd_project p ON p.id = b.project_id WHERE p.code = 'CTS' AND b.code = 'K'")))
     await q("INSERT INTO kd_building (project_id, code, name, kind, created_at) SELECT id, 'K', 'Tòa K', 'chung_cu', now() FROM kd_project WHERE code = 'CTS'");

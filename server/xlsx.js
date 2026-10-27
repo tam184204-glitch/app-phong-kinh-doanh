@@ -66,7 +66,8 @@ const colIdx = ref => { const m = /^([A-Z]+)/.exec(ref); let n = 0; for (const c
 function readXlsx(buf) {
   const z = unzip(buf), txt = k => z[k] ? z[k].toString('utf8') : '';
   const ss = [...txt('xl/sharedStrings.xml').matchAll(/<si>([\s\S]*?)<\/si>/g)].map(m => unx([...m[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(t => t[1]).join('')));
-  const rels = Object.fromEntries([...txt('xl/_rels/workbook.xml.rels').matchAll(/<Relationship [^>]*Id="([^"]+)"[^>]*Target="([^"]+)"/g)].map(m => [m[1], m[2]]));
+  // thứ tự thuộc tính Id / Target tùy phần mềm ghi tệp (Excel: Id trước; openpyxl, LibreOffice…: Target trước)
+  const rels = Object.fromEntries([...txt('xl/_rels/workbook.xml.rels').matchAll(/<Relationship ([^>]*?)\/?>/g)].map(m => [/\bId="([^"]+)"/.exec(m[1])?.[1], /\bTarget="([^"]+)"/.exec(m[1])?.[1]]));
   const sheets = [...txt('xl/workbook.xml').matchAll(/<sheet [^>]*name="([^"]+)"[^>]*r:id="([^"]+)"/g)].map(m => ({ name: unx(m[1]), file: 'xl/' + (rels[m[2]] || '').replace(/^\/?xl\//, '') }));
   return sheets.map(sh => {
     const rows = [];
