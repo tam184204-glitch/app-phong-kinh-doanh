@@ -644,10 +644,6 @@ table.t tfoot td { background: linear-gradient(180deg, #f8fafc, #f1f5fa); }
   background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, .22), transparent 45%), linear-gradient(135deg, var(--cobalt-d), var(--cobalt) 55%, var(--cobalt-l)); }
 .kpi.green:hover { background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, .22), transparent 45%), linear-gradient(135deg, #2f6b34, var(--sage-d) 55%, var(--sage)); }
 .kpi.red:hover { background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, .2), transparent 45%), linear-gradient(135deg, #7a1f17, #a8322a 55%, #d9534f); }
-.kpi:hover .l, .kpi:hover .s, .kpi:hover .l i, .kpi:hover .s a { color: rgba(255, 255, 255, .9); }
-.kpi:hover .v, .kpi:hover .v small { background: none; -webkit-text-fill-color: #fff; color: #fff; }
-.kpi:hover .bar { background: rgba(255, 255, 255, .22); }
-.kpi:hover::before { background: linear-gradient(180deg, #fff, var(--amber)); }
 /* ô danh mục: chuyển nền vàng nhạt; ô khẩn chuyển nền đỏ nhạt */
 .cat-tile:hover { border-color: rgba(245, 166, 35, .6); background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, .7), transparent 50%), linear-gradient(135deg, #fff7e6, #ffe7b8); }
 .cat-tile:hover b { color: var(--amber-d); }
@@ -703,3 +699,8 @@ table.t tbody tr:nth-child(even) td { background: none; }
 table.t tbody tr:hover td { background: #f5f8fc; }
 table.t tbody tr:hover td:first-child { box-shadow: none; }
 table.t tbody tr.sel td { background: var(--amber-50); }
+
+/* ô chỉ số khi rê chuột / bấm: gradient nhạt, chữ giữ màu thường */
+.kpi:hover { border-color: rgba(30, 78, 140, .22); background: linear-gradient(135deg, #f3f8ff, #e3eefb 60%, #fff6e6) !important; }
+.kpi.green:hover { border-color: rgba(78, 140, 84, .25); background: linear-gradient(135deg, #f3faf3, #e2f1e3 60%, #fbfdf6) !important; }
+.kpi.red:hover { border-color: rgba(192, 57, 43, .22); background: linear-gradient(135deg, #fff6f5, #fbe6e3 60%, #fffaf3) !important; }
