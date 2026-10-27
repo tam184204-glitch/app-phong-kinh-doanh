@@ -147,7 +147,7 @@ def('customer', {
       // sau mở bán: hồ sơ mua nhà → ký HĐMB → thanh toán → bàn giao → thanh lý
       ['da_nop_hsmn', 'Đã nộp HSMN', 'b'], ['sxd_duyet', 'SXD duyệt HS', 't'], ['cho_ky_hdmb', 'Chờ ký HĐMB', 'a'], ['da_ky_hdmb', 'Đã ký HĐMB', 'g'],
       ['tt_dot_2', 'Thanh toán đợt 2', 'g'], ['tt_dot_3', 'Thanh toán đợt 3', 'g'], ['cho_ban_giao', 'Chờ bàn giao', 'a'], ['da_ban_giao', 'Đã bàn giao', 't'],
-      ['lam_don_thanh_ly', 'Làm đơn thanh lý', 'r'], ['da_thanh_ly', 'Đã thanh lý', 's']] },
+      ['lam_don_thanh_ly', 'Làm đơn thanh lý', 'r'], ['da_thanh_ly', 'Đã thanh lý', 's'], ['da_nop_hs_so', 'Đã nộp hồ sơ làm sổ', 'v']] },
     { k: 'source', l: 'Nguồn khách', t: 'sel', opt: 'nguon_khach', req: 1 },
     { k: 'agent_id', l: 'Đại lý / CTV giới thiệu', t: 'ref', ref: 'agent' },
     { k: 'interest_project', l: 'Dự án quan tâm', t: 'ref', ref: 'project' },
