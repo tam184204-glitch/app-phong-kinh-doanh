@@ -217,11 +217,11 @@ def('reservation', {
     money('price', 'Tổng giá bán căn hộ', { help: 'Tự lấy theo Danh mục sản phẩm khi chọn căn — sửa tay được' }),
     { k: 'reg_state', l: 'Trạng thái căn hộ', t: 'sel', req: 1, def: 'giu_cho', o: REG_ST },
     { k: 'progress', l: 'Tiến trình giao dịch', t: 'sel', req: 1, def: 'tiep_nhan', o: REG_PROG },
+    { k: 'policy_id', l: 'Chính sách áp dụng', t: 'ref', ref: 'price_policy', filter: 'phat_hanh', help: 'Để trống → tự lấy chính sách bán hàng đang phát hành cho căn' },
     { k: 'note', l: 'Ghi chú', t: 'long' },
     { k: 'reg_at', l: 'Ngày giờ đăng ký', t: 'dt', req: 1, def: 'now', help: 'Tự lấy giờ hiện tại khi mở phiếu — sửa được' },
     { k: 'reg_date', l: 'Ngày đăng ký', t: 'date', hide: 1 },   // = ngày của reg_at (giờ VN), giữ cho giá / hoa hồng / kiểm tra hạn
     { k: 'hold_until', l: 'Hạn giữ chỗ', t: 'dt', help: 'Để trống = giữ đến khi ký HĐMB / hủy đăng ký' },
-    { k: 'policy_id', l: 'Chính sách áp dụng', t: 'ref', ref: 'price_policy', ro: 1 },
     money('deposit', 'Số tiền đặt cọc', { hide: 1 }),   // bỏ khỏi phiếu đăng ký — ghi qua nút «Ghi nhận đặt cọc»
     { k: 'deposit_on', l: 'Ngày đặt cọc', t: 'date' },
     { k: 'docs_deadline', l: 'Hạn hoàn thiện hồ sơ', t: 'date' },
