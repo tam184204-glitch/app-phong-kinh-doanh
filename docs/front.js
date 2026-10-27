@@ -254,7 +254,7 @@ function schedEditor(el, rows, { total, base } = {}) {
 }
 
 // ---------- form tạo / sửa ----------
-async function openForm(ent, { id, preset = {}, onSaved, title } = {}) {
+async function openForm(ent, { id, preset = {}, onSaved, title, skip = [] } = {}) {   // skip: trường không hiện trong form (vẫn gửi giá trị preset / mặc định)
   const E = M.ents[ent];
   let rec = { ...preset }, perm = null;
   if (id) {
@@ -264,7 +264,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title } = {}) {
     for (const f of E.fields) if (rec[f.k] === undefined && f.def !== undefined && !f.ro) rec[f.k] = f.def === 'me' ? M.me.id : f.def === 'today' ? today() : f.def === 'now' ? new Date().toISOString() : f.def;
   }
   const lockKeep = perm?.locked ? new Set(perm.lockKeep || []) : null;
-  const fields = E.fields.filter(f => !(f.ro && !id) && !(f.t === 'code' && !id && !f.manual) && !(f.t === 'json' && f.k !== 'new_schedule'));
+  const fields = E.fields.filter(f => !skip.includes(f.k) && !(f.ro && !id) && !(f.t === 'code' && !id && !f.manual) && !(f.t === 'json' && f.k !== 'new_schedule'));
   const wide = f => ['long', 'check', 'json'].includes(f.t) || !!f.pick || !!f.upload;
   const body = `${E.note ? `<div class="warnbar">${ico('fa-circle-info')}<span>${esc(E.note)}</span></div>` : ''}${lockKeep ? `<div class="lockbar">${ico('fa-lock')} Bản ghi đã chốt — chỉ sửa được: ${[...lockKeep].map(k => E.fields.find(f => f.k === k)?.l).join(', ')}</div>` : ''}<div id="ferr"></div><form class="form" autocomplete="off">${fields.map(f => {
     const ro = f.ro || (f.t === 'code' && !f.manual) || (lockKeep && !lockKeep.has(f.k)) || (f.pii && id && !M.piiRoles.includes(M.me.role) && rec[f.k]);
@@ -309,6 +309,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title } = {}) {
   const showWarn = w => { if (w?.length) errBox.innerHTML = `<div class="warnbar">${ico('fa-circle-exclamation')}<div>${w.map(esc).join('<br>')}</div></div>`; };
   const send = async (check) => {
     const data = collect();
+    for (const k of skip) if (rec[k] !== undefined && !(k in data)) data[k] = rec[k];
     for (const f of fields) if (!isShown(f, { ...rec, ...data }) && f.k in data && !f.ro) data[f.k] = null;
     return id ? api('PUT', `/api/e/${ent}/${id}${check ? '?check=1' : ''}`, data) : api('POST', `/api/e/${ent}${check ? '?check=1' : ''}`, data);
   };
@@ -1119,7 +1120,7 @@ V.customers = async (main, params) => {
   main.onclick = run(async e => {
     const p = e.target.closest('[data-p]'); if (p) { s.project = p.dataset.p; return draw(); }
     const tr = e.target.closest('tr[data-c]'); if (tr) return openDetail('customer', +tr.dataset.c);
-    if (e.target.closest('#kNew')) return openForm('customer', { preset: { stage: 'da_nop_hsmn', ...(s.project ? { interest_project: +s.project } : {}) }, onSaved: row => { draw(); openDetail('customer', row.id); } });
+    if (e.target.closest('#kNew')) return openForm('customer', { skip: ['kind', 'stage', 'noxh_group', 'owner_id'], preset: { stage: 'da_nop_hsmn', ...(s.project ? { interest_project: +s.project } : {}) }, onSaved: row => { draw(); openDetail('customer', row.id); } });
     if (e.target.closest('#kImp')) return importModal('customers', draw);
     if (e.target.closest('#kXls')) return download('/api/export-rows', { title: 'Danh mục khách hàng', cols: CC.map(([k, l]) => [k === 'stage' ? 'stage_l' : k, l]), rows: main._list.map(r => ({ ...r, stage_l: optL('customer', 'stage', r.stage) })), file: 'danh_muc_khach_hang' });
   });
