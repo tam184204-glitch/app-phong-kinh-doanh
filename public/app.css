@@ -217,10 +217,21 @@ table.t.noclick tbody tr { cursor: default; }
 .u.da_ban_giao { background: #dcf2ef; border-color: #a9ddd6; color: #0d5a54; }
 .u.chua_mo_ban, .u.ngung_kd { background: #eef2f6; border-color: #d9e1ea; color: #5b6b7f; }
 .u.tam_khoa { background: #fdecea; border-color: #f4c3bd; color: #8f2a20; }
-/* Bảng hàng: 3 nhóm màu */
-.u.g-trong { background: #fff; border-color: #d9e1ea; color: #33475b; }
-.u.g-giu { background: #fff0e0; border-color: #f7c08a; color: #9a4b00; }
-.u.g-ky { background: #e3f5e8; border-color: #9fd6b0; color: #145c33; }
+/* Bảng hàng: 3 nhóm màu — chưa mở bán xanh nước biển nhạt · giữ chỗ cam · đã ký HĐMB xanh lá */
+.u.g-trong { background: #e6f2fd; border-color: #a9cdf0; color: #144a7a; }
+.u.g-giu { background: #ffe9d1; border-color: #f2a65a; color: #8a3f00; }
+.u.g-ky { background: #ddf3e4; border-color: #86cc9c; color: #0f5a2c; }
+.floors .u { width: 128px; min-height: 0; padding: 9px 11px 9px 14px; border-width: 1px; border-radius: 10px; font-size: 12.5px; line-height: 1.45; overflow: hidden; }
+.floors .u::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: currentColor; opacity: .55; }
+.floors .u .no { font-size: 15.5px; font-weight: 800; letter-spacing: .2px; margin-bottom: 2px; }
+.floors .u .sp { opacity: .8; }
+.floors .u .pr { font-weight: 700; font-size: 13.5px; }
+.floors .u .cu { font-size: 12px; opacity: .75; margin-top: 1px; }
+.floors .u .hold { top: 8px; right: 9px; font-size: 12px; }
+.floor { gap: 8px; } .floor .us { gap: 8px; } .floors { gap: 10px; }
+.floor .fl { width: 64px; font-size: 13px; color: var(--cobalt-d); }
+.legend { font-size: 13.5px; gap: 18px; color: var(--ink); } .legend .u { width: 16px !important; height: 16px !important; border-width: 1.5px !important; }
+@media (max-width: 860px) { .floors .u { width: calc(50% - 4px); } .floor .fl { width: 44px; font-size: 11.5px; } }
 .u.g-tam_khoa { background: #fdecea; border-color: #f4c3bd; color: #8f2a20; }
 .u.g-ngung_kd { background: #eef2f6; border-color: #d9e1ea; color: #5b6b7f; }
 .u.dim { opacity: .18; }
