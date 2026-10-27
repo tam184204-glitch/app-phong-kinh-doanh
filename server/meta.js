@@ -217,7 +217,8 @@ def('reservation', {
     { k: 'reg_state', l: 'Trạng thái căn hộ', t: 'sel', req: 1, def: 'giu_cho', o: REG_ST },
     { k: 'progress', l: 'Tiến trình giao dịch', t: 'sel', req: 1, def: 'tiep_nhan', o: REG_PROG },
     { k: 'note', l: 'Ghi chú', t: 'long' },
-    { k: 'reg_date', l: 'Ngày đăng ký', t: 'date', req: 1, def: 'today' },
+    { k: 'reg_at', l: 'Ngày giờ đăng ký', t: 'dt', req: 1, def: 'now', help: 'Tự lấy giờ hiện tại khi mở phiếu — sửa được' },
+    { k: 'reg_date', l: 'Ngày đăng ký', t: 'date', hide: 1 },   // = ngày của reg_at (giờ VN), giữ cho giá / hoa hồng / kiểm tra hạn
     { k: 'hold_until', l: 'Hạn giữ chỗ', t: 'dt', help: 'Để trống = giữ đến khi ký HĐMB / hủy đăng ký' },
     { k: 'policy_id', l: 'Chính sách áp dụng', t: 'ref', ref: 'price_policy', ro: 1 },
     money('deposit', 'Số tiền đặt cọc'),

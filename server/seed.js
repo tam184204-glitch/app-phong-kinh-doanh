@@ -149,6 +149,7 @@ async function ensureTemplates() {
   await tx(async db => {
     const sysU = await db.one("SELECT * FROM kd_user WHERE role = 'admin' ORDER BY id LIMIT 1") || C.SYS;
     for (const t of REG_TEMPLATES()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });
+    await db.q("UPDATE kd_reservation SET reg_at = coalesce(created_at, reg_date::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh') WHERE reg_at IS NULL");
     // phiếu lập trước khi có mẫu «Phiếu đăng ký căn hộ»: chép thông tin khách + suy ra trạng thái căn / tiến trình
     await db.q(`UPDATE kd_reservation r SET cust_name = k.full_name, id_no = k.id_no, id_date = k.id_date, id_place = k.id_place, address = k.address, phone = k.phone
       FROM kd_customer k WHERE k.id = r.customer_id AND r.cust_name IS NULL`);

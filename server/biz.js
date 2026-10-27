@@ -248,6 +248,11 @@ H.reservation = {
   async beforeSave(r, old, { db, warn, opts, user, demo }) {
     const changedUnit = !old || old.unit_id !== r.unit_id;
     const u = await raw(db, 'unit', r.unit_id);
+    // ngày giờ đăng ký (reg_at) → ngày đăng ký (reg_date, giờ VN); phiếu hệ thống tạo chỉ có ngày thì suy ra giờ
+    const vnDay = iso => new Date(Date.parse(iso) + 7 * 3600e3).toISOString().slice(0, 10);
+    if (!old && r.reg_date && (!r.reg_at || vnDay(r.reg_at) !== r.reg_date)) r.reg_at = new Date(r.reg_date === today() ? Date.now() : Date.parse(r.reg_date + 'T09:00:00+07:00')).toISOString();
+    if (!r.reg_at) r.reg_at = new Date().toISOString();
+    r.reg_date = vnDay(r.reg_at);
     // phiếu đăng ký căn hộ: trạng thái căn + tiến trình đi cùng nhau, tình trạng phiếu theo trạng thái căn (không qua duyệt)
     if (old && old.status !== r.status && ['huy', 'het_han'].includes(r.status)) r.reg_state = 'huy';     // hủy / giải phóng từ nơi khác
     if (old && !opts.system && old.reg_state !== r.reg_state) {

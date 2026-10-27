@@ -338,7 +338,7 @@ async function printReservation(id, user, kind, tplCode) {
   const pii = ['truong_phong', 'lanh_dao', 'ho_so', 'admin'].includes(user.role);
   const lab = (k, v) => E.reservation.fields.find(f => f.k === k).o.find(o => o[0] === v)?.[1] || '';
   const finish = u.finish_value ?? u.pk_value;
-  const map = { ma_phieu: r.code, ngay_dk: dmy(r.reg_date), ten_kh: r.cust_name, dien_thoai: r.phone, cccd: pii ? r.id_no : '(ẩn)', ngay_cap: pii ? dmy(r.id_date) : '', noi_cap: pii ? r.id_place : '', dia_chi: r.address,
+  const map = { ma_phieu: r.code, ngay_dk: r.reg_at ? new Date(Date.parse(r.reg_at) + 7 * 3600e3).toISOString().replace(/^(\d+)-(\d+)-(\d+)T(\d+:\d+).*/, '$4 ngày $3/$2/$1') : dmy(r.reg_date), ten_kh: r.cust_name, dien_thoai: r.phone, cccd: pii ? r.id_no : '(ẩn)', ngay_cap: pii ? dmy(r.id_date) : '', noi_cap: pii ? r.id_place : '', dia_chi: r.address,
     ma_can: u.code, du_an: u.project, dia_diem: u.p_addr, chu_dau_tu: u.investor, toa: u.building, tang: u.floor, dien_tich: String(u.area_tt ?? '').replace('.', ','), huong: u.direction,
     gia_tri: fmtMoney(r.price), gia_tri_chu: moneyWords(r.price), tien_coc: r.deposit ? fmtMoney(r.deposit) : DOTS, trang_thai: lab('reg_state', r.reg_state), tien_trinh: lab('progress', r.progress), ghi_chu: r.note || '',
     goi_hoan_thien: u.pk_name ? `${u.pk_code} · ${u.pk_name}` : DOTS, gia_tri_hoan_thien: finish ? fmtMoney(finish) : DOTS, gia_tri_hoan_thien_chu: finish ? moneyWords(finish) : DOTS, danh_muc_noi_that: u.pk_items || DOTS + DOTS + DOTS, ngay: dmy(C.today()) };
