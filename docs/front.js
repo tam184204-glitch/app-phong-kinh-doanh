@@ -959,7 +959,7 @@ V.customers = async (main, params) => {
   const s = ST.cust ||= { project: '', q: '', st: '' };
   if (params.project) s.project = params.project;
   const ce = M.ents.customer.perm;
-  const CC = [['full_name', 'Tên'], ['code', 'Mã'], ['units', 'Căn hộ'], ['address', 'Địa chỉ'], ['phone', 'Điện thoại'], ['email', 'Email'], ['tax_code', 'Mã số thuế'], ['stage', 'Tình trạng'], ['bravo_id', 'ID']];
+  const CC = [['full_name', 'Tên'], ['code', 'Mã'], ['units', 'Căn hộ'], ['address', 'Địa chỉ'], ['phone', 'Điện thoại'], ['email', 'Email'], ['tax_code', 'Mã số thuế'], ['stage', 'Tình trạng']];
   const draw = async () => {
     const get = async e => M.ents[e]?.perm.r ? (await api('GET', `/api/e/${e}?limit=20000`)).rows : [];
     const [cs, us, hd, gc, pj] = await Promise.all([get('customer'), get('unit'), get('contract'), get('reservation'), get('project')]);
@@ -974,12 +974,12 @@ V.customers = async (main, params) => {
     const list = base.filter(r => (!s.st || r.stage === s.st) && (!q || `${r.full_name} ${r.code} ${r.units} ${r.phone || ''} ${r.address || ''} ${r.email || ''} ${r.bravo_id || ''}`.toLowerCase().includes(q)));
     const cnt = {}; base.forEach(r => cnt[r.stage] = (cnt[r.stage] || 0) + 1);
     const stO = M.ents.customer.fields.find(f => f.k === 'stage').o;
-    const cellOf = (r, k) => k === 'stage' ? (r.stage ? pill(optL('customer', 'stage', r.stage), stO.find(o => o[0] === r.stage)?.[2]) : '') : k === 'full_name' ? `${ico('fa-user', 'tw-ic')}${esc(r.full_name)}${r.is_demo ? ' <span class="tag demo">thử</span>' : ''}` : k === 'bravo_id' ? `<span class="muted">${esc(r.bravo_id || '')}</span>` : esc(r[k] || '');
+    const cellOf = (r, k) => k === 'stage' ? (r.stage ? pill(optL('customer', 'stage', r.stage), stO.find(o => o[0] === r.stage)?.[2]) : '') : k === 'full_name' ? `${ico('fa-user', 'tw-ic')}${esc(r.full_name)}${r.is_demo ? ' <span class="tag demo">thử</span>' : ''}` : esc(r[k] || '');
     main.innerHTML = `<div class="page">${head('02', 'Danh mục khách hàng', 'fa-address-book', `${M.imports.customers ? `<button class="btn" id="kImp">${ico('fa-file-import')} Nhập Excel (Bravo)</button>` : ''}${ce.x ? `<button class="btn" id="kXls">${ico('fa-file-excel')} Xuất Excel</button>` : ''}${ce.c ? `<button class="btn pri" id="kNew">${ico('fa-plus')} Tạo khách hàng</button>` : ''}`, 'KH-01')}
       <div class="prod"><div class="card prod-nav"><div class="hd"><h3>${ico('fa-folder-tree')} Nhóm dữ liệu</h3></div><div class="pn">
         <a data-p="" class="${!s.project ? 'on' : ''}">${ico('fa-folder-open')} Tất cả khách hàng <small>${rows.length}</small></a>
         ${pj.map(p => { const n = rows.filter(r => r.pids.has(p.id)).length; return `<a data-p="${p.id}" class="${+s.project === p.id ? 'on' : ''}">${ico('fa-table-list')} ${esc(p.name)} <small>${n || ''}</small></a>`; }).join('')}</div></div>
-      <div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="kq" placeholder="Tìm tên, mã, căn, điện thoại, địa chỉ, ID…" value="${esc(s.q)}"></div>
+      <div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="kq" placeholder="Tìm tên, mã, căn, điện thoại, địa chỉ…" value="${esc(s.q)}"></div>
         <select id="kst"><option value="">Mọi tình trạng</option>${stO.filter(o => cnt[o[0]]).map(o => `<option value="${o[0]}" ${s.st === o[0] ? 'selected' : ''}>${esc(o[1])} (${cnt[o[0]]})</option>`).join('')}</select>
         <span class="grow"></span><span class="small muted">${list.length} khách hàng</span></div>
       <div class="tbl-wrap"><table class="t cust-t"><thead><tr>${CC.map(([, l]) => `<th>${l}</th>`).join('')}</tr></thead>
