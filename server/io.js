@@ -26,7 +26,7 @@ async function exportList(entKey, user, qs) {
   const cols = [];
   rows.forEach((r, i) => { r.stt = i + 1; });
   for (const k of keys) {
-    if (k === 'prints') continue;
+    if (k === 'prints' || k === 'bbgn') continue;
     const f = C.F[entKey][k];
     if (f) cols.push([f.t === 'ref' || f.t === 'refs' || f.t === 'user' ? k + '__l' : k, f.l, f.t === 'sel' ? null : f.t, f]);
     else if (VIRT[k]) cols.push([k === 'created_by' ? 'created_by__l' : k, VIRT[k], ['paid', 'actual', 'gap'].includes(k) ? 'money' : null]);

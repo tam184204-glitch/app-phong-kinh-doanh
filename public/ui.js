@@ -104,7 +104,8 @@ function cell(ent, k, row) {
   if (f) return { html: show(f, row), num: ['money', 'num', 'int'].includes(f.t) };
   const v = row[k];
   if (k === 'created_by') return { html: esc(row.created_by__l || '') };
-  if (k === 'prints') return { html: `<span class="nowrap"><button type="button" class="btn sm" data-print="dang_ky_can" title="In bản đăng ký căn hộ (chọn mẫu in)">${ico('fa-print')} Căn hộ</button> <button type="button" class="btn sm" data-print="dang_ky_noi_that" title="In bản đăng ký nội thất (chọn mẫu in)">${ico('fa-couch')} Nội thất</button> <button type="button" class="btn sm" data-print="bien_ban" title="In biên bản bàn giao tài liệu hồ sơ mua nhà">${ico('fa-file-signature')} Biên bản</button></span>` };
+  if (k === 'prints') return { html: `<span class="nowrap"><button type="button" class="btn sm" data-print="dang_ky_can" title="In bản đăng ký căn hộ (chọn mẫu in)">${ico('fa-print')} Căn hộ</button> <button type="button" class="btn sm" data-print="dang_ky_noi_that" title="In bản đăng ký nội thất (chọn mẫu in)">${ico('fa-couch')} Nội thất</button></span>` };
+  if (k === 'bbgn') return { html: `<button type="button" class="btn sm" data-bbgn title="In biên bản bàn giao tài liệu hồ sơ mua nhà (chọn mẫu Cát Tường / Thống Nhất)">${ico('fa-file-signature')} Biên bản</button>` };
   if (k === 'created_at') return { html: dmy(v) };
   if (VIRT_MONEY.has(k)) return { html: v == null ? '' : `<span class="${k === 'gap' ? (v < 0 ? 'neg' : v > 0 ? 'pos' : '') : ''}">${fm(v)}</span>`, num: true };
   if (k === 'promise_st') return { html: v ? pill(v, /Thất/.test(v) ? 'r' : /Đúng/.test(v) ? 'g' : /một phần/.test(v) ? 'a' : 'b') : '' };
@@ -638,7 +639,7 @@ async function listView(main, ent, params = {}) {
       S.sel.clear(); updateBadges(); return load();
     }
     const pb = t.closest('[data-print]');
-    if (pb?.dataset.print === 'bien_ban') return handoverPick('reservation', +pb.closest('tr[data-id]').dataset.id);
+    const bbg = t.closest('[data-bbgn]'); if (bbg) return handoverPick('noxh', +bbg.closest('tr[data-id]').dataset.id);
     if (pb) return printPick(+pb.closest('tr[data-id]').dataset.id, pb.dataset.print);
     const tr = t.closest('tbody tr[data-id]'); if (tr && !t.matches('input')) return openDetail(ent, +tr.dataset.id);
   });

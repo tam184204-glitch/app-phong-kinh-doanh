@@ -236,7 +236,6 @@ def('reservation', {
   lock: ['chuyen_hd', 'het_han', 'huy', 'cho_duyet'], lockKeep: ['note', 'progress', 'reg_state'],
   flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'giu_cho' } },
   acts: [
-    { k: 'print_bbgn', l: 'In biên bản giao nhận hồ sơ', icon: 'fa-file-signature', from: '*', roles: ALL, handover: 'reservation' },
     { k: 'deposit', l: 'Ghi nhận đặt cọc', icon: 'fa-money-bill-wave', from: ['giu_cho', 'qua_han'], roles: ['ban_hang', 'truong_phong'], ask: [money('deposit', 'Số tiền đặt cọc', { req: 1 }), { k: 'deposit_on', l: 'Ngày đặt cọc', t: 'date', req: 1, def: 'today' }] },
     { k: 'extend', l: 'Gia hạn giữ chỗ', icon: 'fa-clock-rotate-left', from: ['giu_cho', 'qua_han'], roles: MGR, ask: [{ k: 'hold_until', l: 'Hạn giữ chỗ mới', t: 'dt', req: 1 }, { k: 'reason', l: 'Lý do', t: 'long', req: 1 }] },
     { k: 'release', l: 'Giải phóng căn', icon: 'fa-unlock', from: ['giu_cho', 'qua_han'], roles: MGR, danger: 1, ask: [{ k: 'reason', l: 'Lý do / phương án xử lý tiền đã nộp', t: 'long', req: 1 }] },
@@ -295,7 +294,7 @@ def('noxh_check', {
     { k: 'reviews', l: 'Các bước xét duyệt nội bộ', t: 'json', ro: 1 },
     { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'nhap', o: [['nhap', 'Đang tiếp nhận', 's'], ['cho_duyet', 'Chờ xét duyệt', 'a'], ['da_duyet', 'Đạt xét duyệt nội bộ', 'g'], ['tu_choi', 'Không đạt / trả lại', 'r']] },
     owner('Người tiếp nhận'),
-  ], list: ['id', 'received_on', 'customer_id', 'unit_id', 'doi_tuong', 'items', 'result', 'supplement_due', 'status'],
+  ], list: ['id', 'received_on', 'customer_id', 'unit_id', 'doi_tuong', 'items', 'result', 'supplement_due', 'status', 'bbgn'],
   lock: ['da_duyet', 'cho_duyet'], flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'da_duyet', no: 'tu_choi' }, submitLabel: 'Trình xét duyệt', needAll: 'items' },
   acts: [{ k: 'print_bbgn', l: 'In biên bản giao nhận hồ sơ', icon: 'fa-print', from: '*', roles: ALL, handover: 'noxh' },
     { k: 'review', l: 'Ghi bước kiểm tra', icon: 'fa-clipboard-check', from: ['nhap', 'cho_duyet'], roles: ['ho_so', 'truong_phong'],
@@ -850,7 +849,7 @@ const SETTINGS = {
 const VIRT = {
   id: 'Số', created_by: 'Người lập', created_at: 'Ngày lập', stage: 'Tiến trình giao dịch', paid: 'Đã thu', pay_status: 'Tình trạng kỳ thu',
   actual: 'Thực thu', gap: 'Chênh lệch', promise_st: 'Tình trạng cam kết', defects_open: 'Tồn tại chưa đóng', days_in: 'Ngày xử lý nội bộ',
-  days_out: 'Ngày tại cơ quan', sla: 'SLA', project: 'Dự án', building: 'Tòa', stt: 'STT', prints: 'In bản đăng ký / biên bản',
+  days_out: 'Ngày tại cơ quan', sla: 'SLA', project: 'Dự án', building: 'Tòa', stt: 'STT', prints: 'In bản đăng ký', bbgn: 'In biên bản giao nhận',
 };
 
 module.exports = { M4, PROSPECT_ST, VIRT,  ROLES, ALL, MGR, PII_ROLES, E, MENU, VIEW_ROLES, LOOKUPS, SETTINGS, UNIT_ST };
