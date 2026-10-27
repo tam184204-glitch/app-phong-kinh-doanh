@@ -564,19 +564,13 @@ async function loginView() {
     <div class="box"><form id="lf"><h2>Đăng nhập</h2><p class="muted" style="margin-top:0">Tài khoản nhân viên do Quản trị hệ thống cấp.</p><div id="lerr"></div>
       <div class="fld mb"><label for="lu">Tên đăng nhập</label><input id="lu" autocomplete="username" required></div>
       <div class="fld mb"><label for="lp">Mật khẩu</label><input id="lp" type="password" autocomplete="current-password" required></div>
-      <button class="btn pri" style="width:100%;height:42px;justify-content:center">${ico('fa-right-to-bracket')} Đăng nhập</button><div class="trial" id="trial"></div></form></div></div>`;
+      <button class="btn pri" style="width:100%;height:42px;justify-content:center">${ico('fa-right-to-bracket')} Đăng nhập</button>
+      <a class="btn" href="gioi-thieu.html" style="width:100%;height:42px;justify-content:center;margin-top:10px">${ico('fa-globe')} Về trang giới thiệu công khai</a></form></div></div>`;
   $('#lf').onsubmit = async e => {
     e.preventDefault();
     try { const r = await api('POST', '/api/login', { username: $('#lu').value.trim(), password: $('#lp').value }); location.hash = '#/v/dashboard'; await boot(r.must_change); }
     catch (er) { $('#lerr').innerHTML = `<div class="errbar">${esc(er.message)}</div>`; }
   };
-  try {
-    const { trial } = await api('GET', '/api/login-info');
-    if (trial.length) {
-      $('#trial').innerHTML = `<div class="small muted mb">Tài khoản thử theo vai trò (mật khẩu mặc định — ngừng trước khi vận hành):</div>` + trial.map(t => `<button type="button" data-u="${esc(t.username)}"><span>${esc(t.full_name.replace('Người dùng thử – ', ''))}</span><span class="muted">${esc(t.username)}</span></button>`).join('');
-      $$('#trial button').forEach(b => b.onclick = () => { $('#lu').value = b.dataset.u; $('#lp').focus(); });
-    }
-  } catch { }
   $('#lu').focus();
 }
 function forcePassword(first) {

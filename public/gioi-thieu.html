@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cát Tường Group · Giới thiệu dự án</title>
+<meta name="description" content="Cát Tường Group — chủ đầu tư nhà ở xã hội, căn hộ và khu đô thị tại Bắc Ninh. Xem dự án, đăng ký tư vấn, Hotline 082.937.6666.">
+<link rel="icon" href="logo.png">
+<!-- Trang công khai cho khách hàng. Không dùng dữ liệu nội bộ; nút «Đăng nhập nội bộ» dẫn vào app (index.html) — app bắt buộc đăng nhập.
+     Form «Đăng ký tư vấn» gửi POST /api/public/lead → hồ sơ khách + nhật ký «Chưa liên hệ» ở Phân hệ 03 (kênh Website).
+     Bản demo tĩnh (không có máy chủ): đơn xếp hàng ở localStorage «ctg-public-leads», app nội bộ tự nhận khi mở. -->
+<style>
+:root {
+  --cobalt: #1E4E8C; --cobalt-d: #143866; --cobalt-l: #2D7DD2; --cobalt-50: #EEF4FB;
+  --amber: #F5A623; --amber-d: #C98210; --amber-50: #FFF6E4; --sage: #7BAE7F; --sage-d: #4E8752; --sage-50: #EEF6EE;
+  --ink: #0F1B2D; --text: #1e293b; --muted: #5b6b80; --line: #e2e8f0; --card: #fff;
+  --soft: 0 18px 42px rgba(20, 56, 102, .09); --soft2: 0 6px 18px rgba(20, 56, 102, .07); --r: 16px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; font: 15px/1.6 system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; color: var(--text); background: linear-gradient(180deg, #eef6ff 0%, #f7f9fc 40%, #f1f8f4 100%); }
+a { color: var(--cobalt); text-decoration: none; }
+h1, h2, h3 { color: var(--ink); margin: 0; line-height: 1.25; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 20px; }
+svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* đầu trang */
+header { position: sticky; top: 0; z-index: 20; background: rgba(255, 255, 255, .88); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
+header .wrap { display: flex; align-items: center; gap: 18px; height: 68px; }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--ink); }
+.brand img { width: 40px; height: 40px; object-fit: contain; }
+.brand b { display: block; font-size: 15px; letter-spacing: .08em; color: var(--cobalt-d); }
+.brand span { display: block; font-size: 11px; letter-spacing: .14em; color: var(--amber-d); font-weight: 700; }
+nav.menu { display: flex; gap: 4px; margin-left: auto; }
+nav.menu a { padding: 8px 12px; border-radius: 10px; color: var(--text); font-weight: 600; font-size: 14px; }
+nav.menu a:hover { background: var(--cobalt-50); color: var(--cobalt); }
+.btn { display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 18px; border-radius: 12px; border: 1px solid var(--line); background: #fff; color: var(--cobalt-d); font: 600 14px/1 inherit; font-family: inherit; cursor: pointer; white-space: nowrap; transition: transform .15s, box-shadow .15s; }
+.btn:hover { transform: translateY(-1px); box-shadow: var(--soft2); }
+.btn.pri { background: linear-gradient(135deg, var(--cobalt), var(--cobalt-l)); color: #fff; border: 0; }
+.btn.amb { background: linear-gradient(135deg, var(--amber), #f7b955); color: var(--ink); border: 0; }
+.burger { display: none; margin-left: auto; }
+
+/* mở đầu */
+.hero { position: relative; overflow: hidden; padding: 72px 0 56px; }
+.hero .wrap { display: grid; grid-template-columns: 1.15fr .85fr; gap: 40px; align-items: center; }
+.tag { display: inline-flex; gap: 8px; align-items: center; padding: 6px 12px; border-radius: 999px; background: var(--amber-50); color: var(--amber-d); font-weight: 700; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+.hero h1 { font-size: clamp(32px, 5vw, 52px); margin: 16px 0 14px; letter-spacing: -.01em; }
+.hero h1 span { background: linear-gradient(90deg, var(--cobalt), var(--cobalt-l) 55%, var(--amber)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero p.lead { font-size: 17px; color: var(--muted); max-width: 560px; margin: 0 0 26px; }
+.hero .cta { display: flex; gap: 12px; flex-wrap: wrap; }
+.hero .art { position: relative; border-radius: 24px; overflow: hidden; aspect-ratio: 4 / 3.2; box-shadow: 0 28px 70px rgba(15, 27, 45, .22); background: linear-gradient(135deg, var(--cobalt-d), var(--cobalt-l)); }
+.hero .art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.hero .art .cap { position: absolute; left: 14px; right: 14px; bottom: 14px; padding: 12px 14px; border-radius: 14px; background: rgba(255, 255, 255, .92); font-size: 13px; }
+.hero .art .cap b { display: block; color: var(--ink); font-size: 15px; }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 44px; }
+.stat { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px; box-shadow: var(--soft2); }
+.stat b { display: block; font-size: 26px; color: var(--cobalt-d); font-variant-numeric: tabular-nums; }
+.stat span { color: var(--muted); font-size: 13px; }
+
+/* khối nội dung */
+section { padding: 64px 0; }
+.sh { display: flex; align-items: end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 26px; }
+.sh small { display: block; font-weight: 700; font-size: 12px; letter-spacing: .14em; color: var(--amber-d); text-transform: uppercase; margin-bottom: 6px; }
+.sh h2 { font-size: clamp(24px, 3.2vw, 34px); }
+.sh p { margin: 8px 0 0; color: var(--muted); max-width: 620px; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: #fff; font: 600 13px inherit; font-family: inherit; color: var(--text); cursor: pointer; }
+.chip.on { background: var(--cobalt); border-color: var(--cobalt); color: #fff; }
+
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.pj { display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; box-shadow: var(--soft2); transition: transform .2s, box-shadow .2s; }
+.pj:hover { transform: translateY(-3px); box-shadow: var(--soft); }
+.pj .ph { position: relative; aspect-ratio: 16 / 10; background: linear-gradient(135deg, var(--c, var(--cobalt)), var(--cobalt-l)); }
+.pj .ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pj .ph .st { position: absolute; top: 12px; left: 12px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; background: #fff; }
+.st.mo { color: var(--sage-d); } .st.bg { color: var(--cobalt); } .st.cn { color: var(--amber-d); }
+.pj .bd { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.pj h3 { font-size: 18px; }
+.pj .sl { color: var(--muted); font-size: 14px; margin: 0; }
+.pj dl { margin: 4px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; font-size: 13px; }
+.pj dt { color: var(--muted); } .pj dd { margin: 0; }
+.pj .pr { margin-top: auto; padding-top: 10px; border-top: 1px dashed var(--line); font-weight: 700; color: var(--cobalt-d); font-size: 14px; }
+.pj .act { display: flex; gap: 8px; }
+.pj .act .btn { height: 36px; padding: 0 12px; font-size: 13px; flex: 1; justify-content: center; }
+
+.about { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: center; }
+.quote { font-size: clamp(26px, 3.4vw, 38px); font-weight: 800; color: var(--cobalt-d); line-height: 1.2; }
+.quote span { color: var(--amber-d); }
+.vals { display: grid; gap: 14px; }
+.val { display: flex; gap: 14px; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px; box-shadow: var(--soft2); }
+.val .ic { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; flex: none; }
+.val h3 { font-size: 16px; margin-bottom: 2px; } .val p { margin: 0; color: var(--muted); font-size: 14px; }
+
+.sup { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.sup .val { flex-direction: column; }
+
+.reg { display: grid; grid-template-columns: .9fr 1.1fr; gap: 0; background: var(--card); border-radius: 22px; overflow: hidden; box-shadow: var(--soft); border: 1px solid var(--line); }
+.reg .l { padding: 36px; background: linear-gradient(150deg, var(--cobalt-d), var(--cobalt) 60%, var(--cobalt-l)); color: #dbe7f6; }
+.reg .l h2 { color: #fff; font-size: 28px; margin-bottom: 10px; }
+.reg .l .hot { display: inline-flex; align-items: center; gap: 10px; margin-top: 18px; padding: 12px 16px; border-radius: 14px; background: rgba(255, 255, 255, .12); color: #fff; font-size: 20px; font-weight: 800; }
+.reg .l ul { padding-left: 18px; margin: 16px 0 0; }
+.reg form { padding: 32px 36px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.fld { display: flex; flex-direction: column; gap: 6px; } .fld.full { grid-column: 1 / -1; }
+.fld label { font-weight: 600; font-size: 13px; } .fld label i { color: #c0392b; font-style: normal; }
+.fld input, .fld select, .fld textarea { height: 44px; border: 1px solid #cbd5e1; border-radius: 12px; padding: 0 12px; font: inherit; background: #fff; }
+.fld textarea { height: 88px; padding: 10px 12px; resize: vertical; }
+.fld input:focus, .fld select:focus, .fld textarea:focus { outline: 2px solid var(--cobalt-l); outline-offset: 0; border-color: transparent; }
+.msg { grid-column: 1 / -1; padding: 10px 14px; border-radius: 12px; font-size: 14px; }
+.msg.err { background: #fdecea; color: #a52a1d; } .msg.ok { background: var(--sage-50); color: #2f6a34; }
+.reg form .btn { grid-column: 1 / -1; height: 48px; justify-content: center; font-size: 15px; }
+.note { grid-column: 1 / -1; font-size: 12px; color: var(--muted); margin: 0; }
+
+footer { background: var(--ink); color: #b8c4d6; padding: 40px 0 28px; margin-top: 40px; font-size: 14px; }
+footer .wrap { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 28px; }
+footer h4 { color: #fff; margin: 0 0 10px; font-size: 14px; letter-spacing: .08em; }
+footer a { color: #dbe7f6; } footer p { margin: 4px 0; }
+footer .cp { grid-column: 1 / -1; border-top: 1px solid rgba(255, 255, 255, .1); padding-top: 16px; font-size: 12px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+@media (max-width: 960px) {
+  .hero .wrap, .about, .reg { grid-template-columns: 1fr; }
+  .grid, .sup { grid-template-columns: 1fr 1fr; }
+  .stats { grid-template-columns: 1fr 1fr; }
+  footer .wrap { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 760px) {
+  nav.menu { display: none; position: absolute; top: 68px; left: 0; right: 0; flex-direction: column; background: #fff; padding: 10px 16px 16px; border-bottom: 1px solid var(--line); box-shadow: var(--soft); }
+  body.nav-open nav.menu { display: flex; }
+  .burger { display: inline-flex; padding: 0 12px; }
+  header .login-top span { display: none; }
+  header .login-top { padding: 0 12px; }
+  .wrap { padding: 0 16px; }
+  .hero { padding: 40px 0 36px; }
+  .grid, .sup { grid-template-columns: 1fr; }
+  .reg form { grid-template-columns: 1fr; padding: 24px 18px; }
+  .reg .l { padding: 26px 18px; }
+  footer .wrap { grid-template-columns: 1fr; }
+  section { padding: 44px 0; }
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-phone" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h8"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20z"/></symbol>
+</svg>
+
+<header>
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="logo.png" alt="Cát Tường Group"><div><b>CAT TUONG GROUP</b><span>CHO ĐI ĐIỀU BẠN MUỐN</span></div></a>
+    <nav class="menu" id="menu">
+      <a href="#du-an">Dự án</a><a href="#gioi-thieu">Giới thiệu</a><a href="#ho-tro">Hỗ trợ khách hàng</a><a href="#dang-ky">Đăng ký tư vấn</a>
+    </nav>
+    <button class="btn burger" id="burger" aria-label="Menu"><svg class="i"><use href="#i-menu"/></svg></button>
+    <a class="btn pri login-top" href="index.html" title="Dành cho nhân viên — cần tài khoản"><svg class="i"><use href="#i-lock"/></svg><span>Đăng nhập nội bộ</span></a>
+  </div>
+</header>
+
+<main id="top">
+  <div class="hero">
+    <div class="wrap">
+      <div>
+        <span class="tag"><svg class="i" style="width:14px;height:14px"><use href="#i-home"/></svg> Chủ đầu tư tại Bắc Ninh</span>
+        <h1>Kiến tạo không gian sống <span>trên nền tảng uy tín</span></h1>
+        <p class="lead">Cát Tường Group phát triển nhà ở xã hội, căn hộ và khu đô thị tại Bắc Ninh — xây dựng trên uy tín, con người và giá trị bền vững. Chọn dự án để xem thông tin, hoặc để lại số điện thoại để được tư vấn.</p>
+        <div class="cta">
+          <a class="btn amb" href="#dang-ky"><svg class="i"><use href="#i-chat"/></svg> Đăng ký tư vấn</a>
+          <a class="btn" href="#du-an">Xem dự án</a>
+          <a class="btn" href="tel:0829376666"><svg class="i"><use href="#i-phone"/></svg> 082.937.6666</a>
+        </div>
+      </div>
+      <div class="art" id="heroArt"></div>
+    </div>
+    <div class="wrap"><div class="stats" id="stats"></div></div>
+  </div>
+
+  <section id="du-an">
+    <div class="wrap">
+      <div class="sh">
+        <div><small>Dự án</small><h2>Dự án của Cát Tường Group</h2><p>Thông tin công khai về vị trí, quy mô và mức giá tham khảo. Giá và chính sách cụ thể theo từng thời điểm — vui lòng liên hệ để được tư vấn chính xác.</p></div>
+        <div class="chips" id="chips"></div>
+      </div>
+      <div class="grid" id="grid"></div>
+    </div>
+  </section>
+
+  <section id="gioi-thieu">
+    <div class="wrap about">
+      <div>
+        <div class="sh" style="margin-bottom:14px"><div><small>Giới thiệu</small></div></div>
+        <div class="quote">“Cho đi <span>điều bạn muốn</span>”</div>
+        <p class="lead" style="color:var(--muted);margin-top:16px">Triết lý của Cát Tường Group: điều chúng tôi mong nhận về từ khách hàng — sự tin cậy, gắn bó lâu dài — bắt đầu từ những gì chúng tôi trao đi. Từ dự án nhà ở xã hội đầu tiên bàn giao năm 2014 đến các khu đô thị đang mở bán tại Yên Phong, chúng tôi theo đuổi một cam kết: nhà ở chất lượng, giá hợp lý, bàn giao đúng hẹn.</p>
+      </div>
+      <div class="vals">
+        <div class="val"><div class="ic" style="background:var(--cobalt-50);color:var(--cobalt)"><svg class="i"><use href="#i-shield"/></svg></div><div><h3>Uy tín</h3><p>Nhiều dự án đã hoàn thành và bàn giao cho cư dân tại TP. Bắc Ninh.</p></div></div>
+        <div class="val"><div class="ic" style="background:var(--amber-50);color:var(--amber-d)"><svg class="i"><use href="#i-users"/></svg></div><div><h3>Con người</h3><p>Đội ngũ tư vấn đồng hành từ chọn căn, hồ sơ, thanh toán đến nhận nhà.</p></div></div>
+        <div class="val"><div class="ic" style="background:var(--sage-50);color:var(--sage-d)"><svg class="i"><use href="#i-home"/></svg></div><div><h3>Giá trị bền vững</h3><p>Không gian sống xanh, tiện ích đầy đủ, giữ giá trị theo thời gian.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="ho-tro">
+    <div class="wrap">
+      <div class="sh"><div><small>Hỗ trợ khách hàng</small><h2>Chúng tôi hỗ trợ Quý khách ở mọi bước</h2></div></div>
+      <div class="sup">
+        <div class="val"><div class="ic" style="background:var(--cobalt-50);color:var(--cobalt)"><svg class="i"><use href="#i-chat"/></svg></div><div><h3>Tư vấn chọn căn</h3><p>Bảng giá, mặt bằng, chính sách bán hàng và tiến độ thanh toán của từng dự án.</p></div></div>
+        <div class="val"><div class="ic" style="background:var(--amber-50);color:var(--amber-d)"><svg class="i"><use href="#i-file"/></svg></div><div><h3>Hồ sơ nhà ở xã hội</h3><p>Hướng dẫn điều kiện, giấy tờ và thủ tục đăng ký mua nhà ở xã hội.</p></div></div>
+        <div class="val"><div class="ic" style="background:var(--sage-50);color:var(--sage-d)"><svg class="i"><use href="#i-key"/></svg></div><div><h3>Bàn giao & sổ hồng</h3><p>Thông báo lịch nhận nhà, bảo hành và hồ sơ cấp giấy chứng nhận quyền sở hữu.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="dang-ky">
+    <div class="wrap">
+      <div class="reg">
+        <div class="l">
+          <h2>Đăng ký tư vấn</h2>
+          <p>Để lại thông tin, chuyên viên Phòng Kinh doanh sẽ liên hệ lại với Quý khách trong thời gian sớm nhất.</p>
+          <ul><li>Bảng giá và căn còn trống</li><li>Chính sách bán hàng, hỗ trợ vay</li><li>Lịch tham quan nhà mẫu</li></ul>
+          <a class="hot" href="tel:0829376666"><svg class="i" style="width:22px;height:22px"><use href="#i-phone"/></svg> 082.937.6666</a>
+        </div>
+        <form id="rf" novalidate>
+          <div id="rmsg" class="msg" hidden></div>
+          <div class="fld"><label for="fName">Họ và tên <i>*</i></label><input id="fName" autocomplete="name" maxlength="120" required></div>
+          <div class="fld"><label for="fPhone">Số điện thoại <i>*</i></label><input id="fPhone" type="tel" autocomplete="tel" inputmode="tel" maxlength="16" required></div>
+          <div class="fld"><label for="fEmail">Email</label><input id="fEmail" type="email" autocomplete="email" maxlength="120"></div>
+          <div class="fld"><label for="fProject">Dự án quan tâm</label><select id="fProject"><option value="">— Chọn dự án —</option></select></div>
+          <div class="fld full"><label for="fNote">Nội dung cần tư vấn</label><textarea id="fNote" maxlength="800" placeholder="Ví dụ: căn 2 phòng ngủ, hỗ trợ vay ngân hàng…"></textarea></div>
+          <button class="btn amb" id="rBtn">Gửi đăng ký</button>
+          <p class="note">Thông tin của Quý khách chỉ dùng để Cát Tường Group liên hệ tư vấn.</p>
+        </form>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <div class="brand" style="color:#fff;margin-bottom:10px"><img src="logo.png" alt=""><div><b style="color:#fff">CAT TUONG GROUP</b><span>CHO ĐI ĐIỀU BẠN MUỐN</span></div></div>
+      <p>Chủ đầu tư nhà ở xã hội, căn hộ và khu đô thị tại Bắc Ninh.</p>
+    </div>
+    <div>
+      <h4>LIÊN HỆ</h4>
+      <p><a href="tel:0829376666">Hotline: 082.937.6666</a></p>
+      <p><a href="https://cattuonggroup.vn" target="_blank" rel="noopener">cattuonggroup.vn</a></p>
+    </div>
+    <div>
+      <h4>DÀNH CHO NHÂN VIÊN</h4>
+      <p><a href="index.html">Đăng nhập hệ thống Phòng Kinh doanh</a></p>
+    </div>
+    <div class="cp"><span>© <span id="yr"></span> Cát Tường Group</span><span>Thông tin dự án mang tính tham khảo, có thể thay đổi theo từng thời điểm.</span></div>
+  </div>
+</footer>
+
+<script>
+'use strict';
+// Dự án — đồng bộ theo data/seed/du-an.json (API công khai cattuonggroup.ai.vn/api/public/du-an)
+const IMG = 'https://cattuonggroup.ai.vn';
+const DA = [
+  { ma: 'CT-SMART', ten: 'Cát Tường Smart City', slogan: 'Khu đô thị 9,7ha tại Yên Phong — Liền kề, shophouse, NOXH', viTri: 'Xã Thụy Hòa và Yên Trung, huyện Yên Phong, tỉnh Bắc Ninh', dienTich: '9,7ha', loaiHinh: 'Liền kề, shophouse, chung cư, nhà ở xã hội', quyMo: '9,7ha — liền kề, shophouse, chung cư, NOXH', banner: '/marketing/images/projects/ai-outpaint/cat-tuong-smart-city.jpg', mau: '#2E7D32', trangThai: 'Đang mở bán', gia: 'Giá căn hộ từ khoảng 15,44-16,31 triệu đồng/m2' },
+  { ma: 'TNS-SMART', ten: 'Thống Nhất Smart City', slogan: 'Khu nhà ở xã hội 10 khối nhà tại Yên Trung và Tam Đa', viTri: 'Xã Yên Trung và xã Tam Đa, tỉnh Bắc Ninh', dienTich: 'Khoảng 85.767,2m2', loaiHinh: 'Nhà ở xã hội, liền kề, thương mại dịch vụ', quyMo: '1.048 căn NOXH — 107 căn liền kề', banner: '/marketing/images/projects/thong-nhat-smart-city.jpg', mau: '#1E4E8C', trangThai: 'Đang mở bán', gia: 'Giá căn hộ từ khoảng 16,11-16,77 triệu đồng/m2' },
+  { ma: 'CT-NEW', ten: 'Chung cư Cát Tường New', slogan: 'Căn hộ cao cấp mặt đường Lý Thái Tổ', viTri: 'Lô đất CC03, đường Lý Thái Tổ, phường Ninh Xá, TP. Bắc Ninh', dienTich: '2.681m2 đất, khoảng 25.000m2 sàn', loaiHinh: 'Căn hộ cao cấp, dịch vụ công cộng', quyMo: '72 căn — diện tích thông thủy 110-188m2', banner: '/marketing/images/projects/cat-tuong-new.jpg', mau: '#143866', trangThai: 'Đã bàn giao', gia: 'Giá căn hộ hiện hành: liên hệ tư vấn' },
+  { ma: 'CT-TN', ten: 'Nhà ở xã hội Thống Nhất', slogan: 'Mặt đường Lê Thái Tổ — Trung tâm phát triển đô thị Bắc Ninh', viTri: 'Đường Lê Thái Tổ, phường Võ Cường, TP. Bắc Ninh', dienTich: '15.820m2', loaiHinh: 'Nhà ở xã hội, căn hộ thương mại', quyMo: '1.080 căn — tổng mức đầu tư trên 800 tỷ', banner: '/marketing/images/projects/cat-tuong-thong-nhat.jpg', mau: '#1E4E8C', trangThai: 'Đã bàn giao', gia: 'Giá căn hộ đã công bố khoảng 11,1 triệu đồng/m2' },
+  { ma: 'CT-ECO', ten: 'Nhà ở xã hội Cát Tường Eco', slogan: 'Khu dân cư sinh thái xanh — Sạch — Đẹp', viTri: 'Phường Võ Cường, TP. Bắc Ninh, tỉnh Bắc Ninh', dienTich: '17.473m2', loaiHinh: 'Nhà ở xã hội sinh thái', quyMo: '17.473m2 — 4 khối nhà ECO-CT1, ECO-CT2, ECO-CT3, ECO-CT4', banner: '/marketing/images/projects/cat-tuong-eco.jpg', mau: '#143866', trangThai: 'Đã bàn giao', gia: 'Giá căn hộ đã công bố khoảng 7,686 triệu đồng/m2' },
+  { ma: 'CT-TNT', ten: 'Nhà ở xã hội Cát Tường TNT', slogan: 'NOXH đầu tiên của Cát Tường Group — Đã bàn giao từ 2014', viTri: 'Phường Võ Cường, TP. Bắc Ninh, tỉnh Bắc Ninh', dienTich: '10.000m2 diện tích xây dựng', loaiHinh: 'Nhà ở xã hội', quyMo: '897 căn — diện tích căn hộ 55-70m2', banner: '/marketing/images/projects/cat-tuong-tnt.jpg', mau: '#1E4E8C', trangThai: 'Đã bàn giao', gia: 'Giá căn hộ khoảng 6,9-7,4 triệu đồng/m2' },
+  { ma: 'DHP', ten: 'Đại Hưng Phát', slogan: 'Tổ hợp thương mại - dịch vụ và không gian đô thị hiện đại', viTri: 'Khu vực Yên Phong, tỉnh Bắc Ninh', dienTich: 'Đang cập nhật', loaiHinh: 'Tổ hợp thương mại, dịch vụ, căn hộ và tiện ích công cộng', quyMo: 'Tổ hợp đa chức năng — đang cập nhật', banner: '/marketing/images/projects/dai-hung-phat.jpg', mau: '#1E4E8C', trangThai: 'Đang cập nhật', gia: 'Giá căn hộ hiện hành: đang cập nhật' },
+  { ma: 'VDL-CT', ten: 'Viện dưỡng lão Cát Tường', slogan: 'Khu nghỉ dưỡng phức hợp — Chăm sóc tuổi vàng hiện đại', viTri: 'Đang cập nhật vị trí dự án', dienTich: 'Đang cập nhật', loaiHinh: 'Viện dưỡng lão, khu nghỉ dưỡng phức hợp, chăm sóc sức khỏe', quyMo: 'Dự kiến thành hình năm 2027', banner: '/marketing/images/projects/vien-duong-lao-cat-tuong.jpg', mau: '#2E7D32', trangThai: 'Đang cập nhật', gia: 'Giá hiện hành: đang cập nhật' },
+];
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const ST = { 'Đang mở bán': 'mo', 'Đã bàn giao': 'bg', 'Đang cập nhật': 'cn' };
+const img = p => `<img src="${IMG}${esc(p.banner)}" alt="${esc(p.ten)}" loading="lazy" onerror="this.remove()">`;
+
+$('#yr').textContent = new Date().getFullYear();
+$('#burger').onclick = () => document.body.classList.toggle('nav-open');
+$('#menu').onclick = e => { if (e.target.closest('a')) document.body.classList.remove('nav-open'); };
+
+const hero = DA[0];
+$('#heroArt').style.background = `linear-gradient(135deg, ${hero.mau}, #2D7DD2)`;
+$('#heroArt').innerHTML = `${img(hero)}<div class="cap"><b>${esc(hero.ten)} · ${esc(hero.trangThai)}</b>${esc(hero.slogan)}</div>`;
+
+const can = DA.reduce((s, p) => s + (/^([\d.]+) căn/.exec(p.quyMo)?.[1].replace(/\./g, '') | 0), 0);
+$('#stats').innerHTML = [
+  [DA.length, 'dự án đã và đang phát triển'],
+  [DA.filter(p => p.trangThai === 'Đã bàn giao').length, 'dự án đã bàn giao'],
+  [can.toLocaleString('vi-VN') + '+', 'căn hộ (theo quy mô công bố)'],
+  ['2014', 'năm bàn giao dự án NOXH đầu tiên'],
+].map(([b, t]) => `<div class="stat"><b>${b}</b><span>${t}</span></div>`).join('');
+
+let filt = '';
+const FILTERS = [['', 'Tất cả'], ['Đang mở bán', 'Đang mở bán'], ['Đã bàn giao', 'Đã bàn giao'], ['Đang cập nhật', 'Sắp triển khai']];
+function draw() {
+  $('#chips').innerHTML = FILTERS.map(([k, l]) => `<button class="chip${k === filt ? ' on' : ''}" data-f="${k}">${l}</button>`).join('');
+  $('#grid').innerHTML = DA.filter(p => !filt || p.trangThai === filt).map(p => `<article class="pj">
+    <div class="ph" style="--c:${p.mau}">${img(p)}<span class="st ${ST[p.trangThai]}">${esc(p.trangThai)}</span></div>
+    <div class="bd"><h3>${esc(p.ten)}</h3><p class="sl">${esc(p.slogan)}</p>
+      <dl><dt>Vị trí</dt><dd>${esc(p.viTri)}</dd><dt>Loại hình</dt><dd>${esc(p.loaiHinh)}</dd><dt>Quy mô</dt><dd>${esc(p.quyMo)}</dd></dl>
+      <div class="pr">${esc(p.gia)}</div>
+      <div class="act"><a class="btn amb" href="#dang-ky" data-pj="${esc(p.ten)}">Nhận tư vấn</a><a class="btn" href="tel:0829376666">Gọi Hotline</a></div></div></article>`).join('');
+}
+$('#chips').onclick = e => { const b = e.target.closest('[data-f]'); if (b) { filt = b.dataset.f; draw(); } };
+$('#grid').onclick = e => { const a = e.target.closest('[data-pj]'); if (a) { $('#fProject').value = a.dataset.pj; setTimeout(() => $('#fName').focus(), 400); } };
+draw();
+$('#fProject').insertAdjacentHTML('beforeend', DA.map(p => `<option>${esc(p.ten)}</option>`).join(''));
+
+// Gửi đăng ký: có máy chủ → /api/public/lead; trang tĩnh (bản demo) → xếp hàng cho app nội bộ nhận
+const say = (t, ok) => { const m = $('#rmsg'); m.hidden = false; m.className = 'msg ' + (ok ? 'ok' : 'err'); m.textContent = t; };
+$('#rf').onsubmit = async e => {
+  e.preventDefault();
+  const b = { full_name: $('#fName').value.trim(), phone: $('#fPhone').value.trim(), email: $('#fEmail').value.trim(), project: $('#fProject').value, content: $('#fNote').value.trim() };
+  if (!b.full_name) return say('Vui lòng nhập họ tên'), $('#fName').focus();
+  if (!/^(0|\+?84)\d{9}$/.test(b.phone.replace(/[\s.-]/g, ''))) return say('Số điện thoại chưa đúng (10 số, ví dụ 0912 345 678)'), $('#fPhone').focus();
+  const btn = $('#rBtn'); btn.disabled = true; btn.textContent = 'Đang gửi…';
+  try {
+    const r = await fetch('api/public/lead', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }).catch(() => null);
+    let j = null; try { j = r && await r.json(); } catch { }
+    if (j && j.error) return say(j.error);
+    if (!(r && r.ok && j && j.ok)) {
+      const k = 'ctg-public-leads', q = JSON.parse(localStorage.getItem(k) || '[]');
+      q.push({ ...b, at: new Date().toISOString() }); localStorage.setItem(k, JSON.stringify(q));
+    }
+    $('#rf').reset();
+    say(`Cảm ơn Quý khách ${b.full_name}! Chuyên viên Cát Tường Group sẽ liên hệ lại qua số ${b.phone} trong thời gian sớm nhất.`, true);
+  } catch (er) { say('Chưa gửi được — vui lòng gọi Hotline 082.937.6666'); }
+  finally { btn.disabled = false; btn.textContent = 'Gửi đăng ký'; }
+};
+</script>
+</body>
+</html>

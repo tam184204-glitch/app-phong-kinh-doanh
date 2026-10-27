@@ -160,7 +160,7 @@ R('POST', '/api/as/:id', async (req, res, u, p) => {   // chỉ khi NO_LOGIN: đ
   await q("INSERT INTO kd_audit (ent, rec_id, action, user_id, note) VALUES ('user', $1, 'doi_vai_tro_thu', $1, 'NO_LOGIN')", [t.id]);
   await newSession(res, t.id);
 }, { allowMustChange: true });
-R('GET', '/api/login-info', async (req, res) => send(res, 200, { noLogin: NO_LOGIN, trial: await q('SELECT username, full_name, role FROM kd_user WHERE active AND is_trial ORDER BY id') }), { open: true });
+R('GET', '/api/login-info', async (req, res) => send(res, 200, { noLogin: NO_LOGIN }), { open: true });
 R('POST', '/api/password', async (req, res, u) => {
   const { old, pw } = await readJson(req);
   const row = await one('SELECT pw_hash FROM kd_user WHERE id = $1', [u.id]);
@@ -309,6 +309,21 @@ R('POST', '/api/leads', async (req, res) => {
   const lo = process.env.LEAD_OWNER && await one('SELECT id FROM kd_user WHERE lower(username) = lower($1) AND active', [process.env.LEAD_OWNER]);
   send(res, 200, await tx(db => B.intakeLead(db, { ...b, owner_id: lo?.id }, C.SYS)));
 }, { open: true });
+// form «Đăng ký tư vấn» trên trang công khai (gioi-thieu.html) — không cần mã, giới hạn 5 lần / 10 phút mỗi IP
+const leadHits = new Map();
+R('POST', '/api/public/lead', async (req, res) => {
+  const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket?.remoteAddress || '?';
+  const h = (leadHits.get(ip) || []).filter(t => Date.now() - t < 10 * 60e3);
+  if (h.length >= 5) bad('Quý khách đã gửi nhiều lần — vui lòng gọi Hotline 082.937.6666');
+  leadHits.set(ip, [...h, Date.now()]);
+  const b = await readJson(req);
+  if (!String(b.full_name || '').trim()) bad('Vui lòng nhập họ tên');
+  if (!/^(0|\+?84)\d{9}$/.test(String(b.phone || '').replace(/[\s.-]/g, ''))) bad('Số điện thoại chưa đúng');
+  const lo = process.env.LEAD_OWNER && await one('SELECT id FROM kd_user WHERE lower(username) = lower($1) AND active', [process.env.LEAD_OWNER]);
+  const content = ['Đăng ký tư vấn trên trang công khai', b.project && `dự án ${b.project}`, b.content].filter(Boolean).join(' — ').slice(0, 1000);
+  await tx(db => B.intakeLead(db, { channel: 'website', full_name: String(b.full_name).slice(0, 120), phone: b.phone, email: b.email || null, project: b.project, content, owner_id: lo?.id }, C.SYS));
+  send(res, 200, { ok: true });
+}, { open: true });
 R('POST', '/api/leads/manual', async (req, res, u) => {   // khách gặp trực tiếp / gọi Hotline — nhân viên thêm tay
   if (!can(u, M.E.contact_log, 'c')) deny();
   const b = await readJson(req);
@@ -432,6 +447,7 @@ async function start() {
   await tx(db => migrate(db));
   const n = (await one('SELECT count(*) n FROM kd_user')).n;
   if (!n) { console.log('CSDL trống — nạp dữ liệu gốc…'); await require('./seed').seedBase(); }
+  else await tx(db => require('./seed').ensureAdmin(db));
   const srv = http.createServer(handle);
   srv.listen(PORT, HOST, () => console.log(`App Phòng Kinh doanh: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`));
   const job = async () => { try { await tx(db => B.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.error('Việc chạy nền lỗi:', e.message); } };

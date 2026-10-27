@@ -65,9 +65,19 @@ Ngày {ngay}
   { code: 'MAU-BBBG', name: 'Biên bản bàn giao căn hộ (khung)', kind: 'bien_ban', content: 'BIÊN BẢN BÀN GIAO CĂN HỘ {ma_can}\nBên nhận: {ten_kh}\nHợp đồng số: {so_hd}\n(Khung — thay bằng mẫu biên bản đang áp dụng.)' },
 ];
 
+// tài khoản Quản trị đăng nhập app nội bộ (admin) — chỉ lưu mã băm; đổi mật khẩu trong app (menu tên › Đổi mật khẩu)
+const ADMIN_PW_HASH = 'scrypt$3a37567eb4222622e37f2bdee0f1805a$4f0e8f6aaa78ba6621f0495c9c0138b61a1eb60a845427243b7e51f3e2a5bc0c';
+async function ensureAdmin(db) {
+  if (await db.one("SELECT 1 FROM kd_user WHERE lower(username) = 'admin'")) return;
+  const by = await db.one("SELECT id, username, full_name, role FROM kd_user WHERE role = 'admin' ORDER BY id LIMIT 1");
+  const r = await IO.createUser(db, { username: 'admin', full_name: 'Quản trị hệ thống', role: 'admin', title: 'Quản trị hệ thống' }, by || C.SYS);
+  await db.q('UPDATE kd_user SET pw_hash = $1, must_change = false WHERE id = $2', [ADMIN_PW_HASH, r.id]);
+}
+
 async function seedBase() {
   await tx(async db => {
     await migrate(db);
+    await ensureAdmin(db);
     let admin = await db.one("SELECT id, username, full_name, role FROM kd_user WHERE role = 'admin' ORDER BY id LIMIT 1");
     for (const u of USERS) {
       if (await db.one('SELECT 1 FROM kd_user WHERE lower(username) = $1', [u.username])) continue;
@@ -435,7 +445,7 @@ async function clearDemo() {
   return { removed: out, units_recomputed: touched };
 }
 
-module.exports = { seedBase, loadDemo, clearDemo };
+module.exports = { seedBase, loadDemo, clearDemo, ensureAdmin };
 
 if (require.main === module) {
   (async () => {
