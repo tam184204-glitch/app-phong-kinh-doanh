@@ -87,7 +87,7 @@ const IMPORTS = {
     spec: { project: A('ma du an', 'du an'), building: A('ma toa', 'toa', 'khu'), code: A('ma can', 'ma can ho', 'can ho'), floor: A('tang'), kind: A('loai san pham', 'loai can ho', 'loai can', 'loai'), bedrooms: A('so phong ngu', 'phong ngu'),
       area_xd: A('dien tich xay dung', 'dt xay dung'), area_tt: A('dien tich thong thuy', 'dien tich song thuy', 'dt thong thuy', 'dien tich'),
       door_dir: A('huong cua chinh', 'huong cua'), balcony_dir: A('huong ban cong'), direction: A('huong'), position: A('vi tri'),
-      base_price: A('don gia nen'), pretax: A('tong tien truoc thue'), vat_pct: A('% thue', 'thue suat'), tax_amt: A('tong tien thue'),
+      base_price: A('don gia nen', 'don gia thong thuy'), pretax: A('tong tien truoc thue'), vat_pct: A('% thue', 'thue suat'), tax_amt: A('tong tien thue'),
       price_net: A('gia can ho sau thue', 'tong gia tri sau thue', 'tien sau thue', 'gia sau thue'), list_price: A('don gia', 'gia niem yet'),
       maint_fee: A('phi bao tri'), finish_value: A('gia tri hoan thien can ho', 'gia tri hoan thien', 'gia hoan thien'), total_price: A('tong gia can ho', 'tong cong', 'tong gia', 'tong tien'),
       handover_plan: A('thoi gian du kien ban giao', 'du kien ban giao'), activate: A('mo ban', 'kich hoat') },
@@ -104,7 +104,8 @@ const IMPORTS = {
       const kindRaw = strip(r.kind || r.bedrooms || ''); const nb = parseInt(String(r.bedrooms ?? kindRaw).replace(/\D/g, '')) || null;
       const kind = /lien ke/.test(kindRaw) ? 'lien_ke' : /shop/.test(kindRaw) ? 'shophouse' : /studio/.test(kindRaw) ? 'studio' : nb ? `${nb}pn` : null;
       const pos = strip(r.position); const position = /goc/.test(pos) ? 'goc' : /thang/.test(pos) ? 'thang' : pos ? 'thuong' : null;
-      const floor = r.floor != null && String(r.floor).trim() !== '' && +r.floor < 100 ? +r.floor : parseInt(code.slice(-4, -2)) || +r.floor;
+      const no = (code.split('-').pop().match(/\d+/) || [''])[0];   // số căn: 0912 → tầng 9, 101 → tầng 1
+      const floor = r.floor != null && String(r.floor).trim() !== '' && +r.floor < 100 ? +r.floor : no.length > 2 ? parseInt(no.slice(0, -2)) : +r.floor;
       const ab = s => s ? String(s).trim().split(/\s+/).map(w => w[0].toUpperCase()).join('') : '';   // Tây Nam → TN
       const vat = r.vat_pct == null || r.vat_pct === '' ? undefined : (n => n < 1 ? n * 100 : n)(+String(r.vat_pct).replace('%', '').replace(',', '.'));
       const data = { project_id: pj.id, building_id: b.id, code, floor, kind, bedrooms: nb, area_tt: r.area_tt, area_xd: r.area_xd, position,
@@ -208,7 +209,9 @@ async function importFile(kind, file, user, { dry, demo } = {}) {
   const I = IMPORTS[kind] || bad('Loại nhập không hợp lệ');
   if (user.role !== 'admin' && !I.roles.includes(user.role)) deny(`Vai trò của bạn không được nhập «${I.title}»`);
   const sheets = readTable(file);
-  const main = mapRows(sheets[0].rows, I.spec);
+  // tệp nhiều sheet (VD bảng giá Bravo: sheet tóm tắt + sheet chi tiết) → lấy sheet khớp nhiều cột nhất
+  const tries = sheets.map(sh => { try { return mapRows(sh.rows, I.spec); } catch { return null; } }).filter(Boolean);
+  const main = tries.sort((a, b) => b.cols.length - a.cols.length)[0] || mapRows(sheets[0].rows, I.spec);
   const extra = new Map();
   if (I.spec2) {
     const s2 = sheets.find((s, i) => i > 0 && /lich|thanh toan|dot/.test(strip(s.name))) || sheets[1];
