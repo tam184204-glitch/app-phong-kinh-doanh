@@ -226,10 +226,10 @@ def('reservation', {
     { k: 'deposit_on', l: 'Ngày đặt cọc', t: 'date' },
     { k: 'docs_deadline', l: 'Hạn hoàn thiện hồ sơ', t: 'date' },
     { k: 'source', l: 'Nguồn bán', t: 'sel', req: 1, def: 'truc_tiep', o: [['truc_tiep', 'Trực tiếp'], ['dai_ly', 'Đại lý / sàn'], ['ctv', 'Cộng tác viên']] },
-    { k: 'agent_id', l: 'Đại lý / CTV', t: 'ref', ref: 'agent', show: { source: ['dai_ly', 'ctv'] } },
+    { k: 'agent_id', l: 'Đại lý bán hàng', t: 'ref', ref: 'agent', show: { source: ['dai_ly', 'ctv'] } },
     owner('Người thực hiện', { hide: 1 }),   // tự lấy người lập phiếu
     { k: 'status', l: 'Tình trạng phiếu', t: 'sel', o: RES_ST, ro: 1, def: 'nhap' },
-  ], list: ['stt', 'unit_id', 'cust_code', 'cust_name', 'id_no', 'id_date', 'id_place', 'address', 'phone', 'price', 'reg_state', 'progress', 'note', 'prints'],
+  ], list: ['stt', 'unit_id', 'cust_code', 'cust_name', 'id_no', 'id_date', 'id_place', 'address', 'phone', 'price', 'reg_state', 'progress', 'agent_id', 'note', 'prints'],
   lock: ['chuyen_hd', 'het_han', 'huy', 'cho_duyet'], lockKeep: ['note', 'progress', 'reg_state'],
   flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'giu_cho' } },
   acts: [
