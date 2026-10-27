@@ -62,7 +62,10 @@ function mapRows(sheetRows, spec) {
     const cells = (sheetRows[i] || []).map(strip);
     const m = {}; let hit = 0;
     // khớp đúng tên cột trước («Mã» ≠ «Mã số thuế»), sau đó mới khớp phần đầu (bỏ qua tên quá ngắn như «Mã», «ID»)
-    for (const [k, aliases] of Object.entries(spec)) { let idx = cells.findIndex(c => c && aliases.includes(c)); if (idx < 0) idx = cells.findIndex(c => c && aliases.some(a => a.length > 2 && c.startsWith(a))); if (idx >= 0) { m[k] = idx; hit++; } }
+    // mỗi cột chỉ gán cho một trường; khớp phần đầu theo thứ tự tên gọi khác của trường
+    const used = new Set(), take = (k, idx) => { if (idx >= 0) { m[k] = idx; used.add(idx); hit++; } };
+    for (const [k, aliases] of Object.entries(spec)) take(k, cells.findIndex((c, j) => c && !used.has(j) && aliases.includes(c)));
+    for (const [k, aliases] of Object.entries(spec)) if (m[k] === undefined) for (const a of aliases.filter(a => a.length > 2)) { const j = cells.findIndex((c, j) => c && !used.has(j) && c.startsWith(a)); if (j >= 0) { take(k, j); break; } }
     if (hit >= Math.min(3, Object.keys(spec).length)) { h = i; map = m; break; }
   }
   if (h < 0) bad('Không nhận ra dòng tiêu đề. Hãy dùng tệp mẫu tải từ màn «Nhập dữ liệu».');
@@ -80,13 +83,21 @@ const A = (...xs) => xs.map(strip);
 const IMPORTS = {
   units: {
     title: 'Bảng hàng (dự án / tòa / căn)', roles: ['truong_phong'],
-    spec: { project: A('ma du an', 'du an'), building: A('ma toa', 'toa', 'khu'), code: A('ma can', 'can ho'), floor: A('tang'), kind: A('loai san pham', 'loai can', 'loai'), bedrooms: A('so phong ngu', 'phong ngu'),
-      area_tt: A('dien tich thong thuy', 'dien tich', 'dt thong thuy'), area_xd: A('dien tich xay dung'), direction: A('huong'), position: A('vi tri'), list_price: A('don gia', 'gia niem yet'), price_net: A('gia can ho sau thue', 'gia sau thue'),
-      maint_fee: A('phi bao tri'), total_price: A('tong gia can ho', 'tong gia'), handover_plan: A('thoi gian du kien ban giao', 'du kien ban giao'), activate: A('mo ban', 'kich hoat') },
+    // nhận cả mẫu App lẫn bảng giá xuất từ Bravo (Mã căn hộ, Đơn giá nền, Tổng tiền trước thuế, % thuế, Hướng cửa chính / ban công…)
+    spec: { project: A('ma du an', 'du an'), building: A('ma toa', 'toa', 'khu'), code: A('ma can', 'ma can ho', 'can ho'), floor: A('tang'), kind: A('loai san pham', 'loai can ho', 'loai can', 'loai'), bedrooms: A('so phong ngu', 'phong ngu'),
+      area_xd: A('dien tich xay dung', 'dt xay dung'), area_tt: A('dien tich thong thuy', 'dien tich song thuy', 'dt thong thuy', 'dien tich'),
+      door_dir: A('huong cua chinh', 'huong cua'), balcony_dir: A('huong ban cong'), direction: A('huong'), position: A('vi tri'),
+      base_price: A('don gia nen'), pretax: A('tong tien truoc thue'), vat_pct: A('% thue', 'thue suat'), tax_amt: A('tong tien thue'),
+      price_net: A('gia can ho sau thue', 'tong gia tri sau thue', 'tien sau thue', 'gia sau thue'), list_price: A('don gia', 'gia niem yet'),
+      maint_fee: A('phi bao tri'), finish_value: A('gia tri hoan thien can ho', 'gia tri hoan thien', 'gia hoan thien'), total_price: A('tong gia can ho', 'tong cong', 'tong gia', 'tong tien'),
+      handover_plan: A('thoi gian du kien ban giao', 'du kien ban giao'), activate: A('mo ban', 'kich hoat') },
     sample: [['CTS', 'O', 'CTS-O-0101', 1, '2PN', 2, '61,6', '', 'TN-ĐB', 'thường', '1.059.297.000', '1.054.935.000', '20.094.000', '1.075.029.000', 'tháng 3/2028', 'x']],
     async row(r, ctx) {
-      const pj = await ctx.db.one('SELECT id FROM kd_project WHERE upper(code) = upper($1)', [String(r.project || '').trim()]) || bad(`Không có dự án «${r.project}» — tạo dự án trước`);
-      const bcode = String(r.building || '').trim().toUpperCase() || bad('Thiếu mã tòa');
+      // mã dự án / tòa của Bravo (VD «07») khác App → lấy theo mã căn CTS-O-0101 (dự án CTS, tòa O)
+      const [pfx, bfx] = String(r.code || '').trim().toUpperCase().split('-');
+      const pj = await ctx.db.one('SELECT id FROM kd_project WHERE upper(code) = upper($1)', [String(r.project || '').trim()]) || await ctx.db.one('SELECT id FROM kd_project WHERE upper(code) = $1', [pfx || ''])
+        || bad(`Không có dự án «${r.project || pfx}» — tạo dự án trước`);
+      const bcode = String(r.building || '').trim().toUpperCase() || bfx || bad('Thiếu mã tòa');
       let b = await ctx.db.one('SELECT id FROM kd_building WHERE project_id = $1 AND upper(code) = $2', [pj.id, bcode]);
       if (!b) b = (await C.create('building', { project_id: pj.id, code: bcode, name: 'Tòa ' + bcode, kind: 'chung_cu' }, ctx.user, { db: ctx.db, system: true })).row;
       const code = String(r.code || '').trim().toUpperCase().replace(/\s+/g, '') || bad('Thiếu mã căn');
@@ -94,8 +105,12 @@ const IMPORTS = {
       const kind = /lien ke/.test(kindRaw) ? 'lien_ke' : /shop/.test(kindRaw) ? 'shophouse' : /studio/.test(kindRaw) ? 'studio' : nb ? `${nb}pn` : null;
       const pos = strip(r.position); const position = /goc/.test(pos) ? 'goc' : /thang/.test(pos) ? 'thang' : pos ? 'thuong' : null;
       const floor = r.floor != null && String(r.floor).trim() !== '' && +r.floor < 100 ? +r.floor : parseInt(code.slice(-4, -2)) || +r.floor;
-      const data = { project_id: pj.id, building_id: b.id, code, floor, kind, bedrooms: nb, area_tt: r.area_tt, area_xd: r.area_xd, direction: r.direction, position,
-        list_price: r.list_price, price_net: r.price_net, maint_fee: r.maint_fee, total_price: r.total_price, handover_plan: r.handover_plan, data_src: ctx.fileName };
+      const ab = s => s ? String(s).trim().split(/\s+/).map(w => w[0].toUpperCase()).join('') : '';   // Tây Nam → TN
+      const vat = r.vat_pct == null || r.vat_pct === '' ? undefined : (n => n < 1 ? n * 100 : n)(+String(r.vat_pct).replace('%', '').replace(',', '.'));
+      const data = { project_id: pj.id, building_id: b.id, code, floor, kind, bedrooms: nb, area_tt: r.area_tt, area_xd: r.area_xd, position,
+        direction: r.direction || (r.door_dir || r.balcony_dir ? [ab(r.door_dir), ab(r.balcony_dir)].filter(Boolean).join('-') : undefined), door_dir: r.door_dir, balcony_dir: r.balcony_dir,
+        list_price: r.list_price, base_price: r.base_price, pretax: r.pretax, vat_pct: vat, tax_amt: r.tax_amt, price_net: r.price_net, maint_fee: r.maint_fee, finish_value: r.finish_value,
+        total_price: r.total_price, handover_plan: r.handover_plan, data_src: ctx.fileName };
       for (const k of Object.keys(data)) if (data[k] === undefined) delete data[k];
       const old = await ctx.db.one('SELECT id, status FROM kd_unit WHERE project_id = $1 AND upper(code) = $2', [pj.id, code]);
       let row;
