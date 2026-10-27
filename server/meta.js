@@ -188,7 +188,7 @@ def('contact_log', {
     { k: 'commitment', l: 'Cam kết của khách', t: 'text' },
     { k: 'next_at', l: 'Ngày nhắc tiếp', t: 'date' },
     owner('Người liên hệ'),
-  ], list: ['at', 'customer_id', 'channel', 'content', 'result', 'next_at', 'owner_id'],
+  ], list: ['at', 'customer_id', 'channel', 'content', 'result', 'owner_id'],
 });
 
 // ===================== 04. GIAO DỊCH =====================
