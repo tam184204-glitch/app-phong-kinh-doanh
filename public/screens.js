@@ -322,49 +322,24 @@ async function catalogData() {
 const bName = b => b.name && b.name.toUpperCase().includes(String(b.code).toUpperCase()) ? b.name : `Tòa ${b.code}${b.name ? ' · ' + b.name : ''}`;
 const unitMatch = (u, q) => !q || `${u.code} ${u.direction || ''} ${u.building_id__l || ''}`.toLowerCase().includes(q);
 
-// Danh mục dự án: bấm dự án → sổ ra tòa, bấm tòa → sổ ra căn
+// Danh mục dự án: chỉ dự án — STT · Mã dự án · Tên dự án · Địa chỉ dự án (tòa / căn xem ở Danh mục sản phẩm)
 V.projects = async main => {
-  const s = ST.cat ||= { open: new Set(), q: '' };
+  const s = ST.cat ||= { q: '' };
   const pe = M.ents.project.perm;
   const draw = async () => {
-    const d = await catalogData(), q = s.q.trim().toLowerCase();
-    // tìm kiếm: giữ nhánh có dự án / tòa / căn khớp và tự mở nhánh đó
-    const hitB = b => !q || `${b.code} ${b.name || ''}`.toLowerCase().includes(q) || b.units.some(u => unitMatch(u, q));
-    const hitP = p => !q || `${p.code} ${p.name}`.toLowerCase().includes(q) || p.buildings.some(hitB);
-    const isOpen = k => s.open.has(k) || (!!q && (k[0] === 'p' || !!d.buildings.find(b => 'b' + b.id === k)?.units.some(u => unitMatch(u, q))));
-    const chev = (k, has) => has ? `<i class="fa-solid fa-chevron-right tw-chev ${isOpen(k) ? 'on' : ''}"></i>` : '<i class="tw-chev"></i>';
-    // chỉ STT · mã · tên · địa chỉ; bấm mã để mở thông tin, bấm dòng để sổ ra tòa / căn
-    const code = (en, id, c) => `<a class="ml" data-ed="${en}:${id}" title="Mở thông tin">${esc(c)}</a>`;
-    const rows = d.projects.filter(hitP).map((p, pi) => {
-      let h = `<tr class="tw-p" data-t="p${p.id}"><td class="stt">${pi + 1}</td><td><b>${code('project', p.id, p.code)}</b></td><td>${chev('p' + p.id, p.buildings.length)}${ico('fa-city', 'tw-ic')}<b>${esc(p.name)}</b></td><td class="wrap">${esc(p.address || '')}</td></tr>`;
-      if (isOpen('p' + p.id)) h += p.buildings.filter(hitB).map((b, bi) => {
-        let r = `<tr class="tw-b" data-t="b${b.id}"><td class="stt">${pi + 1}.${bi + 1}</td><td>${code('building', b.id, b.code)}</td><td>${chev('b' + b.id, b.units.length)}${ico('fa-building', 'tw-ic')}<b>${esc(bName(b))}</b></td><td></td></tr>`;
-        if (isOpen('b' + b.id)) r += b.units.filter(u => unitMatch(u, q)).map((u, ui) => `<tr class="tw-u" data-u="${u.id}"><td class="stt">${pi + 1}.${bi + 1}.${ui + 1}</td><td>${esc(u.code)}</td><td>${ico('fa-door-open', 'tw-ic')}Căn ${esc(u.code.split('-').pop())}</td><td></td></tr>`).join('');
-        return r;
-      }).join('');
-      return h;
-    }).join('');
-    main.innerHTML = `<div class="page">${head('02', 'Danh mục dự án', 'fa-sitemap', `<button class="btn" id="cOpen">${ico('fa-angles-down')} Mở hết</button><button class="btn" id="cClose">${ico('fa-angles-up')} Thu gọn</button>${pe.c ? `<button class="btn pri" data-add="project">${ico('fa-plus')} Tạo dự án</button>` : ''}`)}
-      <div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="cq" placeholder="Tìm dự án, tòa, mã căn…" value="${esc(s.q)}"></div><span class="grow"></span><span class="small muted">${d.projects.length} dự án — bấm dự án để xem tòa, bấm tòa để xem căn</span></div>
-      <div class="tbl-wrap"><table class="t tree"><thead><tr><th>STT</th><th>Mã dự án</th><th>Tên dự án</th><th>Địa chỉ dự án</th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="4"><div class="empty">${q ? 'Không có dự án / tòa / căn khớp' : 'Chưa có dự án'}</div></td></tr>`}</tbody></table></div></div></div>`;
+    const all = (await api('GET', '/api/e/project?limit=20000&sort=code')).rows, q = s.q.trim().toLowerCase();
+    const rows = all.filter(p => !q || `${p.code} ${p.name} ${p.address || ''}`.toLowerCase().includes(q));
+    main.innerHTML = `<div class="page">${head('02', 'Danh mục dự án', 'fa-sitemap', pe.c ? `<button class="btn pri" id="pjNew">${ico('fa-plus')} Tạo dự án</button>` : '')}
+      <div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="cq" placeholder="Tìm mã, tên, địa chỉ dự án…" value="${esc(s.q)}"></div><span class="grow"></span><span class="small muted">${rows.length} dự án</span></div>
+      <div class="tbl-wrap"><table class="t grid-bravo"><thead><tr><th>STT</th><th>Mã dự án</th><th>Tên dự án</th><th>Địa chỉ dự án</th></tr></thead>
+      <tbody>${rows.map((p, i) => `<tr data-p="${p.id}"><td class="stt">${i + 1}</td><td><b>${esc(p.code)}</b></td><td>${esc(p.name)}</td><td class="wrap">${esc(p.address || '')}</td></tr>`).join('') || `<tr><td colspan="4"><div class="empty">${q ? 'Không có dự án khớp' : 'Chưa có dự án'}</div></td></tr>`}</tbody></table></div></div></div>`;
     const inp = $('#cq', main);
     inp.oninput = debounce(() => { s.q = inp.value; draw().then(() => { const i = $('#cq', main); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }); }, 250);
-    $('#cOpen', main).onclick = () => { d.projects.forEach(p => s.open.add('p' + p.id)); d.buildings.forEach(b => s.open.add('b' + b.id)); draw(); };
-    $('#cClose', main).onclick = () => { s.open.clear(); draw(); };
   };
   ST.reload = draw;
   main.onclick = run(async e => {
-    const add = e.target.closest('[data-add]');
-    if (add) {
-      const k = add.dataset.add, a = add.dataset;
-      if (k === 'building') s.open.add('p' + a.p);
-      if (k === 'unit') { s.open.add('p' + a.p); s.open.add('b' + a.b); }
-      return openForm(k, { preset: k === 'project' ? {} : k === 'building' ? { project_id: +a.p } : { project_id: +a.p, building_id: +a.b, building_id__l: a.bl }, onSaved: () => draw() });
-    }
-    const ed = e.target.closest('[data-ed]'); if (ed) { const [en, id] = ed.dataset.ed.split(':'); return openDetail(en, +id); }
-    const u = e.target.closest('tr[data-u]'); if (u) return openDetail('unit', +u.dataset.u);
-    const t = e.target.closest('tr[data-t]'); if (t) { const k = t.dataset.t; s.open.has(k) ? s.open.delete(k) : s.open.add(k); return draw(); }
+    if (e.target.closest('#pjNew')) return openForm('project', { onSaved: () => draw() });
+    const tr = e.target.closest('tr[data-p]'); if (tr) return openDetail('project', +tr.dataset.p);
   });
   await draw();
 };
