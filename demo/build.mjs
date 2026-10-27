@@ -30,4 +30,5 @@ await build({
 const front = ['ui', 'screens', 'ai'].map(f => `// ---- ${f}.js\n` + fs.readFileSync(path.join(ROOT, 'public', f + '.js'), 'utf8').replace(/(["'(])\/logo\.png/g, '$1logo.png')).join('\n');
 fs.writeFileSync(path.join(OUT, 'front.js'), front);
 for (const [from, to] of [['public/app.css', 'app.css'], ['public/logo.png', 'logo.png'], ['public/gioi-thieu.html', 'gioi-thieu.html'],['demo/index.html', 'index.html'], ['demo/fa.css', 'fa.css']]) fs.copyFileSync(path.join(ROOT, from), path.join(OUT, to));
+fs.cpSync(path.join(ROOT, 'public', 'cong-khai'), path.join(OUT, 'cong-khai'), { recursive: true });   // trang công khai (node demo/cong-khai.mjs)
 console.log('Đã dựng docs/ —', fs.readdirSync(OUT).map(f => `${f} ${(fs.statSync(path.join(OUT, f)).size / 1024).toFixed(0)}KB`).join(', '));
