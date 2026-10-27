@@ -298,6 +298,24 @@ R('POST', '/api/handover/create', async (req, res, u) => {
   send(res, 200, out);
 });
 
+// --- khách tự sinh từ kênh liên hệ ---
+// Website / Messenger / Zalo (form, chatbot, Zapier/Make…) gọi máy chủ → máy chủ, kèm mã bí mật LEAD_TOKEN:
+//   POST /api/leads   X-Lead-Token: <LEAD_TOKEN>   { channel: 'website'|'messenger'|'zalo', full_name, phone, email, project, content }
+R('POST', '/api/leads', async (req, res) => {
+  const tok = process.env.LEAD_TOKEN;
+  if (!tok || req.headers['x-lead-token'] !== tok) deny('Sai hoặc thiếu mã X-Lead-Token (đặt LEAD_TOKEN trong .env)');
+  const b = await readJson(req);
+  if (!['website', 'messenger', 'zalo'].includes(b.channel)) bad('Kênh tự động chỉ nhận website, messenger, zalo');
+  const lo = process.env.LEAD_OWNER && await one('SELECT id FROM kd_user WHERE lower(username) = lower($1) AND active', [process.env.LEAD_OWNER]);
+  send(res, 200, await tx(db => B.intakeLead(db, { ...b, owner_id: lo?.id }, C.SYS)));
+}, { open: true });
+R('POST', '/api/leads/manual', async (req, res, u) => {   // khách gặp trực tiếp / gọi Hotline — nhân viên thêm tay
+  if (!can(u, M.E.contact_log, 'c')) deny();
+  const b = await readJson(req);
+  if (!['truc_tiep', 'hotline'].includes(b.channel)) bad('Chọn kênh: Gặp trực tiếp hoặc Hotline');
+  send(res, 200, await tx(db => B.intakeLead(db, b, u)));
+});
+
 // --- nhập dữ liệu ---
 R('GET', '/api/import/template/:kind', async (req, res, u, p) => sendFile(res, IO.importTemplate(p.kind), `Mau_nhap_${p.kind}.xlsx`, MIME['.xlsx']));
 R('POST', '/api/import/:kind', async (req, res, u, p, qs) => {

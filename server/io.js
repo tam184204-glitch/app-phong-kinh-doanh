@@ -121,6 +121,22 @@ const IMPORTS = {
       return 'them';
     },
   },
+  leads: {
+    title: 'Khách gặp trực tiếp / gọi Hotline', roles: ['ban_hang', 'truong_phong', 'cskh', 'ho_so'],
+    note: 'Mỗi dòng một lần liên hệ. Số điện thoại đã có hồ sơ thì chỉ ghi thêm nhật ký vào hồ sơ cũ, chưa có thì tự tạo khách hàng mới. Kênh: «Trực tiếp» hoặc «Hotline».',
+    spec: { full_name: A('ho ten', 'ten khach hang', 'khach hang', 'ten'), phone: A('dien thoai', 'so dien thoai', 'sdt'), email: A('email'), channel: A('kenh', 'nguon'), interest: A('du an quan tam', 'du an'),
+      content: A('noi dung trao doi', 'noi dung', 'nhu cau'), at: A('ngay lien he', 'ngay'), next_at: A('ngay nhac tiep', 'hen lai'), owner: A('nhan vien phu trach', 'phu trach') },
+    sample: [['Nguyễn Văn A', '0912345678', 'a@example.com', 'Hotline', 'CTS', 'Hỏi giá căn 2PN, hẹn xem nhà mẫu cuối tuần', '27/10/2026 09:30', '01/11/2026', 'thu.banhang']],
+    async row(r, ctx) {
+      const owner = r.owner ? await ctx.db.one('SELECT id FROM kd_user WHERE lower(username) = lower($1) OR lower(full_name) = lower($1)', [String(r.owner).trim()]) : null;
+      if (r.owner && !owner) bad(`Không có nhân viên «${r.owner}»`);
+      const ch = /hotline|goi|dien thoai/.test(strip(r.channel)) ? 'hotline' : 'truc_tiep';
+      const at = r.at ? C.isoDt(r.at) || bad(`Sai ngày liên hệ «${r.at}»`) : undefined;
+      const out = await B.intakeLead(ctx.db, { channel: ch, full_name: r.full_name, phone: r.phone, email: r.email, project: r.interest, content: r.content, at, next_at: r.next_at,
+        result: 'da_lien_he', owner_id: owner?.id }, ctx.user, { demo: ctx.demo });
+      return out.new_customer ? 'them' : 'cap_nhat';
+    },
+  },
   contracts: {
     title: 'Hợp đồng đã ký (dữ liệu lịch sử) + lịch thanh toán', roles: ['truong_phong', 'ho_so'],
     note: 'Sheet 1: hợp đồng. Sheet 2 «Lịch thanh toán»: các đợt theo số HĐ. Hợp đồng nhập vào ở trạng thái «Đã ký»; căn tự chuyển «Đã ký hợp đồng».',
@@ -209,6 +225,7 @@ function importTemplate(kind) {
   const LBL = {
     units: ['Mã dự án', 'Mã tòa', 'Mã căn', 'Tầng', 'Loại sản phẩm', 'Số phòng ngủ', 'Diện tích thông thủy', 'Diện tích xây dựng', 'Hướng', 'Vị trí', 'Đơn giá', 'Giá căn hộ sau thuế', 'Phí bảo trì', 'Tổng giá căn hộ', 'Thời gian dự kiến bàn giao', 'Mở bán (x)'],
     customers: ['Họ tên', 'Mã khách hàng', 'Mã số thuế', 'ID Bravo', 'Điện thoại', 'Điện thoại khác', 'Email', 'Số CCCD', 'Ngày cấp', 'Nơi cấp', 'Ngày sinh', 'Địa chỉ', 'Nguồn khách', 'Dự án quan tâm', 'Nhân viên phụ trách', 'Ghi chú'],
+    leads: ['Họ tên', 'Điện thoại', 'Email', 'Kênh', 'Dự án quan tâm', 'Nội dung trao đổi', 'Ngày liên hệ', 'Ngày nhắc tiếp', 'Nhân viên phụ trách'],
     contracts: ['Số hợp đồng', 'Loại hợp đồng', 'Mã căn', 'Điện thoại khách hàng', 'Đồng sở hữu', 'Giá trị hợp đồng', 'Ngày ký', 'Nhân viên phụ trách', 'Mã đại lý'],
     receipts: ['Số chứng từ', 'Ngày chứng từ', 'Số hợp đồng', 'Số tiền', 'Nội dung', 'Đợt'],
     users: ['Tên đăng nhập', 'Họ tên', 'Vai trò', 'Chức danh', 'Điện thoại', 'Email'],

@@ -219,9 +219,26 @@ H.customer = {
 H.contact_log = {
   async afterSave(r, old, { db, user }) {
     const c = await raw(db, 'customer', r.customer_id);
-    if (!old && c?.stage === 'moi') await sys(db, 'customer', c.id, { stage: r.result === 'tu_choi' ? 'khong_nhu_cau' : 'dang_cham_soc' }, user, 'cap_nhat_trang_thai');
+    if (!old && c?.stage === 'moi' && r.result !== 'chua_lien_he') await sys(db, 'customer', c.id, { stage: r.result === 'tu_choi' ? 'khong_nhu_cau' : 'dang_cham_soc' }, user, 'cap_nhat_trang_thai');
   },
 };
+
+// Khách tự sinh từ kênh liên hệ: tìm hồ sơ theo số điện thoại, chưa có thì tạo (nguồn = kênh), rồi ghi một dòng nhật ký tư vấn.
+// Website / Messenger / Zalo đổ về qua /api/leads; gặp trực tiếp / Hotline do nhân viên thêm tay hoặc nhập Excel.
+const LEAD_CH = { website: 'Website', messenger: 'Messenger', zalo: 'Zalo', hotline: 'Hotline', truc_tiep: 'Gặp trực tiếp' };
+async function intakeLead(db, b, user, { demo } = {}) {
+  const ch = LEAD_CH[b.channel] ? b.channel : bad(`Kênh không hợp lệ (${Object.keys(LEAD_CH).join(', ')})`);
+  const phone = digits(b.phone).replace(/^84(?=\d{9}$)/, '0') || bad('Thiếu số điện thoại khách');
+  const pj = b.interest_project ? +b.interest_project : b.project ? (await db.one('SELECT id FROM kd_project WHERE upper(code) = upper($1) OR name ILIKE $1', [String(b.project).trim()]))?.id : null;
+  const owner_id = b.owner_id || user.id || null;
+  let k = await db.one("SELECT id, owner_id FROM kd_customer WHERE $1 IN (regexp_replace(phone,'\\D','','g'), regexp_replace(coalesce(phone2,''),'\\D','','g'))", [phone]);
+  const isNew = !k;
+  if (!k) k = (await create('customer', { full_name: String(b.full_name || '').trim() || `Khách ${LEAD_CH[ch]} …${phone.slice(-3)}`, phone, email: b.email || null, source: ch,
+    interest_project: pj, need: b.need || null, owner_id }, user, { db, system: true, demo })).row;
+  const log = (await create('contact_log', { customer_id: k.id, at: b.at || new Date().toISOString(), channel: ch, content: String(b.content || '').trim() || `Khách để lại thông tin qua ${LEAD_CH[ch]}`,
+    result: b.result || 'chua_lien_he', commitment: b.commitment || null, next_at: b.next_at || null, owner_id: owner_id || k.owner_id }, user, { db, system: true, demo })).row;
+  return { customer_id: k.id, log_id: log.id, new_customer: isNew };
+}
 
 H.reservation = {
   async beforeSave(r, old, { db, warn, opts }) {
@@ -636,4 +653,4 @@ async function jobs(db) {
   return Date.now() - t0;
 }
 
-module.exports = { H, debtOf, PAY_ST, recomputeUnit, pricing, normSchedule, writeSchedule, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, pricing, normSchedule, writeSchedule, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

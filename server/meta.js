@@ -163,7 +163,7 @@ def('customer', {
 def('contact_log', {
   title: 'Nhật ký tư vấn – liên hệ', one: 'nhật ký', code: 'KH-02', mod: '03', icon: 'fa-comments', disp: "to_char(t.at,'DD/MM/YYYY HH24:MI')",
   purpose: 'Ghi lại lịch sử tương tác', users: 'Nhân viên phụ trách',
-  how: 'Mở khách hàng → thêm nhật ký → lưu → tạo nhắc việc nếu có',
+  how: 'Khách từ Website / Messenger / Zalo tự đổ về máy chủ → tự tạo hồ sơ + nhật ký «Chưa liên hệ». Khách gặp trực tiếp / gọi Hotline: bấm «Thêm khách trực tiếp / Hotline» hoặc nhập Excel → gọi lại, ghi kết quả, đặt ngày nhắc',
   rules: 'Không được xóa lịch sử đã chốt; chỉ người được phân quyền sửa',
   c: ['ban_hang', 'truong_phong', 'cong_no', 'cskh', 'ho_so'], u: ['truong_phong'], d: [], own: ['ban_hang'], order: 't.at desc', fields: [
     { k: 'customer_id', l: 'Khách hàng', t: 'ref', ref: 'customer', req: 1 },
@@ -668,7 +668,7 @@ def('template', {
 const MENU = [
   ['01', 'Tổng quan điều hành', 'fa-gauge-high', [['dashboard', 'Dashboard'], ['ai', 'Trợ lý AI tra cứu'], ['alerts', 'Cảnh báo tồn đọng'], ['approvals', 'Hộp phê duyệt']]],
   ['02', 'Dự án & giỏ hàng', 'fa-city', [['board', 'Bảng hàng'], ['projects', 'Danh mục dự án'], ['products', 'Danh mục sản phẩm/căn hộ', 'DA-01'], ['e:price_policy'], ['e:package']]],
-  ['03', 'Khách hàng', 'fa-users', [['e:customer'], ['e:contact_log'], ['lookup', 'Tra cứu hồ sơ 360°']]],
+  ['03', 'Khách hàng', 'fa-users', [['e:contact_log']]],   // hồ sơ khách tự sinh từ kênh liên hệ (Website, Messenger, Zalo, Hotline, trực tiếp)
   ['04', 'Giao dịch bán hàng', 'fa-handshake-angle', [['e:reservation'], ['e:noxh_check'], ['e:cancel_req']]],
   ['05', 'Hồ sơ & hợp đồng', 'fa-file-contract', [['e:contract'], ['signing', 'Lịch ký hợp đồng'], ['e:contract_change'], ['vault', 'Lưu trữ hồ sơ pháp lý']]],
   ['06', 'Công nợ & kế hoạch thu', 'fa-sack-dollar', [['ledger', 'Sổ công nợ căn hộ'], ['e:installment'], ['e:receipt'], ['e:collect_plan'], ['e:debt_call'], ['e:refund']]],
@@ -686,8 +686,8 @@ const VIEW_ROLES = {
 
 // danh mục dùng chung mặc định (quản trị sửa được)
 const LOOKUPS = {
-  nguon_khach: [['truc_tiep', 'Trực tiếp'], ['website', 'Website'], ['marketing', 'Chiến dịch marketing'], ['dai_ly', 'Đại lý'], ['ctv', 'Cộng tác viên'], ['gioi_thieu', 'Khách giới thiệu'], ['hotline', 'Hotline']],
-  kenh: [['goi_dien', 'Gọi điện'], ['zalo', 'Zalo'], ['sms', 'Tin nhắn'], ['email', 'Email'], ['truc_tiep', 'Gặp trực tiếp']],
+  nguon_khach: [['truc_tiep', 'Trực tiếp'], ['website', 'Website'], ['marketing', 'Chiến dịch marketing'], ['dai_ly', 'Đại lý'], ['ctv', 'Cộng tác viên'], ['gioi_thieu', 'Khách giới thiệu'], ['hotline', 'Hotline'], ['messenger', 'Messenger'], ['zalo', 'Zalo']],
+  kenh: [['goi_dien', 'Gọi điện'], ['zalo', 'Zalo'], ['sms', 'Tin nhắn'], ['email', 'Email'], ['truc_tiep', 'Gặp trực tiếp'], ['website', 'Website'], ['messenger', 'Messenger'], ['hotline', 'Hotline']],
   nhom_noxh: [['cn_thu_nhap_thap', 'Người thu nhập thấp tại đô thị'], ['cong_nhan', 'Công nhân, người lao động KCN'], ['can_bo', 'Cán bộ, công chức, viên chức'], ['luc_luong_vt', 'Lực lượng vũ trang'], ['ho_ngheo', 'Hộ nghèo, cận nghèo'], ['khac', 'Đối tượng khác theo quy định']],
   hang_muc: [['san', 'Sàn'], ['tuong', 'Tường / sơn'], ['tran', 'Trần'], ['cua', 'Cửa'], ['tu_bep', 'Tủ bếp'], ['ve_sinh', 'Thiết bị vệ sinh'], ['dien', 'Điện'], ['nuoc', 'Cấp thoát nước'], ['khac', 'Khác']],
   bo_phan: [['cskh', 'CSKH'], ['ky_thuat', 'Kỹ thuật'], ['kinh_doanh', 'Kinh doanh'], ['ke_toan', 'Kế toán'], ['ban_quan_ly', 'Ban quản lý tòa nhà']],
