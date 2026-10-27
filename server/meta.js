@@ -168,8 +168,8 @@ def('customer', {
     { k: 'id_place', l: 'Nơi cấp', t: 'text', pii: 1 },
     { k: 'birth', l: 'Ngày sinh', t: 'date', pii: 1 },
     { k: 'address', l: 'Địa chỉ liên hệ', t: 'text' },
-    { k: 'noxh_group', l: 'Nhóm đối tượng NOXH', t: 'sel', opt: 'nhom_noxh' },
-    owner(),
+    { k: 'noxh_group', l: 'Nhóm đối tượng NOXH', t: 'sel', opt: 'nhom_noxh', noForm: 1 },
+    owner(undefined, { noForm: 1 }),   // không hiện trong form tạo / sửa — tự lấy người tạo
     { k: 'note', l: 'Ghi chú', t: 'long' },
   ], list: ['full_name', 'code', 'address', 'phone', 'email', 'tax_code', 'stage'],
 });

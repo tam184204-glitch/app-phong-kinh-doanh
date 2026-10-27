@@ -264,7 +264,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [] } = {}
     for (const f of E.fields) if (rec[f.k] === undefined && f.def !== undefined && !f.ro) rec[f.k] = f.def === 'me' ? M.me.id : f.def === 'today' ? today() : f.def === 'now' ? new Date().toISOString() : f.def;
   }
   const lockKeep = perm?.locked ? new Set(perm.lockKeep || []) : null;
-  const fields = E.fields.filter(f => !skip.includes(f.k) && !(f.ro && !id) && !(f.t === 'code' && !id && !f.manual) && !(f.t === 'json' && f.k !== 'new_schedule'));
+  const fields = E.fields.filter(f => !skip.includes(f.k) && !f.noForm && !(f.ro && !id) && !(f.t === 'code' && !id && !f.manual) && !(f.t === 'json' && f.k !== 'new_schedule'));
   const wide = f => ['long', 'check', 'json'].includes(f.t) || !!f.pick || !!f.upload;
   const body = `${E.note ? `<div class="warnbar">${ico('fa-circle-info')}<span>${esc(E.note)}</span></div>` : ''}${lockKeep ? `<div class="lockbar">${ico('fa-lock')} Bản ghi đã chốt — chỉ sửa được: ${[...lockKeep].map(k => E.fields.find(f => f.k === k)?.l).join(', ')}</div>` : ''}<div id="ferr"></div><form class="form" autocomplete="off">${fields.map(f => {
     const ro = f.ro || (f.t === 'code' && !f.manual) || (lockKeep && !lockKeep.has(f.k)) || (f.pii && id && !M.piiRoles.includes(M.me.role) && rec[f.k]);
