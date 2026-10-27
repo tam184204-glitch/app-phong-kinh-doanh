@@ -708,3 +708,4 @@ table.tree td.stt { color: var(--muted); font-variant-numeric: tabular-nums; wid
 table.tree tr.tw-b td:first-child, table.tree tr.tw-u td:first-child { padding-left: 12px; }
 table.tree tr.tw-b td:nth-child(3) { padding-left: 34px; }
 table.tree tr.tw-u td:nth-child(3) { padding-left: 74px; }
+a.ml { cursor: pointer; }
