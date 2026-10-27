@@ -147,7 +147,7 @@ def('customer', {
       // sau mở bán: hồ sơ mua nhà → ký HĐMB → thanh toán → bàn giao → thanh lý
       ['da_nop_hsmn', 'Đã nộp HSMN', 'b'], ['sxd_duyet', 'SXD duyệt HS', 't'], ['cho_ky_hdmb', 'Chờ ký HĐMB', 'a'], ['da_ky_hdmb', 'Đã ký HĐMB', 'g'],
       ['tt_dot_2', 'Thanh toán đợt 2', 'g'], ['tt_dot_3', 'Thanh toán đợt 3', 'g'], ['cho_ban_giao', 'Chờ bàn giao', 'a'], ['da_ban_giao', 'Đã bàn giao', 't'],
-      ['lam_don_thanh_ly', 'Làm đơn thanh lý', 'r'], ['da_thanh_ly', 'Đã thanh lý', 's'], ['da_nop_hs_so', 'Đã nộp hồ sơ làm sổ', 'v']] },
+      ['lam_don_thanh_ly', 'Làm đơn thanh lý', 'r'], ['da_thanh_ly', 'Đã thanh lý', 's'], ['da_nop_hs_so', 'Đã nộp hồ sơ làm sổ', 'v'], ['da_ra_so', 'Đã ra sổ', 'g']] },
     { k: 'source', l: 'Nguồn khách', t: 'sel', opt: 'nguon_khach', req: 1 },
     { k: 'agent_id', l: 'Đại lý / CTV giới thiệu', t: 'ref', ref: 'agent' },
     { k: 'interest_project', l: 'Dự án quan tâm', t: 'ref', ref: 'project' },
@@ -359,7 +359,7 @@ def('receipt', {
   acts: [{ k: 'void', l: 'Hủy chứng từ', icon: 'fa-ban', from: ['hop_le'], roles: ['ke_toan'], danger: 1, ask: [{ k: 'reason', l: 'Lý do hủy', t: 'long', req: 1 }] }],
 });
 def('collect_plan', {
-  title: 'Kế hoạch dự kiến dòng thu', one: 'dòng kế hoạch', code: 'CN-03', mod: '06', icon: 'fa-chart-line', disp: "t.month||' · #'||t.id",
+  title: 'Kế hoạch dự kiến dòng thu-chi', one: 'dòng kế hoạch', code: 'CN-03', mod: '06', icon: 'fa-chart-line', disp: "t.month||' · #'||t.id",
   purpose: 'Dự báo số tiền có khả năng thu trong kỳ', users: 'Nhân viên công nợ / Trưởng phòng',
   how: 'Lọc công nợ → nhập dự kiến từng căn → Trưởng phòng duyệt → theo dõi thực thu → chốt chênh lệch',
   rules: 'Không dự kiến âm; vượt công nợ phải giải trình; kế hoạch có phiên bản và ngày chốt',
