@@ -32,7 +32,7 @@ const USERS = [
   { username: 'thu.ketoan', full_name: 'Người dùng thử – Kế toán', role: 'ke_toan', title: 'Tài khoản thử — ngừng trước vận hành', trial: 1 },
   { username: 'thu.quantri', full_name: 'Người dùng thử – Quản trị', role: 'admin', title: 'Tài khoản thử — ngừng trước vận hành', trial: 1 },
 ];
-const PROJECT_MAP = { 'CT-SMART': ['CTS', 'hon_hop'], 'TNS-SMART': ['TNS', 'hon_hop'], 'CT-TNT': ['TNT', 'noxh'], 'CT-ECO': ['ECO', 'noxh'], 'CT-TN': ['TN', 'noxh'], 'CT-NEW': ['NEW', 'thuong_mai'], 'DHP': ['DHP', 'hon_hop'], 'VDL-CT': ['VDL', 'hon_hop'] };
+const PROJECT_MAP = { 'CT-SMART': ['CTS', 'hon_hop'], 'TNS-SMART': ['TNS', 'hon_hop'], 'CT-TNT': ['TNT', 'noxh'], 'CT-ECO': ['ECO', 'noxh'], 'CT-TN': ['TN', 'noxh'], 'CT-NEW': ['CTN', 'thuong_mai'], 'DHP': ['DHP', 'hon_hop'], 'VDL-CT': ['VDL', 'hon_hop'] };
 const TEMPLATES = [
   { code: 'MAU-HDMB-01', name: 'Khung hợp đồng mua bán căn hộ', kind: 'hop_dong', content: `CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
 Độc lập – Tự do – Hạnh phúc

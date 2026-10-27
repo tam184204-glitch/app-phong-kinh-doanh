@@ -56,6 +56,7 @@ async function boot(pgliteUrl) {
   const biz = require('../server/biz');
   const { handle } = require('../server/server');
   await tx(db => migrate(db));   // thêm bảng / cột mới cho dữ liệu demo đã lưu từ phiên bản trước
+  await q("UPDATE kd_project SET code = 'CTN' WHERE code = 'NEW'");   // đổi mã dự án Chung cư Cát Tường New (27/10/2026)
   if (!(await one('SELECT count(*) n FROM kd_user')).n) {
     say('Lần đầu mở: đang nạp dữ liệu mẫu (khoảng 20–60 giây)…');
     const seed = require('../server/seed');
