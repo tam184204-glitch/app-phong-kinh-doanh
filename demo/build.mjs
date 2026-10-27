@@ -29,6 +29,9 @@ await build({
 // giao diện: nối ui → screens → ai, đường dẫn ảnh tương đối (Pages chạy trong thư mục con)
 const front = ['ui', 'screens', 'ai'].map(f => `// ---- ${f}.js\n` + fs.readFileSync(path.join(ROOT, 'public', f + '.js'), 'utf8').replace(/(["'(])\/logo\.png/g, '$1logo.png')).join('\n');
 fs.writeFileSync(path.join(OUT, 'front.js'), front);
-for (const [from, to] of [['public/app.css', 'app.css'], ['public/logo.png', 'logo.png'], ['public/gioi-thieu.html', 'gioi-thieu.html'],['demo/index.html', 'index.html'], ['demo/fa.css', 'fa.css']]) fs.copyFileSync(path.join(ROOT, from), path.join(OUT, to));
-fs.cpSync(path.join(ROOT, 'public', 'cong-khai'), path.join(OUT, 'cong-khai'), { recursive: true });   // trang công khai (node demo/cong-khai.mjs)
+for (const [from, to] of [['public/app.css', 'app.css'], ['public/logo.png', 'logo.png'], ['public/gioi-thieu.html', 'gioi-thieu.html'], ['public/favicon.ico', 'favicon.ico'], ['demo/index.html', 'index.html'], ['demo/fa.css', 'fa.css']]) fs.copyFileSync(path.join(ROOT, from), path.join(OUT, to));
+for (const d of ['cong-khai', 'marketing']) {   // trang công khai + tài nguyên chép từ trang gốc (node demo/cong-khai.mjs)
+  fs.rmSync(path.join(OUT, d), { recursive: true, force: true });
+  fs.cpSync(path.join(ROOT, 'public', d), path.join(OUT, d), { recursive: true });
+}
 console.log('Đã dựng docs/ —', fs.readdirSync(OUT).map(f => `${f} ${(fs.statSync(path.join(OUT, f)).size / 1024).toFixed(0)}KB`).join(', '));

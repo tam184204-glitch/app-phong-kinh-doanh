@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phiếu đăng ký mua căn hộ — Cát Tường Group</title>
+<style>
+  :root { --cobalt:#1E4E8C; --cobalt-dark:#143866; --amber:#F5A623; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Times New Roman', Times, serif; color:#111; max-width:820px; margin:24px auto; padding:0 28px; line-height:1.55; }
+  .top { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid var(--cobalt); padding-bottom:8px; }
+  .brand { color:var(--cobalt-dark); font-weight:bold; font-size:15px; text-transform:uppercase; }
+  .brand small { display:block; font-weight:normal; font-size:12px; color:#444; text-transform:none; }
+  h1 { text-align:center; color:var(--cobalt-dark); font-size:20px; margin:22px 0 4px; }
+  .sub { text-align:center; font-style:italic; color:#555; margin-bottom:18px; }
+  .row { margin:10px 0; }
+  .row label { font-weight:bold; }
+  .fill { border-bottom:1px dotted #333; display:inline-block; min-width:60%; }
+  .fill.short { min-width:38%; }
+  table { width:100%; border-collapse:collapse; margin:14px 0; }
+  th, td { border:1px solid #333; padding:7px 8px; font-size:14px; }
+  th { background:#eef3fa; color:var(--cobalt-dark); }
+  .sign { display:flex; justify-content:space-between; margin-top:40px; text-align:center; }
+  .sign div { width:45%; }
+  .note { font-size:12px; color:#666; font-style:italic; margin-top:24px; border-top:1px solid #ccc; padding-top:8px; }
+  .btn-print { position:fixed; top:16px; right:16px; background:var(--amber); color:#111; border:none; padding:10px 16px; border-radius:8px; font-family:Arial; font-weight:bold; cursor:pointer; }
+  @media print { .btn-print { display:none; } body { margin:0; } }
+</style>
+</head>
+<body>
+<button class="btn-print" onclick="window.print()">🖨️ In / Lưu PDF</button>
+<div class="top">
+  <div class="brand">CÁT TƯỜNG GROUP<small>Khối Home — Bộ phận Kinh doanh</small></div>
+  <div style="text-align:right; font-size:13px;">Mẫu: PĐK-01<br>Ngày: ......./......./ 20......</div>
+</div>
+
+<h1>PHIẾU ĐĂNG KÝ MUA CĂN HỘ</h1>
+<div class="sub">(Đăng ký nguyện vọng — không thay thế Hợp đồng mua bán)</div>
+
+<div class="row"><label>Họ và tên khách hàng:</label> <span class="fill"></span></div>
+<div class="row"><label>Ngày sinh:</label> <span class="fill short"></span> &nbsp; <label>Giới tính:</label> <span class="fill short"></span></div>
+<div class="row"><label>Số CCCD/CMND/Hộ chiếu:</label> <span class="fill short"></span> &nbsp; <label>Ngày cấp:</label> <span class="fill short"></span></div>
+<div class="row"><label>Địa chỉ liên hệ:</label> <span class="fill"></span></div>
+<div class="row"><label>Số điện thoại:</label> <span class="fill short"></span> &nbsp; <label>Email:</label> <span class="fill short"></span></div>
+
+<h3 style="color:var(--cobalt-dark)">THÔNG TIN CĂN HỘ ĐĂNG KÝ</h3>
+<table>
+  <tr><th>Dự án</th><th>Loại căn</th><th>Mã căn (dự kiến)</th><th>Diện tích (m²)</th></tr>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+</table>
+
+<div class="row"><label>Phương thức thanh toán dự kiến:</label> ☐ Tiến độ &nbsp; ☐ Thanh toán nhanh &nbsp; ☐ Vay ngân hàng</div>
+<div class="row"><label>Ghi chú / nguyện vọng khác:</label> <span class="fill"></span></div>
+<div class="row"><span class="fill"></span></div>
+
+<p style="margin-top:16px">Tôi cam kết các thông tin khai trên là đúng sự thật và mong muốn được tư vấn, đăng ký mua căn hộ nêu trên.</p>
+
+<div class="sign">
+  <div>NHÂN VIÊN KINH DOANH<br><em>(Ký, ghi rõ họ tên)</em><br><br><br><br>...........................</div>
+  <div>KHÁCH HÀNG<br><em>(Ký, ghi rõ họ tên)</em><br><br><br><br>...........................</div>
+</div>
+
+<div class="note">Lưu ý: Đây là biểu mẫu MẪU minh họa. Điều khoản & giá bán chính thức theo Hợp đồng và thông báo của Chủ đầu tư tại từng thời điểm.</div>
+</body>
+</html>

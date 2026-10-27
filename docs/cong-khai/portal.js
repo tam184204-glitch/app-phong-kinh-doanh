@@ -9,17 +9,17 @@ const LOCKED_SUPPORT_IDS = new Set([
 ]);
 const SMART_CITY_PROJECT_360_URL = 'https://cattuong.panoee.net/cattuong/68f89412a308267c3b1e6ad6';
 const PROJECT_OVERVIEW_BANNERS = {
-  'CT-TNT': 'https://cattuonggroup.ai.vn/marketing/images/projects/ai-outpaint/cat-tuong-tnt.jpg',
-  'CT-ECO': 'https://cattuonggroup.ai.vn/marketing/images/projects/ai-outpaint/cat-tuong-eco-wide-ai-20260707.jpg',
-  'CT-TN': 'https://cattuonggroup.ai.vn/marketing/images/projects/ai-outpaint/cat-tuong-thong-nhat.jpg',
-  'CT-NEW': 'https://cattuonggroup.ai.vn/marketing/images/projects/ai-outpaint/cat-tuong-new.jpg',
-  'CT-SMART': 'https://cattuonggroup.ai.vn/marketing/images/projects/ai-outpaint/cat-tuong-smart-city.jpg',
-  'TNS-SMART': 'https://cattuonggroup.ai.vn/marketing/images/projects/ai-outpaint/thong-nhat-smart-city-day-ai-20260707.jpg',
-  DHP: 'https://cattuonggroup.ai.vn/marketing/images/projects/ai-outpaint/dai-hung-phat.jpg',
-  'VDL-CT': 'https://cattuonggroup.ai.vn/marketing/images/projects/ai-outpaint/vien-duong-lao-cat-tuong.jpg',
+  'CT-TNT': 'marketing/images/projects/ai-outpaint/cat-tuong-tnt.jpg',
+  'CT-ECO': 'marketing/images/projects/ai-outpaint/cat-tuong-eco-wide-ai-20260707.jpg',
+  'CT-TN': 'marketing/images/projects/ai-outpaint/cat-tuong-thong-nhat.jpg',
+  'CT-NEW': 'marketing/images/projects/ai-outpaint/cat-tuong-new.jpg',
+  'CT-SMART': 'marketing/images/projects/ai-outpaint/cat-tuong-smart-city.jpg',
+  'TNS-SMART': 'marketing/images/projects/ai-outpaint/thong-nhat-smart-city-day-ai-20260707.jpg',
+  DHP: 'marketing/images/projects/ai-outpaint/dai-hung-phat.jpg',
+  'VDL-CT': 'marketing/images/projects/ai-outpaint/vien-duong-lao-cat-tuong.jpg',
 };
 
-const TNT_APARTMENT_TOUR_BASE = 'https://cattuonggroup.ai.vn/marketing/images/projects/cat-tuong-tnt/apartment-tour';
+const TNT_APARTMENT_TOUR_BASE = 'marketing/images/projects/cat-tuong-tnt/apartment-tour';
 const TNT_APARTMENT_TOUR = [
   {
     id: 'tnt-overview-720',
@@ -31,7 +31,7 @@ const TNT_APARTMENT_TOUR = [
   },
 ];
 
-const ECO_APARTMENT_TOUR_BASE = 'https://cattuonggroup.ai.vn/marketing/images/projects/cat-tuong-eco/apartment-tour';
+const ECO_APARTMENT_TOUR_BASE = 'marketing/images/projects/cat-tuong-eco/apartment-tour';
 const ECO_APARTMENT_TOUR_VERSION = '20260709-eco-ai-overview-panorama-v1';
 const ECO_APARTMENT_TOUR = [
   {
@@ -52,7 +52,7 @@ const ECO_APARTMENT_TOUR = [
   },
 ];
 
-const TNS_SMART_APARTMENT_TOUR_BASE = 'https://cattuonggroup.ai.vn/marketing/images/projects/thong-nhat-smart-city';
+const TNS_SMART_APARTMENT_TOUR_BASE = 'marketing/images/projects/thong-nhat-smart-city';
 const TNS_SMART_APARTMENT_TOUR_VERSION = '20260709-tns-smart-look-up-down-v1';
 const TNS_SMART_APARTMENT_TOUR = [
   {
@@ -72,7 +72,7 @@ const TNS_SMART_APARTMENT_TOUR = [
   },
 ];
 
-const DHP_APARTMENT_TOUR_BASE = 'https://cattuonggroup.ai.vn/marketing/images/projects/dai-hung-phat/apartment-tour';
+const DHP_APARTMENT_TOUR_BASE = 'marketing/images/projects/dai-hung-phat/apartment-tour';
 const DHP_APARTMENT_TOUR = [
   {
     id: 'dhp-overview-720',
@@ -718,7 +718,7 @@ const BLOG_TAI_LIEU_MAC_DINH = [
     moTa: 'Biểu mẫu kê khai nhu cầu mua nhà ở xã hội, dùng để chuẩn bị hồ sơ đăng ký ban đầu.',
     loai: 'Đơn mẫu',
     dinhDang: 'PDF/HTML',
-    file: 'https://cattuonggroup.ai.vn/marketing/forms/phieu-dang-ky-mua.html',
+    file: 'marketing/forms/phieu-dang-ky-mua.html',
   },
   {
     id: 'to-khai-khach-hang',
@@ -726,7 +726,7 @@ const BLOG_TAI_LIEU_MAC_DINH = [
     moTa: 'Mẫu kê khai thông tin cá nhân, thông tin liên hệ và dự án/căn hộ quan tâm.',
     loai: 'Biểu mẫu kê khai',
     dinhDang: 'Word/HTML',
-    file: 'https://cattuonggroup.ai.vn/marketing/forms/to-khai-khach-hang.html',
+    file: 'marketing/forms/to-khai-khach-hang.html',
   },
   {
     id: 'danh-sach-ho-so',
@@ -734,7 +734,7 @@ const BLOG_TAI_LIEU_MAC_DINH = [
     moTa: 'Checklist giấy tờ theo từng nhóm đối tượng, dùng để rà soát trước khi nộp hồ sơ.',
     loai: 'Tài liệu hướng dẫn',
     dinhDang: 'PDF/HTML',
-    file: 'https://cattuonggroup.ai.vn/marketing/forms/danh-sach-ho-so.html',
+    file: 'marketing/forms/danh-sach-ho-so.html',
   },
 ];
 
@@ -767,7 +767,7 @@ const NOXH_NGUON_THAM_KHAO_CHINH_THONG = [
   { ten: 'TT 08/2026/TT-BXD', href: NOXH_POLICY_LINKS.tt08 },
 ];
 
-const NOXH_FILE_BASE = 'https://cattuonggroup.ai.vn/marketing/forms/noxh/';
+const NOXH_FILE_BASE = 'marketing/forms/noxh/';
 const NOXH_FORMS_RELEASE = '2026-09-22/';
 const NOXH_DOWNLOAD_FILES = {
   zipGroup01: { ten: 'Tải bộ hồ sơ nhóm 01', moTa: 'Đã kết hôn, 2 vợ chồng làm doanh nghiệp', file: NOXH_FORMS_RELEASE + 'Nhom_01_Da_ket_hon_2_vo_chong_lam_doanh_nghiep.zip', zip: true },
@@ -1055,10 +1055,10 @@ const BLOG_BAI_VIET_MAC_DINH = [
 ];
 
 const SUPPORT_CARD_IMAGES = {
-  'tra-cuu-bang-hang-cdt': 'https://cattuonggroup.ai.vn/marketing/images/support/bang-hang-cdt-ai-20260707.jpg',
-  'huong-dan-ho-so-nha-o-xa-hoi': 'https://cattuonggroup.ai.vn/marketing/images/support/ho-so-noxh-ai-20260707.jpg',
-  'kiem-tra-ho-so-khach-hang': 'https://cattuonggroup.ai.vn/marketing/images/support/kiem-tra-ho-so-ai-20260707.jpg',
-  'tra-cuu-tien-trinh-phe-duyet-ho-so': 'https://cattuonggroup.ai.vn/marketing/images/support/tien-trinh-ho-so-ai-20260707.jpg',
+  'tra-cuu-bang-hang-cdt': 'marketing/images/support/bang-hang-cdt-ai-20260707.jpg',
+  'huong-dan-ho-so-nha-o-xa-hoi': 'marketing/images/support/ho-so-noxh-ai-20260707.jpg',
+  'kiem-tra-ho-so-khach-hang': 'marketing/images/support/kiem-tra-ho-so-ai-20260707.jpg',
+  'tra-cuu-tien-trinh-phe-duyet-ho-so': 'marketing/images/support/tien-trinh-ho-so-ai-20260707.jpg',
 };
 
 const BANG_HANG_CDT_ITEM = {
@@ -1089,7 +1089,7 @@ const TIN_TUC_NOI_BAT_MAC_DINH = [
     tomTat: 'Thông báo mở bán nhà ở xã hội tại dự án Cát Tường Smart City, khu vực Yên Trung và Tam Đa, Bắc Ninh.',
     ngay: '2026-03-18',
     nhan: 'Mở bán',
-    anh: 'https://cattuonggroup.ai.vn/marketing/images/projects/ai-outpaint/cat-tuong-smart-city.jpg',
+    anh: 'marketing/images/projects/ai-outpaint/cat-tuong-smart-city.jpg',
     href: 'https://cattuonggroup.vn/thong-bao-mo-ban-nha-o-xa-hoi-tai-du-an-dtxd-khu-nha-o-xa-hoi-cat-tuong-smart-city-tai-xa-yen-trung-va-xa-tam-da-tinh-bac-ninh-dot-2-nam-2026/',
   },
   {
@@ -1098,7 +1098,7 @@ const TIN_TUC_NOI_BAT_MAC_DINH = [
     tomTat: 'Cập nhật đợt 3 năm 2026 với thông tin công bố nhà ở xã hội Thống Nhất Smart City.',
     ngay: '2026-05-30',
     nhan: 'Công bố',
-    anh: 'https://cattuonggroup.ai.vn/marketing/images/projects/ai-outpaint/thong-nhat-smart-city.jpg',
+    anh: 'marketing/images/projects/ai-outpaint/thong-nhat-smart-city.jpg',
     href: 'https://cattuonggroup.vn/cong-bo-cong-khai-viec-ban-cho-thue-cho-thue-mua-nha-o-xa-hoi-thong-nhat-smart-city-dot-3-nam-2026/',
   },
   {
@@ -1107,7 +1107,7 @@ const TIN_TUC_NOI_BAT_MAC_DINH = [
     tomTat: 'Thông tin bảng giá, điều kiện và dữ liệu công bố cho dự án nhà ở xã hội Cát Tường Smart City.',
     ngay: '2026-05-30',
     nhan: 'Bảng giá',
-    anh: 'https://cattuonggroup.ai.vn/marketing/images/projects/cat-tuong-smart-city/anh-06.jpg',
+    anh: 'marketing/images/projects/cat-tuong-smart-city/anh-06.jpg',
     href: 'https://cattuonggroup.vn/giabannoxhcattuongsmartcity/',
   },
   {
@@ -1116,7 +1116,7 @@ const TIN_TUC_NOI_BAT_MAC_DINH = [
     tomTat: 'Tổng hợp các câu hỏi phổ biến về điều kiện, hồ sơ, quy trình và quyền lợi khi mua nhà ở xã hội.',
     ngay: '2026-05-16',
     nhan: 'Hỏi đáp',
-    anh: 'https://cattuonggroup.ai.vn/marketing/images/projects/cat-tuong-smart-city/anh-15.jpg',
+    anh: 'marketing/images/projects/cat-tuong-smart-city/anh-15.jpg',
     href: 'https://cattuonggroup.vn/cau-hoi-khi-mua-nha-o-xa-hoi/',
   },
   {
@@ -1125,7 +1125,7 @@ const TIN_TUC_NOI_BAT_MAC_DINH = [
     tomTat: 'Các giải pháp điều phối thi công, nghiệm thu và hoàn thiện để tăng tốc bàn giao nhà ở xã hội.',
     ngay: '2026-05-16',
     nhan: 'Tiến độ',
-    anh: 'https://cattuonggroup.ai.vn/marketing/images/projects/ai-outpaint/thong-nhat-smart-city-day-ai-20260707.jpg',
+    anh: 'marketing/images/projects/ai-outpaint/thong-nhat-smart-city-day-ai-20260707.jpg',
     href: 'https://cattuonggroup.vn/tien-do-ban-giao-nha-o-xa-hoi-cat-tuong-2026/',
   },
   {
@@ -1134,7 +1134,7 @@ const TIN_TUC_NOI_BAT_MAC_DINH = [
     tomTat: 'Thông tin tiến độ dự án nhà ở xã hội quy mô lớn tại Bắc Ninh, liên quan nguồn cung an cư của khách hàng.',
     ngay: '2026-04-14',
     nhan: 'Tiến độ',
-    anh: 'https://cattuonggroup.ai.vn/marketing/images/projects/thong-nhat-smart-city/can-ho-thuc-te-02.jpg',
+    anh: 'marketing/images/projects/thong-nhat-smart-city/can-ho-thuc-te-02.jpg',
     href: 'https://cattuonggroup.vn/du-an-nha-o-xa-hoi-3-000-ty-lon-nhat-bac-ninh-sap-ban-giao/',
   },
   {
@@ -1143,7 +1143,7 @@ const TIN_TUC_NOI_BAT_MAC_DINH = [
     tomTat: 'Công bố danh sách đối tượng đã ký hợp đồng mua bán, cho thuê, cho thuê mua tại các khu nhà A-J.',
     ngay: '2026-04-03',
     nhan: 'Danh sách',
-    anh: 'https://cattuonggroup.ai.vn/marketing/images/projects/ai-outpaint/thong-nhat-smart-city.jpg',
+    anh: 'marketing/images/projects/ai-outpaint/thong-nhat-smart-city.jpg',
     href: 'https://cattuonggroup.vn/danh-sach-doi-tuong-da-duoc-ky-hop-dong-mua-ban-cho-thue-cho-thue-mua-nha-o-xa-hoi-tai-khu-nha-abcdefghij-du-an-nha-o-xa-hoi-thong-nhat-smartcity-4/',
   },
   {
@@ -1152,7 +1152,7 @@ const TIN_TUC_NOI_BAT_MAC_DINH = [
     tomTat: 'Thông tin công bố đợt 2 cho dự án nhà ở xã hội Thống Nhất Smart City tại Yên Trung và Tam Đa.',
     ngay: '2026-03-20',
     nhan: 'Công bố',
-    anh: 'https://cattuonggroup.ai.vn/marketing/images/projects/thong-nhat-smart-city/can-ho-thuc-te-03.jpg',
+    anh: 'marketing/images/projects/thong-nhat-smart-city/can-ho-thuc-te-03.jpg',
     href: 'https://cattuonggroup.vn/cong-bo-cong-khai-viec-ban-nha-o-xa-hoi-tai-du-an-dau-tu-xay-dung-khu-nha-o-xa-hoi-thong-nhat-smart-city-tai-xa-yen-trung-va-xa-tam-da-tinh-bac-ninh-dot-2-nam-2026/',
   },
   {
@@ -1161,7 +1161,7 @@ const TIN_TUC_NOI_BAT_MAC_DINH = [
     tomTat: 'Tờ trình danh sách đối tượng dự kiến được giải quyết mua, thuê, thuê mua nhà ở xã hội Thống Nhất SmartCity.',
     ngay: '2026-03-10',
     nhan: 'Hồ sơ',
-    anh: 'https://cattuonggroup.ai.vn/marketing/images/projects/ai-outpaint/thong-nhat-smart-city.jpg',
+    anh: 'marketing/images/projects/ai-outpaint/thong-nhat-smart-city.jpg',
     href: 'https://cattuonggroup.vn/to-trinh-v-v-de-xuat-danh-sach-cac-doi-tuong-du-kien-duoc-giai-quyet-mua-thue-thue-mua-nha-o-xa-hoi-tai-cac-du-an-dau-tu-xay-dung-nha-o-xa-hoi-thong-nhat-smartcity-9/',
   },
   {
@@ -1170,7 +1170,7 @@ const TIN_TUC_NOI_BAT_MAC_DINH = [
     tomTat: 'Bức tranh chỉ tiêu phát triển nhà ở xã hội, giúp khách hàng theo dõi nguồn cung trong các năm tới.',
     ngay: '2026-01-29',
     nhan: 'Chính sách',
-    anh: 'https://cattuonggroup.ai.vn/marketing/images/projects/cat-tuong-smart-city/anh-07.jpg',
+    anh: 'marketing/images/projects/cat-tuong-smart-city/anh-07.jpg',
     href: 'https://cattuonggroup.vn/chi-tieu-nha-o-xa-hoi-cua-cac-dia-phuong-giai-doan-2025-2030/',
   },
   {
@@ -1179,7 +1179,7 @@ const TIN_TUC_NOI_BAT_MAC_DINH = [
     tomTat: 'Tóm lược các điều kiện và điểm cần biết để khách hàng chủ động chuẩn bị hồ sơ mua nhà ở xã hội.',
     ngay: '2026-01-28',
     nhan: 'Hướng dẫn',
-    anh: 'https://cattuonggroup.ai.vn/marketing/images/projects/cat-tuong-tnt.jpg',
+    anh: 'marketing/images/projects/cat-tuong-tnt.jpg',
     href: 'https://cattuonggroup.vn/nhung-dieu-can-biet-khi-mua-nha-o-xa-hoi-dieu-kien-muc-vay-co-hoi-an-cu/',
   },
   {
@@ -1188,7 +1188,7 @@ const TIN_TUC_NOI_BAT_MAC_DINH = [
     tomTat: 'Tờ trình cập nhật danh sách khách hàng dự kiến được giải quyết mua, thuê, thuê mua nhà ở xã hội.',
     ngay: '2026-01-26',
     nhan: 'Hồ sơ',
-    anh: 'https://cattuonggroup.ai.vn/marketing/images/projects/ai-outpaint/thong-nhat-smart-city.jpg',
+    anh: 'marketing/images/projects/ai-outpaint/thong-nhat-smart-city.jpg',
     href: 'https://cattuonggroup.vn/to-trinh-v-v-de-xuat-danh-sach-cac-doi-tuong-du-kien-duoc-giai-quyet-mua-thue-thue-mua-nha-o-xa-hoi-tai-cac-du-an-dau-tu-xay-dung-nha-o-xa-hoi-thong-nhat-smartcity-10/',
   },
   {
@@ -1197,7 +1197,7 @@ const TIN_TUC_NOI_BAT_MAC_DINH = [
     tomTat: 'Cập nhật nguồn cung nhà ở xã hội đủ điều kiện kinh doanh tại Bắc Ninh trong tháng 01/2026.',
     ngay: '2026-01-23',
     nhan: 'Bắc Ninh',
-    anh: 'https://cattuonggroup.ai.vn/marketing/images/projects/cat-tuong-smart-city/anh-08.jpg',
+    anh: 'marketing/images/projects/cat-tuong-smart-city/anh-08.jpg',
     href: 'https://cattuonggroup.vn/cap-nhat-danh-sach-du-an-nha-o-xa-hoi-du-dieu-kien-kinh-doanh-tai-bac-ninh-thang-1-2026/',
   },
   {
@@ -1206,7 +1206,7 @@ const TIN_TUC_NOI_BAT_MAC_DINH = [
     tomTat: 'Tin thị trường về vai trò của Bắc Ninh trong phát triển nguồn cung nhà ở xã hội.',
     ngay: '2026-01-22',
     nhan: 'Thị trường',
-    anh: 'https://cattuonggroup.ai.vn/marketing/images/projects/ai-outpaint/cat-tuong-smart-city.jpg',
+    anh: 'marketing/images/projects/ai-outpaint/cat-tuong-smart-city.jpg',
     href: 'https://cattuonggroup.vn/nha-o-xa-hoi-cua-tinh-bac-ninh-chiem-20-quy-nha-o-xa-hoi-cua-ca-nuoc/',
   },
   {
@@ -1215,7 +1215,7 @@ const TIN_TUC_NOI_BAT_MAC_DINH = [
     tomTat: 'Đoàn công tác thăm dự án Cát Tường SmartCity, ghi nhận mô hình phát triển nhà ở xã hội tại Bắc Ninh.',
     ngay: '2026-01-10',
     nhan: 'Dự án',
-    anh: 'https://cattuonggroup.ai.vn/marketing/images/projects/cat-tuong-smart-city/anh-16.jpg',
+    anh: 'marketing/images/projects/cat-tuong-smart-city/anh-16.jpg',
     href: 'https://cattuonggroup.vn/ubnd-tinh-thai-nguyen-tham-va-lam-viec-tai-du-an-nha-o-xa-hoi-cat-tuong-smart-city/',
   },
   {
@@ -1224,7 +1224,7 @@ const TIN_TUC_NOI_BAT_MAC_DINH = [
     tomTat: 'Thông tin tổng quan về sản phẩm, dự án và dữ liệu khách hàng cần biết trước khi tìm hiểu hồ sơ.',
     ngay: '2026-01-05',
     nhan: 'Dự án',
-    anh: 'https://cattuonggroup.ai.vn/marketing/images/projects/cat-tuong-thong-nhat/anh-02.jpg',
+    anh: 'marketing/images/projects/cat-tuong-thong-nhat/anh-02.jpg',
     href: 'https://cattuonggroup.vn/thong-tin-nha-o-xa-hoi-doi-voi-du-an-dtxd-khu-nha-o-xa-hoi-thong-nhat/',
   },
   {
@@ -1233,7 +1233,7 @@ const TIN_TUC_NOI_BAT_MAC_DINH = [
     tomTat: 'Thông tin dự án Cát Tường Smart City, vị trí, quy mô và định hướng phục vụ nhu cầu an cư.',
     ngay: '2026-01-05',
     nhan: 'Dự án',
-    anh: 'https://cattuonggroup.ai.vn/marketing/images/projects/cat-tuong-smart-city/anh-01.jpg',
+    anh: 'marketing/images/projects/cat-tuong-smart-city/anh-01.jpg',
     href: 'https://cattuonggroup.vn/thong-tin-nha-o-xa-hoi-doi-voi-du-an-dtxd-khu-nha-o-xa-hoi-cat-tuong-smart-city/',
   },
   {
@@ -1242,7 +1242,7 @@ const TIN_TUC_NOI_BAT_MAC_DINH = [
     tomTat: 'Thông tin dự án Thống Nhất Smart City, giúp khách hàng nắm tổng quan trước khi chọn căn và nộp hồ sơ.',
     ngay: '2025-12-20',
     nhan: 'Dự án',
-    anh: 'https://cattuonggroup.ai.vn/marketing/images/projects/ai-outpaint/thong-nhat-smart-city-day-ai-20260707.jpg',
+    anh: 'marketing/images/projects/ai-outpaint/thong-nhat-smart-city-day-ai-20260707.jpg',
     href: 'https://cattuonggroup.vn/thong-tin-nha-o-xa-hoi-doi-voi-du-an-dtxd-khu-nha-o-xa-hoi-thong-nhat-smart-city/',
   },
   {
@@ -1251,7 +1251,7 @@ const TIN_TUC_NOI_BAT_MAC_DINH = [
     tomTat: 'Hướng dẫn nhóm lao động tự do chuẩn bị giấy tờ, xác nhận và hồ sơ liên quan khi mua nhà ở xã hội.',
     ngay: '2025-11-28',
     nhan: 'Hồ sơ',
-    anh: 'https://cattuonggroup.ai.vn/marketing/images/projects/cat-tuong-eco/anh-03.jpg',
+    anh: 'marketing/images/projects/cat-tuong-eco/anh-03.jpg',
     href: 'https://cattuonggroup.vn/lam-ro-quy-trinh-cach-thuc-xin-giay-to-voi-nguoi-lao-dong-tu-do-khi-mua-nha-o-xa-hoi/',
   },
   {
@@ -1260,7 +1260,7 @@ const TIN_TUC_NOI_BAT_MAC_DINH = [
     tomTat: 'Tóm tắt trình tự đăng ký mua nhà ở xã hội, từ xác định đối tượng đến chuẩn bị giấy tờ và nộp hồ sơ.',
     ngay: '2025-11-20',
     nhan: 'Quy trình',
-    anh: 'https://cattuonggroup.ai.vn/marketing/images/projects/cat-tuong-new.jpg',
+    anh: 'marketing/images/projects/cat-tuong-new.jpg',
     href: 'https://cattuonggroup.vn/cap-nhat-cac-buoc-dang-ky-mua-nha-o-xa-hoi-theo-quy-dinh-hien-tai/',
   },
 ];
@@ -1933,7 +1933,7 @@ function bindNewsRailScroll() {
 function renderTinTucItems(list) {
   const visible = list;
   return visible.map((t, i) => {
-    const anh = esc(t.anh || 'https://cattuonggroup.ai.vn/marketing/images/projects/ai-outpaint/cat-tuong-smart-city.jpg');
+    const anh = esc(t.anh || 'marketing/images/projects/ai-outpaint/cat-tuong-smart-city.jpg');
     if (i === 0) {
       return `
         <a href="${esc(t.href)}"${linkAttrs(t.href)}
@@ -2019,7 +2019,7 @@ function toggleTinTuc() {
 
 function renderTinTucModalItems(list) {
   return list.map((t, i) => {
-    const anh = esc(t.anh || 'https://cattuonggroup.ai.vn/marketing/images/projects/ai-outpaint/cat-tuong-smart-city.jpg');
+    const anh = esc(t.anh || 'marketing/images/projects/ai-outpaint/cat-tuong-smart-city.jpg');
     const hot = i === 0;
     return `
       <a href="${esc(t.href)}"${linkAttrs(t.href)}
@@ -4236,9 +4236,9 @@ function anhThucTeDuAn(d) {
   }
   if (d?.ma === 'CT-SMART') {
     return [
-      'https://cattuonggroup.ai.vn/marketing/images/projects/cat-tuong-smart-city/anh-01.jpg?v=20260708-smart-city-real-gallery-v6',
-      'https://cattuonggroup.ai.vn/marketing/images/projects/cat-tuong-smart-city/anh-02.jpg?v=20260708-smart-city-real-gallery-v6',
-      'https://cattuonggroup.ai.vn/marketing/images/projects/cat-tuong-smart-city/anh-03.jpg?v=20260708-smart-city-real-gallery-v6',
+      'marketing/images/projects/cat-tuong-smart-city/anh-01.jpg?v=20260708-smart-city-real-gallery-v6',
+      'marketing/images/projects/cat-tuong-smart-city/anh-02.jpg?v=20260708-smart-city-real-gallery-v6',
+      'marketing/images/projects/cat-tuong-smart-city/anh-03.jpg?v=20260708-smart-city-real-gallery-v6',
     ];
   }
   if (d?.ma === 'CT-ECO') {
@@ -4250,16 +4250,16 @@ function anhThucTeDuAn(d) {
     ].filter(Boolean);
   }
   if (d?.ma === 'TNS-SMART') {
-    const overview = 'https://cattuonggroup.ai.vn/marketing/images/projects/ai-outpaint/thong-nhat-smart-city-day-ai-20260707.jpg?v=20260707-tns-smart-real-overview';
+    const overview = 'marketing/images/projects/ai-outpaint/thong-nhat-smart-city-day-ai-20260707.jpg?v=20260707-tns-smart-real-overview';
     return [
       overview,
-      `https://cattuonggroup.ai.vn/marketing/images/projects/thong-nhat-smart-city/can-ho-thuc-te-02.jpg?v=${TNS_SMART_APARTMENT_TOUR_VERSION}`,
-      `https://cattuonggroup.ai.vn/marketing/images/projects/thong-nhat-smart-city/can-ho-thuc-te-03.jpg?v=${TNS_SMART_APARTMENT_TOUR_VERSION}`,
+      `marketing/images/projects/thong-nhat-smart-city/can-ho-thuc-te-02.jpg?v=${TNS_SMART_APARTMENT_TOUR_VERSION}`,
+      `marketing/images/projects/thong-nhat-smart-city/can-ho-thuc-te-03.jpg?v=${TNS_SMART_APARTMENT_TOUR_VERSION}`,
     ].filter(Boolean);
   }
   if (d?.ma === 'DHP') {
     return [
-      'https://cattuonggroup.ai.vn/marketing/images/projects/dai-hung-phat/anh-01.jpg?v=20260707-dhp-v720-gallery',
+      'marketing/images/projects/dai-hung-phat/anh-01.jpg?v=20260707-dhp-v720-gallery',
       `${DHP_APARTMENT_TOUR_BASE}/dhp-apartment-virtual-living-20260707.jpg?v=20260707-dhp-v720-gallery`,
       `${DHP_APARTMENT_TOUR_BASE}/dhp-apartment-virtual-kitchen-bedroom-20260707.jpg?v=20260707-dhp-v720-gallery`,
     ];
@@ -4268,8 +4268,8 @@ function anhThucTeDuAn(d) {
     const overview = explicit[0] || gallery[0] || d.banner;
     return [
       overview,
-      'https://cattuonggroup.ai.vn/marketing/images/projects/cat-tuong-new/can-ho-thuc-te-02.jpg?v=20260707-cat-tuong-new-real-apartment',
-      'https://cattuonggroup.ai.vn/marketing/images/projects/cat-tuong-new/can-ho-thuc-te-03.jpg?v=20260707-cat-tuong-new-real-apartment',
+      'marketing/images/projects/cat-tuong-new/can-ho-thuc-te-02.jpg?v=20260707-cat-tuong-new-real-apartment',
+      'marketing/images/projects/cat-tuong-new/can-ho-thuc-te-03.jpg?v=20260707-cat-tuong-new-real-apartment',
     ].filter(Boolean);
   }
   const merged = [...explicit, ...gallery, d.banner].filter(Boolean);

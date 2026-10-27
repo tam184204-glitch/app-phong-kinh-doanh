@@ -44,10 +44,10 @@ body.estate-modern-bg::before {
 
 body.estate-modern-bg::after {
   background:
-    url("https://cattuonggroup.ai.vn/marketing/images/estate-background-towers.svg") left -190px top 8rem / min(34vw, 430px) auto no-repeat,
-    url("https://cattuonggroup.ai.vn/marketing/images/estate-background-towers.svg") right -110px top 24rem / min(30vw, 380px) auto no-repeat,
-    url("https://cattuonggroup.ai.vn/marketing/images/estate-background-towers.svg") right -28px bottom -70px / min(42vw, 520px) auto no-repeat,
-    url("https://cattuonggroup.ai.vn/marketing/images/estate-background-skyline.svg") center bottom -24px / min(1520px, 144vw) auto no-repeat;
+    url("../marketing/images/estate-background-towers.svg") left -190px top 8rem / min(34vw, 430px) auto no-repeat,
+    url("../marketing/images/estate-background-towers.svg") right -110px top 24rem / min(30vw, 380px) auto no-repeat,
+    url("../marketing/images/estate-background-towers.svg") right -28px bottom -70px / min(42vw, 520px) auto no-repeat,
+    url("../marketing/images/estate-background-skyline.svg") center bottom -24px / min(1520px, 144vw) auto no-repeat;
   opacity: .66;
   filter: saturate(1.12);
   transform: translate3d(0, 0, 0);
@@ -105,8 +105,8 @@ body.estate-modern-bg > #bangHangAlert {
   height: 320px;
   opacity: .32;
   background:
-    url("https://cattuonggroup.ai.vn/marketing/images/estate-background-skyline.svg") right 4rem bottom -72px / min(900px, 92vw) auto no-repeat,
-    url("https://cattuonggroup.ai.vn/marketing/images/estate-background-towers.svg") left -8rem bottom -8rem / min(440px, 42vw) auto no-repeat,
+    url("../marketing/images/estate-background-skyline.svg") right 4rem bottom -72px / min(900px, 92vw) auto no-repeat,
+    url("../marketing/images/estate-background-towers.svg") left -8rem bottom -8rem / min(440px, 42vw) auto no-repeat,
     repeating-linear-gradient(90deg, rgba(30, 78, 140, .045) 0 1px, transparent 1px 58px),
     linear-gradient(110deg, rgba(30, 78, 140, .075), rgba(245, 166, 35, .085) 52%, rgba(123, 174, 127, .06) 72%, transparent 84%),
     linear-gradient(180deg, rgba(255, 255, 255, .52), rgba(255, 255, 255, 0));
@@ -122,8 +122,8 @@ body.estate-modern-bg > #bangHangAlert {
   height: 520px;
   border-radius: 0;
   background:
-    url("https://cattuonggroup.ai.vn/marketing/images/estate-background-towers.svg") right -4rem top 1rem / min(310px, 30vw) auto no-repeat,
-    url("https://cattuonggroup.ai.vn/marketing/images/estate-background-skyline.svg") right -1rem bottom 2.4rem / min(760px, 76vw) auto no-repeat,
+    url("../marketing/images/estate-background-towers.svg") right -4rem top 1rem / min(310px, 30vw) auto no-repeat,
+    url("../marketing/images/estate-background-skyline.svg") right -1rem bottom 2.4rem / min(760px, 76vw) auto no-repeat,
     linear-gradient(120deg, rgba(255, 255, 255, .18), rgba(30, 78, 140, .06) 64%, rgba(245, 166, 35, .05));
   opacity: .26;
   filter: saturate(1.02);
@@ -139,8 +139,8 @@ body.estate-modern-bg > #bangHangAlert {
   height: 420px;
   border-radius: 0;
   background:
-    url("https://cattuonggroup.ai.vn/marketing/images/estate-background-towers.svg") right -3.5rem top -1rem / min(360px, 36vw) auto no-repeat,
-    url("https://cattuonggroup.ai.vn/marketing/images/estate-background-skyline.svg") right -1.5rem bottom 1rem / min(820px, 86vw) auto no-repeat,
+    url("../marketing/images/estate-background-towers.svg") right -3.5rem top -1rem / min(360px, 36vw) auto no-repeat,
+    url("../marketing/images/estate-background-skyline.svg") right -1.5rem bottom 1rem / min(820px, 86vw) auto no-repeat,
     linear-gradient(135deg, rgba(255, 255, 255, .30), rgba(30, 78, 140, .06) 52%, rgba(245, 166, 35, .055));
   filter: saturate(.96);
   opacity: .18;
@@ -149,8 +149,8 @@ body.estate-modern-bg > #bangHangAlert {
 
 .estate-modern-bg .contact-section::before {
   background:
-    url("https://cattuonggroup.ai.vn/marketing/images/estate-background-towers.svg") right -5rem bottom -7rem / min(440px, 42vw) auto no-repeat,
-    url("https://cattuonggroup.ai.vn/marketing/images/estate-background-skyline.svg") left -4rem bottom -1.4rem / min(1040px, 110vw) auto no-repeat,
+    url("../marketing/images/estate-background-towers.svg") right -5rem bottom -7rem / min(440px, 42vw) auto no-repeat,
+    url("../marketing/images/estate-background-skyline.svg") left -4rem bottom -1.4rem / min(1040px, 110vw) auto no-repeat,
     conic-gradient(from 145deg at 82% 72%, rgba(245, 166, 35, .18), rgba(255, 255, 255, .10), rgba(123, 174, 127, .12), rgba(30, 78, 140, .16), rgba(245, 166, 35, .12)),
     radial-gradient(ellipse at 14% 24%, rgba(255, 255, 255, .14), transparent 38%);
   opacity: .82;
@@ -159,8 +159,8 @@ body.estate-modern-bg > #bangHangAlert {
 
 .estate-modern-bg .site-footer::before {
   background:
-    url("https://cattuonggroup.ai.vn/marketing/images/estate-background-skyline.svg") center bottom -2rem / min(1160px, 120vw) auto no-repeat,
-    url("https://cattuonggroup.ai.vn/marketing/images/estate-background-towers.svg") right -7rem bottom -10rem / min(400px, 38vw) auto no-repeat,
+    url("../marketing/images/estate-background-skyline.svg") center bottom -2rem / min(1160px, 120vw) auto no-repeat,
+    url("../marketing/images/estate-background-towers.svg") right -7rem bottom -10rem / min(400px, 38vw) auto no-repeat,
     conic-gradient(from 220deg at 84% 62%, rgba(245, 166, 35, .14), rgba(255, 255, 255, .06), rgba(30, 78, 140, .18), rgba(123, 174, 127, .10));
   opacity: .78;
   mix-blend-mode: screen;
@@ -187,8 +187,8 @@ body.estate-modern-bg > #bangHangAlert {
 .estate-modern-bg #app > .brand-bg::before,
 .estate-modern-bg aside.brand-bg::before {
   background:
-    url("https://cattuonggroup.ai.vn/marketing/images/estate-background-towers.svg") right -38px bottom -80px / min(42vw, 520px) auto no-repeat,
-    url("https://cattuonggroup.ai.vn/marketing/images/estate-background-skyline.svg") center bottom -20px / min(1380px, 130vw) auto no-repeat,
+    url("../marketing/images/estate-background-towers.svg") right -38px bottom -80px / min(42vw, 520px) auto no-repeat,
+    url("../marketing/images/estate-background-skyline.svg") center bottom -20px / min(1380px, 130vw) auto no-repeat,
     repeating-linear-gradient(90deg, rgba(255, 255, 255, .055) 0 1px, transparent 1px 84px);
   opacity: .34;
   mix-blend-mode: screen;
@@ -210,7 +210,7 @@ body.estate-modern-bg > #bangHangAlert {
 
 .estate-modern-bg aside.brand-bg::before {
   background:
-    url("https://cattuonggroup.ai.vn/marketing/images/estate-background-skyline.svg") left -220px bottom -16px / 620px auto no-repeat,
+    url("../marketing/images/estate-background-skyline.svg") left -220px bottom -16px / 620px auto no-repeat,
     repeating-linear-gradient(0deg, rgba(255, 255, 255, .045) 0 1px, transparent 1px 76px);
   opacity: .22;
 }
@@ -260,17 +260,17 @@ body.estate-modern-bg > #bangHangAlert {
 
   body.estate-modern-bg::after {
     background:
-      url("https://cattuonggroup.ai.vn/marketing/images/estate-background-towers.svg") left -180px top 6rem / 300px auto no-repeat,
-      url("https://cattuonggroup.ai.vn/marketing/images/estate-background-towers.svg") right -150px top 30rem / 300px auto no-repeat,
-      url("https://cattuonggroup.ai.vn/marketing/images/estate-background-towers.svg") right -118px bottom -62px / 330px auto no-repeat,
-      url("https://cattuonggroup.ai.vn/marketing/images/estate-background-skyline.svg") center bottom -10px / 900px auto no-repeat;
+      url("../marketing/images/estate-background-towers.svg") left -180px top 6rem / 300px auto no-repeat,
+      url("../marketing/images/estate-background-towers.svg") right -150px top 30rem / 300px auto no-repeat,
+      url("../marketing/images/estate-background-towers.svg") right -118px bottom -62px / 330px auto no-repeat,
+      url("../marketing/images/estate-background-skyline.svg") center bottom -10px / 900px auto no-repeat;
     opacity: .50;
   }
 
   .estate-modern-bg #app > .brand-bg::before {
     background:
-      url("https://cattuonggroup.ai.vn/marketing/images/estate-background-towers.svg") right -136px bottom -70px / 330px auto no-repeat,
-      url("https://cattuonggroup.ai.vn/marketing/images/estate-background-skyline.svg") center bottom -10px / 920px auto no-repeat,
+      url("../marketing/images/estate-background-towers.svg") right -136px bottom -70px / 330px auto no-repeat,
+      url("../marketing/images/estate-background-skyline.svg") center bottom -10px / 920px auto no-repeat,
       repeating-linear-gradient(90deg, rgba(255, 255, 255, .045) 0 1px, transparent 1px 58px);
     opacity: .28;
   }
@@ -280,7 +280,7 @@ body.estate-modern-bg > #bangHangAlert {
     height: 270px;
     opacity: .18;
     background:
-      url("https://cattuonggroup.ai.vn/marketing/images/estate-background-skyline.svg") right -150px bottom -62px / 660px auto no-repeat,
+      url("../marketing/images/estate-background-skyline.svg") right -150px bottom -62px / 660px auto no-repeat,
       repeating-linear-gradient(90deg, rgba(30, 78, 140, .035) 0 1px, transparent 1px 48px),
       linear-gradient(110deg, rgba(30, 78, 140, .05), rgba(245, 166, 35, .055) 60%, transparent 78%),
       linear-gradient(180deg, rgba(255, 255, 255, .68), rgba(255, 255, 255, 0));
@@ -294,8 +294,8 @@ body.estate-modern-bg > #bangHangAlert {
     width: 320px;
     height: 520px;
     background:
-      url("https://cattuonggroup.ai.vn/marketing/images/estate-background-towers.svg") right -5.4rem top 0 / 260px auto no-repeat,
-      url("https://cattuonggroup.ai.vn/marketing/images/estate-background-skyline.svg") right -6rem bottom 1.5rem / 540px auto no-repeat,
+      url("../marketing/images/estate-background-towers.svg") right -5.4rem top 0 / 260px auto no-repeat,
+      url("../marketing/images/estate-background-skyline.svg") right -6rem bottom 1.5rem / 540px auto no-repeat,
       linear-gradient(120deg, rgba(255, 255, 255, .16), rgba(30, 78, 140, .04));
     opacity: .18;
     mask-image: linear-gradient(90deg, transparent 0, rgba(0, 0, 0, .12) 34%, #000 100%);
@@ -308,8 +308,8 @@ body.estate-modern-bg > #bangHangAlert {
     width: 360px;
     height: 420px;
     background:
-      url("https://cattuonggroup.ai.vn/marketing/images/estate-background-towers.svg") right -5rem top 0 / 260px auto no-repeat,
-      url("https://cattuonggroup.ai.vn/marketing/images/estate-background-skyline.svg") right -6rem bottom 1rem / 560px auto no-repeat,
+      url("../marketing/images/estate-background-towers.svg") right -5rem top 0 / 260px auto no-repeat,
+      url("../marketing/images/estate-background-skyline.svg") right -6rem bottom 1rem / 560px auto no-repeat,
       linear-gradient(135deg, rgba(255, 255, 255, .24), rgba(30, 78, 140, .045));
     opacity: .11;
     mask-image: linear-gradient(90deg, transparent 0, rgba(0, 0, 0, .14) 42%, #000 100%);

@@ -377,7 +377,7 @@ R('POST', '/api/public/lead', async (req, res) => {
 // không vướng CORS — để dự án, bảng hàng, bài viết, lượt truy cập, trợ lý AI, đọc hồ sơ scan chạy y như trang gốc.
 // cong-khai/bridge.js nhận ra phản hồi «X-Cong-Khai: live»; không có (bản demo tĩnh) thì dùng dữ liệu đã chụp. Form đăng ký vẫn về /api/public/lead.
 const PUBLIC_SRC = process.env.PUBLIC_SRC || 'https://cattuonggroup.ai.vn';
-const pubLinks = s => s.replace(/(["'])\/marketing\//g, `$1${PUBLIC_SRC}/marketing/`).replace(/(["'])\/blog\/([\w-]+)(?=["'])/g, '$1gioi-thieu.html?blog=$2');
+const pubLinks = s => s.replace(/(["'])\/marketing\//g, '$1marketing/')   // tài nguyên đã chép về public/marketing/ (thiếu thì chuyển hướng về trang gốc).replace(/(["'])\/blog\/([\w-]+)(?=["'])/g, '$1gioi-thieu.html?blog=$2');
 async function publicProxy(req, res) {
   const url = new URL(req.url, 'http://x');
   const body = req.method === 'GET' ? undefined : await readRaw(req, 40e6);
@@ -486,6 +486,7 @@ async function handle(req, res) {
     const file = path.join(PUBLIC, pth === '/' ? 'index.html' : pth);
     if (!file.startsWith(PUBLIC)) return send(res, 403, 'Forbidden');
     fs.readFile(file, (err, buf) => {
+      if (err && pth.startsWith('/marketing/')) return send(res, 302, '', { Location: PUBLIC_SRC + url.pathname + url.search });   // tài nguyên trang công khai mới, chưa chép về
       if (err) return fs.readFile(path.join(PUBLIC, 'index.html'), (e2, b2) => e2 ? send(res, 404, 'Not found') : send(res, 200, b2, { 'Content-Type': TYPES['.html'] }));
       send(res, 200, buf, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
     });

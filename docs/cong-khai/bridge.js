@@ -6,7 +6,6 @@
 (() => {
   'use strict';
   const DATA = 'cong-khai/data/';
-  const PANO = ['tnt-overview-720-ai.png', 'eco-single-wide-panorama.jpg', 'virtual-720.jpg', 'dhp-overview-720-ai-20260707.png'];
   const LEAD_KEY = 'ctg-public-leads';
   const HOTLINE = 'Vui lòng gọi Hotline 082.937.6666 để được hỗ trợ.';
   const realFetch = window.fetch.bind(window);
@@ -93,15 +92,4 @@
     timer = setInterval(tick, 15e3); tick();
     return t;
   };
-
-  // ảnh 720° phục vụ tại chỗ (WebGL cần CORS)
-  if (window.pannellum) {
-    const viewer = window.pannellum.viewer;
-    const local = v => {
-      if (typeof v === 'string') { const f = v.split('?')[0].split('/').pop(); return PANO.includes(f) ? 'cong-khai/720/' + f : v; }
-      if (Array.isArray(v)) return v.map(local);
-      return v && typeof v === 'object' && !(v instanceof Node) ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, local(x)])) : v;
-    };
-    window.pannellum.viewer = (el, cfg) => viewer(el, local(cfg));
-  }
 })();
