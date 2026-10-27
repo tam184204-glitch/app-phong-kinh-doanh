@@ -422,7 +422,6 @@ const STAGE_LINKS = {
   da_ky_hdmb: [['ledger', 'Sổ công nợ căn hộ'], ['installment', 'Lịch thanh toán HĐ']],
   tt_dot_2: [['installment', 'Lịch thanh toán HĐ']], tt_dot_3: [['installment', 'Lịch thanh toán HĐ']],
   da_nop_hs_so: [['pinkbook', 'Hồ sơ cấp sổ hồng']],
-  da_nop_hs_so: [['pinkbook', 'Cấp sổ hồng']],
 };
 function stageGo(k, name) {
   if (k === 'ledger') { (ST.ledger ||= { filter: '', q: '' }).q = name; location.hash = '#/v/ledger'; return; }

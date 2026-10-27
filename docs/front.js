@@ -959,7 +959,7 @@ const STAGE_LINKS = {
   sxd_duyet: [['contracts', 'Sổ theo dõi HĐ'], ['signing', 'Lịch ký HĐ'], ['contract_change', 'Điều chỉnh – phụ lục HĐ']],
   da_ky_hdmb: [['ledger', 'Sổ công nợ căn hộ'], ['installment', 'Lịch thanh toán HĐ']],
   tt_dot_2: [['installment', 'Lịch thanh toán HĐ']], tt_dot_3: [['installment', 'Lịch thanh toán HĐ']],
-  da_nop_hs_so: [['pinkbook', 'Cấp sổ hồng']],
+  da_nop_hs_so: [['pinkbook', 'Hồ sơ cấp sổ hồng']],
 };
 function stageGo(k, name) {
   if (k === 'ledger') { (ST.ledger ||= { filter: '', q: '' }).q = name; location.hash = '#/v/ledger'; return; }
