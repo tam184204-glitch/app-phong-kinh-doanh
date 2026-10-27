@@ -63,7 +63,102 @@ Ngày {ngay}
 ĐẠI DIỆN BÊN BÁN                                   BÊN MUA` },
   { code: 'MAU-TB-NO', name: 'Thông báo nhắc thanh toán', kind: 'thong_bao', content: 'Kính gửi Quý khách {ten_kh},\nCăn hộ {ma_can} hiện còn khoản thanh toán {cong_no} đồng đã đến hạn. Kính đề nghị Quý khách thanh toán theo tiến độ hợp đồng. Trân trọng!' },
   { code: 'MAU-BBBG', name: 'Biên bản bàn giao căn hộ (khung)', kind: 'bien_ban', content: 'BIÊN BẢN BÀN GIAO CĂN HỘ {ma_can}\nBên nhận: {ten_kh}\nHợp đồng số: {so_hd}\n(Khung — thay bằng mẫu biên bản đang áp dụng.)' },
+  ...REG_TEMPLATES(),
 ];
+// mẫu in từ phiếu đăng ký căn hộ (GD-01) — Trưởng phòng sửa / thêm mẫu ở Quản trị › Mẫu biểu
+function REG_TEMPLATES() {
+  const head = `CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
+Độc lập – Tự do – Hạnh phúc
+`;
+  const kh = `Họ và tên: {ten_kh}
+Số CCCD: {cccd}   cấp ngày {ngay_cap}   tại {noi_cap}
+Địa chỉ: {dia_chi}
+Điện thoại: {dien_thoai}`;
+  const can = `Dự án: {du_an} — {dia_diem}
+Mã căn hộ: {ma_can}   Tòa: {toa}   Tầng: {tang}
+Diện tích thông thủy: {dien_tich} m²   Hướng: {huong}`;
+  return [
+    { code: 'MAU-DKCH-01', name: 'Phiếu đăng ký mua căn hộ', kind: 'dang_ky_can', content: `${head}
+PHIẾU ĐĂNG KÝ MUA CĂN HỘ
+Số phiếu: {ma_phieu}   Ngày đăng ký: {ngay_dk}
+
+Kính gửi: {chu_dau_tu}
+
+I. THÔNG TIN KHÁCH HÀNG ĐĂNG KÝ
+${kh}
+
+II. CĂN HỘ ĐĂNG KÝ MUA
+${can}
+Tổng giá bán căn hộ: {gia_tri} đồng (Bằng chữ: {gia_tri_chu}).
+Số tiền đặt cọc / giữ chỗ: {tien_coc} đồng.
+
+III. CAM KẾT
+Tôi đã được tư vấn đầy đủ thông tin về dự án, căn hộ và chính sách bán hàng; cam kết các thông tin kê khai trên là đúng sự thật và thực hiện thủ tục ký Hợp đồng mua bán theo hướng dẫn của Chủ đầu tư.
+Ghi chú: {ghi_chu}
+
+Ngày {ngay}
+
+NHÂN VIÊN KINH DOANH                                   KHÁCH HÀNG ĐĂNG KÝ
+(Ký, ghi rõ họ tên)                                   (Ký, ghi rõ họ tên)` },
+    { code: 'MAU-DKCH-02', name: 'Phiếu xác nhận giữ chỗ căn hộ', kind: 'dang_ky_can', content: `${head}
+PHIẾU XÁC NHẬN GIỮ CHỖ CĂN HỘ
+Số phiếu: {ma_phieu}
+
+Bên giữ chỗ:
+${kh}
+
+Căn hộ được giữ chỗ:
+${can}
+Giá bán căn hộ (tạm tính): {gia_tri} đồng (Bằng chữ: {gia_tri_chu}).
+Tiền giữ chỗ đã nộp: {tien_coc} đồng.
+Trạng thái: {trang_thai} — Tiến trình: {tien_trinh}
+
+Việc giữ chỗ không thay thế Hợp đồng mua bán. Xử lý tiền giữ chỗ khi hủy đăng ký theo chính sách bán hàng hiện hành.
+
+Ngày {ngay}
+
+ĐẠI DIỆN PHÒNG KINH DOANH                                   KHÁCH HÀNG
+(Ký, ghi rõ họ tên)                                   (Ký, ghi rõ họ tên)` },
+    { code: 'MAU-DKNT-01', name: 'Phiếu đăng ký gói nội thất – hoàn thiện', kind: 'dang_ky_noi_that', content: `${head}
+PHIẾU ĐĂNG KÝ NỘI THẤT CĂN HỘ
+Kèm phiếu đăng ký mua căn hộ số: {ma_phieu}
+
+I. KHÁCH HÀNG
+${kh}
+
+II. CĂN HỘ
+${can}
+
+III. GÓI NỘI THẤT / HOÀN THIỆN ĐĂNG KÝ
+Gói: {goi_hoan_thien}
+Giá trị hoàn thiện: {gia_tri_hoan_thien} đồng (Bằng chữ: {gia_tri_hoan_thien_chu}).
+Danh mục nội thất, thiết bị:
+{danh_muc_noi_that}
+
+Khách hàng đề nghị thay đổi (nếu có): ......................................................................
+..............................................................................................................
+
+Ngày {ngay}
+
+NHÂN VIÊN KINH DOANH                                   KHÁCH HÀNG ĐĂNG KÝ
+(Ký, ghi rõ họ tên)                                   (Ký, ghi rõ họ tên)` },
+  ];
+}
+// khi khởi động: thêm mẫu mặc định còn thiếu (không đè mẫu đã sửa) + bổ sung dữ liệu phiếu cũ
+async function ensureTemplates() {
+  await tx(async db => {
+    const sysU = await db.one("SELECT * FROM kd_user WHERE role = 'admin' ORDER BY id LIMIT 1") || C.SYS;
+    for (const t of REG_TEMPLATES()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });
+    // phiếu lập trước khi có mẫu «Phiếu đăng ký căn hộ»: chép thông tin khách + suy ra trạng thái căn / tiến trình
+    await db.q(`UPDATE kd_reservation r SET cust_name = k.full_name, id_no = k.id_no, id_date = k.id_date, id_place = k.id_place, address = k.address, phone = k.phone
+      FROM kd_customer k WHERE k.id = r.customer_id AND r.cust_name IS NULL`);
+    await db.q(`UPDATE kd_reservation r SET reg_state = CASE WHEN r.status IN ('huy','het_han','tu_choi') THEN 'huy'
+      WHEN EXISTS (SELECT 1 FROM kd_contract c WHERE c.reservation_id = r.id AND c.status = 'da_ky') THEN 'ky_hdmb' ELSE 'giu_cho' END WHERE r.reg_state IS NULL`);
+    await db.q(`UPDATE kd_reservation r SET progress = CASE WHEN r.reg_state = 'ky_hdmb' THEN 'da_ky'
+      WHEN r.status = 'chuyen_hd' OR EXISTS (SELECT 1 FROM kd_noxh_check n WHERE n.reservation_id = r.id AND n.status = 'da_duyet') THEN 'du_dk'
+      WHEN EXISTS (SELECT 1 FROM kd_noxh_check n WHERE n.reservation_id = r.id AND n.status = 'cho_duyet') THEN 'cho_xet_duyet' ELSE 'tiep_nhan' END WHERE r.progress IS NULL`);
+  });
+}
 
 async function seedBase() {
   await tx(async db => {
@@ -435,7 +530,7 @@ async function clearDemo() {
   return { removed: out, units_recomputed: touched };
 }
 
-module.exports = { seedBase, loadDemo, clearDemo };
+module.exports = { seedBase, loadDemo, clearDemo, ensureTemplates };
 
 if (require.main === module) {
   (async () => {

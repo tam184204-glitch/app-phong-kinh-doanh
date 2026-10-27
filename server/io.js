@@ -24,7 +24,9 @@ async function exportList(entKey, user, qs) {
   const { rows } = await C.list(entKey, user, qs, { limit: 20000 });
   const keys = qs.cols ? String(qs.cols).split(',') : e.list;
   const cols = [];
+  rows.forEach((r, i) => { r.stt = i + 1; });
   for (const k of keys) {
+    if (k === 'prints') continue;
     const f = C.F[entKey][k];
     if (f) cols.push([f.t === 'ref' || f.t === 'refs' || f.t === 'user' ? k + '__l' : k, f.l, f.t === 'sel' ? null : f.t, f]);
     else if (VIRT[k]) cols.push([k === 'created_by' ? 'created_by__l' : k, VIRT[k], ['paid', 'actual', 'gap'].includes(k) ? 'money' : null]);
@@ -322,4 +324,30 @@ async function printContract(id, user, tplCode) {
     @media print{.bar{display:none}}</style></head><body><div class="bar">Bản in từ mẫu «${escH(tpl.name)}» · ${c.status === 'da_ky' ? 'Hợp đồng đã ký — bản in tham khảo' : 'Dự thảo'} <button onclick="print()">In / Lưu PDF</button></div>${body}</body></html>`;
 }
 
-module.exports = { exportList, sheet, importFile, importTemplate, IMPORTS, createUser, hashPw, checkPw, printContract, moneyWords };
+// bản đăng ký căn hộ / nội thất từ phiếu đăng ký (GD-01) — chọn mẫu ở Quản trị › Mẫu biểu
+const DOTS = '..............................';     // ô trống trên bản in → để khách / nhân viên điền tay
+const PRINT_KIND = { dang_ky_can: 'bản đăng ký căn hộ', dang_ky_noi_that: 'bản đăng ký nội thất' };
+async function printReservation(id, user, kind, tplCode) {
+  if (!can(user, E.reservation, 'r')) deny();
+  if (!PRINT_KIND[kind]) bad('Loại bản in không hợp lệ');
+  const { row: r } = await C.get('reservation', id, user, { reveal: true });
+  const u = await one(`SELECT u.*, b.code building, p.name project, p.address p_addr, p.investor, pk.code pk_code, pk.name pk_name, pk.value pk_value, pk.items pk_items
+      FROM kd_unit u JOIN kd_building b ON b.id = u.building_id JOIN kd_project p ON p.id = u.project_id LEFT JOIN kd_package pk ON pk.id = u.package_id WHERE u.id = $1`, [r.unit_id]);
+  const tpl = await one(`SELECT * FROM kd_template WHERE active AND kind = $1 ${tplCode ? 'AND code = $2' : ''} ORDER BY id LIMIT 1`, tplCode ? [kind, tplCode] : [kind]);
+  if (!tpl) bad(`Chưa có mẫu ${PRINT_KIND[kind]} — tạo ở Quản trị › Mẫu biểu`);
+  const pii = ['truong_phong', 'lanh_dao', 'ho_so', 'admin'].includes(user.role);
+  const lab = (k, v) => E.reservation.fields.find(f => f.k === k).o.find(o => o[0] === v)?.[1] || '';
+  const finish = u.finish_value ?? u.pk_value;
+  const map = { ma_phieu: r.code, ngay_dk: dmy(r.reg_date), ten_kh: r.cust_name, dien_thoai: r.phone, cccd: pii ? r.id_no : '(ẩn)', ngay_cap: pii ? dmy(r.id_date) : '', noi_cap: pii ? r.id_place : '', dia_chi: r.address,
+    ma_can: u.code, du_an: u.project, dia_diem: u.p_addr, chu_dau_tu: u.investor, toa: u.building, tang: u.floor, dien_tich: String(u.area_tt ?? '').replace('.', ','), huong: u.direction,
+    gia_tri: fmtMoney(r.price), gia_tri_chu: moneyWords(r.price), tien_coc: r.deposit ? fmtMoney(r.deposit) : DOTS, trang_thai: lab('reg_state', r.reg_state), tien_trinh: lab('progress', r.progress), ghi_chu: r.note || '',
+    goi_hoan_thien: u.pk_name ? `${u.pk_code} · ${u.pk_name}` : DOTS, gia_tri_hoan_thien: finish ? fmtMoney(finish) : DOTS, gia_tri_hoan_thien_chu: finish ? moneyWords(finish) : DOTS, danh_muc_noi_that: u.pk_items || DOTS + DOTS + DOTS, ngay: dmy(C.today()) };
+  const body = escH(tpl.content).replace(/\{(\w+)\}/g, (m, k) => k in map ? escH(map[k] ?? '') : m);
+  await C.audit({ q }, 'reservation', r.id, 'in_' + kind, null, null, user, tpl.code);
+  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${escH(r.code)} – ${escH(tpl.name)}</title><style>
+    @page{size:A4;margin:20mm 18mm 20mm 25mm} body{font:13pt/1.5 "Times New Roman",serif;color:#000;max-width:170mm;margin:auto}
+    .bar{font:13px system-ui;background:#f5f8fc;border:1px solid #d4deea;padding:8px 12px;border-radius:8px;margin:12px 0;display:flex;gap:8px;align-items:center}
+    @media print{.bar{display:none}}</style></head><body><div class="bar">Bản in từ mẫu «${escH(tpl.name)}» · phiếu ${escH(r.code)} <button onclick="print()">In / Lưu PDF</button></div><div style="white-space:pre-wrap">${body}</div></body></html>`;
+}
+
+module.exports = { exportList, sheet, importFile, importTemplate, IMPORTS, createUser, hashPw, checkPw, printContract, printReservation, moneyWords };

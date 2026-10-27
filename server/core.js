@@ -240,7 +240,7 @@ async function list(entKey, user, qs = {}, { db = { q, one }, limit } = {}) {
     counts = Object.fromEntries((await db.q(`SELECT t.status, count(*) AS n FROM ${e.table} t ${bw} GROUP BY 1`, baseP)).map(r => [r.status, r.n]));
   }
   if (H[entKey]?.decorate) await H[entKey].decorate(rows, { db, user });
-  rows.forEach(r => maskPii(e, r, user));
+  rows.forEach(r => maskPii(e, r, user, e.listPii));          // listPii: danh sách hiện thẳng định danh cho vai trò được xem
   return { rows, total, counts };
 }
 async function raw(db, entKey, id, lock) {

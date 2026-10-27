@@ -194,29 +194,41 @@ def('contact_log', {
 // ===================== 04. GIAO DỊCH =====================
 const RES_ST = [['nhap', 'Nháp', 's'], ['cho_duyet', 'Chờ duyệt', 'a'], ['giu_cho', 'Đang giữ chỗ', 'b'], ['qua_han', 'Quá hạn giữ chỗ', 'r'], ['da_coc', 'Đã đặt cọc', 'v'],
   ['chuyen_hd', 'Đã chuyển hợp đồng', 'g'], ['het_han', 'Hết hạn / giải phóng', 's'], ['tu_choi', 'Từ chối', 'r'], ['huy', 'Đã hủy', 's']];
+// phiếu đăng ký căn hộ (lập từ Bảng hàng): trạng thái căn + tiến trình do nhân viên chọn
+const REG_ST = [['giu_cho', 'Giữ chỗ', 'a'], ['ky_hdmb', 'Ký HĐMB', 'g'], ['huy', 'Hủy đăng ký', 'r']];
+const REG_PROG = [['tiep_nhan', 'Đã tiếp nhận hồ sơ', 's'], ['cho_xet_duyet', 'Đã nộp hồ sơ chờ xét duyệt', 'a'], ['du_dk', 'Đủ điều kiện ký HĐMB', 'b'], ['da_ky', 'Đã ký HĐMB', 'g']];
 def('reservation', {
-  title: 'Đăng ký mua – giữ chỗ', one: 'phiếu', code: 'GD-01', mod: '04', icon: 'fa-hand-holding-hand', disp: 't.code',
-  purpose: 'Giữ sản phẩm cho khách theo thời hạn', users: 'Nhân viên bán hàng',
-  how: 'Chọn căn còn bán → tạo phiếu → duyệt → khóa căn → chuyển hợp đồng hoặc hết hạn',
-  rules: 'Chặn giữ trùng; hết hạn phải xử lý theo chính sách, không tự hoàn tiền',
-  c: ['ban_hang', 'truong_phong'], a: MGR, own: ['ban_hang'], fields: [
+  title: 'Đăng ký mua – giữ chỗ', one: 'phiếu đăng ký', code: 'GD-01', mod: '04', icon: 'fa-hand-holding-hand', disp: "t.code||coalesce(' · '||t.cust_name,'')",
+  purpose: 'Ghi nhận khách đăng ký mua căn, giữ căn cho khách', users: 'Nhân viên bán hàng',
+  how: 'Bảng hàng → bấm căn Còn bán → lập phiếu đăng ký căn hộ → phiếu tự vào danh sách này, căn chuyển «Đang giữ chỗ» → cập nhật tiến trình → in bản đăng ký căn hộ / nội thất',
+  rules: 'Chặn đăng ký trùng căn; khách chưa có hồ sơ thì tự tạo theo CCCD / số điện thoại; hủy đăng ký thì căn trở lại Còn bán, không tự hoàn tiền',
+  c: ['ban_hang', 'truong_phong'], a: MGR, own: ['ban_hang'], search: ['code', 'cust_name', 'phone'], direct: 1, listPii: 1, fields: [
     { k: 'code', l: 'Mã phiếu', t: 'code', prefix: 'GD-{Y}-', pad: 4 },
-    { k: 'customer_id', l: 'Khách hàng', t: 'ref', ref: 'customer', req: 1 },
-    { k: 'unit_id', l: 'Mã căn', t: 'ref', ref: 'unit', req: 1, filter: 'con_ban' },
+    { k: 'unit_id', l: 'Mã căn hộ', t: 'ref', ref: 'unit', req: 1, filter: 'con_ban', fill: { price: 'total_price' } },
+    { k: 'customer_id', l: 'Khách hàng đã có', t: 'ref', ref: 'customer', help: 'Chọn khách có sẵn để điền nhanh — để trống: hệ thống tự khớp theo CCCD / SĐT hoặc tạo khách mới',
+      fill: { cust_name: 'full_name', id_no: 'id_no', id_date: 'id_date', id_place: 'id_place', address: 'address', phone: 'phone' } },
+    { k: 'cust_name', l: 'Họ tên khách hàng', t: 'text', req: 1 },
+    { k: 'id_no', l: 'Căn cước công dân', t: 'text', pii: 1 },
+    { k: 'id_date', l: 'Ngày cấp', t: 'date', pii: 1 },
+    { k: 'id_place', l: 'Nơi cấp', t: 'text', pii: 1 },
+    { k: 'address', l: 'Địa chỉ', t: 'text' },
+    { k: 'phone', l: 'Số điện thoại', t: 'text', req: 1, help: '09xxxxxxxx' },
+    money('price', 'Tổng giá bán căn hộ', { help: 'Tự lấy theo Danh mục sản phẩm khi chọn căn — sửa tay được' }),
+    { k: 'reg_state', l: 'Trạng thái căn hộ', t: 'sel', req: 1, def: 'giu_cho', o: REG_ST },
+    { k: 'progress', l: 'Tiến trình giao dịch', t: 'sel', req: 1, def: 'tiep_nhan', o: REG_PROG },
+    { k: 'note', l: 'Ghi chú', t: 'long' },
     { k: 'reg_date', l: 'Ngày đăng ký', t: 'date', req: 1, def: 'today' },
-    { k: 'hold_until', l: 'Hạn giữ chỗ', t: 'dt', req: 1 },
+    { k: 'hold_until', l: 'Hạn giữ chỗ', t: 'dt', help: 'Để trống = giữ đến khi ký HĐMB / hủy đăng ký' },
     { k: 'policy_id', l: 'Chính sách áp dụng', t: 'ref', ref: 'price_policy', ro: 1 },
-    money('price', 'Giá bán', { help: 'Để trống = tự tính theo bảng giá đang phát hành' }),
     money('deposit', 'Số tiền đặt cọc'),
     { k: 'deposit_on', l: 'Ngày đặt cọc', t: 'date' },
     { k: 'docs_deadline', l: 'Hạn hoàn thiện hồ sơ', t: 'date' },
     { k: 'source', l: 'Nguồn bán', t: 'sel', req: 1, def: 'truc_tiep', o: [['truc_tiep', 'Trực tiếp'], ['dai_ly', 'Đại lý / sàn'], ['ctv', 'Cộng tác viên']] },
     { k: 'agent_id', l: 'Đại lý / CTV', t: 'ref', ref: 'agent', show: { source: ['dai_ly', 'ctv'] } },
     owner('Người thực hiện'),
-    { k: 'status', l: 'Trạng thái', t: 'sel', o: RES_ST, ro: 1, def: 'nhap' },
-    { k: 'note', l: 'Ghi chú', t: 'long' },
-  ], list: ['code', 'unit_id', 'customer_id', 'reg_date', 'hold_until', 'price', 'deposit', 'owner_id', 'status', 'stage'],
-  lock: ['chuyen_hd', 'het_han', 'huy', 'cho_duyet'],
+    { k: 'status', l: 'Tình trạng phiếu', t: 'sel', o: RES_ST, ro: 1, def: 'nhap' },
+  ], list: ['stt', 'unit_id', 'cust_name', 'id_no', 'id_date', 'id_place', 'address', 'phone', 'price', 'reg_state', 'progress', 'note', 'prints'],
+  lock: ['chuyen_hd', 'het_han', 'huy', 'cho_duyet'], lockKeep: ['note', 'progress', 'reg_state'],
   flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'giu_cho' } },
   acts: [
     { k: 'deposit', l: 'Ghi nhận đặt cọc', icon: 'fa-money-bill-wave', from: ['giu_cho', 'qua_han'], roles: ['ban_hang', 'truong_phong'], ask: [money('deposit', 'Số tiền đặt cọc', { req: 1 }), { k: 'deposit_on', l: 'Ngày đặt cọc', t: 'date', req: 1, def: 'today' }] },
@@ -671,8 +683,8 @@ def('template', {
   c: ['admin', 'truong_phong'], fields: [
     { k: 'code', l: 'Mã mẫu', t: 'text', req: 1, uniq: 1 },
     { k: 'name', l: 'Tên mẫu', t: 'text', req: 1 },
-    { k: 'kind', l: 'Loại', t: 'sel', req: 1, o: [['hop_dong', 'Hợp đồng'], ['phu_luc', 'Phụ lục'], ['bien_ban', 'Biên bản'], ['de_nghi', 'Phiếu đề nghị'], ['thong_bao', 'Thông báo'], ['bao_cao', 'Báo cáo']] },
-    { k: 'content', l: 'Nội dung mẫu', t: 'long', req: 1, help: 'Trường trộn: {so_hd} {ten_kh} {dien_thoai} {cccd} {dia_chi} {ma_can} {du_an} {toa} {tang} {dien_tich} {gia_tri} {gia_tri_chu} {ngay} {lich_thanh_toan}' },
+    { k: 'kind', l: 'Loại', t: 'sel', req: 1, o: [['hop_dong', 'Hợp đồng'], ['phu_luc', 'Phụ lục'], ['bien_ban', 'Biên bản'], ['de_nghi', 'Phiếu đề nghị'], ['thong_bao', 'Thông báo'], ['bao_cao', 'Báo cáo'], ['dang_ky_can', 'Bản đăng ký căn hộ'], ['dang_ky_noi_that', 'Bản đăng ký nội thất']] },
+    { k: 'content', l: 'Nội dung mẫu', t: 'long', req: 1, help: 'Trường trộn: {so_hd} {ten_kh} {dien_thoai} {cccd} {dia_chi} {ma_can} {du_an} {toa} {tang} {dien_tich} {gia_tri} {gia_tri_chu} {ngay} {lich_thanh_toan} — bản đăng ký: {ma_phieu} {ngay_dk} {tien_coc} {trang_thai} {tien_trinh} {ghi_chu} {goi_hoan_thien} {gia_tri_hoan_thien} {gia_tri_hoan_thien_chu} {danh_muc_noi_that}' },
     { k: 'active', l: 'Đang dùng', t: 'bool', def: true },
   ], list: ['code', 'name', 'kind', 'active'],
 });
@@ -723,7 +735,7 @@ const SETTINGS = {
 const VIRT = {
   id: 'Số', created_by: 'Người lập', created_at: 'Ngày lập', stage: 'Tiến trình giao dịch', paid: 'Đã thu', pay_status: 'Tình trạng kỳ thu',
   actual: 'Thực thu', gap: 'Chênh lệch', promise_st: 'Tình trạng cam kết', defects_open: 'Tồn tại chưa đóng', days_in: 'Ngày xử lý nội bộ',
-  days_out: 'Ngày tại cơ quan', sla: 'SLA', project: 'Dự án', building: 'Tòa',
+  days_out: 'Ngày tại cơ quan', sla: 'SLA', project: 'Dự án', building: 'Tòa', stt: 'STT', prints: 'In bản đăng ký',
 };
 
 module.exports = { PROSPECT_ST, VIRT,  ROLES, ALL, MGR, PII_ROLES, E, MENU, VIEW_ROLES, LOOKUPS, SETTINGS, UNIT_ST };

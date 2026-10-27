@@ -193,6 +193,13 @@ R('GET', '/api/pii/customer/:id', async (req, res, u, p) => {
   await C.audit({ q }, 'customer', g.row.id, 'xem_dinh_danh', null, null, u);
   send(res, 200, Object.fromEntries(M.E.customer.fields.filter(f => f.pii).map(f => [f.k, g.row[f.k]])));
 });
+R('GET', '/api/pii/reservation/:id', async (req, res, u, p) => {
+  if (!M.PII_ROLES.includes(u.role)) deny('Bạn không được xem dữ liệu định danh khách hàng');
+  const g = await C.get('reservation', p.id, u, { reveal: true });
+  await C.audit({ q }, 'reservation', g.row.id, 'xem_dinh_danh', null, null, u);
+  send(res, 200, Object.fromEntries(M.E.reservation.fields.filter(f => f.pii).map(f => [f.k, g.row[f.k]])));
+});
+R('GET', '/api/templates', async (req, res, u, p, qs) => send(res, 200, await q('SELECT code, name, kind FROM kd_template WHERE active AND ($1::text IS NULL OR kind = $1) ORDER BY id', [qs.kind || null])));
 R('POST', '/api/bulk/:ent/:op', async (req, res, u, p) => {
   const { ids = [], ok, comment } = await readJson(req); const out = { ok: 0, errors: [] };
   for (const id of ids.slice(0, 500)) {
@@ -391,6 +398,7 @@ R('POST', '/api/admin/clear-demo', async (req, res, u) => { admin(u); const S = 
 R('POST', '/api/admin/load-demo', async (req, res, u) => { admin(u); const S = require('./seed'); send(res, 200, await S.loadDemo()); });
 
 // in hợp đồng (trang HTML)
+R('GET', '/print/reservation/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printReservation(p.id, u, qs.kind, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 R('GET', '/print/contract/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printContract(p.id, u, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 
 // ---------- máy chủ ----------
@@ -435,6 +443,7 @@ async function start() {
   await tx(db => migrate(db));
   const n = (await one('SELECT count(*) n FROM kd_user')).n;
   if (!n) { console.log('CSDL trống — nạp dữ liệu gốc…'); await require('./seed').seedBase(); }
+  await require('./seed').ensureTemplates();
   const srv = http.createServer(handle);
   srv.listen(PORT, HOST, () => console.log(`App Phòng Kinh doanh: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`));
   const job = async () => { try { await tx(db => B.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.error('Việc chạy nền lỗi:', e.message); } };

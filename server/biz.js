@@ -53,10 +53,10 @@ async function recomputeUnit(db, unitId, user) {
   else if (!u.activated) st = 'chua_mo_ban';
   else {
     const c = await db.one("SELECT id, status FROM kd_contract WHERE unit_id = $1 AND kind IN ('hdmb','thue','thue_mua') AND status NOT IN ('huy','thanh_ly')", [unitId]);
-    const r = await db.one(`SELECT status, deposit FROM kd_reservation WHERE unit_id = $1 AND status IN ${ACTIVE_RES}`, [unitId]);
+    const r = await db.one(`SELECT status, deposit, reg_state FROM kd_reservation WHERE unit_id = $1 AND status IN ${ACTIVE_RES}`, [unitId]);
     const h = await db.one('SELECT status FROM kd_handover WHERE unit_id = $1', [unitId]);
     if (c && h && ['da_ban_giao', 'hoan_tat'].includes(h.status)) st = 'da_ban_giao';
-    else if (c?.status === 'da_ky') st = 'da_ky_hd';
+    else if (c?.status === 'da_ky' || r?.reg_state === 'ky_hdmb') st = 'da_ky_hd';
     else if (c) st = r?.deposit > 0 || r?.status === 'da_coc' ? 'da_coc' : 'giu_cho';
     else if (r) st = r.status === 'da_coc' || r.deposit > 0 ? 'da_coc' : 'giu_cho';
     else st = 'con_ban';
@@ -245,9 +245,20 @@ async function intakeLead(db, b, user, { demo } = {}) {
 }
 
 H.reservation = {
-  async beforeSave(r, old, { db, warn, opts }) {
+  async beforeSave(r, old, { db, warn, opts, user, demo }) {
     const changedUnit = !old || old.unit_id !== r.unit_id;
     const u = await raw(db, 'unit', r.unit_id);
+    // phiếu đăng ký căn hộ: trạng thái căn + tiến trình đi cùng nhau, tình trạng phiếu theo trạng thái căn (không qua duyệt)
+    if (old && old.status !== r.status && ['huy', 'het_han'].includes(r.status)) r.reg_state = 'huy';     // hủy / giải phóng từ nơi khác
+    if (old && !opts.system && old.reg_state !== r.reg_state) {
+      if (old.reg_state === 'huy' || ['huy', 'het_han'].includes(old.status)) bad('Phiếu đã hủy đăng ký — lập phiếu mới cho khách');
+      if (r.reg_state === 'huy' && old.status === 'chuyen_hd') bad('Phiếu đã lập hợp đồng — hủy qua «Hủy giao dịch – đổi căn»');
+    }
+    if (r.progress === 'da_ky' && r.reg_state === 'giu_cho') r.reg_state = 'ky_hdmb';
+    if (r.reg_state === 'ky_hdmb' && (!old || old.reg_state !== 'ky_hdmb')) r.progress = 'da_ky';
+    if (r.reg_state === 'huy') { if (!['huy', 'het_han'].includes(r.status)) r.status = 'huy'; }
+    else if (!opts.system && (!r.status || ['nhap', 'tu_choi'].includes(r.status))) r.status = r.deposit > 0 ? 'da_coc' : 'giu_cho';
+    await linkCustomer(db, r, old, user, opts, demo);
     if (changedUnit && !opts.system) {
       if (!u.activated) bad(`Căn ${u.code} chưa được duyệt mở bán`);
       if (u.status !== 'con_ban') bad(`Căn ${u.code} đang «${await C.optLabel(C.F.unit.status, u.status)}» — không giữ chỗ được`);
@@ -258,6 +269,7 @@ H.reservation = {
       const c = await raw(db, 'customer', r.customer_id); if (c?.agent_id) r.agent_id = c.agent_id; else bad('Nguồn bán đại lý / CTV cần chọn đối tác');
     }
     if (r.source === 'truc_tiep') r.agent_id = null;
+    if (changedUnit && old && ['huy', 'het_han'].includes(r.status)) bad('Phiếu đã hủy — không đổi căn được');
     if (changedUnit || r.price == null) {
       const p = await pricing(db, u, r.reg_date);
       if (r.price == null) r.price = p.price;
@@ -274,7 +286,8 @@ H.reservation = {
   async onApprove(r, ok) { return ok ? { status: r.deposit > 0 ? 'da_coc' : 'giu_cho' } : null; },
   async afterApprove(r, ok, { db, user }) { await recomputeUnit(db, r.unit_id, user); if (ok) await markCustomer(db, r.customer_id, user); },
   async afterSave(r, old, { db, user }) {
-    if (!old || old.status !== r.status || old.unit_id !== r.unit_id || old.deposit !== r.deposit) await recomputeUnit(db, r.unit_id, user);
+    if (!old || old.status !== r.status || old.unit_id !== r.unit_id || old.deposit !== r.deposit || old.reg_state !== r.reg_state) await recomputeUnit(db, r.unit_id, user);
+    if (r.customer_id && ['giu_cho', 'da_coc', 'chuyen_hd'].includes(r.status)) await markCustomer(db, r.customer_id, user);
     if (old && old.unit_id !== r.unit_id) await recomputeUnit(db, old.unit_id, user);
   },
   async decorate(rows, { db }) { await stageOf(db, rows); },
@@ -290,6 +303,23 @@ H.reservation = {
     },
   },
 };
+const REG_ORDER = ['tiep_nhan', 'cho_xet_duyet', 'du_dk', 'da_ky'];
+// khách trên phiếu: chọn sẵn → điền ô trống từ hồ sơ; chưa chọn → khớp theo CCCD rồi SĐT, không có thì tạo hồ sơ khách mới
+async function linkCustomer(db, r, old, user, opts, demo) {
+  const K = ['cust_name', 'id_no', 'id_date', 'id_place', 'address', 'phone'], CK = { cust_name: 'full_name' };
+  if (r.customer_id && (!old || old.customer_id !== r.customer_id)) {
+    const c = await raw(db, 'customer', r.customer_id);
+    if (c) for (const k of K) if (r[k] == null || r[k] === '') r[k] = c[CK[k] || k];
+  }
+  if (r.phone) r.phone = String(r.phone).replace(/[\s.]/g, '');
+  if (r.customer_id || opts.check || !r.cust_name || !r.phone) return;
+  const c = (r.id_no && await db.one('SELECT id FROM kd_customer WHERE upper(id_no) = upper($1) ORDER BY id LIMIT 1', [r.id_no]))
+    || await db.one("SELECT id FROM kd_customer WHERE regexp_replace($1,'\\D','','g') IN (regexp_replace(phone,'\\D','','g'), regexp_replace(coalesce(phone2,''),'\\D','','g')) ORDER BY id LIMIT 1", [r.phone]);
+  if (c) { r.customer_id = c.id; const k = await raw(db, 'customer', c.id); for (const f of K) if (r[f] == null || r[f] === '') r[f] = k[CK[f] || f]; return; }
+  r.customer_id = (await create('customer', { full_name: r.cust_name, phone: r.phone, id_no: r.id_no, id_date: r.id_date, id_place: r.id_place, address: r.address,
+    kind: 'giao_dich', source: r.source === 'dai_ly' ? 'dai_ly' : r.source === 'ctv' ? 'ctv' : 'truc_tiep', agent_id: r.agent_id, owner_id: r.owner_id || user?.id },
+    user, { db, system: true, demo, note: 'Tự tạo từ phiếu đăng ký căn hộ' })).row.id;
+}
 async function markCustomer(db, id, user) { const c = await raw(db, 'customer', id); if (c && c.kind !== 'giao_dich') await sys(db, 'customer', id, { kind: 'giao_dich' }, user, 'cap_nhat_trang_thai'); }
 
 H.noxh_check = {
@@ -299,6 +329,11 @@ H.noxh_check = {
     const it = r.items || [];
     r.result = it.length && it.every(x => x.st === 'da_nhan') ? 'du' : it.some(x => ['thieu', 'can_sua'].includes(x.st)) ? 'can_bo_sung' : 'chua_kt';
     if (r.result === 'can_bo_sung' && !r.supplement_due) warn.push('Hồ sơ cần bổ sung nhưng chưa đặt hạn bổ sung');
+  },
+  async afterSave(r, old, { db, user }) {
+    if (!r.reservation_id || old?.status === r.status) return;
+    const s = await raw(db, 'reservation', r.reservation_id), to = { cho_duyet: 'cho_xet_duyet', da_duyet: 'du_dk' }[r.status];
+    if (s && to && REG_ORDER.indexOf(to) > REG_ORDER.indexOf(s.progress)) await sys(db, 'reservation', s.id, { progress: to }, user, 'cap_nhat_tien_trinh', `Theo hồ sơ NOXH #${r.id}`);
   },
   acts: {
     async review(r, d, { user }) {
@@ -371,6 +406,10 @@ H.contract = {
     if (n.n && n.s !== r.value) bad(`Tổng lịch thanh toán ${fmtMoney(n.s)} khác giá trị hợp đồng ${fmtMoney(r.value)}`);
   },
   async afterSave(r, old, { db, user }) {
+    if (r.status === 'da_ky' && old?.status !== 'da_ky' && r.reservation_id && r.kind !== 'hoan_thien') {
+      const s = await raw(db, 'reservation', r.reservation_id);
+      if (s && s.reg_state !== 'ky_hdmb') await sys(db, 'reservation', s.id, { reg_state: 'ky_hdmb', progress: 'da_ky' }, user, 'cap_nhat_tien_trinh', `Đã ký hợp đồng ${r.number}`);
+    }
     if (!old || old.status !== r.status || old.unit_id !== r.unit_id) { await recomputeUnit(db, r.unit_id, user); if (old && old.unit_id !== r.unit_id) await recomputeUnit(db, old.unit_id, user); }
     if (old && old.status !== r.status) await refreshCommission(db, r.id, user);
   },
