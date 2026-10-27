@@ -293,7 +293,7 @@ async function normalize(e, input, user, db, { creating, old, system } = {}) {
   return out;
 }
 function requireFields(e, rec) {
-  const miss = e.fields.filter(f => f.req && !f.ro && !f.hide && f.t !== 'code' && shown(f, rec) && (rec[f.k] == null || rec[f.k] === '' || (Array.isArray(rec[f.k]) && !rec[f.k].length)));
+  const miss = e.fields.filter(f => f.req && !f.ro && !f.hide && f.t !== 'code' && shown(f, rec) && !(f.reqUnless && rec[f.reqUnless]) && (rec[f.k] == null || rec[f.k] === '' || (Array.isArray(rec[f.k]) && !rec[f.k].length)));
   if (miss.length) bad('Thiếu thông tin bắt buộc: ' + miss.map(f => f.l).join(', '), { fields: miss.map(f => f.k) });
 }
 const pgMsg = (err, e) => {

@@ -81,6 +81,7 @@ const SPECIAL = [
   `CREATE INDEX IF NOT EXISTS kd_receipt_c ON kd_receipt (contract_id) WHERE status = 'hop_le'`,
   `CREATE UNIQUE INDEX IF NOT EXISTS kd_customer_phone ON kd_customer (regexp_replace(phone, '\\D', '', 'g'))`,
   `CREATE UNIQUE INDEX IF NOT EXISTS kd_customer_idno ON kd_customer (upper(id_no)) WHERE id_no IS NOT NULL`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS kd_customer_psid ON kd_customer (fb_psid) WHERE fb_psid IS NOT NULL`,
 ];
 // CHECK nghiệp vụ thêm (ngoài money ≥ 0 và giá trị danh sách chọn)
 const CHECKS = {

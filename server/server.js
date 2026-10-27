@@ -37,12 +37,14 @@ const sendFile = (res, buf, name, mime, inline) => {
     'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${encodeURIComponent(name)}"; filename*=UTF-8''${encodeURIComponent(name)}` });
   res.end(buf);
 };
-const readJson = req => new Promise((resolve, reject) => {
+const readRaw = req => new Promise((resolve, reject) => {
   const parts = []; let size = 0;
   req.on('data', c => { size += c.length; if (size > 5e6) { reject(new HttpError(413, 'Dữ liệu quá lớn')); req.destroy(); } else parts.push(c); });
-  req.on('end', () => { try { resolve(parts.length ? JSON.parse(Buffer.concat(parts).toString('utf8')) : {}); } catch { reject(new HttpError(400, 'JSON không hợp lệ')); } });
+  req.on('end', () => resolve(Buffer.concat(parts)));
   req.on('error', reject);
 });
+const parseJson = buf => { try { return buf.length ? JSON.parse(buf.toString('utf8')) : {}; } catch { throw new HttpError(400, 'JSON không hợp lệ'); } };
+const readJson = async req => parseJson(await readRaw(req));
 const readUpload = req => new Promise((resolve, reject) => {
   const files = [], fields = {}; let failed = null;
   const bb = Busboy({ headers: req.headers, limits: { fileSize: FILE_MAX, files: 30 }, defParamCharset: 'utf8' });
@@ -308,6 +310,53 @@ R('POST', '/api/leads', async (req, res) => {
   if (!['website', 'messenger', 'zalo'].includes(b.channel)) bad('Kênh tự động chỉ nhận website, messenger, zalo');
   const lo = process.env.LEAD_OWNER && await one('SELECT id FROM kd_user WHERE lower(username) = lower($1) AND active', [process.env.LEAD_OWNER]);
   send(res, 200, await tx(db => B.intakeLead(db, { ...b, owner_id: lo?.id }, C.SYS)));
+}, { open: true });
+// Facebook Messenger (Page) → webhook trực tiếp của Meta, không qua dịch vụ trung gian. Cấu hình trong .env:
+//   FB_VERIFY_TOKEN (tự đặt, khai báo giống hệt bên Meta), FB_APP_SECRET (kiểm chữ ký), FB_PAGE_TOKEN (lấy tên khách), FB_PAGE_ID (tùy chọn — chỉ nhận Page này)
+// Đăng ký URL gọi lại: https://<tên miền>/api/fb/webhook, trường «messages» + «messaging_postbacks».
+R('GET', '/api/fb/webhook', async (req, res, u, p, qs) => {
+  const tok = process.env.FB_VERIFY_TOKEN;
+  if (!tok || qs['hub.mode'] !== 'subscribe' || qs['hub.verify_token'] !== tok) deny('Sai FB_VERIFY_TOKEN');
+  send(res, 200, String(qs['hub.challenge'] || ''), { 'Content-Type': 'text/plain; charset=utf-8' });
+}, { open: true });
+const fbNames = new Map();
+async function fbName(psid) {
+  if (fbNames.has(psid)) return fbNames.get(psid);
+  let name = '';
+  try {
+    const r = await fetch(`https://graph.facebook.com/v21.0/${encodeURIComponent(psid)}?fields=name,first_name,last_name&access_token=${encodeURIComponent(process.env.FB_PAGE_TOKEN || '')}`);
+    const j = await r.json();
+    if (j.error) console.error('Facebook: không lấy được tên khách', psid, j.error.message);
+    name = j.name || [j.last_name, j.first_name].filter(Boolean).join(' ');
+  } catch (e) { console.error('Facebook: lỗi gọi Graph API', e.message); }
+  if (name) fbNames.set(psid, name);
+  return name;
+}
+R('POST', '/api/fb/webhook', async (req, res) => {
+  const secret = process.env.FB_APP_SECRET;
+  const buf = await readRaw(req);
+  const sig = String(req.headers['x-hub-signature-256'] || '');
+  const want = secret && 'sha256=' + crypto.createHmac('sha256', secret).update(buf).digest('hex');
+  if (!want || sig.length !== want.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(want))) deny('Sai chữ ký X-Hub-Signature-256 (kiểm tra FB_APP_SECRET)');
+  const b = parseJson(buf);
+  send(res, 200, 'EVENT_RECEIVED', { 'Content-Type': 'text/plain' });   // Meta cần 200 trong 20 giây, xử lý sau
+  if (b.object !== 'page') return;
+  const lo = process.env.LEAD_OWNER && await one('SELECT id FROM kd_user WHERE lower(username) = lower($1) AND active', [process.env.LEAD_OWNER]);
+  for (const en of b.entry || []) {
+    if (process.env.FB_PAGE_ID && String(en.id) !== process.env.FB_PAGE_ID) continue;
+    for (const m of en.messaging || []) {
+      const psid = m.sender?.id;
+      if (!psid || psid === String(en.id) || m.message?.is_echo) continue;      // tin Page tự trả lời
+      const text = m.message?.text || (m.message?.attachments?.length ? `[Gửi ${m.message.attachments.map(a => ({ image: 'ảnh', video: 'video', audio: 'ghi âm', file: 'tệp' })[a.type] || a.type).join(', ')}]` : '') || (m.postback ? `[Bấm nút «${m.postback.title}»]` : '');
+      if (!text) continue;
+      const at = new Date(m.timestamp || Date.now());
+      const hm = at.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' });
+      try {
+        const full_name = await fbName(psid);
+        await tx(db => B.intakeLead(db, { channel: 'messenger', psid, full_name, content: `${hm} ${text}`.slice(0, 2000), at: at.toISOString(), merge: true, owner_id: lo?.id }, C.SYS));
+      } catch (e) { console.error('Facebook: không ghi được tin nhắn', psid, e.message); }
+    }
+  }
 }, { open: true });
 // form «Đăng ký tư vấn» trên trang công khai (gioi-thieu.html) — không cần mã, giới hạn 5 lần / 10 phút mỗi IP
 const leadHits = new Map();

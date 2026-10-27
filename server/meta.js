@@ -1,7 +1,7 @@
 // Định nghĩa nghiệp vụ App Phòng Kinh doanh — một nguồn cho cả CSDL (tự tạo bảng/cột), máy chủ (kiểm tra, quyền, phê duyệt) và giao diện (form, danh sách).
 // Căn cứ: «Bản mô tả chức năng chi tiết» (12 phân hệ) + «Bộ mẫu biểu nghiệp vụ» v2.0 26/10/2026 (18 mẫu) + «Cấu trúc App» (ma trận phân quyền).
 //
-// Trường: { k, l, t, req, o|opt, ref, ro, pii, show, help, def }
+// Trường: { k, l, t, req, reqUnless, o|opt, ref, ro, pii, show, help, def }   (reqUnless: không bắt buộc khi trường kia đã có giá trị)
 //   t: text | long | int | num | money | date | dt | month | sel | ref | user | bool | check (checklist JSON) | json | code (tự sinh)
 //   o: [[giá trị, nhãn, màu]] — màu: g xanh lá, b xanh dương, a vàng, r đỏ, s xám, v tím, t xanh ngọc
 //   opt: tên danh mục dùng chung (bảng kd_lookup, quản trị sửa được)
@@ -138,7 +138,7 @@ def('customer', {
   c: ['ban_hang', 'truong_phong', 'ho_so', 'cskh'], own: ['ban_hang'], search: ['code', 'full_name', 'phone', 'phone2', 'bravo_id'], fields: [
     { k: 'code', l: 'Mã khách hàng', t: 'code', prefix: 'KH', pad: 6 },
     { k: 'full_name', l: 'Họ tên', t: 'text', req: 1 },
-    { k: 'phone', l: 'Điện thoại', t: 'text', req: 1, help: '09xxxxxxxx' },
+    { k: 'phone', l: 'Điện thoại', t: 'text', req: 1, reqUnless: 'fb_psid', help: '09xxxxxxxx' },
     { k: 'phone2', l: 'Điện thoại khác', t: 'text' },
     { k: 'email', l: 'Email', t: 'text' },
     { k: 'tax_code', l: 'Mã số thuế', t: 'text', pii: 1, help: 'MST cá nhân (thường trùng số CCCD)' },
@@ -158,6 +158,7 @@ def('customer', {
     owner(),
     { k: 'note', l: 'Ghi chú', t: 'long' },
     { k: 'bravo_id', l: 'ID Bravo', t: 'text', help: 'ID khách hàng bên Bravo — để đối chiếu khi đồng bộ' },
+    { k: 'fb_psid', l: 'Mã Messenger (PSID)', t: 'text', ro: 1, help: 'Tự ghi khi khách nhắn Page Facebook — dùng nhận ra khách cũ khi chưa có số điện thoại' },
   ], list: ['full_name', 'code', 'address', 'phone', 'email', 'tax_code', 'stage', 'bravo_id'],
 });
 def('contact_log', {
