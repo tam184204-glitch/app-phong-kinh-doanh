@@ -211,6 +211,11 @@ H.customer = {
     if (r.id_no) r.id_no = String(r.id_no).replace(/\s+/g, '').toUpperCase();
     if (r.email && !/^\S+@\S+\.\S+$/.test(r.email)) bad('Email không hợp lệ');
     const id = old?.id || 0;
+    if (r.code != null) r.code = String(r.code).trim().toUpperCase() || null;
+    if (r.code && r.code !== old?.code) {
+      const d = await db.one('SELECT code, full_name FROM kd_customer WHERE id <> $1 AND upper(code) = $2', [id, r.code]);
+      if (d) bad(`Mã khách hàng ${r.code} đã có (khách ${d.full_name}) — nhập mã khác hoặc để trống để hệ thống tự cấp`);
+    }
     for (const ph of [r.phone, r.phone2].filter(Boolean)) {
       const d = await db.one("SELECT code, full_name FROM kd_customer WHERE id <> $1 AND ($2 IN (regexp_replace(phone,'\\D','','g'), regexp_replace(coalesce(phone2,''),'\\D','','g')))", [id, ph]);
       if (d) bad(`Trùng số điện thoại ${ph} với khách hàng ${d.code} · ${d.full_name}. Hãy mở hồ sơ cũ để liên kết giao dịch, không tạo hồ sơ mới.`);

@@ -83,6 +83,7 @@ const SPECIAL = [
   // chính sách giá trước đây chỉ 1 dự án → chép sang danh sách dự án
   `UPDATE kd_price_policy SET project_ids = ARRAY[project_id] WHERE project_ids IS NULL AND project_id IS NOT NULL`,
   `CREATE INDEX IF NOT EXISTS kd_price_policy_pids ON kd_price_policy USING gin (project_ids)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS kd_customer_code ON kd_customer (upper(code)) WHERE code IS NOT NULL`,
   `CREATE UNIQUE INDEX IF NOT EXISTS kd_customer_idno ON kd_customer (upper(id_no)) WHERE id_no IS NOT NULL`,
 ];
 // CHECK nghiệp vụ thêm (ngoài money ≥ 0 và giá trị danh sách chọn)
