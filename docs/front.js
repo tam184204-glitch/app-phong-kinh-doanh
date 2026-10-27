@@ -979,15 +979,15 @@ function prodRow(u, pj) {
 }
 const prodCell = (r, [k, , t]) => t === 'money' ? fm(r[k]) : t === 'num' ? fnum(r[k]) : t === 'pct' ? (r[k] != null ? fnum(r[k]) + '%' : '') : esc(r[k] ?? '');
 V.products = async (main, params) => {
-  const s = ST.prod ||= { project: '', q: '', st: '', shut: new Set() };
+  const s = ST.prod ||= { project: '', building: '', q: '', st: '', shut: new Set() };
   if (params.project) s.project = params.project;
   const ue = M.ents.unit.perm;
   const draw = async () => {
     const d = await catalogData(), q = s.q.trim().toLowerCase();
-    const base = d.units.filter(u => !s.project || u.project_id === +s.project);
+    const base = d.units.filter(u => (!s.project || u.project_id === +s.project) && (!s.building || u.building_id === +s.building));
     const us = base.filter(u => unitMatch(u, q) && (!s.st || u.status === s.st));
     const cnt = {}; base.forEach(u => cnt[u.status] = (cnt[u.status] || 0) + 1);
-    const groups = d.buildings.filter(b => !s.project || b.project_id === +s.project).map(b => ({ b, pj: d.projects.find(p => p.id === b.project_id), us: us.filter(u => u.building_id === b.id) })).filter(g => g.us.length);
+    const groups = d.buildings.filter(b => (!s.project || b.project_id === +s.project) && (!s.building || b.id === +s.building)).map(b => ({ b, pj: d.projects.find(p => p.id === b.project_id), us: us.filter(u => u.building_id === b.id) })).filter(g => g.us.length);
     const all = [];
     const sumTds = rs => PROD_COLS.slice(2).map(c => `<td class="${c[2] ? 'num' : ''}">${c[3] ? prodCell({ [c[0]]: rs.reduce((a, r) => a + (+r[c[0]] || 0), 0) }, c) : ''}</td>`).join('');
     const body = groups.map(({ b, pj, us: gu }) => {
@@ -999,7 +999,8 @@ V.products = async (main, params) => {
     main.innerHTML = `<div class="page">${head('02', 'Danh mục sản phẩm/căn hộ', 'fa-door-open', `${M.imports.units ? `<button class="btn" id="pImp">${ico('fa-file-import')} Nhập bảng hàng</button>` : ''}${ue.x ? `<button class="btn" id="pXls">${ico('fa-file-excel')} Xuất Excel</button>` : ''}${ue.c ? `<button class="btn pri" id="pNew">${ico('fa-plus')} Tạo căn</button>` : ''}`, 'DA-01')}
       <div class="prod"><div class="card prod-nav"><div class="hd"><h3>${ico('fa-folder-tree')} Nhóm dữ liệu</h3></div><div class="pn">
         <a data-p="" class="${!s.project ? 'on' : ''}">${ico('fa-folder-open')} Tất cả dự án <small>${d.units.length}</small></a>
-        ${d.projects.map(p => `<a data-p="${p.id}" class="${+s.project === p.id ? 'on' : ''}">${ico('fa-table-list')} ${esc(p.name)} <small>${p.units.length || ''}</small></a>`).join('')}</div></div>
+        ${d.projects.map(p => `<a data-p="${p.id}" class="${+s.project === p.id && !s.building ? 'on' : ''}">${ico(+s.project === p.id ? 'fa-folder-open' : 'fa-table-list')} ${esc(p.name)} <small>${p.units.length || ''}</small></a>` +
+          (+s.project === p.id ? p.buildings.map(b => `<a data-bld="${b.id}" class="sub ${+s.building === b.id ? 'on' : ''}">${ico('fa-building')} ${esc(bName(b))} <small>${b.units.length || ''}</small></a>`).join('') || '<div class="sub muted small">Chưa có tòa</div>' : '')).join('')}</div></div>
       <div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="pq" placeholder="Tìm mã căn, hướng, tòa…" value="${esc(s.q)}"></div>
         <select id="pst"><option value="">Mọi trạng thái</option>${Object.entries(USTAT).filter(([k]) => cnt[k]).map(([k, l]) => `<option value="${k}" ${s.st === k ? 'selected' : ''}>${l} (${cnt[k]})</option>`).join('')}</select>
         <span class="grow"></span><span class="small muted">${us.length} căn · ${groups.length} tòa</span></div>
@@ -1012,10 +1013,11 @@ V.products = async (main, params) => {
   };
   ST.reload = draw;
   main.onclick = run(async e => {
-    const p = e.target.closest('[data-p]'); if (p) { s.project = p.dataset.p; return draw(); }
+    const bl = e.target.closest('[data-bld]'); if (bl) { s.building = s.building === bl.dataset.bld ? '' : bl.dataset.bld; return draw(); }
+    const p = e.target.closest('[data-p]'); if (p) { s.building = ''; s.project = s.project === p.dataset.p ? '' : p.dataset.p; return draw(); }
     const g = e.target.closest('tr[data-g]'); if (g) { const id = +g.dataset.g; s.shut.has(id) ? s.shut.delete(id) : s.shut.add(id); return draw(); }
     const u = e.target.closest('tr[data-u]'); if (u) return openDetail('unit', +u.dataset.u);
-    if (e.target.closest('#pNew')) return openForm('unit', { preset: s.project ? { project_id: +s.project } : {}, onSaved: () => draw() });
+    if (e.target.closest('#pNew')) return openForm('unit', { preset: { ...(s.project ? { project_id: +s.project } : {}), ...(s.building ? { building_id: +s.building } : {}) }, onSaved: () => draw() });
     if (e.target.closest('#pImp')) return importModal('units', draw);
     // xuất Excel đúng mẫu «DM bảng hàng và sản phẩm»
     if (e.target.closest('#pXls')) return download('/api/export-rows', { title: 'DM bảng hàng và sản phẩm', cols: PROD_COLS.map(c => [c[0], c[1], c[2] === 'pct' ? 'num' : c[2]]), rows: main._rows, sum: PROD_COLS.filter(c => c[3]).map(c => c[0]), file: 'DM_bang_hang_va_san_pham' });

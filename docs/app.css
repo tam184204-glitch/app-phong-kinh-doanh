@@ -729,3 +729,5 @@ table.grid-bravo tbody tr:hover td { background: #dfeefc; }
 .upfile input[type=file] { width: 100%; padding: 8px; border: 1px dashed #cbd9e8; border-radius: 10px; background: #fff; }
 .upfile span { display: block; margin-top: 4px; }
 .upick-s { min-width: 240px; } .upick-s input { height: 30px; font-size: 13px; padding-left: 32px !important; } .upick-s > i { top: 50% !important; transform: translateY(-50%); }
+.prod-nav .pn a.sub, .prod-nav .pn div.sub { margin-left: 22px; padding-top: 6px; padding-bottom: 6px; font-size: 12.5px; }
+.prod-nav .pn div.sub { padding-left: 10px; }
