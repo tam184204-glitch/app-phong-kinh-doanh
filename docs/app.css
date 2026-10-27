@@ -709,3 +709,8 @@ table.tree tr.tw-b td:first-child, table.tree tr.tw-u td:first-child { padding-l
 table.tree tr.tw-b td:nth-child(3) { padding-left: 34px; }
 table.tree tr.tw-u td:nth-child(3) { padding-left: 74px; }
 a.ml { cursor: pointer; }
+/* lưới kiểu Bravo: kẻ ô, dòng gọn */
+table.grid-bravo th, table.grid-bravo td { border-right: 1px solid #e3e9f1; border-bottom: 1px solid #e3e9f1; padding: 6px 10px; }
+table.grid-bravo th { background: #f1f5fa; }
+table.grid-bravo td:first-child { color: var(--cobalt-d); font-weight: 600; }
+table.grid-bravo tbody tr:hover td { background: #dfeefc; }
