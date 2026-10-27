@@ -37,9 +37,9 @@ const sendFile = (res, buf, name, mime, inline) => {
     'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${encodeURIComponent(name)}"; filename*=UTF-8''${encodeURIComponent(name)}` });
   res.end(buf);
 };
-const readRaw = req => new Promise((resolve, reject) => {
+const readRaw = (req, max = 5e6) => new Promise((resolve, reject) => {
   const parts = []; let size = 0;
-  req.on('data', c => { size += c.length; if (size > 5e6) { reject(new HttpError(413, 'Dữ liệu quá lớn')); req.destroy(); } else parts.push(c); });
+  req.on('data', c => { size += c.length; if (size > max) { reject(new HttpError(413, 'Dữ liệu quá lớn')); req.destroy(); } else parts.push(c); });
   req.on('end', () => resolve(Buffer.concat(parts)));
   req.on('error', reject);
 });
@@ -373,6 +373,26 @@ R('POST', '/api/public/lead', async (req, res) => {
   await tx(db => B.intakeLead(db, { channel: 'website', full_name: String(b.full_name).slice(0, 120), phone: b.phone, email: b.email || null, project: b.project, content, owner_id: lo?.id }, C.SYS));
   send(res, 200, { ok: true });
 }, { open: true });
+// trang công khai (gioi-thieu.html, chép từ cattuonggroup.ai.vn): chuyển tiếp /api/public/… sang trang gốc — máy chủ gọi máy chủ,
+// không vướng CORS — để dự án, bảng hàng, bài viết, lượt truy cập, trợ lý AI, đọc hồ sơ scan chạy y như trang gốc.
+// cong-khai/bridge.js nhận ra phản hồi «X-Cong-Khai: live»; không có (bản demo tĩnh) thì dùng dữ liệu đã chụp. Form đăng ký vẫn về /api/public/lead.
+const PUBLIC_SRC = process.env.PUBLIC_SRC || 'https://cattuonggroup.ai.vn';
+const pubLinks = s => s.replace(/(["'])\/marketing\//g, `$1${PUBLIC_SRC}/marketing/`).replace(/(["'])\/blog\/([\w-]+)(?=["'])/g, '$1gioi-thieu.html?blog=$2');
+async function publicProxy(req, res) {
+  const url = new URL(req.url, 'http://x');
+  const body = req.method === 'GET' ? undefined : await readRaw(req, 40e6);
+  const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket?.remoteAddress || '';
+  let r;
+  try {
+    r = await fetch(PUBLIC_SRC + url.pathname + url.search, { method: req.method, body, signal: AbortSignal.timeout(/\/ho-so\//.test(url.pathname) ? 180e3 : 60e3),
+      headers: { Accept: 'application/json', 'User-Agent': 'CTG-PKD-cong-khai', ...(ip && { 'X-Forwarded-For': ip }), ...(req.headers['content-type'] && { 'Content-Type': req.headers['content-type'] }) } });
+  } catch (e) { return send(res, 502, { success: false, error: 'Không kết nối được máy chủ Cát Tường Group — vui lòng gọi Hotline 082.937.6666' }, { 'X-Cong-Khai': 'live' }); }
+  const ct = r.headers.get('content-type') || 'application/json; charset=utf-8';
+  const buf = Buffer.from(await r.arrayBuffer());
+  send(res, r.status, /json/.test(ct) ? pubLinks(buf.toString('utf8')) : buf, { 'Content-Type': ct, 'X-Cong-Khai': 'live' });
+}
+const PUB_RE = /^\/api\/public\/[\w-]+(\/[\w-][\w.-]*)*$/;   // một cấp thư mục trở xuống, không «..»
+routes.push({ method: 'GET', re: PUB_RE, fn: publicProxy, open: true }, { method: 'POST', re: PUB_RE, fn: publicProxy, open: true });   // sau /api/public/lead
 R('POST', '/api/leads/manual', async (req, res, u) => {   // khách gặp trực tiếp / gọi Hotline — nhân viên thêm tay
   if (!can(u, M.E.contact_log, 'c')) deny();
   const b = await readJson(req);

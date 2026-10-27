@@ -1,6 +1,7 @@
 // Cầu nối cho bản sao trang công khai (gioi-thieu.html): chạy trước portal.js của trang gốc.
-// portal.js gọi /api/public/… của cattuonggroup.ai.vn — trang gốc không cho gọi từ tên miền khác, nên trả lời từ dữ liệu đã chụp
-// (cong-khai/data/, sinh bởi node demo/cong-khai.mjs). Form đăng ký → /api/public/lead của app → Phân hệ 03 «Khách hàng tiềm năng»;
+// portal.js gọi /api/public/… của cattuonggroup.ai.vn — trang gốc không cho gọi từ tên miền khác. Có máy chủ app: máy chủ chuyển tiếp
+// sang trang gốc (dữ liệu, lượt truy cập, trợ lý AI thật); trang tĩnh (bản demo): trả lời từ dữ liệu đã chụp (cong-khai/data/,
+// sinh bởi node demo/cong-khai.mjs). Form đăng ký → /api/public/lead của app → Phân hệ 03 «Khách hàng tiềm năng»;
 // bản demo tĩnh (không có máy chủ) thì xếp hàng ở localStorage «ctg-public-leads», app nội bộ tự nhận khi mở.
 (() => {
   'use strict';
@@ -40,7 +41,22 @@
   }
   const LEADS = { 'dang-ky-quan-tam': 'Đăng ký quan tâm', 'yeu-cau-tai-lieu': 'Yêu cầu tài liệu', 'blog-lead': 'Để lại thông tin từ bài viết' };
 
-  async function handle(method, p, init) {
+  // có máy chủ app (npm start): /api/public/… chuyển tiếp sang trang gốc, phản hồi gắn «X-Cong-Khai: live» → dùng nguyên
+  let live = null;   // null = chưa biết, false = trang tĩnh (bản demo) → dữ liệu đã chụp
+  async function tryLive(input, init) {
+    if (live === false) return null;
+    try {
+      const r = await realFetch(input, init);
+      live = r.headers.get('X-Cong-Khai') === 'live';
+      return live ? r : null;
+    } catch { live = false; return null; }
+  }
+
+  async function handle(method, p, init, input) {
+    let b = {}; try { b = typeof init.body === 'string' ? JSON.parse(init.body) : {}; } catch { }
+    if (method === 'POST' && LEADS[p] && (b.soDienThoai || b.dienThoai)) return lead(LEADS[p], b);
+    const r = await tryLive(input, init);
+    if (r) return r;
     if (method === 'GET') {
       if (p === 'du-an' || p === 'bieu-mau' || p === 'bang-hang' || p === 'phap-ly') return file(p + '.json');
       let m;
@@ -51,8 +67,6 @@
       return fail(404, 'Chức năng này chỉ có trên trang chính thức. ' + HOTLINE);
     }
     if (p === 'luot-truy-cap/track') return ok(await visitSnap());
-    let b = {}; try { b = typeof init.body === 'string' ? JSON.parse(init.body) : {}; } catch { }
-    if (LEADS[p] && (b.soDienThoai || b.dienThoai)) return lead(LEADS[p], b);
     return fail(503, 'Chức năng này chỉ có trên trang chính thức. ' + HOTLINE);
   }
 
@@ -62,15 +76,21 @@
     if (u.origin === location.origin && u.pathname === '/api/auth/me') return Promise.resolve(fail(401, 'Chưa đăng nhập'));
     const m = u.origin === location.origin && /^\/api\/public\/(.+)$/.exec(u.pathname);
     if (!m || m[1] === 'lead') return realFetch(input, init);
-    return handle(String(init.method || 'GET').toUpperCase(), m[1], init).catch(() => fail(500, 'Lỗi tải dữ liệu. ' + HOTLINE));
+    return handle(String(init.method || 'GET').toUpperCase(), m[1], init, input).catch(() => fail(500, 'Lỗi tải dữ liệu. ' + HOTLINE));
   };
 
-  // bộ đếm realtime (EventSource) → phát một lần số liệu cục bộ
+  // bộ đếm realtime (EventSource): có máy chủ → hỏi số thật mỗi 15 giây qua chuyển tiếp; trang tĩnh → phát một lần số đã chụp
   const RealES = window.EventSource;
   if (RealES) window.EventSource = function (url, opt) {
     if (!String(url).includes('/api/public/')) return new RealES(url, opt);
-    const t = new EventTarget(); t.close = () => { };
-    visitSnap().then(v => { const e = new Event('visits'); e.data = JSON.stringify(v); t.dispatchEvent(e); });
+    const t = new EventTarget(); let timer = null; t.close = () => clearInterval(timer);
+    const emit = v => { const e = new Event('visits'); e.data = JSON.stringify(v); t.dispatchEvent(e); };
+    const tick = async () => {
+      const j = await window.fetch('/api/public/luot-truy-cap?path=%2Fgioi-thieu').then(r => r.json()).catch(() => null);
+      if (j && j.success) emit(j.data);
+      if (live === false) clearInterval(timer);
+    };
+    timer = setInterval(tick, 15e3); tick();
     return t;
   };
 
