@@ -591,11 +591,20 @@ function forcePassword(first) {
     foot: `${first ? '' : '<button class="btn" data-x>Hủy</button>'}<button class="btn pri" id="pOk">Đổi mật khẩu</button>` });
   if (first) $$('[data-x]', m.el).forEach(b => b.remove());
   pwEye(m.el);
+  const err = t => $('#perr', m.el).innerHTML = `<div class="errbar">${esc(t)}</div>`;
   $('#pOk', m.el).onclick = async () => {
-    if ($('#p1', m.el).value !== $('#p2', m.el).value) return $('#perr', m.el).innerHTML = '<div class="errbar">Hai lần nhập không khớp</div>';
-    try { await api('POST', '/api/password', { old: $('#p0', m.el).value, pw: $('#p1', m.el).value }); m.el.remove(); toast('Đã đổi mật khẩu'); if (first) boot(); }
-    catch (e) { $('#perr', m.el).innerHTML = `<div class="errbar">${esc(e.message)}</div>`; }
+    const pw = $('#p1', m.el).value;
+    if (!$('#p0', m.el).value) return err('Nhập mật khẩu hiện tại');
+    if (pw.length < 6) return err('Mật khẩu mới tối thiểu 6 ký tự');
+    if (pw !== $('#p2', m.el).value) return err('Hai lần nhập không khớp');
+    const b = $('#pOk', m.el); b.disabled = true; b.textContent = 'Đang đổi…'; $('#perr', m.el).innerHTML = '';
+    try {
+      await api('POST', '/api/password', { old: $('#p0', m.el).value, pw });
+      m.close(); toast('Đổi mật khẩu thành công');
+      if (first) boot();
+    } catch (e) { err(e.message); b.disabled = false; b.textContent = 'Đổi mật khẩu'; }
   };
+  $$('input', m.el).forEach(i => i.onkeydown = e => { if (e.key === 'Enter') $('#pOk', m.el).click(); });
 }
 
 // ---------- khung ----------
