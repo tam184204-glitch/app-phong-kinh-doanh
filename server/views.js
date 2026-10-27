@@ -271,7 +271,8 @@ async function board(db, user, f) {
   const units = bid ? await db.q(`SELECT u.id, u.code, u.floor, u.kind, u.bedrooms, u.area_tt, u.direction, u.position, u.total_price, u.status, u.handover_plan,
       coalesce((SELECT k.full_name FROM kd_contract c JOIN kd_customer k ON k.id = c.customer_id WHERE c.unit_id = u.id AND c.status NOT IN ('huy','thanh_ly') AND c.kind <> 'hoan_thien' LIMIT 1),
                (SELECT k.full_name FROM kd_reservation r JOIN kd_customer k ON k.id = r.customer_id WHERE r.unit_id = u.id AND r.status IN ('cho_duyet','giu_cho','qua_han','da_coc','chuyen_hd') LIMIT 1)) customer,
-      (SELECT r.hold_until FROM kd_reservation r WHERE r.unit_id = u.id AND r.status IN ('giu_cho','qua_han','da_coc') LIMIT 1) hold_until
+      (SELECT r.hold_until FROM kd_reservation r WHERE r.unit_id = u.id AND r.status IN ('giu_cho','qua_han','da_coc') LIMIT 1) hold_until,
+      u.status = 'con_ban' AND EXISTS (SELECT 1 FROM kd_reservation r WHERE r.unit_id = u.id AND r.status IN ('huy','het_han')) cancelled   -- căn trả lại sau khi hủy đăng ký
     FROM kd_unit u WHERE u.building_id = $1 ORDER BY u.floor DESC, u.code`, [bid]) : [];
   // khách hàng: chỉ người có quyền xem khách mới thấy tên
   if (!can(user, E.customer, 'r')) units.forEach(u => { u.customer = u.customer ? '•••' : null; });

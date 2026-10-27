@@ -217,6 +217,7 @@ table.t.noclick tbody tr { cursor: default; }
 .u.da_ban_giao { background: #dcf2ef; border-color: #a9ddd6; color: #0d5a54; }
 .u.chua_mo_ban, .u.ngung_kd { background: #eef2f6; border-color: #d9e1ea; color: #5b6b7f; }
 .u.tam_khoa { background: #fdecea; border-color: #f4c3bd; color: #8f2a20; }
+.u.con_ban.huy { background: #fff; border-color: #d9e1ea; color: #33475b; }   /* căn còn bán trở lại sau khi hủy đăng ký */
 .u.dim { opacity: .18; }
 .u .hold { position: absolute; top: 5px; right: 6px; font-size: 10px; }
 
