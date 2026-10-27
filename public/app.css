@@ -733,3 +733,4 @@ table.grid-bravo tbody tr:hover td { background: #dfeefc; }
 .prod-nav .pn div.sub { padding-left: 10px; }
 /* dòng tổng theo tòa và dòng tổng cuối: chữ đậm, rõ */
 table.prod-t tr.pg td, table.prod-t tr.pg td .muted, table.prod-t tfoot td { font-weight: 800; color: var(--ink); }
+table.prod-t tfoot td { font-weight: 800 !important; color: var(--ink) !important; }
