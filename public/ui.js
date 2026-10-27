@@ -88,7 +88,12 @@ function show(f, row, { plain } = {}) {
     case 'sel': { const o = optOf(f, v); return plain ? (o?.[1] ?? v) : o?.[2] ? pill(o[1], o[2]) : esc(o?.[1] ?? v); }
     case 'ref': case 'refs': case 'user': return esc(row[f.k + '__l'] ?? '#' + v);
     case 'check': { const n = v.filter(x => x.st === 'da_nhan').length, bad = v.filter(x => ['thieu', 'can_sua'].includes(x.st)).length; return plain ? `${n}/${v.length}` : `<span class="${bad ? 'neg' : ''}">${n}/${v.length}${bad ? ` · thiếu ${bad}` : ''}</span>`; }
-    case 'json': return plain ? JSON.stringify(v) : '<span class="muted">(xem chi tiết)</span>';
+    case 'json': if (f.grid && Array.isArray(v)) {
+      if (!v.length) return plain ? '' : '<span class="muted">—</span>';
+      if (plain) return v.map(x => x.name + (x.relation ? ` (${x.relation})` : '')).join('; ');
+      return `<div class="tbl-wrap"><table class="t compact noclick"><thead><tr>${f.grid.map(c => `<th>${esc(c.l)}</th>`).join('')}</tr></thead><tbody>${v.map(x => `<tr>${f.grid.map(c => `<td>${esc(x[c.k] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+    }
+      return plain ? JSON.stringify(v) : '<span class="muted">(xem chi tiết)</span>';
     case 'long': return plain ? v : esc(v).replace(/\n/g, '<br>');
     default: return esc(v);
   }
@@ -136,17 +141,29 @@ function input(f, v, rec = {}, { ro, id } = {}) {
     case 'ref': return `<div class="combo" data-ref="${f.ref}" ${f.filter ? `data-filter="${f.filter}"` : ''} ${f.dep ? `data-dep="${f.dep}"` : ''}><input type="text" placeholder="Gõ để tìm ${esc(M.ents[f.ref].one)}…" value="${esc(rec[f.k + '__l'] ?? '')}" autocomplete="off" data-combo><input type="hidden" ${nm} value="${esc(v ?? '')}"><button type="button" class="x" tabindex="-1" title="Bỏ chọn">${ico('fa-xmark')}</button></div>`;
     case 'refs': { const ids = v || [], ls = String(rec[f.k + '__l'] ?? '').split(', '), lab = (id, i) => { const p = f.ref === 'project' && M.projects.find(x => x.id === id); return p ? `${p.code} · ${p.name}` : ids.length === ls.length ? ls[i] : '#' + id; };
       return `<div class="combo multi" data-ref="${f.ref}" data-multi><div class="chips">${ids.map((id, i) => `<span class="chip" data-id="${id}">${esc(lab(id, i))}<button type="button" tabindex="-1" title="Bỏ">${ico('fa-xmark')}</button></span>`).join('')}<input type="text" placeholder="${ids.length ? 'Thêm' : 'Gõ để tìm'} ${esc(M.ents[f.ref].one)}…" autocomplete="off" data-combo></div><input type="hidden" ${nm} value="${esc(ids.join(','))}"></div>`; }
-    case 'check': return `<div class="cklist" ${nm}>${checkRows(v || [])}</div>`;
-    case 'json': return f.k === 'new_schedule' ? `<div data-sched ${nm}></div>` : `<div class="ro">${show(f, rec)}</div>`;
-    default: return `<input ${nm} value="${esc(v ?? '')}" autocomplete="off">`;
+    case 'check': return `<div class="cklist${f.qty ? ' qty' : ''}" ${nm} ${f.qty ? 'data-qty' : ''}>${checkRows(v || [], f.qty)}</div>`;
+    case 'json': return f.k === 'new_schedule' ? `<div data-sched ${nm}></div>` : f.grid ? `<div class="gridin" ${nm}>${gridRows(f, v || [])}</div>` : `<div class="ro">${show(f, rec)}</div>`;
+    default: return `<input ${nm} value="${esc(v ?? '')}" autocomplete="off"${f.sug ? ` list="dl_${f.k}"` : ''}>${f.sug ? sugList('dl_' + f.k, f.sug) : ''}`;
   }
 }
 const CK = [['', '— chưa —'], ['da_nhan', 'Đã nhận / đạt'], ['thieu', 'Thiếu'], ['can_sua', 'Cần sửa / bổ sung']];
-function checkRows(items) {
-  return `<div class="it hd"><div>Giấy tờ / hạng mục</div><div>Tình trạng</div><div>Ghi chú</div></div>` + items.map((x, i) => `<div class="it ${x.st || ''}" data-i="${i}"><div>${esc(x.n)}</div><div><select data-ck="st">${CK.map(o => `<option value="${o[0]}" ${o[0] === (x.st || '') ? 'selected' : ''}>${o[1]}</option>`).join('')}</select></div><div><input data-ck="note" value="${esc(x.note || '')}" placeholder="Ghi chú"></div><input type="hidden" data-ck="n" value="${esc(x.n)}"></div>`).join('')
+// qty: thêm cột «Số lượng» (bản) — dùng in biên bản giao nhận hồ sơ
+function checkRows(items, qty) {
+  return `<div class="it hd"><div>Giấy tờ / hạng mục</div>${qty ? '<div>Số lượng</div>' : ''}<div>Tình trạng</div><div>Ghi chú</div></div>` + items.map((x, i) => `<div class="it ${x.st || ''}" data-i="${i}"><div>${esc(x.n)}</div>${qty ? `<div><input data-ck="qty" inputmode="numeric" value="${esc(x.qty ?? '')}" placeholder="0"></div>` : ''}<div><select data-ck="st">${CK.map(o => `<option value="${o[0]}" ${o[0] === (x.st || '') ? 'selected' : ''}>${o[1]}</option>`).join('')}</select></div><div><input data-ck="note" value="${esc(x.note || '')}" placeholder="Ghi chú"></div><input type="hidden" data-ck="n" value="${esc(x.n)}"></div>`).join('')
     + `<div class="it"><div class="row"><input data-ck-new placeholder="+ Thêm giấy tờ khác…" style="flex:1"><button type="button" class="btn sm" data-ck-add>Thêm</button></div></div>`;
 }
-function readCheck(el) { return $$('.it[data-i]', el).map(r => ({ n: $('[data-ck=n]', r).value, st: $('[data-ck=st]', r).value, note: $('[data-ck=note]', r).value })); }
+function readCheck(el) { return $$('.it[data-i]', el).map(r => { const q = $('[data-ck=qty]', r); return { n: $('[data-ck=n]', r).value, st: $('[data-ck=st]', r).value, note: $('[data-ck=note]', r).value, ...(q ? { qty: q.value.trim() } : {}) }; }); }
+const sugList = (id, xs) => `<datalist id="${id}">${xs.map(x => `<option value="${esc(x)}">`).join('')}</datalist>`;
+// bảng nhập nhiều dòng (VD thành viên hộ gia đình): mỗi cột là ô chữ / ô chọn / ô chữ có gợi ý
+function gridRows(f, rows) {
+  const cell = (c, v) => c.o ? `<select data-gc="${c.k}"><option value="">— chọn —</option>${c.o.map(o => `<option ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`
+    : `<input data-gc="${c.k}" value="${esc(v ?? '')}"${c.ph ? ` placeholder="${esc(c.ph)}"` : ''}${c.sug ? ` list="dl_${f.k}_${c.k}"` : ''} autocomplete="off">`;
+  return `<div class="tbl-wrap"><table class="t compact noclick gridt"><thead><tr><th>#</th>${f.grid.map(c => `<th style="min-width:${c.w || 120}px">${esc(c.l)}</th>`).join('')}<th></th></tr></thead>
+    <tbody>${rows.map((x, i) => `<tr data-gr><td class="center">${i + 1}</td>${f.grid.map(c => `<td>${cell(c, x[c.k])}</td>`).join('')}<td><button type="button" class="btn sm" data-gdel title="Bỏ dòng">${ico('fa-xmark')}</button></td></tr>`).join('')}</tbody></table></div>
+    <button type="button" class="btn sm mt" data-gadd>${ico('fa-plus')} Thêm thành viên</button>${f.grid.filter(c => c.sug).map(c => sugList(`dl_${f.k}_${c.k}`, c.sug)).join('')}`;
+}
+const gridVals = (el, f) => $$('tr[data-gr]', el).map(tr => Object.fromEntries(f.grid.map(c => [c.k, $(`[data-gc="${c.k}"]`, tr).value.trim()])));
+const readGrid = (el, f) => gridVals(el, f).filter(x => Object.values(x).some(Boolean));
 function wireInputs(root, onChange) {
   $$('[data-pick]', root).forEach(b => {
     const wrap = b.parentElement, txt = $('input[name]', wrap), nat = $(`input[type=${b.dataset.pick}]`, wrap);
@@ -156,9 +173,17 @@ function wireInputs(root, onChange) {
   $$('input[data-t=money]', root).forEach(i => { i.addEventListener('blur', () => { const n = num(i.value, true); if (i.value.trim() && isFinite(n)) i.value = fm(n); }); });
   $$('input[data-t=date]', root).forEach(i => i.addEventListener('blur', () => { const m = /^(\d{1,2})(\d{2})(\d{4})$/.exec(i.value.trim()); if (m) i.value = `${m[1].padStart(2, '0')}/${m[2]}/${m[3]}`; }));
   $$('.combo', root).forEach(c => combo(c, root, onChange));
+  $$('.gridin', root).forEach(el => {
+    const f = Object.values(M.ents).flatMap(e => e.fields).find(x => x.k === el.getAttribute('name') && x.grid);
+    el._get = () => readGrid(el, f);
+    el.addEventListener('click', e => {
+      if (e.target.closest('[data-gadd]')) { el.innerHTML = gridRows(f, [...gridVals(el, f), {}]); $$('tr[data-gr]', el).pop()?.querySelector('input,select')?.focus(); }
+      const d = e.target.closest('[data-gdel]'); if (d) { const i = $$('tr[data-gr]', el).indexOf(d.closest('tr')); el.innerHTML = gridRows(f, gridVals(el, f).filter((x, j) => j !== i)); }
+    });
+  });
   $$('.cklist', root).forEach(el => {
     el.addEventListener('change', e => { const r = e.target.closest('.it[data-i]'); if (r && e.target.dataset.ck === 'st') r.className = 'it ' + e.target.value; });
-    el.addEventListener('click', e => { if (!e.target.matches('[data-ck-add]')) return; const inp = $('[data-ck-new]', el); const v = inp.value.trim(); if (!v) return; const items = readCheck(el); items.push({ n: v, st: '', note: '' }); el.innerHTML = checkRows(items); });
+    el.addEventListener('click', e => { if (!e.target.matches('[data-ck-add]')) return; const inp = $('[data-ck-new]', el); const v = inp.value.trim(); if (!v) return; const items = readCheck(el); items.push({ n: v, st: '', note: '' }); el.innerHTML = checkRows(items, 'qty' in el.dataset); });
   });
   root.addEventListener('change', () => onChange && onChange());
 }
@@ -258,12 +283,12 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [] } = {}
   let rec = { ...preset }, perm = null;
   if (id) {
     const g = await api('GET', `/api/e/${ent}/${id}`); rec = g.row; perm = g.perm;
-    if (E.fields.some(f => f.pii) && M.piiRoles.includes(M.me.role) && rec._masked) Object.assign(rec, await api('GET', `/api/pii/${ent === 'reservation' ? 'reservation' : 'customer'}/${id}`));
+    if (E.fields.some(f => f.pii || f.grid?.some(c => c.pii)) && M.piiRoles.includes(M.me.role) && rec._masked) Object.assign(rec, await api('GET', `/api/pii/${ent}/${id}`));
   } else {
     for (const f of E.fields) if (rec[f.k] === undefined && f.def !== undefined && !f.ro) rec[f.k] = f.def === 'me' ? M.me.id : f.def === 'today' ? today() : f.def === 'now' ? new Date().toISOString() : f.def;
   }
   const lockKeep = perm?.locked ? new Set(perm.lockKeep || []) : null;
-  const fields = E.fields.filter(f => !skip.includes(f.k) && !f.noForm && !(f.ro && !id) && !(f.t === 'code' && !id && !f.manual) && !(f.t === 'json' && f.k !== 'new_schedule'));
+  const fields = E.fields.filter(f => !skip.includes(f.k) && !f.noForm && !(f.ro && !id) && !(f.t === 'code' && !id && !f.manual) && !(f.t === 'json' && f.k !== 'new_schedule' && !f.grid));
   const wide = f => ['long', 'check', 'json'].includes(f.t) || !!f.pick || !!f.upload;
   const body = `${E.note ? `<div class="warnbar">${ico('fa-circle-info')}<span>${esc(E.note)}</span></div>` : ''}${lockKeep ? `<div class="lockbar">${ico('fa-lock')} Bản ghi đã chốt — chỉ sửa được: ${[...lockKeep].map(k => E.fields.find(f => f.k === k)?.l).join(', ')}</div>` : ''}<div id="ferr"></div><form class="form" autocomplete="off">${fields.map(f => {
     const ro = f.ro || (f.t === 'code' && !f.manual) || (lockKeep && !lockKeep.has(f.k)) || (f.pii && id && !M.piiRoles.includes(M.me.role) && rec[f.k]);
@@ -283,7 +308,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [] } = {}
     if (!ckF) return; const el = $(`[name="${ckF.k}"]`, form); const cur = readCheck(el);
     if (cur.some(x => x.st || x.note)) return;
     const s = M.settings[ckF.src]; let list = Array.isArray(s) ? s : s?.[readField(form, fields.find(f => f.k === ckF.srcBy) || {})] || s?._all || [];
-    if (list.length && JSON.stringify(list) !== JSON.stringify(cur.map(x => x.n))) el.innerHTML = checkRows(list.map(n => ({ n, st: '', note: '' })));
+    if (list.length && JSON.stringify(list) !== JSON.stringify(cur.map(x => x.n))) el.innerHTML = checkRows(list.map(n => ({ n, st: '', note: '' })), 'qty' in el.dataset);
   };
   wireInputs(form, () => { vis(); });
   // chọn căn / khách → tự điền các ô liên quan (giá theo danh mục sản phẩm, thông tin khách)
@@ -394,6 +419,7 @@ async function doAct(ent, id, k, after) {
   const E = M.ents[ent], a = E.acts.find(x => x.k === k);
   if (k === 'schedule') return scheduleModal(id, after);
   if (k === 'print') { window.open(`/print/contract/${id}`, '_blank'); return; }
+  if (a?.url) { window.open(a.url.replace(':id', id), '_blank'); return; }
   const go = async data => { const r = await api('POST', `/api/e/${ent}/${id}/act/${k}`, data); toast(r.msg || `Đã ${a.l.toLowerCase()}`); if (r.url) window.open(r.url, '_blank'); after && after(); if (r.open) openDetail(r.open[0], r.open[1]); return r; };
   if (!a.ask?.length) { if (a.danger && !await ask(a.l, 'Xác nhận thực hiện?', { danger: 1, okLabel: a.l })) return; return run(go)({}); }
   const rec = {}; for (const f of a.ask) if (f.def !== undefined) rec[f.k] = f.def === 'today' ? today() : f.def;
@@ -461,7 +487,7 @@ async function openDetail(ent, id, tab) {
       const fs = E.fields.filter(f => f.t !== 'json' || f.k === 'reviews' || f.k === 'new_schedule');
       let h = p.locked ? `<div class="lockbar">${ico('fa-lock')} ${E.one[0].toUpperCase() + E.one.slice(1)} đã chốt / đang trình duyệt — không sửa trực tiếp${ent === 'contract' ? '. Thay đổi qua «Điều chỉnh – phụ lục hợp đồng».' : '.'}</div>` : '';
       if (E.note) h += `<div class="warnbar">${ico('fa-circle-info')}<span>${esc(E.note)}</span></div>`;
-      h += `<dl class="kv">${fs.filter(f => f.t !== 'check' && f.t !== 'json' && isShown(f, r)).map(f => `<div class="${f.t === 'long' ? 'wide' : ''}"><dt>${esc(f.l)}</dt><dd>${show(f, r)}${f.pii && r._masked && M.piiRoles.includes(M.me.role) ? ` <button class="btn ghost sm" data-do="pii">${ico('fa-eye')} Hiện</button>` : ''}</dd></div>`).join('')}</dl>`;
+      h += `<dl class="kv">${fs.filter(f => f.t !== 'check' && (f.t !== 'json' || f.grid) && isShown(f, r)).map(f => `<div class="${f.t === 'long' || f.grid ? 'wide' : ''}"><dt>${esc(f.l)}</dt><dd>${show(f, r)}${(f.pii || f.grid?.some(c => c.pii)) && r._masked && M.piiRoles.includes(M.me.role) ? ` <button class="btn ghost sm" data-do="pii">${ico('fa-eye')} Hiện</button>` : ''}</dd></div>`).join('')}</dl>`;
       for (const f of fs.filter(f => f.t === 'check')) h += `<div class="sec-title">${esc(f.l)}</div><table class="t compact noclick"><thead><tr><th>Giấy tờ</th><th>Tình trạng</th><th>Ghi chú</th></tr></thead><tbody>${(r[f.k] || []).map(x => `<tr><td>${esc(x.n)}</td><td>${x.st ? pill(CK.find(o => o[0] === x.st)[1], x.st === 'da_nhan' ? 'g' : 'r') : '<span class="muted">chưa</span>'}</td><td>${esc(x.note)}</td></tr>`).join('')}</tbody></table>`;
       if (r.reviews?.length) h += `<div class="sec-title">Các bước xét duyệt nội bộ</div><div class="tl">${r.reviews.map(x => `<div><b>${esc({ kiem_tra_1: 'Kiểm tra lần 1', kiem_tra_cheo: 'Kiểm tra chéo', doi_chieu_goc: 'Đối chiếu bản gốc' }[x.step] || x.step)}</b> — ${x.conclusion === 'dat' ? pill('Đạt', 'g') : pill('Cần bổ sung', 'a')}<br><small>${esc(x.by)} · ${dmyhm(x.at)}${x.note ? ' · ' + esc(x.note) : ''}</small></div>`).join('')}</div>`;
       if (r.new_schedule?.length) h += `<div class="sec-title">Tiến độ thanh toán mới</div>${schedTable(r.new_schedule)}`;
@@ -505,7 +531,7 @@ async function openDetail(ent, id, tab) {
     if (d === 'log') return openForm('contact_log', { preset: { customer_id: r.id, customer_id__l: `${r.code} · ${r.full_name}` }, onSaved: () => toast('Đã ghi nhật ký') });
     if (d === 'call') return openForm('debt_call', { preset: { contract_id: r.id, contract_id__l: r.number }, onSaved: () => reload() });
     if (d === 'chg') return openForm('contract_change', { preset: { contract_id: r.id, contract_id__l: r.number }, onSaved: row => openDetail('contract_change', row.id) });
-    if (d === 'pii') { const x = await api('GET', `/api/pii/customer/${id}`); for (const [k, v] of Object.entries(x)) { const dd = $$('.kv dt', body).find(t => t.textContent === E.fields.find(f => f.k === k).l)?.nextElementSibling; if (dd) dd.textContent = E.fields.find(f => f.k === k).t === 'date' ? dmy(v) : v ?? ''; } toast('Đã ghi nhật ký xem dữ liệu định danh'); }
+    if (d === 'pii') { const x = await api('GET', `/api/pii/${ent}/${id}`); for (const [k, v] of Object.entries(x)) { const f = E.fields.find(f => f.k === k), dd = $('.kv dt', body).find(t => t.textContent === f.l)?.nextElementSibling; if (dd) dd.innerHTML = show(f, { [k]: v }); } toast('Đã ghi nhật ký xem dữ liệu định danh'); }
   }));
 }
 function debtTiles(d) {

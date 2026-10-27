@@ -261,6 +261,8 @@ table.t.noclick tbody tr { cursor: default; }
 .cklist .it:last-child { border-bottom: 0; } .cklist .it.hd { background: #f3f7fc; font-weight: 700; font-size: 12px; color: #36506d; }
 .cklist select, .cklist input { height: 32px; border: 1px solid #cfdbe8; border-radius: 8px; padding: 0 8px; width: 100%; }
 .cklist .it.da_nhan { background: #f3fbf5; } .cklist .it.thieu, .cklist .it.can_sua { background: #fff8f7; }
+.cklist.qty .it { grid-template-columns: 1fr 90px 150px 1fr; } .cklist.qty input[data-ck=qty] { text-align: right; }
+.gridin .gridt td { padding: 4px; } .gridin .gridt input, .gridin .gridt select { height: 32px; border: 1px solid #cfdbe8; border-radius: 8px; padding: 0 8px; width: 100%; background: #fff; }
 .sched td input { height: 32px; border: 1px solid #cfdbe8; border-radius: 8px; padding: 0 8px; width: 100%; }
 
 /* modal & ngăn chi tiết */
@@ -351,7 +353,7 @@ table.t.noclick tbody tr { cursor: default; }
   .search input { width: 100%; } .search { flex: 1; }
   .login { grid-template-columns: 1fr; } .login .hero { min-height: 260px; padding: 28px; } .login .hero img { top: 20px; left: 24px; width: 54px; } .login .hero h1 { font-size: 26px; }
   .drawer .db, .drawer .dh { padding-left: 16px; padding-right: 16px; }
-  .cklist .it { grid-template-columns: 1fr; }
+  .cklist .it, .cklist.qty .it { grid-template-columns: 1fr; }
   .u { width: calc(50% - 3px); }
   .gres { position: fixed; left: 10px; right: 10px; top: 58px; }
   .gsearch { max-width: none; }
@@ -760,3 +762,9 @@ table.prod-t tfoot td { font-weight: 800 !important; color: var(--ink) !importan
 .combo.multi .chips input[data-combo], .combo.multi .chips input[data-combo]:focus { flex: 1; width: auto; min-width: 140px; border: 0 !important; outline: 0; box-shadow: none !important; padding: 4px 2px; height: 28px; background: transparent; }
 .combo.multi .chips:focus-within { border-color: rgba(245, 166, 35, .75); box-shadow: 0 0 0 4px var(--glow-a); }
 .combo.multi .opts { top: calc(100% + 2px); }
+/* Bảng tổng hợp Mẫu 4: tiêu đề 2 tầng, ô gộp theo hộ */
+.m4t th { white-space: normal; text-align: center; vertical-align: middle; min-width: 70px; }
+.m4t td { border-right: 1px solid #eef2f6; vertical-align: middle; }
+.m4t td.wrap { white-space: normal; min-width: 200px; }
+.m4t tr.m4head td { border-top: 1px solid #c9d6e6; }
+.m4t tbody tr:hover td { background: #f6f9fd; }

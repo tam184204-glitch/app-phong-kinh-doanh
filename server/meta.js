@@ -239,28 +239,62 @@ def('reservation', {
     { k: 'to_contract', l: 'Lập hợp đồng', icon: 'fa-file-signature', from: ['giu_cho', 'da_coc'], roles: ['ban_hang', 'truong_phong', 'ho_so'], ask: [{ k: 'kind', l: 'Loại hợp đồng', t: 'sel', req: 1, def: 'hdmb', o: [['hdmb', 'Hợp đồng mua bán'], ['thue', 'Hợp đồng thuê'], ['thue_mua', 'Hợp đồng thuê mua']] }, { k: 'number', l: 'Số hợp đồng', t: 'text', req: 1 }, { k: 'plan_sign', l: 'Ngày dự kiến ký', t: 'date' }] },
   ],
 });
+// Mẫu 4 — danh sách đối tượng mua NOXH nộp Sở Xây dựng (file «1. CTS.xlsx», sheet «Danh mục»): ghi đúng nguyên văn nên là ô chữ có gợi ý
+const M4 = {
+  hinh_thuc: [['mua', 'Mua'], ['thue', 'Thuê'], ['thue_mua', 'Thuê mua']],
+  nghe: ['Người có công với cách mạng', 'Lao động tự do', 'Người lao động làm việc tại doanh nghiệp', 'Người làm việc trong quân nhân chuyên nghiệp, công an, quân đội nhân dân', 'Cán bộ, công chức, viên chức', 'Học sinh, sinh viên'],
+  doi_tuong: ['Người có công với cách mạng theo quy định của pháp luật về ưu đãi người có công với cách mạng', 'Người thu nhập thấp tại khu vực đô thị', 'Người thu nhập thấp, hộ nghèo, cận nghèo tại khu vực đô thị',
+    'Người lao động đang làm việc tại các doanh nghiệp trong và ngoài khu công nghiệp', 'Sĩ quan, hạ sĩ quan nghiệp vụ, hạ sĩ quan chuyên môn kỹ thuật, quân nhân chuyên nghiệp, công nhân trong cơ quan, đơn vị thuộc công an nhân dân và quân đội nhân dân',
+    'Cán bộ, công chức, viên chức theo quy định của pháp luật về cán bộ, công chức, viên chức', 'Các đối tượng đã trả lại nhà ở công vụ theo quy định tại khoản 5 Điều 81 của Luật Nhà ở',
+    'Học sinh, sinh viên các học viện, trường đại học, cao đẳng, dạy nghề; học sinh trường dân tộc nội trú công lập được sử dụng nhà ở trong thời gian học tập',
+    'Hộ gia đình, cá nhân thuộc diện bị thu hồi đất và phải giải tỏa, phá dỡ nhà ở theo quy định của pháp luật mà chưa được Nhà nước bồi thường bằng nhà ở, đất ở', 'Đối tượng đã được nghỉ hưu theo chế độ'],
+  nha_o: ['Chưa có nhà ở thuộc sở hữu của hộ gia đình', 'Có nhà ở nhưng chật chội diện tích bình quân dưới 10m2 sàn/người', 'Có nhà ở nhưng nhà ở bị hư hỏng, dột nát (hư hỏng khung - tường, mái)',
+    'Có nhà ở nhưng đã bị hư hỏng khung, tường, mái nhà và diện tích khuôn viên đất của nhà ở thấp hơn tiêu chuẩn diện tích tối thiểu thuộc diện được phép cải tạo, xây dựng theo quy định của UBND cấp tỉnh',
+    'Có đất ở tại địa phương nơi đăng ký hộ khẩu thường trú và diện tích khuôn viên đất phù hợp với quy hoạch xây dựng theo quy định của UBND cấp tỉnh', 'Có nhà ở nhưng thuộc diện bị giải tỏa khi Nhà nước thu hồi đất',
+    'Có nhà ở gắn liền với đất khi Nhà nước thu hồi phải di chuyển chỗ ở và không còn chỗ ở nào khác trên địa bàn xã, phường, thị trấn nơi có đất thu hồi mà chưa được bồi thường về nhà ở, đất ở tái định cư', 'Khó khăn về nhà ở khác (ghi rõ nội dung)'],
+  thu_nhap: ['Có thu nhập bình quân hàng tháng thực nhận không quá 25 triệu đồng', 'Có thu nhập bình quân hàng tháng thực nhận không quá 50 triệu đồng'],
+  quan_he: ['Vợ (Chồng)', 'Con', 'Anh, chị, em', 'Cha (Mẹ)', 'Ông (Bà)', 'Cháu'],
+};
 def('noxh_check', {
   title: 'Hồ sơ mua NOXH', one: 'hồ sơ', code: 'GD-02', mod: '04', icon: 'fa-list-check', disp: "'NOXH #'||t.id",
   purpose: 'Kiểm tra hồ sơ theo nhóm đối tượng', users: 'Nhân viên quản lý hồ sơ',
-  how: 'Tiếp nhận → đối chiếu checklist → yêu cầu bổ sung → kiểm tra → trình xét duyệt',
+  how: 'Tiếp nhận → khai thông tin hộ (chủ hộ + thành viên) theo Mẫu 4 → đối chiếu giấy tờ, ghi số lượng → in biên bản giao nhận → trình xét duyệt → xuất Bảng tổng hợp Mẫu 4',
   rules: 'Checklist phải cập nhật theo quy định hiện hành; không tự kết luận đủ điều kiện pháp lý',
   note: 'App hỗ trợ kiểm tra, quản lý hồ sơ; không thay thế quyết định xét duyệt của cơ quan hoặc người có thẩm quyền.',
   c: ['ho_so', 'truong_phong', 'ban_hang'], u: ['ho_so', 'truong_phong'], a: MGR, fields: [
     { k: 'customer_id', l: 'Khách hàng', t: 'ref', ref: 'customer', req: 1 },
     { k: 'unit_id', l: 'Căn', t: 'ref', ref: 'unit' },
     { k: 'reservation_id', l: 'Phiếu giữ chỗ', t: 'ref', ref: 'reservation' },
-    { k: 'grp', l: 'Nhóm đối tượng', t: 'sel', opt: 'nhom_noxh', req: 1 },
-    { k: 'items', l: 'Danh mục giấy tờ', t: 'check', src: 'checklist_noxh', srcBy: 'grp', req: 1 },
-    { k: 'received_on', l: 'Ngày nhận', t: 'date', def: 'today' },
+    { k: 'unit_text', l: 'Số căn hộ (ngoài danh mục)', t: 'text', help: 'Chỉ ghi khi căn chưa có trong Danh mục sản phẩm (VD CTS-L-0511)' },
+    { k: 'unit_area', l: 'Diện tích căn hộ (m²)', t: 'num', help: 'Để trống → lấy theo Danh mục sản phẩm' },
+    { k: 'reg_kind', l: 'Hình thức đăng ký', t: 'sel', def: 'mua', o: M4.hinh_thuc },
+    { k: 'received_on', l: 'Ngày nộp hồ sơ', t: 'date', def: 'today' },
+    // chủ hộ: họ tên, SĐT, ngày sinh, CCCD lấy theo Khách hàng; các ô dưới là phần khai thêm của Mẫu 4
+    { k: 'old_id_no', l: 'Số CMND cũ (chủ hộ)', t: 'text', pii: 1 },
+    { k: 'job', l: 'Nghề nghiệp (chủ hộ)', t: 'text', sug: M4.nghe },
+    { k: 'doi_tuong', l: 'Đối tượng chính sách được hưởng NOXH', t: 'text', sug: M4.doi_tuong, m4: 1, help: 'Ghi đúng như Giấy xác nhận đối tượng' },
+    { k: 'confirm_org', l: 'Cơ quan xác nhận về đối tượng', t: 'text', help: 'VD: Công an xã Yên Trung / Công ty TNHH Samsung Display Việt Nam' },
+    { k: 'grp', l: 'Nhóm đối tượng', t: 'sel', opt: 'nhom_noxh', help: 'Để trống → tự suy ra từ đối tượng chính sách' },
+    { k: 'housing', l: 'Điều kiện nhà ở', t: 'text', sug: M4.nha_o, m4: 1, help: 'Mô tả đúng hiện trạng nhà ở được VPĐKĐĐ xác nhận' },
+    { k: 'income', l: 'Điều kiện thu nhập', t: 'text', sug: M4.thu_nhap, m4: 1, help: 'Mô tả theo đúng nội dung Giấy xác nhận' },
+    { k: 'province', l: 'Nơi ở hiện tại — Tỉnh', t: 'text', m4: 1 },
+    { k: 'district', l: 'Huyện / Thành phố', t: 'text' },
+    { k: 'commune', l: 'Thị trấn / xã / phường', t: 'text', m4: 1 },
+    { k: 'members', l: 'Thành viên hộ gia đình (ngoài chủ hộ)', t: 'json', grid: [
+      { k: 'name', l: 'Họ và tên', w: 180 }, { k: 'relation', l: 'Quan hệ với chủ hộ', o: M4.quan_he, w: 120 }, { k: 'birth', l: 'Ngày sinh', ph: 'dd/mm/yyyy', w: 105, pii: 1 },
+      { k: 'old_id_no', l: 'Số CMND', w: 110, pii: 1 }, { k: 'id_no', l: 'Số CCCD', w: 125, pii: 1 }, { k: 'phone', l: 'Số điện thoại', w: 110 },
+      { k: 'job', l: 'Nghề nghiệp', sug: M4.nghe, w: 170 }, { k: 'doi_tuong', l: 'Đối tượng chính sách', sug: M4.doi_tuong, w: 220 }, { k: 'confirm_org', l: 'Cơ quan xác nhận', w: 170 }] },
+    { k: 'items', l: 'Danh mục giấy tờ', t: 'check', src: 'checklist_noxh', srcBy: 'grp', req: 1, qty: 1 },
     { k: 'supplement_note', l: 'Yêu cầu bổ sung', t: 'long' },
     { k: 'supplement_due', l: 'Hạn bổ sung', t: 'date' },
     { k: 'result', l: 'Kết quả kiểm tra', t: 'sel', ro: 1, def: 'chua_kt', o: [['chua_kt', 'Chưa kiểm tra', 's'], ['du', 'Đủ', 'g'], ['can_bo_sung', 'Cần bổ sung', 'a']] },
     { k: 'reviews', l: 'Các bước xét duyệt nội bộ', t: 'json', ro: 1 },
     { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'nhap', o: [['nhap', 'Đang tiếp nhận', 's'], ['cho_duyet', 'Chờ xét duyệt', 'a'], ['da_duyet', 'Đạt xét duyệt nội bộ', 'g'], ['tu_choi', 'Không đạt / trả lại', 'r']] },
     owner('Người tiếp nhận'),
-  ], list: ['id', 'customer_id', 'unit_id', 'grp', 'items', 'result', 'supplement_due', 'status'],
+  ], list: ['id', 'received_on', 'customer_id', 'unit_id', 'doi_tuong', 'items', 'result', 'supplement_due', 'status'],
   lock: ['da_duyet', 'cho_duyet'], flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'da_duyet', no: 'tu_choi' }, submitLabel: 'Trình xét duyệt', needAll: 'items' },
-  acts: [{ k: 'review', l: 'Ghi bước kiểm tra', icon: 'fa-clipboard-check', from: ['nhap', 'cho_duyet'], roles: ['ho_so', 'truong_phong'],
+  acts: [{ k: 'print_bbgn', l: 'In biên bản giao nhận hồ sơ', icon: 'fa-print', from: '*', roles: ALL, url: '/print/noxh/:id' },
+    { k: 'review', l: 'Ghi bước kiểm tra', icon: 'fa-clipboard-check', from: ['nhap', 'cho_duyet'], roles: ['ho_so', 'truong_phong'],
     ask: [{ k: 'step', l: 'Bước', t: 'sel', req: 1, o: [['kiem_tra_1', 'Kiểm tra lần 1'], ['kiem_tra_cheo', 'Kiểm tra chéo'], ['doi_chieu_goc', 'Đối chiếu bản gốc']] }, { k: 'conclusion', l: 'Kết luận', t: 'sel', req: 1, o: [['dat', 'Đạt'], ['can_bo_sung', 'Cần bổ sung']] }, { k: 'note', l: 'Ghi chú', t: 'long' }] }],
 });
 def('cancel_req', {
@@ -698,7 +732,7 @@ const MENU = [
   ['01', 'Tổng quan điều hành', 'fa-gauge-high', [['dashboard', 'Dashboard'], ['ai', 'Trợ lý AI tra cứu'], ['alerts', 'Cảnh báo tồn đọng'], ['approvals', 'Hộp phê duyệt']]],
   ['02', 'Dự án & giỏ hàng', 'fa-city', [['board', 'Bảng hàng'], ['projects', 'Danh mục dự án'], ['products', 'Danh mục sản phẩm/căn hộ', 'DA-01'], ['customers', 'Danh mục khách hàng', 'KH-01'], ['e:price_policy']]],
   ['03', 'Khách hàng tiềm năng', 'fa-users', [['e:contact_log']]],   // hồ sơ khách tự sinh từ kênh liên hệ (Website, Messenger, Zalo, Hotline, trực tiếp)
-  ['04', 'Giao dịch bán hàng', 'fa-handshake-angle', [['e:reservation'], ['e:noxh_check'], ['e:cancel_req']]],
+  ['04', 'Giao dịch bán hàng', 'fa-handshake-angle', [['e:reservation'], ['e:noxh_check'], ['mau4', 'Bảng tổng hợp hồ sơ mua nhà (Mẫu 4)', 'GD-03'], ['e:cancel_req']]],
   ['05', 'Hồ sơ & hợp đồng', 'fa-file-contract', [['e:contract'], ['signing', 'Lịch ký hợp đồng'], ['e:contract_change'], ['vault', 'Lưu trữ hồ sơ pháp lý']]],
   ['06', 'Công nợ & kế hoạch thu', 'fa-sack-dollar', [['ledger', 'Sổ công nợ căn hộ'], ['e:installment'], ['e:receipt'], ['e:collect_plan'], ['e:debt_call'], ['e:refund']]],
   ['07', 'Bàn giao căn hộ', 'fa-key', [['ready', 'Căn đủ điều kiện'], ['e:handover'], ['e:defect']]],
@@ -710,7 +744,7 @@ const MENU = [
 ];
 // màn tự dựng chỉ mở cho các vai trò
 const VIEW_ROLES = {
-  users: ['admin'], catalog: ['admin', 'truong_phong'], audit: ['admin', 'truong_phong', 'lanh_dao'], integr: ['admin', 'ke_toan', 'truong_phong'],
+  users: ['admin'], mau4: PII_ROLES, catalog: ['admin', 'truong_phong'], audit: ['admin', 'truong_phong', 'lanh_dao'], integr: ['admin', 'ke_toan', 'truong_phong'],
 };
 
 // danh mục dùng chung mặc định (quản trị sửa được)
@@ -742,4 +776,4 @@ const VIRT = {
   days_out: 'Ngày tại cơ quan', sla: 'SLA', project: 'Dự án', building: 'Tòa', stt: 'STT', prints: 'In bản đăng ký',
 };
 
-module.exports = { PROSPECT_ST, VIRT,  ROLES, ALL, MGR, PII_ROLES, E, MENU, VIEW_ROLES, LOOKUPS, SETTINGS, UNIT_ST };
+module.exports = { M4, PROSPECT_ST, VIRT,  ROLES, ALL, MGR, PII_ROLES, E, MENU, VIEW_ROLES, LOOKUPS, SETTINGS, UNIT_ST };

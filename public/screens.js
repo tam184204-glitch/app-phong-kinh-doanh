@@ -745,5 +745,47 @@ V.integr = async main => {
   });
 };
 
+// ======================= 04. BẢNG TỔNG HỢP HỒ SƠ MUA NHÀ (MẪU 4) =======================
+// mỗi hồ sơ mua NOXH = 1 hộ: dòng chủ hộ + thành viên; ô TT, SĐT, nhà ở, nơi ở, thu nhập, căn hộ gộp theo hộ như file nộp Sở Xây dựng
+const M4_ST = { nhap: ['Đang tiếp nhận', 's'], cho_duyet: ['Chờ xét duyệt', 'a'], da_duyet: ['Đạt xét duyệt', 'g'], tu_choi: ['Trả lại', 'r'] };
+V.mau4 = async (main, params) => {
+  const s = ST.mau4 ||= { project: '', q: '', st: '' };
+  if (params.project) s.project = params.project;
+  const canImp = M.imports.mau4, canNew = M.ents.noxh_check.perm.c;
+  main.innerHTML = `<div class="page">${head('04', 'Bảng tổng hợp hồ sơ mua nhà (Mẫu 4)', 'fa-table-list', `${canNew ? `<button class="btn pri" id="m4New">${ico('fa-plus')} Tạo hồ sơ</button>` : ''}${canImp ? `<button class="btn" id="m4Imp">${ico('fa-file-import')} Nhập file Mẫu 4</button>` : ''}<button class="btn" id="m4X">${ico('fa-file-excel')} Xuất Excel Mẫu 4</button>`, 'GD-03')}
+    <div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="m4Q" placeholder="Tìm họ tên, SĐT, CCCD, mã căn…" value="${esc(s.q)}"></div>
+      <select id="m4P"><option value="">Tất cả dự án</option>${M.projects.map(p => `<option value="${p.id}" ${+s.project === p.id ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select>
+      <select id="m4S"><option value="">Mọi trạng thái</option>${Object.entries(M4_ST).map(([k, v]) => `<option value="${k}" ${s.st === k ? 'selected' : ''}>${v[0]}</option>`).join('')}</select>
+      <span class="grow"></span><span class="small muted" id="m4N"></span></div><div class="tbl-wrap" id="m4T"><div class="empty">Đang tải…</div></div></div></div>`;
+  let hs = [];
+  const load = async () => { hs = await api('GET', '/api/mau4' + (s.project ? '?project=' + s.project : '')); draw(); };
+  const draw = () => {
+    const q = s.q.trim().toLowerCase();
+    const rows = hs.filter(h => (!s.st || h.status === s.st) && (!q || [h.unit_code, ...h.people.flatMap(p => [p.name, p.phone, p.id_no, p.old_id_no])].some(x => String(x ?? '').toLowerCase().includes(q))));
+    $('#m4N', main).textContent = `${rows.length} hộ · ${rows.reduce((a, h) => a + h.people.length, 0)} người`;
+    if (!rows.length) return $('#m4T', main).innerHTML = '<div class="empty">Chưa có hồ sơ — bấm «Tạo hồ sơ» hoặc «Nhập file Mẫu 4»</div>';
+    const td = (v, n, cls = '') => `<td ${n > 1 ? `rowspan="${n}"` : ''} class="${cls}">${v}</td>`;
+    $('#m4T', main).innerHTML = `<table class="t m4t"><thead>
+      <tr><th rowspan="2">TT</th><th rowspan="2">Ngày nộp hồ sơ</th><th rowspan="2">Họ và tên</th><th rowspan="2">Số điện thoại</th><th rowspan="2">Ngày sinh</th><th rowspan="2">Tháng sinh</th><th rowspan="2">Năm sinh</th><th colspan="2" class="center">Thông tin cư dân</th>
+        <th rowspan="2">Nghề nghiệp</th><th rowspan="2">Đối tượng chính sách được hưởng nhà ở xã hội</th><th rowspan="2">Cơ quan xác nhận về đối tượng</th><th rowspan="2">Điều kiện nhà ở</th><th colspan="3" class="center">Nơi ở hiện tại (thường xuyên sinh sống)</th>
+        <th rowspan="2">Điều kiện thu nhập</th><th rowspan="2">Quan hệ với chủ hộ</th><th colspan="2" class="center">Thông tin căn hộ dự kiến mua/thuê mua</th><th rowspan="2">Tình trạng</th></tr>
+      <tr><th>Số CMND</th><th>Số CCCD</th><th>Tỉnh</th><th>Huyện/ Thành phố</th><th>Thị trấn/xã</th><th>Số căn hộ</th><th>Diện tích (m²)</th></tr></thead>
+      <tbody>${rows.map((h, i) => { const n = h.people.length, ownPhone = h.people.slice(1).some(p => p.phone);
+        return h.people.map((p, j) => `<tr data-id="${h.id}" class="${j ? 'm4mem' : 'm4head'}">${j ? '' : td(i + 1, n, 'center') + td(dmy(h.received_on), n)}<td>${esc(p.name)}</td>${j && !ownPhone ? '' : td(esc(p.phone || ''), ownPhone ? 1 : n)}
+          <td class="center">${p.birth[0]}</td><td class="center">${p.birth[1]}</td><td class="center">${p.birth[2]}</td><td>${esc(p.old_id_no || '')}</td><td>${esc(p.id_no || '')}</td><td class="wrap">${esc(p.job || '')}</td><td class="wrap">${esc(p.doi_tuong || '')}</td><td class="wrap">${esc(p.confirm_org || '')}</td>
+          ${j ? '' : td(esc(h.housing || ''), n, 'wrap') + td(esc(h.province || ''), n) + td(esc(h.district || ''), n) + td(esc(h.commune || ''), n) + td(esc(h.income || ''), n, 'wrap')}<td>${esc(p.relation)}</td>
+          ${j ? '' : td(`<b>${esc(h.unit_code || '')}</b>`, n) + td(h.area != null ? fnum(h.area) : '', n, 'num') + td(M4_ST[h.status] ? pill(...M4_ST[h.status]) : '', n)}</tr>`).join(''); }).join('')}</tbody></table>`;
+    syncTopScroll();
+  };
+  $('#m4Q', main).oninput = debounce(e => { s.q = e.target.value; draw(); }, 200);
+  $('#m4P', main).onchange = run(async e => { s.project = e.target.value; await load(); });
+  $('#m4S', main).onchange = e => { s.st = e.target.value; draw(); };
+  $('#m4X', main).onclick = () => download('/api/mau4/xlsx' + (s.project ? '?project=' + s.project : ''));
+  $('#m4Imp', main) && ($('#m4Imp', main).onclick = () => importModal('mau4', load));
+  $('#m4New', main) && ($('#m4New', main).onclick = () => openForm('noxh_check', { onSaved: () => load() }));
+  $('#m4T', main).onclick = e => { const tr = e.target.closest('tr[data-id]'); if (tr) openDetail('noxh_check', +tr.dataset.id); };
+  await load();
+};
+
 // ---------- khởi động ----------
 if (location.hash.startsWith('#/login')) loginView(); else boot();

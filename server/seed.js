@@ -367,7 +367,8 @@ async function loadDemo() {
     }
     // hồ sơ NOXH (checklist)
     const ck = (await C.setting('checklist_noxh', db))._all;
-    const mkNoxh = async (d, sts, extra = {}) => (await C.create('noxh_check', { reservation_id: d.res.id, grp: 'cong_nhan', items: ck.map((n, i) => ({ n, st: sts[i] ?? 'da_nhan', note: '' })), received_on: D(-10), ...extra }, hs, o())).row;
+    const mkNoxh = async (d, sts, extra = {}) => (await C.create('noxh_check', { reservation_id: d.res.id, grp: 'cong_nhan', items: ck.map((n, i) => ({ n, st: sts[i] ?? 'da_nhan', note: '' })), received_on: D(-10), doi_tuong: 'Người lao động đang làm việc tại các doanh nghiệp trong và ngoài khu công nghiệp', confirm_org: 'Công ty TNHH Samsung Display Việt Nam',
+      housing: 'Chưa có nhà ở thuộc sở hữu của hộ gia đình', income: 'Có thu nhập bình quân hàng tháng thực nhận không quá 25 triệu đồng', province: 'Bắc Ninh', commune: 'Yên Trung', job: 'Người lao động làm việc tại doanh nghiệp', ...extra }, hs, o())).row;
     { const n = await mkNoxh(ctsDeals[14], []); await C.act('noxh_check', n.id, 'review', hs, { step: 'kiem_tra_1', conclusion: 'dat', note: 'Đủ giấy tờ' }, { db, demo: true }); await C.submit('noxh_check', n.id, hs, { db, demo: true }); await C.approve('noxh_check', n.id, tp, { ok: true, db }); }
     { const n = await mkNoxh(ctsDeals[15], []); await C.act('noxh_check', n.id, 'review', hs, { step: 'kiem_tra_1', conclusion: 'dat' }, { db, demo: true }); await C.submit('noxh_check', n.id, hs, { db, demo: true }); }
     await mkNoxh({ res: (await db.one("SELECT id FROM kd_reservation WHERE status = 'da_coc' AND is_demo ORDER BY id LIMIT 1")) }, ['da_nhan', 'da_nhan', 'thieu', 'da_nhan', 'can_sua', 'da_nhan', 'da_nhan'], { supplement_note: 'Thiếu giấy xác nhận đối tượng; giấy xác nhận thu nhập cần đóng dấu lại', supplement_due: D(-2) });

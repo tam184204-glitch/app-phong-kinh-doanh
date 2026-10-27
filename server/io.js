@@ -211,6 +211,8 @@ async function importFile(kind, file, user, { dry, demo } = {}) {
   const I = IMPORTS[kind] || bad('Loại nhập không hợp lệ');
   if (user.role !== 'admin' && !I.roles.includes(user.role)) deny(`Vai trò của bạn không được nhập «${I.title}»`);
   const sheets = readTable(file);
+  // tệp có bố cục riêng (VD Mẫu 4 tiêu đề 2 tầng, mỗi hộ nhiều dòng) → loại nhập tự đọc
+  if (I.parse) return importRows(I, I.parse(sheets), file, user, { dry, demo, kind });
   // tệp nhiều sheet (VD bảng giá Bravo: sheet tóm tắt + sheet chi tiết) → lấy sheet khớp nhiều cột nhất
   const tries = sheets.map(sh => { try { return mapRows(sh.rows, I.spec); } catch { return null; } }).filter(Boolean);
   const main = tries.sort((a, b) => b.cols.length - a.cols.length)[0] || mapRows(sheets[0].rows, I.spec);
@@ -219,6 +221,9 @@ async function importFile(kind, file, user, { dry, demo } = {}) {
     const s2 = sheets.find((s, i) => i > 0 && /lich|thanh toan|dot/.test(strip(s.name))) || sheets[1];
     if (s2) for (const r of mapRows(s2.rows, I.spec2).rows) { const k = String(r.number || '').trim().toUpperCase().replace(/\s+/g, ''); if (!k) continue; (extra.get(k) || extra.set(k, []).get(k)).push(r); }
   }
+  return importRows(I, main, file, user, { dry, demo, kind, extra });
+}
+async function importRows(I, main, file, user, { dry, demo, kind, extra = new Map() }) {
   const res = { kind, title: I.title, total: main.rows.length, them: 0, cap_nhat: 0, trung: 0, loi: 0, errors: [], dry: !!dry, cols: main.cols };
   const at = new Date().toISOString();
   await tx(async db => {
@@ -242,6 +247,7 @@ async function importFile(kind, file, user, { dry, demo } = {}) {
 const pgNice = async e => e.code === '23505' ? 'Trùng dữ liệu đã có' : e.code === '23514' ? 'Vi phạm quy tắc dữ liệu (' + e.constraint + ')' : e.code === '23503' ? 'Liên kết không hợp lệ' : e.message;
 function importTemplate(kind) {
   const I = IMPORTS[kind] || bad('Loại nhập không hợp lệ');
+  if (I.template) return I.template();
   const LBL = {
     units: ['Mã dự án', 'Mã tòa', 'Mã căn', 'Tầng', 'Loại sản phẩm', 'Số phòng ngủ', 'Diện tích thông thủy', 'Diện tích xây dựng', 'Hướng', 'Vị trí', 'Đơn giá', 'Giá căn hộ sau thuế', 'Phí bảo trì', 'Tổng giá căn hộ', 'Thời gian dự kiến bàn giao', 'Mở bán (x)'],
     customers: ['Họ tên', 'Mã khách hàng', 'Mã số thuế', 'Điện thoại', 'Điện thoại khác', 'Email', 'Số CCCD', 'Ngày cấp', 'Nơi cấp', 'Ngày sinh', 'Địa chỉ', 'Nguồn khách', 'Dự án quan tâm', 'Nhân viên phụ trách', 'Ghi chú'],
@@ -397,4 +403,4 @@ async function printReservation(id, user, kind, tplCode) {
     ${EDIT_CSS}</style></head><body>${editBar(`Bản in từ mẫu «${escH(tpl.name)}» · phiếu ${escH(r.code)}`)}${editDoc(body)}</body></html>`;
 }
 
-module.exports = { exportList, sheet, importFile, importTemplate, IMPORTS, createUser, hashPw, checkPw, printContract, printReservation, regTemplates, moneyWords };
+module.exports = { EDIT_CSS, editBar, editDoc, A, strip, mapRows, exportList, sheet, importFile, importTemplate, IMPORTS, createUser, hashPw, checkPw, printContract, printReservation, regTemplates, moneyWords };

@@ -3,7 +3,7 @@
 // công nợ tính từ lịch thanh toán hiệu lực + chứng từ thu (Bravo), không ai sửa tay số thực thu.
 const C = require('./core');
 const { ACTIVE_RES } = require('./schema');
-const { PROSPECT_ST } = require('./meta');
+const { PROSPECT_ST, E } = require('./meta');
 const { bad, raw, sys, create, setting, today, addDays, dayDiff, dmy, fmtMoney, labelOf } = C;
 
 // ======================= CÔNG NỢ =======================
@@ -344,13 +344,24 @@ async function linkCustomer(db, r, old, user, opts, demo) {
 }
 async function markCustomer(db, id, user) { const c = await raw(db, 'customer', id); if (c && c.kind !== 'giao_dich') await sys(db, 'customer', id, { kind: 'giao_dich' }, user, 'cap_nhat_trang_thai'); }
 
+// đối tượng chính sách (nguyên văn Mẫu 4) → nhóm đối tượng dùng cho danh mục giấy tờ
+const grpOf = t => { const s = String(t || '').toLowerCase(); if (!s.trim()) return null;
+  return /thu nhập thấp|nghèo/.test(s) ? 'cn_thu_nhap_thap' : /sĩ quan|quân nhân|công an|quân đội/.test(s) ? 'luc_luong_vt' : /doanh nghiệp|khu công nghiệp|công nhân/.test(s) ? 'cong_nhan' : /cán bộ|công chức|viên chức/.test(s) ? 'can_bo' : 'khac'; };
 H.noxh_check = {
   async beforeSave(r, old, { db, warn }) {
     if (r.reservation_id) { const s = await raw(db, 'reservation', r.reservation_id); r.customer_id = s.customer_id; r.unit_id = s.unit_id; }
+    if (!r.reg_kind) r.reg_kind = 'mua';
+    if (!r.grp) r.grp = grpOf(r.doi_tuong) || bad('Chọn nhóm đối tượng hoặc ghi đối tượng chính sách');
+    const rel = (r.members || []).filter(m => !m.relation); if (rel.length) bad(`Thành viên hộ «${rel[0].name || '(chưa có tên)'}»: chọn quan hệ với chủ hộ`);
     if ((!r.items || !r.items.length) && r.grp) r.items = await defaultList(db, 'checklist_noxh', r.grp);
     const it = r.items || [];
     r.result = it.length && it.every(x => x.st === 'da_nhan') ? 'du' : it.some(x => ['thieu', 'can_sua'].includes(x.st)) ? 'can_bo_sung' : 'chua_kt';
     if (r.result === 'can_bo_sung' && !r.supplement_due) warn.push('Hồ sơ cần bổ sung nhưng chưa đặt hạn bổ sung');
+  },
+  // trình xét duyệt: phải khai đủ các cột của Mẫu 4 (nháp thì lưu thiếu được)
+  async onSubmit(r) {
+    const miss = E.noxh_check.fields.filter(f => f.m4 && !String(r[f.k] ?? '').trim()).map(f => f.l);
+    if (miss.length) bad('Chưa khai đủ thông tin Mẫu 4: ' + miss.join(', '));
   },
   async afterSave(r, old, { db, user }) {
     if (!r.reservation_id || old?.status === r.status) return;

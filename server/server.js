@@ -14,6 +14,7 @@ const C = require('./core');
 const B = require('./biz');
 const V = require('./views');
 const IO = require('./io');
+const M4 = require('./mau4');   // Mẫu 4 hồ sơ mua NOXH (gắn thêm loại nhập «mau4» vào IO.IMPORTS)
 const AI = require('./ai');
 const { bad, deny, notFound, HttpError, can } = C;
 
@@ -193,11 +194,14 @@ R('GET', '/api/pii/customer/:id', async (req, res, u, p) => {
   await C.audit({ q }, 'customer', g.row.id, 'xem_dinh_danh', null, null, u);
   send(res, 200, Object.fromEntries(M.E.customer.fields.filter(f => f.pii).map(f => [f.k, g.row[f.k]])));
 });
-R('GET', '/api/pii/reservation/:id', async (req, res, u, p) => {
+// các loại khác có ô định danh (phiếu đăng ký, hồ sơ NOXH — kể cả bảng thành viên hộ)
+R('GET', '/api/pii/:ent/:id', async (req, res, u, p) => {
+  const e = M.E[p.ent], fs_ = e ? e.fields.filter(f => f.pii || f.grid?.some(c => c.pii)) : [];
+  if (!fs_.length) bad('Loại dữ liệu không có thông tin định danh');
   if (!M.PII_ROLES.includes(u.role)) deny('Bạn không được xem dữ liệu định danh khách hàng');
-  const g = await C.get('reservation', p.id, u, { reveal: true });
-  await C.audit({ q }, 'reservation', g.row.id, 'xem_dinh_danh', null, null, u);
-  send(res, 200, Object.fromEntries(M.E.reservation.fields.filter(f => f.pii).map(f => [f.k, g.row[f.k]])));
+  const g = await C.get(p.ent, p.id, u, { reveal: true });
+  await C.audit({ q }, p.ent, g.row.id, 'xem_dinh_danh', null, null, u);
+  send(res, 200, Object.fromEntries(fs_.map(f => [f.k, g.row[f.k]])));
 });
 R('GET', '/api/templates', async (req, res, u, p, qs) => {
   // ?res=<phiếu đăng ký> → chỉ mẫu hợp với căn của phiếu (dự án / tòa / số phòng ngủ)
@@ -414,6 +418,9 @@ R('POST', '/api/admin/load-demo', async (req, res, u) => { admin(u); const S = r
 
 // in hợp đồng (trang HTML)
 R('GET', '/print/reservation/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printReservation(p.id, u, qs.kind, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
+R('GET', '/print/noxh/:id', async (req, res, u, p) => send(res, 200, await M4.printHandover(p.id, u), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
+R('GET', '/api/mau4', async (req, res, u, p, qs) => send(res, 200, await M4.data(u, qs)));
+R('GET', '/api/mau4/xlsx', async (req, res, u, p, qs) => sendFile(res, await M4.xlsx(u, qs), `Mau4_ho_so_mua_NOXH_${C.today()}.xlsx`, MIME['.xlsx']));
 R('GET', '/print/contract/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printContract(p.id, u, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 
 // ---------- máy chủ ----------

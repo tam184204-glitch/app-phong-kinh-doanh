@@ -123,10 +123,18 @@ async function normField(f, v, db, label = f.l) {
       return v.map(x => {
         const n = String(x.n || '').trim(); if (!n) bad(`${label}: có mục không có tên`);
         if (x.st && !['da_nhan', 'thieu', 'can_sua'].includes(x.st)) bad(`${label}: tình trạng «${x.st}» không hợp lệ`);
-        return { n, st: x.st || '', note: x.note ? String(x.note).trim() : '', on: x.on ? isoDate(x.on) : null };
+        const qty = x.qty === '' || x.qty == null ? null : Math.round(+String(x.qty).replace(',', '.'));
+        if (qty != null && !(qty >= 0)) bad(`${label}: số lượng «${x.qty}» không hợp lệ`);
+        return { n, st: x.st || '', note: x.note ? String(x.note).trim() : '', on: x.on ? isoDate(x.on) : null, ...(qty != null ? { qty } : {}) };
       });
     }
-    case 'json': return v;
+    case 'json': {
+      if (!f.grid) return v;
+      // bảng nhiều dòng: chỉ giữ các cột khai báo, bỏ dòng trống
+      if (v == null || v === '') return [];
+      if (!Array.isArray(v)) bad(`${label}: dữ liệu bảng không hợp lệ`);
+      return v.map(x => Object.fromEntries(f.grid.map(c => [c.k, x?.[c.k] == null ? '' : String(x[c.k]).trim()]))).filter(x => Object.values(x).some(Boolean));
+    }
   }
   return v;
 }
@@ -191,7 +199,10 @@ let H = {};          // hook nghiệp vụ từng loại (biz.js gắn vào)
 const hooks = h => { H = h; };
 
 function maskPii(e, row, user, reveal) {
-  for (const f of e.fields) if (f.pii && row[f.k] != null && !(reveal && PII_ROLES.includes(user.role))) {
+  for (const f of e.fields) if (f.grid && Array.isArray(row[f.k]) && !(reveal && PII_ROLES.includes(user.role))) {
+    // bảng nhiều dòng (VD thành viên hộ): che từng ô định danh
+    row[f.k] = row[f.k].map(x => { const o = { ...x }; for (const c of f.grid) if (c.pii && o[c.k]) { o[c.k] = '•••••' + String(o[c.k]).slice(-3); row._masked = true; } return o; });
+  } else if (f.pii && row[f.k] != null && !(reveal && PII_ROLES.includes(user.role))) {
     const s = String(row[f.k]); row[f.k] = f.t === 'date' ? '••/••/••••' : '•••••' + s.slice(-3);
     row._masked = true;
   }
@@ -297,6 +308,10 @@ async function normalize(e, input, user, db, { creating, old, system } = {}) {
       if (old?.[f.k] != null) continue;                     // không có quyền xem thì không được sửa dữ liệu định danh đã có
     }
     if (f.pii && typeof input[f.k] === 'string' && input[f.k].startsWith('•')) continue;
+    if (f.grid && Array.isArray(input[f.k])) {   // ô định danh đang bị che → giữ giá trị cũ cùng dòng
+      const was = old?.[f.k] || [];
+      input = { ...input, [f.k]: input[f.k].map((x, i) => Object.fromEntries(Object.entries(x || {}).map(([k, v]) => [k, typeof v === 'string' && v.startsWith('•') ? (was[i]?.[k] ?? '') : v]))) };
+    }
     out[f.k] = await normField(f, input[f.k], db);
     if (f.t === 'code' && out[f.k] == null) delete out[f.k];       // mã để trống → tự cấp, không xóa mã cũ
   }
