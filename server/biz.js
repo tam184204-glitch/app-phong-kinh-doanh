@@ -68,7 +68,7 @@ async function recomputeUnit(db, unitId, user) {
 async function pricing(db, unit, on = today()) {
   const b = await db.one('SELECT code FROM kd_building WHERE id = $1', [unit.building_id]);
   const pols = await db.q("SELECT * FROM kd_price_policy WHERE status = 'phat_hanh' AND project_id = $1 AND start_on <= $2 AND end_on >= $2 ORDER BY start_on DESC, version DESC", [unit.project_id, on]);
-  const pol = pols.find(p => { const g = String(p.unit_group || '*').split(/[,;\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean); return g.includes('*') || g.includes(String(b?.code).toUpperCase()); });
+  const pol = pols.find(p => { const g = String(p.unit_group || '*').split(/[,;\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean); return g.includes('*') || g.includes(String(b?.code).toUpperCase()) || g.includes(String(unit.code).toUpperCase()); });
   if (!pol) return { policy: null, price: unit.total_price || null };
   if (pol.mode === 'don_gia') { const base = Math.round(pol.unit_price * unit.area_tt); return { policy: pol, price: base + Math.round(base * (pol.maint_pct ?? 2) / 100) }; }
   return { policy: pol, price: unit.total_price || unit.list_price || null };

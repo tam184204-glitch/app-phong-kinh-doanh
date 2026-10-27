@@ -730,3 +730,11 @@ table.grid-bravo tbody tr:hover td { background: #dfeefc; }
 .u-st.chua_mo_ban, .u-st.ngung_kd { background: #eef2f6; border-color: #d9e1ea; color: #5b6b7f; }
 .u-st.tam_khoa { background: #fdecea; border-color: #f4c3bd; color: #8f2a20; }
 .ph .seg { display: flex; gap: 6px; }
+/* chính sách giá: chọn căn áp dụng */
+.upick { border: 1px solid var(--line2); border-radius: 10px; padding: 10px; background: #fbfdff; }
+.upick-sum { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; font-size: 13px; }
+.upick-t { max-height: 360px; }
+.upick-t tr.pg td { background: #fff8e6; }
+.upick-t tr.sel td { background: var(--cobalt-50); }
+.upfile input[type=file] { width: 100%; padding: 8px; border: 1px dashed #cbd9e8; border-radius: 10px; background: #fff; }
+.upfile span { display: block; margin-top: 4px; }

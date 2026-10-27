@@ -289,7 +289,7 @@ async function priceSheet(db, user, id) {
   const units = await db.q(`SELECT u.id, u.code, u.floor, u.kind, u.position, u.area_tt, u.area_xd, u.price_net, u.list_price, u.maint_fee, u.total_price, u.base_price, u.pretax, u.vat_pct, u.tax_amt, u.finish_value, u.status, b.code building, coalesce(u.finish_value, k.value) pkg
     FROM kd_unit u JOIN kd_building b ON b.id = u.building_id LEFT JOIN kd_package k ON k.id = u.package_id WHERE u.project_id = $1 ORDER BY b.code, u.floor, u.code`, [pol.project_id]);
   const vat = pol.vat_pct ?? 5, mp = pol.maint_pct ?? 2;
-  const rows = units.filter(u => grp.includes('*') || grp.includes(String(u.building).toUpperCase())).map(u => {
+  const rows = units.filter(u => grp.includes('*') || grp.includes(String(u.building).toUpperCase()) || grp.includes(String(u.code).toUpperCase())).map(u => {
     const dg = pol.mode === 'don_gia';
     const after = dg ? (pol.unit_price && u.area_tt ? Math.round(pol.unit_price * u.area_tt) : null) : u.price_net || (u.total_price && u.maint_fee ? u.total_price - u.maint_fee : null);
     const v = !dg && u.vat_pct != null ? u.vat_pct : vat;   // bảng giá Bravo đã có tiền trước thuế / thuế / đơn giá nền thì dùng luôn
