@@ -697,8 +697,8 @@ table.t td.num { color: var(--ink); font-weight: 600; }
 .kpi::after, .cat-tile::after, .tower::after, .files a.f::after, .ai-sug button::after, .btn.pri::after, .btn.amb::after, .side .foot::after, .bar > i::after, .ripple { display: none !important; }
 
 /* ---------- bảng & khung phẳng: bỏ sọc, bỏ dải màu/vạch vàng khi rê chuột dòng, khung không đổi nền khi rê chuột ---------- */
-.card:hover { background: var(--card-bg) !important; border-color: rgba(226, 232, 240, .92); box-shadow: var(--card-sh); }
-.card:hover > .hd { background: none; }
+.card:not(.kpi):hover { background: var(--card-bg) !important; border-color: rgba(226, 232, 240, .92); box-shadow: var(--card-sh); }
+.card:not(.kpi):hover > .hd { background: none; }
 table.t tbody tr:nth-child(even) td { background: none; }
 table.t tbody tr:hover td { background: #f5f8fc; }
 table.t tbody tr:hover td:first-child { box-shadow: none; }
