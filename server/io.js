@@ -368,7 +368,7 @@ async function printReservation(id, user, kind, tplCode) {
     ma_can: u.code, du_an: u.project, dia_diem: u.p_addr, chu_dau_tu: u.investor, toa: u.building, tang: u.floor, dien_tich: String(u.area_tt ?? '').replace('.', ','), huong: u.direction,
     gia_tri: fmtMoney(r.price), gia_tri_chu: moneyWords(r.price), tien_coc: r.deposit ? fmtMoney(r.deposit) : DOTS, trang_thai: lab('reg_state', r.reg_state), tien_trinh: lab('progress', r.progress), ghi_chu: r.note || '',
     goi_hoan_thien: u.pk_name ? `${u.pk_code} · ${u.pk_name}` : DOTS, gia_tri_hoan_thien: finish ? fmtMoney(finish) : DOTS, gia_tri_hoan_thien_chu: finish ? moneyWords(finish) : DOTS, danh_muc_noi_that: u.pk_items || DOTS + DOTS + DOTS, ngay: dmy(C.today()),
-    so_don: u.code.slice(-4), ky_hieu: u.code.slice(3, 5), ngay_viet: `ngày ${String(rd.getUTCDate()).padStart(2, '0')} tháng ${String(rd.getUTCMonth() + 1).padStart(2, '0')} năm ${rd.getUTCFullYear()}`,
+    so_don: u.code.split('-').pop(), ky_hieu: u.code.slice(3, 5), ngay_viet: `ngày ${String(rd.getUTCDate()).padStart(2, '0')} tháng ${String(rd.getUTCMonth() + 1).padStart(2, '0')} năm ${rd.getUTCFullYear()}`,
     don_gia: unitPrice ? fmtMoney(unitPrice) : DOTS, gia_truoc_thue: pretax ? fmtMoney(pretax) : DOTS, thue_vat: tax ? fmtMoney(tax) : DOTS, phi_bao_tri: maint ? fmtMoney(maint) : DOTS, tong_gia: fmtMoney(total), tong_gia_chu: moneyWords(total),
     ma_so_thue: pii ? (k?.tax_code || r.id_no || '') : '(ẩn)', chinh_sach: pol ? `${pol.code} v${pol.version}` : '' };
   // nội dung bắt đầu bằng thẻ HTML → in theo HTML (bỏ script / thuộc tính on…); còn lại in nguyên văn
@@ -382,6 +382,7 @@ async function printReservation(id, user, kind, tplCode) {
     @page{size:A4;margin:15mm 15mm 15mm 20mm} body{font:13pt/1.45 "Times New Roman",serif;color:#000;max-width:175mm;margin:auto}
     p{margin:3pt 0} h2{text-align:center;font-size:15pt;margin:10pt 0 2pt} .c{text-align:center} .r{text-align:right} .j{text-align:justify} .n{text-align:right;white-space:nowrap} .h{font-weight:bold;margin-top:8pt}
     table{border-collapse:collapse;width:100%;margin:4pt 0} table.b td{border:1px solid #000;padding:3pt 6pt} table.b.sm td{font-size:11.5pt;padding:2pt 4pt} table.b .th td{font-weight:bold;text-align:center} table.b .grp td{background:#f2f2f2}
+    tr,table.sign{page-break-inside:avoid} .h{page-break-after:avoid}
     table.kv3 td{padding:0 8pt 0 0;vertical-align:top} table.kv3 td:nth-child(-n+2){white-space:nowrap} table.sign{margin-top:14pt} table.sign td{width:50%;text-align:center;vertical-align:top}
     .bar{font:13px system-ui;background:#f5f8fc;border:1px solid #d4deea;padding:8px 12px;border-radius:8px;margin:12px 0;display:flex;gap:8px;align-items:center}
     @media print{.bar{display:none}}</style></head><body><div class="bar">Bản in từ mẫu «${escH(tpl.name)}» · phiếu ${escH(r.code)} <button onclick="print()">In / Lưu PDF</button></div>${body}</body></html>`;

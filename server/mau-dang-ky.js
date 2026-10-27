@@ -69,7 +69,7 @@ function donNoiThat({ cdt, ten, du_an, gia, phong }) {
 <h2>ĐƠN ĐĂNG KÝ HOÀN THIỆN CĂN HỘ</h2>
 <div class="c">Số: {so_don}/BĐK-NT{ky_hieu}</div>
 <p class="c"><b>Kính gửi: ${cdt}</b></p>
-<p class="j">Sau khi tìm hiểu đầy đủ thông tin về Dự án ${du_an} do ${ten} làm Chủ Đầu Tư. Tôi/Chúng Tôi có nguyện vọng đăng ký hoàn thiện căn hộ tại Dự án nhà ở xã hội Thống Nhất Smart City</p>
+<p class="j">Sau khi tìm hiểu đầy đủ thông tin về Dự án ${du_an} do ${ten} làm Chủ Đầu Tư. Tôi/Chúng Tôi có nguyện vọng đăng ký hoàn thiện căn hộ tại Dự án ${du_an.replace('Khu nhà ở', 'nhà ở')}</p>
 <p class="r"><i>Hôm nay, {ngay_viet}</i></p>
 ${khach}
 <p class="h">2. Thông tin gói hoàn thiện căn hộ</p>
@@ -108,6 +108,11 @@ const MAU_DANG_KY = () => [
     content: donNoiThat({ ...TN, gia: 320000000, phong: PN2 }) },
   { code: 'DK-NT-TNS-3PN', name: 'Đơn đăng ký hoàn thiện căn hộ 3 phòng ngủ – Thống Nhất (tòa G)', kind: 'dang_ky_noi_that', scope: 'TNS', bedrooms: 3,
     content: donNoiThat({ ...TN, gia: 380000000, phong: PN3 }) },
+  // tòa O, K: chưa có file nội thất riêng — dùng danh mục + giá gói của «Đơn đăng ký G (NT).xlsx», chủ đầu tư Cát Tường
+  { code: 'DK-NT-CTS-2PN', name: 'Đơn đăng ký hoàn thiện căn hộ 2 phòng ngủ – Cát Tường (tòa O, K)', kind: 'dang_ky_noi_that', scope: 'CTS', bedrooms: 2,
+    content: donNoiThat({ ...CT, gia: 320000000, phong: PN2 }) },
+  { code: 'DK-NT-CTS-3PN', name: 'Đơn đăng ký hoàn thiện căn hộ 3 phòng ngủ – Cát Tường (tòa O, K)', kind: 'dang_ky_noi_that', scope: 'CTS', bedrooms: 3,
+    content: donNoiThat({ ...CT, gia: 380000000, phong: PN3 }) },
 ];
 const MAU_CU = ['MAU-DKCH-01', 'MAU-DKCH-02', 'MAU-DKNT-01'];   // mẫu khung cũ — tắt khi nạp mẫu chuẩn
 
