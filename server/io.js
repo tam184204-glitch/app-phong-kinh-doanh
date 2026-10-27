@@ -320,9 +320,18 @@ async function printContract(id, user, tplCode) {
   await C.audit({ q }, 'contract', c.id, 'in_hop_dong', null, null, user, tpl.code);
   return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${escH(c.number)}</title><style>
     @page{size:A4;margin:20mm 18mm 20mm 25mm} body{font:13pt/1.5 "Times New Roman",serif;color:#000;max-width:170mm;margin:auto}
-    .sch{border-collapse:collapse;width:100%;margin:6pt 0} .sch td,.sch th{border:1px solid #000;padding:3pt 5pt;font-size:12pt} .bar{font:13px system-ui;background:#f5f8fc;border:1px solid #d4deea;padding:8px 12px;border-radius:8px;margin:12px 0;display:flex;gap:8px;align-items:center}
-    @media print{.bar{display:none}}</style></head><body><div class="bar">Bản in từ mẫu «${escH(tpl.name)}» · ${c.status === 'da_ky' ? 'Hợp đồng đã ký — bản in tham khảo' : 'Dự thảo'} <button onclick="print()">In / Lưu PDF</button></div>${body}</body></html>`;
+    .sch{border-collapse:collapse;width:100%;margin:6pt 0} .sch td,.sch th{border:1px solid #000;padding:3pt 5pt;font-size:12pt}
+    ${EDIT_CSS}</style></head><body>${editBar(`Bản in từ mẫu «${escH(tpl.name)}» · ${c.status === 'da_ky' ? 'Hợp đồng đã ký — bản in tham khảo' : 'Dự thảo'}`)}${editDoc(body)}</body></html>`;
 }
+
+// bản in sửa được trực tiếp trên trang trước khi in (chỉ sửa bản in này, không đổi dữ liệu gốc)
+const EDIT_CSS = `.bar{font:13px system-ui;background:#f5f8fc;border:1px solid #d4deea;padding:8px 12px;border-radius:8px;margin:12px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+    .bar .tip{flex:1 1 220px;color:#5b6b7f} .bar button{font:600 13px system-ui;padding:6px 12px;border-radius:7px;border:1px solid #c7d4e4;background:#fff;cursor:pointer} .bar button.pri{background:#1e4e8c;color:#fff;border-color:#1e4e8c}
+    .doc{outline:1px dashed #b8c7da;outline-offset:8px;border-radius:2px} .doc:focus{outline:2px solid #f2a65a} .doc *:focus{outline:none}
+    @media screen and (max-width:640px){body{padding:0 14px} table.kv3 td{display:block;white-space:normal!important} table.b td{padding:3pt 4pt}}
+    @media print{.bar{display:none} .doc,.doc:focus{outline:none}}`;
+const editBar = info => `<div class="bar"><span class="tip">${info}<br>✎ Bấm vào chữ để sửa trực tiếp, xong bấm <b>In</b>. Sửa ở đây chỉ áp dụng cho bản in này.</span><button onclick="location.reload()">Hoàn tác</button><button class="pri" onclick="print()">In / Lưu PDF</button></div>`;
+const editDoc = body => `<div class="doc" contenteditable="true" spellcheck="false">${body}</div>`;
 
 // bản đăng ký căn hộ / nội thất từ phiếu đăng ký (GD-01) — chọn mẫu ở Quản trị › Mẫu biểu
 const DOTS = '..............................';     // ô trống trên bản in → để khách / nhân viên điền tay
@@ -384,8 +393,7 @@ async function printReservation(id, user, kind, tplCode) {
     table{border-collapse:collapse;width:100%;margin:4pt 0} table.b td{border:1px solid #000;padding:3pt 6pt} table.b.sm td{font-size:11.5pt;padding:2pt 4pt} table.b .th td{font-weight:bold;text-align:center} table.b .grp td{background:#f2f2f2}
     tr,table.sign{page-break-inside:avoid} .h{page-break-after:avoid}
     table.kv3 td{padding:0 8pt 0 0;vertical-align:top} table.kv3 td:nth-child(-n+2){white-space:nowrap} table.sign{margin-top:14pt} table.sign td{width:50%;text-align:center;vertical-align:top}
-    .bar{font:13px system-ui;background:#f5f8fc;border:1px solid #d4deea;padding:8px 12px;border-radius:8px;margin:12px 0;display:flex;gap:8px;align-items:center}
-    @media print{.bar{display:none}}</style></head><body><div class="bar">Bản in từ mẫu «${escH(tpl.name)}» · phiếu ${escH(r.code)} <button onclick="print()">In / Lưu PDF</button></div>${body}</body></html>`;
+    ${EDIT_CSS}</style></head><body>${editBar(`Bản in từ mẫu «${escH(tpl.name)}» · phiếu ${escH(r.code)}`)}${editDoc(body)}</body></html>`;
 }
 
 module.exports = { exportList, sheet, importFile, importTemplate, IMPORTS, createUser, hashPw, checkPw, printContract, printReservation, regTemplates, moneyWords };
