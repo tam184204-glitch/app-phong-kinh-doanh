@@ -731,3 +731,5 @@ table.grid-bravo tbody tr:hover td { background: #dfeefc; }
 .upick-s { min-width: 240px; } .upick-s input { height: 30px; font-size: 13px; padding-left: 32px !important; } .upick-s > i { top: 50% !important; transform: translateY(-50%); }
 .prod-nav .pn a.sub, .prod-nav .pn div.sub { margin-left: 22px; padding-top: 6px; padding-bottom: 6px; font-size: 12.5px; }
 .prod-nav .pn div.sub { padding-left: 10px; }
+/* dòng tổng theo tòa và dòng tổng cuối: chữ đậm, rõ */
+table.prod-t tr.pg td, table.prod-t tr.pg td .muted, table.prod-t tfoot td { font-weight: 800; color: var(--ink); }
