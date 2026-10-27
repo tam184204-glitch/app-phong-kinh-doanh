@@ -321,14 +321,21 @@ async function linkCustomer(db, r, old, user, opts, demo) {
     const c = await raw(db, 'customer', r.customer_id);
     if (c) for (const k of K) if (r[k] == null || r[k] === '') r[k] = c[CK[k] || k];
   }
+  if (r.cust_code) r.cust_code = String(r.cust_code).trim().toUpperCase() || null;
+  if (!r.customer_id && r.cust_code && !opts.check) {   // gõ mã khách → dùng khách có mã đó
+    const k = await db.one('SELECT id FROM kd_customer WHERE upper(code) = $1', [r.cust_code]);
+    if (k) { r.customer_id = k.id; const c = await raw(db, 'customer', k.id); for (const f of K) if (r[f] == null || r[f] === '') r[f] = c[CK[f] || f]; }
+  }
+  if (r.customer_id) r.cust_code = (await raw(db, 'customer', r.customer_id))?.code ?? r.cust_code;
   if (r.phone) r.phone = String(r.phone).replace(/[\s.]/g, '');
   if (r.customer_id || opts.check || !r.cust_name || !r.phone) return;
   const c = (r.id_no && await db.one('SELECT id FROM kd_customer WHERE upper(id_no) = upper($1) ORDER BY id LIMIT 1', [r.id_no]))
     || await db.one("SELECT id FROM kd_customer WHERE regexp_replace($1,'\\D','','g') IN (regexp_replace(phone,'\\D','','g'), regexp_replace(coalesce(phone2,''),'\\D','','g')) ORDER BY id LIMIT 1", [r.phone]);
-  if (c) { r.customer_id = c.id; const k = await raw(db, 'customer', c.id); for (const f of K) if (r[f] == null || r[f] === '') r[f] = k[CK[f] || f]; return; }
-  r.customer_id = (await create('customer', { full_name: r.cust_name, phone: r.phone, id_no: r.id_no, id_date: r.id_date, id_place: r.id_place, address: r.address,
+  if (c) { r.customer_id = c.id; const k = await raw(db, 'customer', c.id); for (const f of K) if (r[f] == null || r[f] === '') r[f] = k[CK[f] || f]; r.cust_code = k.code; return; }
+  const nk = (await create('customer', { code: r.cust_code || undefined, full_name: r.cust_name, phone: r.phone, id_no: r.id_no, id_date: r.id_date, id_place: r.id_place, address: r.address,
     kind: 'giao_dich', source: r.source === 'dai_ly' ? 'dai_ly' : r.source === 'ctv' ? 'ctv' : 'truc_tiep', agent_id: r.agent_id, owner_id: r.owner_id || user?.id },
-    user, { db, system: true, demo, note: 'Tự tạo từ phiếu đăng ký căn hộ' })).row.id;
+    user, { db, system: true, demo, note: 'Tự tạo từ phiếu đăng ký căn hộ' })).row;
+  r.customer_id = nk.id; r.cust_code = nk.code;
 }
 async function markCustomer(db, id, user) { const c = await raw(db, 'customer', id); if (c && c.kind !== 'giao_dich') await sys(db, 'customer', id, { kind: 'giao_dich' }, user, 'cap_nhat_trang_thai'); }
 

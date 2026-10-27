@@ -153,6 +153,7 @@ async function ensureTemplates() {
     // phiếu lập trước khi có mẫu «Phiếu đăng ký căn hộ»: chép thông tin khách + suy ra trạng thái căn / tiến trình
     await db.q(`UPDATE kd_reservation r SET cust_name = k.full_name, id_no = k.id_no, id_date = k.id_date, id_place = k.id_place, address = k.address, phone = k.phone
       FROM kd_customer k WHERE k.id = r.customer_id AND r.cust_name IS NULL`);
+    await db.q('UPDATE kd_reservation r SET cust_code = k.code FROM kd_customer k WHERE k.id = r.customer_id AND r.cust_code IS NULL');
     await db.q(`UPDATE kd_reservation r SET reg_state = CASE WHEN r.status IN ('huy','het_han','tu_choi') THEN 'huy'
       WHEN EXISTS (SELECT 1 FROM kd_contract c WHERE c.reservation_id = r.id AND c.status = 'da_ky') THEN 'ky_hdmb' ELSE 'giu_cho' END WHERE r.reg_state IS NULL`);
     await db.q(`UPDATE kd_reservation r SET progress = CASE WHEN r.reg_state = 'ky_hdmb' THEN 'da_ky'

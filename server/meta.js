@@ -206,7 +206,8 @@ def('reservation', {
     { k: 'code', l: 'Mã phiếu', t: 'code', prefix: 'GD-{Y}-', pad: 4 },
     { k: 'unit_id', l: 'Mã căn hộ', t: 'ref', ref: 'unit', req: 1, filter: 'con_ban,chua_mo_ban', fill: { price: 'total_price' } },
     { k: 'customer_id', l: 'Khách hàng đã có', t: 'ref', ref: 'customer', help: 'Chọn khách có sẵn để điền nhanh — để trống: hệ thống tự khớp theo CCCD / SĐT hoặc tạo khách mới',
-      fill: { cust_name: 'full_name', id_no: 'id_no', id_date: 'id_date', id_place: 'id_place', address: 'address', phone: 'phone' } },
+      fill: { cust_code: 'code', cust_name: 'full_name', id_no: 'id_no', id_date: 'id_date', id_place: 'id_place', address: 'address', phone: 'phone' } },
+    { k: 'cust_code', l: 'Mã khách hàng', t: 'text', help: 'Để trống → lấy mã khách đã có (khớp CCCD / SĐT) hoặc tự cấp mã mới (KH000001…)' },
     { k: 'cust_name', l: 'Họ tên khách hàng', t: 'text', req: 1 },
     { k: 'id_no', l: 'Căn cước công dân', t: 'text', pii: 1 },
     { k: 'id_date', l: 'Ngày cấp', t: 'date', pii: 1 },
@@ -228,7 +229,7 @@ def('reservation', {
     { k: 'agent_id', l: 'Đại lý / CTV', t: 'ref', ref: 'agent', show: { source: ['dai_ly', 'ctv'] } },
     owner('Người thực hiện', { hide: 1 }),   // tự lấy người lập phiếu
     { k: 'status', l: 'Tình trạng phiếu', t: 'sel', o: RES_ST, ro: 1, def: 'nhap' },
-  ], list: ['stt', 'unit_id', 'cust_name', 'id_no', 'id_date', 'id_place', 'address', 'phone', 'price', 'reg_state', 'progress', 'note', 'prints'],
+  ], list: ['stt', 'unit_id', 'cust_code', 'cust_name', 'id_no', 'id_date', 'id_place', 'address', 'phone', 'price', 'reg_state', 'progress', 'note', 'prints'],
   lock: ['chuyen_hd', 'het_han', 'huy', 'cho_duyet'], lockKeep: ['note', 'progress', 'reg_state'],
   flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'giu_cho' } },
   acts: [
