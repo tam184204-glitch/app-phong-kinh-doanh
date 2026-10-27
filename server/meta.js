@@ -236,7 +236,7 @@ def('reservation', {
   lock: ['chuyen_hd', 'het_han', 'huy', 'cho_duyet'], lockKeep: ['note', 'progress', 'reg_state'],
   flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'giu_cho' } },
   acts: [
-    { k: 'print_bbgn', l: 'In biên bản giao nhận hồ sơ', icon: 'fa-file-signature', from: '*', roles: ALL, url: '/print/handover/reservation/:id' },
+    { k: 'print_bbgn', l: 'In biên bản giao nhận hồ sơ', icon: 'fa-file-signature', from: '*', roles: ALL, handover: 'reservation' },
     { k: 'deposit', l: 'Ghi nhận đặt cọc', icon: 'fa-money-bill-wave', from: ['giu_cho', 'qua_han'], roles: ['ban_hang', 'truong_phong'], ask: [money('deposit', 'Số tiền đặt cọc', { req: 1 }), { k: 'deposit_on', l: 'Ngày đặt cọc', t: 'date', req: 1, def: 'today' }] },
     { k: 'extend', l: 'Gia hạn giữ chỗ', icon: 'fa-clock-rotate-left', from: ['giu_cho', 'qua_han'], roles: MGR, ask: [{ k: 'hold_until', l: 'Hạn giữ chỗ mới', t: 'dt', req: 1 }, { k: 'reason', l: 'Lý do', t: 'long', req: 1 }] },
     { k: 'release', l: 'Giải phóng căn', icon: 'fa-unlock', from: ['giu_cho', 'qua_han'], roles: MGR, danger: 1, ask: [{ k: 'reason', l: 'Lý do / phương án xử lý tiền đã nộp', t: 'long', req: 1 }] },
@@ -297,7 +297,7 @@ def('noxh_check', {
     owner('Người tiếp nhận'),
   ], list: ['id', 'received_on', 'customer_id', 'unit_id', 'doi_tuong', 'items', 'result', 'supplement_due', 'status'],
   lock: ['da_duyet', 'cho_duyet'], flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'da_duyet', no: 'tu_choi' }, submitLabel: 'Trình xét duyệt', needAll: 'items' },
-  acts: [{ k: 'print_bbgn', l: 'In biên bản giao nhận hồ sơ', icon: 'fa-print', from: '*', roles: ALL, url: '/print/handover/noxh/:id' },
+  acts: [{ k: 'print_bbgn', l: 'In biên bản giao nhận hồ sơ', icon: 'fa-print', from: '*', roles: ALL, handover: 'noxh' },
     { k: 'review', l: 'Ghi bước kiểm tra', icon: 'fa-clipboard-check', from: ['nhap', 'cho_duyet'], roles: ['ho_so', 'truong_phong'],
     ask: [{ k: 'step', l: 'Bước', t: 'sel', req: 1, o: [['kiem_tra_1', 'Kiểm tra lần 1'], ['kiem_tra_cheo', 'Kiểm tra chéo'], ['doi_chieu_goc', 'Đối chiếu bản gốc']] }, { k: 'conclusion', l: 'Kết luận', t: 'sel', req: 1, o: [['dat', 'Đạt'], ['can_bo_sung', 'Cần bổ sung']] }, { k: 'note', l: 'Ghi chú', t: 'long' }] }],
 });
@@ -723,7 +723,7 @@ def('template', {
   c: ['admin', 'truong_phong'], fields: [
     { k: 'code', l: 'Mã mẫu', t: 'text', req: 1, uniq: 1 },
     { k: 'name', l: 'Tên mẫu', t: 'text', req: 1 },
-    { k: 'kind', l: 'Loại', t: 'sel', req: 1, o: [['hop_dong', 'Hợp đồng'], ['phu_luc', 'Phụ lục'], ['bien_ban', 'Biên bản'], ['de_nghi', 'Phiếu đề nghị'], ['thong_bao', 'Thông báo'], ['bao_cao', 'Báo cáo'], ['dang_ky_can', 'Bản đăng ký căn hộ'], ['dang_ky_noi_that', 'Bản đăng ký nội thất']] },
+    { k: 'kind', l: 'Loại', t: 'sel', req: 1, o: [['hop_dong', 'Hợp đồng'], ['phu_luc', 'Phụ lục'], ['bien_ban', 'Biên bản'], ['de_nghi', 'Phiếu đề nghị'], ['thong_bao', 'Thông báo'], ['bao_cao', 'Báo cáo'], ['dang_ky_can', 'Bản đăng ký căn hộ'], ['dang_ky_noi_that', 'Bản đăng ký nội thất'], ['bien_ban_giao_nhan', 'Biên bản giao nhận hồ sơ']] },
     { k: 'content', l: 'Nội dung mẫu', t: 'long', req: 1, help: 'Trường trộn: {so_hd} {ten_kh} {dien_thoai} {cccd} {dia_chi} {ma_can} {du_an} {toa} {tang} {dien_tich} {gia_tri} {gia_tri_chu} {ngay} {lich_thanh_toan} — bản đăng ký: {ma_phieu} {ngay_dk} {tien_coc} {trang_thai} {tien_trinh} {ghi_chu} {goi_hoan_thien} {gia_tri_hoan_thien} {gia_tri_hoan_thien_chu} {danh_muc_noi_that} {so_don} {ky_hieu} {ngay_viet} {don_gia} {gia_truoc_thue} {thue_vat} {phi_bao_tri} {tong_gia} {tong_gia_chu} {chinh_sach} — nội dung bắt đầu bằng thẻ HTML thì in theo HTML' },
     { k: 'scope', l: 'Áp dụng cho dự án / tòa', t: 'text', help: 'Mã dự án hoặc mã tòa, cách nhau dấu phẩy (TNS, G…) — để trống = mọi căn' },
     { k: 'bedrooms', l: 'Áp dụng cho căn số phòng ngủ', t: 'int', help: 'Để trống = mọi loại căn' },

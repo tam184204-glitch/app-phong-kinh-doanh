@@ -152,6 +152,7 @@ async function ensureTemplates() {
     for (const t of REG_TEMPLATES()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });
     // mẫu chuẩn theo file Excel phòng Kinh doanh: lần đầu nạp thì tắt các mẫu khung cũ
     let moi = 0;
+    for (const t of require('./mau4').MAU_BIEN_BAN()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });
     for (const t of MAU_DANG_KY()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) { await C.create('template', { ...t, active: true }, sysU, { db, system: true }); moi++; }
     if (moi) await db.q('UPDATE kd_template SET active = false WHERE code = ANY($1)', [MAU_CU]);
     // mẫu đã nạp trước 27/10: đổi quốc hiệu «o0o» sang thể thức NĐ 30 + tách «Nơi cấp» xuống dòng (chỉ thay đúng đoạn cũ, giữ phần đã sửa tay)

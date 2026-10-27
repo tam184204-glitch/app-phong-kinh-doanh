@@ -423,6 +423,7 @@ async function doAct(ent, id, k, after) {
   if (k === 'schedule') return scheduleModal(id, after);
   if (k === 'print') { window.open(`/print/contract/${id}`, '_blank'); return; }
   if (a?.url) { window.open(a.url.replace(':id', id), '_blank'); return; }
+  if (a?.handover) return handoverPick(a.handover, id);
   const go = async data => { const r = await api('POST', `/api/e/${ent}/${id}/act/${k}`, data); toast(r.msg || `Đã ${a.l.toLowerCase()}`); if (r.url) window.open(r.url, '_blank'); after && after(); if (r.open) openDetail(r.open[0], r.open[1]); return r; };
   if (!a.ask?.length) { if (a.danger && !await ask(a.l, 'Xác nhận thực hiện?', { danger: 1, okLabel: a.l })) return; return run(go)({}); }
   const rec = {}; for (const f of a.ask) if (f.def !== undefined) rec[f.k] = f.def === 'today' ? today() : f.def;
@@ -448,6 +449,17 @@ async function printPick(id, kind) {   // bấm In → chọn 1 trong các mẫu
   const m = modal({ title: `${ico('fa-print')} In đơn đăng ký`, narrow: true, body: `<div class="small muted mb">Chọn mẫu in</div>${ts.map(t => `<label class="chk" style="display:flex;gap:8px;align-items:center;padding:8px 0"><input type="radio" name="tpl" value="${esc(t.code)}" data-kind="${t.kind}" ${t === pre ? 'checked' : ''}> <b>${esc(t.label)}</b>${t.fit ? '' : '<span class="muted small">(khác dự án với căn)</span>'}</label>`).join('')}`,
     foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="pOk">${ico('fa-print')} In</button>` });
   $('#pOk', m.el).onclick = () => { const c = $('input[name=tpl]:checked', m.el); m.close(); window.open(`/print/reservation/${id}?kind=${c.dataset.kind}&tpl=${encodeURIComponent(c.value)}`, '_blank'); };
+}
+
+// in biên bản giao nhận hồ sơ (từ phiếu đăng ký / hồ sơ NOXH): chọn mẫu theo công ty — Cát Tường, Thống Nhất… (Quản trị › Mẫu biểu)
+async function handoverPick(kind, id) {
+  const ts = await api('GET', `/api/handover-templates?${kind}=${id}`);
+  const go = code => window.open(`/print/handover/${kind}/${id}${code ? '?tpl=' + encodeURIComponent(code) : ''}`, '_blank');
+  if (ts.length < 2) return go(ts[0]?.code);
+  const pre = ts.find(t => t.fit) || ts[0];
+  const m = modal({ title: `${ico('fa-file-signature')} In biên bản giao nhận hồ sơ`, narrow: true, body: `<div class="small muted mb">Chọn mẫu in</div>${ts.map(t => `<label class="chk" style="display:flex;gap:8px;align-items:center;padding:8px 0"><input type="radio" name="tpl" value="${esc(t.code)}" ${t === pre ? 'checked' : ''}> <b>${esc(t.name)}</b>${t.fit ? '' : '<span class="muted small">(khác dự án với căn)</span>'}</label>`).join('')}`,
+    foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="pOk">${ico('fa-print')} In</button>` });
+  $('#pOk', m.el).onclick = () => { const c = $('input[name=tpl]:checked', m.el); m.close(); go(c.value); };
 }
 
 // ---------- ngăn chi tiết ----------
@@ -627,7 +639,7 @@ async function listView(main, ent, params = {}) {
       S.sel.clear(); updateBadges(); return load();
     }
     const pb = t.closest('[data-print]');
-    if (pb?.dataset.print === 'bien_ban') return window.open(`/print/handover/reservation/${pb.closest('tr[data-id]').dataset.id}`, '_blank');
+    if (pb?.dataset.print === 'bien_ban') return handoverPick('reservation', +pb.closest('tr[data-id]').dataset.id);
     if (pb) return printPick(+pb.closest('tr[data-id]').dataset.id, pb.dataset.print);
     const tr = t.closest('tbody tr[data-id]'); if (tr && !t.matches('input')) return openDetail(ent, +tr.dataset.id);
   });

@@ -418,7 +418,8 @@ R('POST', '/api/admin/load-demo', async (req, res, u) => { admin(u); const S = r
 
 // in hợp đồng (trang HTML)
 R('GET', '/print/reservation/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printReservation(p.id, u, qs.kind, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
-R('GET', '/print/handover/:kind/:id', async (req, res, u, p) => send(res, 200, await M4.printHandover(p.kind, p.id, u), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
+R('GET', '/api/handover-templates', async (req, res, u, p, qs) => send(res, 200, await M4.handoverTemplates(qs)));
+R('GET', '/print/handover/:kind/:id', async (req, res, u, p, qs) => send(res, 200, await M4.printHandover(p.kind, p.id, u, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 R('GET', '/api/mau4', async (req, res, u, p, qs) => send(res, 200, await M4.data(u, qs)));
 R('GET', '/api/mau4/xlsx', async (req, res, u, p, qs) => sendFile(res, await M4.xlsx(u, qs), `Mau4_ho_so_mua_NOXH_${C.today()}.xlsx`, MIME['.xlsx']));
 R('GET', '/print/contract/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printContract(p.id, u, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });

@@ -117,11 +117,41 @@ const IMPORT = {
 IO.IMPORTS.mau4 = IMPORT;
 
 // ---------- biên bản bàn giao tài liệu hồ sơ mua nhà ----------
-// theo mẫu giấy của phòng Kinh doanh: in từ phiếu đăng ký (danh sách GD-01) hoặc từ hồ sơ mua NOXH (GD-02);
+// theo mẫu giấy của phòng Kinh doanh: in từ phiếu đăng ký (GD-01) hoặc hồ sơ mua NOXH (GD-02). Nội dung là mẫu «Biên bản giao nhận hồ sơ»
+// ở Quản trị › Mẫu biểu — mỗi công ty một mẫu (Cát Tường, Thống Nhất…), phạm vi = mã dự án; bấm In chọn mẫu, mẫu hợp dự án được chọn sẵn.
 // danh mục giấy tờ + số lượng lấy ở hồ sơ NOXH của phiếu, chưa lập hồ sơ thì in danh mục mặc định để điền tay
-const CTY = { name: 'Công ty cổ phần Cát Tường', addr: 'Tầng 3 tòa CTN, đường Lý Thái Tổ, Phường Tiền Ninh Vệ, TP Bắc Ninh, Tỉnh Bắc Ninh', place: 'Bắc Ninh' };
+const BB_KIND = 'bien_ban_giao_nhan';
+const bbBody = cty => `<table class="hd"><tr><td><b>${cty.name.toUpperCase()}</b></td><td><b>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</b><br><b class="tn">Độc lập - Tự do - Hạnh phúc</b><br><i>${cty.place}, ngày {dd} tháng {mm} năm {yyyy}</i></td></tr></table>
+<h2>BIÊN BẢN BÀN GIAO TÀI LIỆU</h2>
+<h3>HỒ SƠ MUA NHÀ DỰ ÁN {du_an_hoa}</h3>
+<p><b>Bên giao:</b></p>
+<table class="kv"><tr><td>Họ và tên:</td><td>{ten_kh}</td><td class="r">SĐT: {dien_thoai}</td></tr>
+<tr><td>MST CN:</td><td colspan="2">{mst}</td></tr>
+<tr><td>TK Ngân hàng:</td><td colspan="2">{tai_khoan}</td></tr>
+<tr><td>Mã căn hộ:</td><td colspan="2">{ma_can}</td></tr></table>
+<p><b>Bên Nhận: ${cty.name}</b></p>
+<p>Người đại diện: {nguoi_dai_dien}</p>
+<p>Địa chỉ: ${cty.addr}</p>
+<p>Chi tiết tài liệu bàn giao:</p>
+{bang_tai_lieu}
+<table class="sign"><tr><td><b>BÊN GIAO</b></td><td><b>BÊN NHẬN</b></td></tr></table>`;
+const DOT = '……………………………';
+const MAU_BIEN_BAN = () => [
+  { code: 'BBGN-CT', kind: BB_KIND, name: 'Biên bản giao nhận hồ sơ — Công ty CP Cát Tường', scope: '',
+    content: bbBody({ name: 'Công ty cổ phần Cát Tường', addr: 'Tầng 3 tòa CTN, đường Lý Thái Tổ, Phường Tiền Ninh Vệ, TP Bắc Ninh, Tỉnh Bắc Ninh', place: 'Bắc Ninh' }) },
+  // tên pháp nhân / địa chỉ bên Thống Nhất chưa có trong dữ liệu → để trống cho phòng Kinh doanh điền ở Quản trị › Mẫu biểu
+  { code: 'BBGN-TN', kind: BB_KIND, name: 'Biên bản giao nhận hồ sơ — Thống Nhất', scope: 'TNS,TN',
+    content: bbBody({ name: `Công ty ${DOT} Thống Nhất`, addr: DOT + DOT, place: 'Bắc Ninh' }) },
+];
+async function handoverTemplates(qs) {
+  const unitId = qs.reservation ? (await one('SELECT unit_id FROM kd_reservation WHERE id = $1', [+qs.reservation]))?.unit_id
+    : qs.noxh ? (await one('SELECT unit_id FROM kd_noxh_check WHERE id = $1', [+qs.noxh]))?.unit_id : null;
+  const all = await q('SELECT code, name FROM kd_template WHERE active AND kind = $1 ORDER BY id', [BB_KIND]);
+  const fit = (await IO.regTemplates(BB_KIND, unitId)).map(t => t.code);
+  return all.map(t => ({ ...t, fit: t.code === fit[0] }));
+}
 const esc = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-async function printHandover(kind, id, user) {
+async function printHandover(kind, id, user, tplCode) {
   if (!['reservation', 'noxh'].includes(kind)) bad('Loại bản in không hợp lệ');
   let r = null, n = null;
   if (kind === 'reservation') {
@@ -137,34 +167,26 @@ async function printHandover(kind, id, user) {
   const unitId = r?.unit_id || n?.unit_id;
   const u = unitId ? await one('SELECT u.code, p.name project FROM kd_unit u JOIN kd_project p ON p.id = u.project_id WHERE u.id = $1', [unitId]) : null;
   const pj = u?.project || (n?.unit_text ? (await one("SELECT name FROM kd_project WHERE upper(code) = upper(split_part($1, '-', 1))", [n.unit_text]))?.name : null);
+  const tpl = tplCode ? await one('SELECT * FROM kd_template WHERE active AND kind = $1 AND code = $2', [BB_KIND, tplCode]) : (await IO.regTemplates(BB_KIND, unitId))[0];
+  const content = tpl?.content || MAU_BIEN_BAN()[0].content;
   const by = await one('SELECT full_name FROM kd_user WHERE id = $1', [n?.owner_id || user.id]);
   const items = n ? (n.items || []).filter(x => x.st !== 'thieu') : await B.defaultList({ q, one }, 'checklist_noxh', '_all');
   const day = String(n?.received_on || C.today()).slice(0, 10).split('-');
-  const DOTS = '……………………………';
-  const val = v => v ? esc(v) : DOTS;
-  const body = `<table class="hd"><tr><td><b>${CTY.name.toUpperCase()}</b></td><td><b>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</b><br><b class="tn">Độc lập - Tự do - Hạnh phúc</b><br><i>${CTY.place}, ngày ${day[2]} tháng ${day[1]} năm ${day[0]}</i></td></tr></table>
-<h2>BIÊN BẢN BÀN GIAO TÀI LIỆU</h2>
-<h3>HỒ SƠ MUA NHÀ DỰ ÁN ${esc(pj ? (/nhà ở xã hội/i.test(pj) ? pj : 'Nhà ở xã hội ' + pj).toUpperCase() : DOTS)}</h3>
-<p><b>Bên giao:</b></p>
-<table class="kv"><tr><td>Họ và tên:</td><td>${val(r?.cust_name || k.full_name)}</td><td class="r">SĐT: ${val(r?.phone || k.phone)}</td></tr>
-<tr><td>MST CN:</td><td colspan="2">${val(hide(r?.tax_code || k.tax_code))}</td></tr>
-<tr><td>TK Ngân hàng:</td><td colspan="2">${val(hide(r?.bank_account || k.bank_account))}</td></tr>
-<tr><td>Mã căn hộ:</td><td colspan="2">${val(u?.code || n?.unit_text)}</td></tr></table>
-<p><b>Bên Nhận: ${CTY.name}</b></p>
-<p>Người đại diện: ${val(by?.full_name)}</p>
-<p>Địa chỉ: ${CTY.addr}</p>
-<p>Chi tiết tài liệu bàn giao:</p>
-<table class="b"><tr class="th"><td style="width:9%">STT</td><td>Nội dung</td><td style="width:16%">SỐ LƯỢNG</td><td style="width:27%">GHI CHÚ</td></tr>
-${items.map((x, i) => `<tr><td class="c">${i + 1}</td><td>${esc(x.n)}</td><td class="c">${x.qty ?? ''}</td><td>${esc(x.note)}</td></tr>`).join('')}</table>
-<table class="sign"><tr><td><b>BÊN GIAO</b></td><td><b>BÊN NHẬN</b></td></tr></table>`;
-  await C.audit({ q }, n ? 'noxh_check' : 'reservation', n?.id || r.id, 'in_bien_ban_giao_nhan', null, null, user);
-  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Biên bản bàn giao tài liệu – ${esc(r?.cust_name || k.full_name)}</title><style>
+  const map = { dd: day[2], mm: day[1], yyyy: day[0], du_an_hoa: pj ? (/nhà ở xã hội/i.test(pj) ? pj : 'Nhà ở xã hội ' + pj).toUpperCase() : DOT,
+    ten_kh: r?.cust_name || k.full_name, dien_thoai: r?.phone || k.phone, mst: hide(r?.tax_code || k.tax_code), tai_khoan: hide(r?.bank_account || k.bank_account), ma_can: u?.code || n?.unit_text, nguoi_dai_dien: by?.full_name };
+  const bang = `<table class="b"><tr class="th"><td style="width:9%">STT</td><td>Nội dung</td><td style="width:16%">SỐ LƯỢNG</td><td style="width:27%">GHI CHÚ</td></tr>
+${items.map((x, i) => `<tr><td class="c">${i + 1}</td><td>${esc(x.n)}</td><td class="c">${x.qty ?? ''}</td><td>${esc(x.note)}</td></tr>`).join('')}</table>`;
+  // trường trộn: giá trị được thoát HTML, ô trống in dấu chấm để điền tay; {bang_tai_lieu} chèn nguyên bảng
+  const body = content.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/\{(\w+)\}/g, (m, x) => x === 'bang_tai_lieu' ? bang : x in map ? (map[x] ? esc(map[x]) : DOT) : m);
+  await C.audit({ q }, n ? 'noxh_check' : 'reservation', n?.id || r.id, 'in_bien_ban_giao_nhan', null, null, user, tpl?.code);
+  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Biên bản bàn giao tài liệu – ${esc(map.ten_kh)}</title><style>
     @page{size:A4;margin:20mm 15mm 20mm 25mm} body{font:13pt/1.4 "Times New Roman",serif;color:#000;max-width:170mm;margin:auto}
     p{margin:4pt 0} h2{text-align:center;font-size:15pt;margin:16pt 0 2pt} h3{text-align:center;font-size:13.5pt;margin:0 0 10pt} .c{text-align:center} .r{text-align:right}
     table{border-collapse:collapse;width:100%;margin:4pt 0} table.hd td{vertical-align:top;text-align:center;width:42%;font-size:12pt} table.hd td:first-child{white-space:nowrap} table.hd td+td{width:58%} table.hd .tn{display:inline-block;padding-bottom:1pt;border-bottom:1px solid #000}
     table.kv td{padding:2pt 0;vertical-align:top} table.kv td:first-child{width:24%} table.b td{border:1px solid #000;padding:5pt 6pt;vertical-align:middle} table.b .th td{font-weight:bold;text-align:center}
     tr,table.sign{page-break-inside:avoid} table.sign{margin-top:6pt} table.sign td{width:50%;text-align:center;vertical-align:top;height:90pt}
-    ${IO.EDIT_CSS}</style></head><body>${IO.editBar(`Biên bản bàn giao tài liệu${n ? ` · hồ sơ NOXH #${n.id}` : ' · chưa lập hồ sơ NOXH — danh mục mặc định, số lượng điền tay'}`)}${IO.editDoc(body)}</body></html>`;
+    ${IO.EDIT_CSS}</style></head><body>${IO.editBar(`Bản in từ mẫu «${esc(tpl?.name || 'Biên bản giao nhận hồ sơ')}»${n ? ` · hồ sơ NOXH #${n.id}` : ' · chưa lập hồ sơ NOXH — danh mục mặc định, số lượng điền tay'}`)}${IO.editDoc(body)}</body></html>`;
 }
 
-module.exports = { data, xlsx, printHandover };
+module.exports = { data, xlsx, printHandover, handoverTemplates, MAU_BIEN_BAN };
