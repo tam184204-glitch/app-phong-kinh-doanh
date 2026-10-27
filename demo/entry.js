@@ -73,6 +73,8 @@ async function boot(pgliteUrl) {
       await IO.importFile('units', { name: 'Nhà K - tòa K CTS.xlsx', buffer: Buffer.from(require('../data/seed/Nhà K - tòa K CTS.xlsx')) }, u);
     } catch (e) { console.warn('nạp tòa O', e); }
   }
+  // mẫu in đơn đăng ký chuẩn (thêm 27/10/2026) — giống máy thật: nạp mẫu còn thiếu, tắt mẫu khung cũ
+  try { await require('../server/seed').ensureTemplates(); } catch (e) { console.warn('mẫu in', e); }
   // tòa K dự án CTS (thêm 27/10/2026, chưa có căn)
   if (!(await one("SELECT 1 FROM kd_building b JOIN kd_project p ON p.id = b.project_id WHERE p.code = 'CTS' AND b.code = 'K'")))
     await q("INSERT INTO kd_building (project_id, code, name, kind, created_at) SELECT id, 'K', 'Tòa K', 'chung_cu', now() FROM kd_project WHERE code = 'CTS'");
