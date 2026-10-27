@@ -217,7 +217,12 @@ table.t.noclick tbody tr { cursor: default; }
 .u.da_ban_giao { background: #dcf2ef; border-color: #a9ddd6; color: #0d5a54; }
 .u.chua_mo_ban, .u.ngung_kd { background: #eef2f6; border-color: #d9e1ea; color: #5b6b7f; }
 .u.tam_khoa { background: #fdecea; border-color: #f4c3bd; color: #8f2a20; }
-.u.con_ban.huy { background: #fff; border-color: #d9e1ea; color: #33475b; }   /* căn còn bán trở lại sau khi hủy đăng ký */
+/* Bảng hàng: 3 nhóm màu */
+.u.g-trong { background: #fff; border-color: #d9e1ea; color: #33475b; }
+.u.g-giu { background: #fff0e0; border-color: #f7c08a; color: #9a4b00; }
+.u.g-ky { background: #e3f5e8; border-color: #9fd6b0; color: #145c33; }
+.u.g-tam_khoa { background: #fdecea; border-color: #f4c3bd; color: #8f2a20; }
+.u.g-ngung_kd { background: #eef2f6; border-color: #d9e1ea; color: #5b6b7f; }
 .u.dim { opacity: .18; }
 .u .hold { position: absolute; top: 5px; right: 6px; font-size: 10px; }
 
