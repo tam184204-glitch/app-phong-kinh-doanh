@@ -928,6 +928,19 @@ V.projects = async main => {
 };
 
 // Danh mục sản phẩm/căn hộ: nhóm theo dự án (trái), lưới căn nhóm theo tòa (phải)
+// cột Danh mục sản phẩm theo đúng mẫu Excel «DM bảng hàng và sản phẩm» (bảng giá Bravo). Căn chưa có số Bravo → tách từ giá sau thuế (VAT 5%)
+const PROD_COLS = [['code', 'Mã căn hộ'], ['name', 'Tên căn hộ'], ['area_xd', 'Diện tích xây dựng', 'num', 1], ['area_tt', 'Diện tích thông thủy', 'num', 1], ['base', 'Đơn giá nền', 'money'],
+  ['pretax', 'Tổng tiền trước thuế', 'money', 1], ['vat', '% thuế', 'pct'], ['tax', 'Tổng tiền thuế', 'money', 1], ['after', 'Tổng giá trị sau thuế', 'money', 1], ['maint', 'Phí bảo trì 2%', 'money', 1],
+  ['finish', 'Giá trị hoàn thiện căn hộ', 'money', 1], ['total', 'Tổng cộng', 'money', 1], ['project', 'Mã dự án'], ['door', 'Hướng cửa chính'], ['balcony', 'Hướng ban công'], ['kind', 'Loại căn hộ']];
+function prodRow(u, pj) {
+  const after = u.price_net ?? (u.total_price != null && u.maint_fee != null ? u.total_price - u.maint_fee - (u.finish_value || 0) : null);
+  const vat = u.vat_pct ?? 5, pretax = u.pretax ?? (after != null ? Math.round(after / (1 + vat / 100)) : null);
+  return { id: u.id, code: u.code, name: 'Căn hộ ' + u.code.split('-').slice(1).join('-'), area_xd: u.area_xd, area_tt: u.area_tt,
+    base: u.base_price ?? (pretax != null && u.area_tt ? Math.round(pretax / u.area_tt) : null), pretax, vat, tax: u.tax_amt ?? (after != null && pretax != null ? after - pretax : null), after,
+    maint: u.maint_fee, finish: u.finish_value, total: u.total_price, project: pj?.code || '', door: u.door_dir || '', balcony: u.balcony_dir || '',
+    kind: u.bedrooms ? `${u.bedrooms} ngủ` : optL('unit', 'kind', u.kind) };
+}
+const prodCell = (r, [k, , t]) => t === 'money' ? fm(r[k]) : t === 'num' ? fnum(r[k]) : t === 'pct' ? (r[k] != null ? fnum(r[k]) + '%' : '') : esc(r[k] ?? '');
 V.products = async (main, params) => {
   const s = ST.prod ||= { project: '', q: '', st: '', shut: new Set() };
   if (params.project) s.project = params.project;
@@ -937,15 +950,15 @@ V.products = async (main, params) => {
     const base = d.units.filter(u => !s.project || u.project_id === +s.project);
     const us = base.filter(u => unitMatch(u, q) && (!s.st || u.status === s.st));
     const cnt = {}; base.forEach(u => cnt[u.status] = (cnt[u.status] || 0) + 1);
-    const nums = x => `<td class="num">${x.dat ? fnum(x.dat) : ''}</td><td class="num">${x.xd ? fnum(x.xd) : ''}</td><td class="num">${fnum(x.tt)}</td>`;
-    const groups = d.buildings.filter(b => !s.project || b.project_id === +s.project).map(b => ({ b, us: us.filter(u => u.building_id === b.id) })).filter(g => g.us.length);
-    const body = groups.map(({ b, us: gu }) => {
-      const x = d.sum(gu), shut = s.shut.has(b.id), pj = d.projects.find(p => p.id === b.project_id);
-      return `<tr class="pg" data-g="${b.id}"><td colspan="3"><i class="fa-solid fa-chevron-right tw-chev ${shut ? '' : 'on'}"></i><b>${esc(bName(b))}</b> <span class="muted">— ${esc(pj?.code || '')} · ${gu.length} căn</span></td>${nums(x)}<td colspan="4"></td><td class="num">${fm(x.gia)}</td><td></td></tr>` +
-        (shut ? '' : gu.map(u => `<tr data-u="${u.id}"><td class="pi">${esc(u.code)}</td><td>${esc(optL('unit', 'kind', u.kind))}</td><td>${esc(optL('unit', 'position', u.position))}</td>${nums({ dat: u.area_dat, xd: u.area_xd, tt: u.area_tt })}
-          <td>${esc(pj?.code || '')}</td><td>Tòa ${esc(b.code)}</td><td class="num">${u.floor}</td><td>${esc(u.direction || '')}</td><td class="num">${fm(u.total_price)}</td><td>${pill(USTAT[u.status] || u.status, UST_C[u.status])}</td></tr>`).join(''));
+    const groups = d.buildings.filter(b => !s.project || b.project_id === +s.project).map(b => ({ b, pj: d.projects.find(p => p.id === b.project_id), us: us.filter(u => u.building_id === b.id) })).filter(g => g.us.length);
+    const all = [];
+    const sumTds = rs => PROD_COLS.slice(2).map(c => `<td class="${c[2] ? 'num' : ''}">${c[3] ? prodCell({ [c[0]]: rs.reduce((a, r) => a + (+r[c[0]] || 0), 0) }, c) : ''}</td>`).join('');
+    const body = groups.map(({ b, pj, us: gu }) => {
+      const rs = gu.map(u => prodRow(u, pj)), shut = s.shut.has(b.id); all.push(...rs);
+      return `<tr class="pg" data-g="${b.id}"><td colspan="2"><i class="fa-solid fa-chevron-right tw-chev ${shut ? '' : 'on'}"></i><b>${esc(bName(b))}</b> <span class="muted">— ${esc(pj?.code || '')} · ${gu.length} căn</span></td>${sumTds(rs)}</tr>` +
+        (shut ? '' : rs.map(r => `<tr data-u="${r.id}">${PROD_COLS.map((c, i) => `<td class="${c[2] ? 'num' : ''} ${i === 0 ? 'pi' : ''}">${prodCell(r, c)}</td>`).join('')}</tr>`).join(''));
     }).join('');
-    const t = d.sum(us);
+    main._rows = all;
     main.innerHTML = `<div class="page">${head('02', 'Danh mục sản phẩm/căn hộ', 'fa-door-open', `${M.imports.units ? `<button class="btn" id="pImp">${ico('fa-file-import')} Nhập bảng hàng</button>` : ''}${ue.x ? `<button class="btn" id="pXls">${ico('fa-file-excel')} Xuất Excel</button>` : ''}${ue.c ? `<button class="btn pri" id="pNew">${ico('fa-plus')} Tạo căn</button>` : ''}`, 'DA-01')}
       <div class="prod"><div class="card prod-nav"><div class="hd"><h3>${ico('fa-folder-tree')} Nhóm dữ liệu</h3></div><div class="pn">
         <a data-p="" class="${!s.project ? 'on' : ''}">${ico('fa-folder-open')} Tất cả dự án <small>${d.units.length}</small></a>
@@ -953,9 +966,9 @@ V.products = async (main, params) => {
       <div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="pq" placeholder="Tìm mã căn, hướng, tòa…" value="${esc(s.q)}"></div>
         <select id="pst"><option value="">Mọi trạng thái</option>${Object.entries(USTAT).filter(([k]) => cnt[k]).map(([k, l]) => `<option value="${k}" ${s.st === k ? 'selected' : ''}>${l} (${cnt[k]})</option>`).join('')}</select>
         <span class="grow"></span><span class="small muted">${us.length} căn · ${groups.length} tòa</span></div>
-      <div class="tbl-wrap"><table class="t prod-t"><thead><tr><th>Mã căn</th><th>Loại sản phẩm</th><th>Vị trí</th><th class="num">DT đất</th><th class="num">DT xây dựng</th><th class="num">DT thông thủy</th><th>Dự án</th><th>Tòa nhà</th><th class="num">Tầng</th><th>Hướng</th><th class="num">Tổng giá căn hộ</th><th>Trạng thái</th></tr></thead>
-      <tbody>${body || `<tr><td colspan="12"><div class="empty">Không có căn nào${q || s.st ? ' khớp bộ lọc' : ''}</div></td></tr>`}</tbody>
-      <tfoot><tr><td colspan="3">Tổng ${us.length} căn</td>${nums(t)}<td colspan="4"></td><td class="num">${fm(t.gia)}</td><td></td></tr></tfoot></table></div></div></div></div>`;
+      <div class="tbl-wrap"><table class="t prod-t grid-bravo"><thead><tr>${PROD_COLS.map(c => `<th class="${c[2] ? 'num' : ''}">${c[1]}</th>`).join('')}</tr></thead>
+      <tbody>${body || `<tr><td colspan="${PROD_COLS.length}"><div class="empty">Không có căn nào${q || s.st ? ' khớp bộ lọc' : ''}</div></td></tr>`}</tbody>
+      <tfoot><tr><td colspan="2">Tổng ${us.length} căn</td>${sumTds(all)}</tr></tfoot></table></div></div></div></div>`;
     const inp = $('#pq', main);
     inp.oninput = debounce(() => { s.q = inp.value; draw().then(() => { const i = $('#pq', main); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }); }, 250);
     $('#pst', main).onchange = e => { s.st = e.target.value; draw(); };
@@ -967,7 +980,8 @@ V.products = async (main, params) => {
     const u = e.target.closest('tr[data-u]'); if (u) return openDetail('unit', +u.dataset.u);
     if (e.target.closest('#pNew')) return openForm('unit', { preset: s.project ? { project_id: +s.project } : {}, onSaved: () => draw() });
     if (e.target.closest('#pImp')) return importModal('units', draw);
-    if (e.target.closest('#pXls')) return download(`/api/export/unit?${qsOf({ project: s.project, status: s.st, q: s.q.trim() })}`);
+    // xuất Excel đúng mẫu «DM bảng hàng và sản phẩm»
+    if (e.target.closest('#pXls')) return download('/api/export-rows', { title: 'DM bảng hàng và sản phẩm', cols: PROD_COLS.map(c => [c[0], c[1], c[2] === 'pct' ? 'num' : c[2]]), rows: main._rows, sum: PROD_COLS.filter(c => c[3]).map(c => c[0]), file: 'DM_bang_hang_va_san_pham' });
   });
   await draw();
 };
