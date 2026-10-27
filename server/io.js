@@ -388,11 +388,12 @@ async function printReservation(id, user, kind, tplCode) {
     : `<div style="white-space:pre-wrap">${merge(escH(tpl.content))}</div>`;
   await C.audit({ q }, 'reservation', r.id, 'in_' + kind, null, null, user, tpl.code);
   return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${escH(r.code)} – ${escH(tpl.name)}</title><style>
-    @page{size:A4;margin:15mm 15mm 15mm 20mm} body{font:13pt/1.45 "Times New Roman",serif;color:#000;max-width:175mm;margin:auto}
-    p{margin:3pt 0} h2{text-align:center;font-size:15pt;margin:10pt 0 2pt} .c{text-align:center} .r{text-align:right} .j{text-align:justify} .n{text-align:right;white-space:nowrap} .h{font-weight:bold;margin-top:8pt}
+    @page{size:A4;margin:20mm 15mm 20mm 30mm} body{font:13pt/1.4 "Times New Roman",serif;color:#000;max-width:165mm;margin:auto}
+    .qh{text-align:center;font-size:13pt;line-height:1.3} .qh .tn{font-size:14pt;display:inline-block;padding-bottom:2pt;border-bottom:1px solid #000}
+    p{margin:3pt 0} h2{text-align:center;font-size:14pt;margin:14pt 0 2pt} .c{text-align:center} .r{text-align:right} .j{text-align:justify} .n{text-align:right;white-space:nowrap} .h{font-weight:bold;margin-top:8pt}
     table{border-collapse:collapse;width:100%;margin:4pt 0} table.b td{border:1px solid #000;padding:3pt 6pt} table.b.sm td{font-size:11.5pt;padding:2pt 4pt} table.b .th td{font-weight:bold;text-align:center} table.b .grp td{background:#f2f2f2}
     tr,table.sign{page-break-inside:avoid} .h{page-break-after:avoid}
-    table.kv3 td{padding:0 8pt 0 0;vertical-align:top} table.kv3 td:nth-child(-n+2){white-space:nowrap} table.sign{margin-top:14pt} table.sign td{width:50%;text-align:center;vertical-align:top}
+    table.kv3{width:auto} table.kv3 td{padding:0 24pt 0 0;vertical-align:top} table.kv3 td:nth-child(-n+2){white-space:nowrap} table.sign{margin-top:14pt} table.sign td{width:50%;text-align:center;vertical-align:top}
     ${EDIT_CSS}</style></head><body>${editBar(`Bản in từ mẫu «${escH(tpl.name)}» · phiếu ${escH(r.code)}`)}${editDoc(body)}</body></html>`;
 }
 

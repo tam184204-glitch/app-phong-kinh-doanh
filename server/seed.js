@@ -154,6 +154,11 @@ async function ensureTemplates() {
     let moi = 0;
     for (const t of MAU_DANG_KY()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) { await C.create('template', { ...t, active: true }, sysU, { db, system: true }); moi++; }
     if (moi) await db.q('UPDATE kd_template SET active = false WHERE code = ANY($1)', [MAU_CU]);
+    // mẫu đã nạp trước 27/10: đổi quốc hiệu «o0o» sang thể thức NĐ 30 + tách «Nơi cấp» xuống dòng (chỉ thay đúng đoạn cũ, giữ phần đã sửa tay)
+    const qhCu = '<div class="c"><b>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</b><br><b>Độc lập – Tự do – Hạnh phúc</b><br>-------o0o------</div>';
+    const qhMoi = '<div class="qh"><b>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</b><br><b class="tn">Độc lập - Tự do - Hạnh phúc</b></div>';
+    const cccdCu = '<td>Ngày cấp: {ngay_cap}</td><td>Nơi cấp: {noi_cap}</td></tr></table>', cccdMoi = '<td>Ngày cấp: {ngay_cap}</td></tr></table>\n<p>Nơi cấp: {noi_cap}</p>';
+    await db.q('UPDATE kd_template SET content = replace(replace(content, $1, $2), $3, $4) WHERE strpos(content, $1) > 0 OR strpos(content, $3) > 0', [qhCu, qhMoi, cccdCu, cccdMoi]);
     await db.q("UPDATE kd_reservation SET reg_at = coalesce(created_at, reg_date::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh') WHERE reg_at IS NULL");
     // phiếu lập trước khi có mẫu «Phiếu đăng ký căn hộ»: chép thông tin khách + suy ra trạng thái căn / tiến trình
     await db.q(`UPDATE kd_reservation r SET cust_name = k.full_name, id_no = k.id_no, id_date = k.id_date, id_place = k.id_place, address = k.address, phone = k.phone

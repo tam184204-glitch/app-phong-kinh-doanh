@@ -4,10 +4,12 @@
 // Nội dung là HTML có trường trộn {…}; chỉ lấy các dòng đang hiện trong file (dòng ẩn bỏ). Sửa được ở Quản trị › Mẫu biểu.
 const { moneyWords } = require('./io');
 
-const quoc_hieu = `<div class="c"><b>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</b><br><b>Độc lập – Tự do – Hạnh phúc</b><br>-------o0o------</div>`;
+// thể thức văn bản theo NĐ 30/2020: quốc hiệu in hoa đậm, tiêu ngữ đậm có gạch liền bên dưới
+const quoc_hieu = `<div class="qh"><b>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</b><br><b class="tn">Độc lập - Tự do - Hạnh phúc</b></div>`;
 const khach = `<p class="h">1. Thông tin khách hàng</p>
 <p>Ông (Bà): <b>{ten_kh}</b></p>
-<table class="kv3"><tr><td>Số CC/CCCD: {cccd}</td><td>Ngày cấp: {ngay_cap}</td><td>Nơi cấp: {noi_cap}</td></tr></table>
+<table class="kv3"><tr><td>Số CC/CCCD: {cccd}</td><td>Ngày cấp: {ngay_cap}</td></tr></table>
+<p>Nơi cấp: {noi_cap}</p>
 <p>Địa chỉ: {dia_chi}</p>
 <p>Số điện thoại: {dien_thoai}</p>`;
 const ky = `<table class="sign"><tr><td></td><td><b>Người làm đơn</b><br><i>(Ký, ghi rõ họ tên)</i><br><br><br><br><b>{ten_kh}</b></td></tr></table>`;
