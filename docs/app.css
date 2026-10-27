@@ -229,6 +229,10 @@ table.t.noclick tbody tr { cursor: default; }
 .fld .help { font-size: 11.5px; color: var(--muted); }
 .fld input[type=text], .fld input[type=password], .fld select, .fld textarea, .fld input:not([type]) { width: 100%; height: 38px; border: 1px solid #cfdbe8; border-radius: 10px; padding: 0 11px; background: #fff; }
 .fld textarea { height: auto; min-height: 78px; padding: 9px 11px; resize: vertical; }
+.pwbox { position: relative; display: block; }
+.pwbox input { padding-right: 42px !important; }
+.pwbox .eye { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
+.pwbox .eye:hover { background: var(--cobalt-50); color: var(--cobalt); }
 .fld.err input, .fld.err select, .fld.err textarea { border-color: var(--r-c); background: #fffafa; }
 .fld .ro { padding: 8px 11px; background: #f5f8fb; border-radius: 10px; border: 1px dashed #d4dfeb; min-height: 38px; }
 .dwrap { position: relative; } .dwrap button { position: absolute; right: 4px; top: 4px; height: 30px; width: 32px; border: 0; background: transparent; color: var(--cobalt); cursor: pointer; border-radius: 8px; }

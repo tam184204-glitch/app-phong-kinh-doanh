@@ -566,6 +566,7 @@ async function loginView() {
       <div class="fld mb"><label for="lp">Mật khẩu</label><input id="lp" type="password" autocomplete="current-password" required></div>
       <button class="btn pri" style="width:100%;height:42px;justify-content:center">${ico('fa-right-to-bracket')} Đăng nhập</button>
       <a class="btn" href="gioi-thieu.html" style="width:100%;height:42px;justify-content:center;margin-top:10px">${ico('fa-globe')} Về trang giới thiệu công khai</a></form></div></div>`;
+  pwEye(document.body);
   $('#lf').onsubmit = async e => {
     e.preventDefault();
     try { const r = await api('POST', '/api/login', { username: $('#lu').value.trim(), password: $('#lp').value }); location.hash = '#/v/dashboard'; await boot(r.must_change); }
@@ -573,12 +574,23 @@ async function loginView() {
   };
   $('#lu').focus();
 }
+// nút «mắt» hiện / ẩn mật khẩu cho mọi ô mật khẩu trong root
+function pwEye(root) {
+  $$('input[type=password]', root).forEach(inp => {
+    if (inp.parentElement.classList.contains('pwbox')) return;
+    const box = document.createElement('span'); box.className = 'pwbox'; inp.before(box); box.append(inp);
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'eye'; b.title = 'Hiện mật khẩu'; b.setAttribute('aria-label', 'Hiện mật khẩu'); b.innerHTML = ico('fa-eye');
+    b.onclick = () => { const show = inp.type === 'password'; inp.type = show ? 'text' : 'password'; b.innerHTML = ico(show ? 'fa-eye-slash' : 'fa-eye'); b.title = show ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'; b.setAttribute('aria-label', b.title); inp.focus(); };
+    box.append(b);
+  });
+}
 function forcePassword(first) {
   if ($('#pwModal')) return;
   const m = modal({ title: `${ico('fa-key')} ${first ? 'Đổi mật khẩu lần đầu' : 'Đổi mật khẩu'}`, narrow: true, body: `<div id="pwModal"></div>${first ? '<div class="warnbar">Tài khoản đang dùng mật khẩu mặc định — cần đổi trước khi làm việc.</div>' : ''}<div id="perr"></div>
     <div class="fld mb"><label>Mật khẩu hiện tại</label><input type="password" id="p0" autocomplete="current-password"></div><div class="fld mb"><label>Mật khẩu mới (≥ 6 ký tự)</label><input type="password" id="p1" autocomplete="new-password"></div><div class="fld"><label>Nhập lại mật khẩu mới</label><input type="password" id="p2" autocomplete="new-password"></div>`,
     foot: `${first ? '' : '<button class="btn" data-x>Hủy</button>'}<button class="btn pri" id="pOk">Đổi mật khẩu</button>` });
   if (first) $$('[data-x]', m.el).forEach(b => b.remove());
+  pwEye(m.el);
   $('#pOk', m.el).onclick = async () => {
     if ($('#p1', m.el).value !== $('#p2', m.el).value) return $('#perr', m.el).innerHTML = '<div class="errbar">Hai lần nhập không khớp</div>';
     try { await api('POST', '/api/password', { old: $('#p0', m.el).value, pw: $('#p1', m.el).value }); m.el.remove(); toast('Đã đổi mật khẩu'); if (first) boot(); }
