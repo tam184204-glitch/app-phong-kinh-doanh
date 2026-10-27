@@ -624,6 +624,51 @@ table.t tfoot td { background: linear-gradient(180deg, #f8fafc, #f1f5fa); }
 @keyframes skyDrift { 0%, 100% { transform: translate3d(-8px, 6px, 0); } 50% { transform: translate3d(18px, -8px, 0); } }
 @keyframes trailA { 0%, 18% { transform: translate3d(-34%, -6%, 0) rotate(-12deg); opacity: 0; } 42% { opacity: .76; } 70%, 100% { transform: translate3d(42%, 8%, 0) rotate(-12deg); opacity: 0; } }
 @keyframes trailB { 0%, 24% { transform: translate3d(30%, 8%, 0) rotate(15deg); opacity: 0; } 54% { opacity: .48; } 84%, 100% { transform: translate3d(-38%, -8%, 0) rotate(15deg); opacity: 0; } }
+/* ---------- box đổi màu khi rê chuột + đèn rọi theo con trỏ (--mx/--my do ui.js đặt) ---------- */
+.card { transition: border-color .28s ease, box-shadow .28s ease, background .28s ease, transform .28s ease; }
+.card:hover { border-color: rgba(30, 78, 140, .30); box-shadow: var(--card-sh-h);
+  background: radial-gradient(circle at var(--mx, 50%) var(--my, 0%), rgba(245, 166, 35, .10), transparent 42%), linear-gradient(135deg, #fff, #f3f8ff 60%, #fffaf0); }
+.card:hover > .hd { background: linear-gradient(90deg, rgba(30, 78, 140, .08), rgba(245, 166, 35, .08) 70%, transparent); }
+.card .hd h3 i { transition: transform .35s cubic-bezier(.3, 1.6, .5, 1); }
+.card:hover > .hd h3 i { transform: scale(1.18) rotate(-8deg); }
+.grid > .card:not(.kpi):hover { transform: translateY(-3px); }
+/* ô chỉ số: rê chuột chuyển hẳn sang nền xanh thương hiệu, chữ trắng */
+.kpi:hover { border-color: transparent;
+  background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, .22), transparent 45%), linear-gradient(135deg, var(--cobalt-d), var(--cobalt) 55%, var(--cobalt-l)); }
+.kpi.green:hover { background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, .22), transparent 45%), linear-gradient(135deg, #2f6b34, var(--sage-d) 55%, var(--sage)); }
+.kpi.red:hover { background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, .2), transparent 45%), linear-gradient(135deg, #7a1f17, #a8322a 55%, #d9534f); }
+.kpi:hover .l, .kpi:hover .s, .kpi:hover .l i, .kpi:hover .s a { color: rgba(255, 255, 255, .9); }
+.kpi:hover .v, .kpi:hover .v small { background: none; -webkit-text-fill-color: #fff; color: #fff; }
+.kpi:hover .bar { background: rgba(255, 255, 255, .22); }
+.kpi:hover::before { background: linear-gradient(180deg, #fff, var(--amber)); }
+/* ô danh mục: chuyển nền vàng nhạt; ô khẩn chuyển nền đỏ nhạt */
+.cat-tile:hover { border-color: rgba(245, 166, 35, .6); background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, .7), transparent 50%), linear-gradient(135deg, #fff7e6, #ffe7b8); }
+.cat-tile:hover b { color: var(--amber-d); }
+.cat-tile.red:hover { border-color: rgba(192, 57, 43, .4); background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, .7), transparent 50%), linear-gradient(135deg, #fff1ef, #fbd5d0); }
+.cat-tile.red:hover b { color: var(--r-c); }
+.tower:hover { background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, .8), transparent 50%), linear-gradient(180deg, #eef5ff, #dce9f9); }
+.u:hover { filter: saturate(1.25) brightness(1.02); }
+.files a.f:hover, .note:hover, .ai-sug button:hover, .login .trial button:hover { background: linear-gradient(135deg, #fff, #eef5ff 60%, #fff7e6); }
+.alert-row:hover .tx { color: var(--cobalt-d); }
+/* gợn sóng khi bấm */
+.ibtn, .mod > button, .mod > a.solo { overflow: hidden; isolation: isolate; }
+.ripple { position: absolute; z-index: 0; width: var(--rs, 120px); height: var(--rs, 120px); border-radius: 50%; pointer-events: none; transform: translate(-50%, -50%) scale(.06); opacity: .9;
+  background: radial-gradient(circle, rgba(245, 166, 35, .42) 0%, rgba(255, 255, 255, .3) 38%, transparent 70%); animation: ripple .65s ease-out forwards; }
+.kpi:hover .ripple, .btn.pri .ripple { background: radial-gradient(circle, rgba(255, 255, 255, .5) 0%, rgba(255, 255, 255, .2) 38%, transparent 70%); }
+@keyframes ripple { to { transform: translate(-50%, -50%) scale(1); opacity: 0; } }
+
+/* ---------- dễ đọc hơn: chữ phụ đậm hơn, bảng có sọc, tiêu đề rõ ---------- */
+:root { --muted: #56677c; --muted2: #8494a8; }
+.card h3 { color: var(--cobalt-d); }
+.fld > label, .kv dt { color: #3c5672; }
+.kv dd { color: var(--ink); }
+table.t th { color: #2c4866; letter-spacing: .2px; }
+table.t tbody tr:nth-child(even) td { background: rgba(243, 247, 252, .6); }
+table.t tbody tr:hover td { background: linear-gradient(90deg, rgba(30, 78, 140, .07), rgba(245, 166, 35, .05)); }
+table.t tbody tr.sel td { background: var(--amber-50); }
+table.t td.num { color: var(--ink); font-weight: 600; }
+.pill { font-weight: 750; }
+
 @media (prefers-reduced-motion: no-preference) {
   .main::before { animation: meshDrift 24s ease-in-out infinite; }
   .main::after { animation: washDrift 18s ease-in-out infinite; }
