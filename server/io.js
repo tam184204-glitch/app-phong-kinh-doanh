@@ -464,7 +464,7 @@ async function printSaleNotice(id, user, kind) {
   const { row: n } = await C.get('sale_notice', id, user);
   const p = await one('SELECT * FROM kd_project WHERE id = $1', [n.project_id]);
   const seller = M.SELLERS.find(s => s.projects.includes(p.code)) || M.SELLERS[0];
-  const g = String(n.unit_group || '*').split(/[,;\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+  const g = String(n.unit_group || '').split(/[,;\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
   const units = (await q(`SELECT u.code, u.floor, u.area_tt, u.area_xd, b.code b FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = $1 ORDER BY b.code, u.floor, u.code`, [p.id]))
     .filter(u => g.includes('*') || g.includes(String(u.b).toUpperCase()) || g.includes(u.code.toUpperCase()));
   const d = n.notice_on ? new Date(n.notice_on + 'T00:00:00Z') : new Date(Date.now() + 7 * 3600e3);

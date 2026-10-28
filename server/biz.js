@@ -484,7 +484,7 @@ async function cancelPrefill(db, { contract_id, reservation_id }) {
 
 // thông báo mở bán: căn thuộc đợt theo «Căn hộ mở bán» (* = cả dự án / mã tòa / mã căn)
 async function noticeUnits(db, n) {
-  const g = String(n.unit_group || '*').split(/[,;\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+  const g = String(n.unit_group || '').split(/[,;\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean);   // chỉ các căn / tòa đã tích
   const us = await db.q('SELECT u.id, u.code, u.status, u.activated, u.lock, u.floor, u.area_tt, u.area_xd, b.code b FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = $1 ORDER BY b.code, u.floor, u.code', [n.project_id]);
   return us.filter(u => g.includes('*') || g.includes(String(u.b).toUpperCase()) || g.includes(u.code.toUpperCase()));
 }
@@ -492,7 +492,7 @@ H.sale_notice = {
   noDelete: r => r.status !== 'nhap' && 'Chỉ xóa được thông báo đang ở bản nháp',
   async beforeSave(r) {
     if (r.close_on && r.open_on && r.close_on < r.open_on) bad('Ngày kết thúc nhận hồ sơ phải sau ngày bắt đầu');
-    if (!String(r.unit_group || '').trim()) r.unit_group = '*';
+    if (!String(r.unit_group || '').trim()) bad('Tích chọn căn hộ mở bán');
   },
   async onSubmit(r, { db }) { if (!(await noticeUnits(db, r)).length) bad('Đợt mở bán chưa có căn nào'); },
   // duyệt (phát hành): căn trong đợt chưa mở bán → kích hoạt «Còn bán»

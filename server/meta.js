@@ -213,7 +213,7 @@ def('sale_notice', {
     { k: 'open_on', l: 'Ngày bắt đầu nhận hồ sơ', t: 'date', req: 1 },
     { k: 'close_on', l: 'Ngày kết thúc nhận hồ sơ', t: 'date' },
     { k: 'channels', l: 'Nơi đăng thông báo', t: 'text', sug: ['Website công ty; Cổng thông tin Sở Xây dựng', 'Website công ty', 'Cổng thông tin Sở Xây dựng', 'Bảng tin tại dự án', 'Fanpage / Zalo OA', 'Báo điện tử'] },
-    { k: 'unit_group', l: 'Căn hộ mở bán', t: 'text', req: 1, def: '*', pick: 'units', help: 'Tích chọn tòa / từng căn — * = cả dự án' },
+    { k: 'unit_group', l: 'Căn hộ mở bán', t: 'text', req: 1, def: '', pick: 'units', help: 'Tích chọn đúng các căn mở bán trong đợt (tích cả tòa = chọn nguyên tòa)' },
     { k: 'note', l: 'Ghi chú', t: 'long' },
     { k: 'status', l: 'Trạng thái', t: 'sel', o: [['nhap', 'Nháp', 's'], ['cho_duyet', 'Chờ duyệt', 'a'], ['da_duyet', 'Đã phát hành', 'g'], ['tu_choi', 'Từ chối', 'r']], ro: 1, def: 'nhap' },
   ], list: ['code', 'project_id', 'title', 'doc_no', 'notice_on', 'open_on', 'close_on', 'n_units', 'n_reg', 'n_free', 'status'],

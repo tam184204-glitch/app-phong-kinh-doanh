@@ -134,7 +134,7 @@ function input(f, v, rec = {}, { ro, id } = {}) {
   const nm = `name="${f.k}" data-t="${f.t}" id="${id || 'f_' + f.k}"`;
   if (ro) return `<div class="ro">${show(f, rec)}</div>`;
   if (f.upload) return `<div class="upfile"><input type="file" accept="${f.upload}" ${nm}>${v ? `<span class="small muted">Đang có: ${esc(v)} — chọn tệp mới để thay</span>` : ''}</div>`;
-  if (f.pick === 'units') return `<div class="upick" data-pick-units><input type="hidden" ${nm} value="${esc(v ?? '*')}"><div class="upick-bd"></div></div>`;
+  if (f.pick === 'units') return `<div class="upick" data-pick-units><input type="hidden" ${nm} value="${esc(v ?? f.def ?? '*')}"${f.def === '' ? ' data-none' : ''}><div class="upick-bd"></div></div>`;   // def '' = chưa chọn căn nào
   switch (f.t) {
     case 'long': return `<textarea ${nm} rows="3">${esc(v ?? '')}</textarea>`;
     case 'money': return `<input ${nm} inputmode="numeric" value="${esc(moneyStr(v))}" autocomplete="off">`;
@@ -421,7 +421,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [] } = {}
 // ---------- bảng chọn căn áp dụng (chính sách giá): giá trị = '*' | mã tòa (cả tòa) | mã căn, cách nhau dấu phẩy ----------
 async function unitPicker(el, root) {
   const projEl = $('[name="project_ids"]', root) || $('[name="project_id"]', root), hid = $('input[type=hidden]', el), box = $('.upick-bd', el);
-  let units = [], sel = new Set(String(hid.value || '*').toUpperCase().split(/[,;\s]+/).filter(Boolean)), loadedFor = null, q = '';
+  let units = [], sel = new Set(String(hid.value).toUpperCase().split(/[,;\s]+/).filter(Boolean)), loadedFor = null, q = '';
   const KIND = Object.fromEntries(M.ents.unit.fields.find(f => f.k === 'kind').o);
   const blds = () => [...new Set(units.map(u => u.b))];
   const isOn = u => sel.has('*') || sel.has(u.b) || sel.has(u.code.toUpperCase());
@@ -474,7 +474,7 @@ async function unitPicker(el, root) {
   projEl && projEl.addEventListener('change', async () => {
     if (loadedFor === null || projEl.value === loadedFor) return load();
     await load(); const keep = [...sel].filter(s => s !== '*' && units.some(u => u.b === s || u.code.toUpperCase() === s));
-    hid.value = keep.length && !sel.has('*') ? keep.join(',') : '*'; sel = new Set(hid.value.split(',')); draw();
+    hid.value = keep.length && !sel.has('*') ? keep.join(',') : 'none' in hid.dataset ? '' : '*'; sel = new Set(hid.value.split(',').filter(Boolean)); draw();   // data-none: đổi dự án thì bỏ chọn hết
   });
   await load();
 }
