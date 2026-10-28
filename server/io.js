@@ -309,6 +309,9 @@ function moneyWords(n) {
   return s[0].toUpperCase() + s.slice(1) + ' đồng';
 }
 const escH = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+// trường trộn tiền có cặp «…_chu» → đánh dấu để bản in sửa số thì dòng bằng chữ tự đổi theo (script trong editDoc)
+const mergeVal = (map, x) => x + '_chu' in map ? `<span data-so="${x}">${escH(map[x] ?? '')}</span>`
+  : x.endsWith('_chu') && x.slice(0, -4) in map ? `<span data-chu="${x.slice(0, -4)}">${escH(map[x] ?? '')}</span>` : escH(map[x] ?? '');
 async function printContract(id, user, tplCode) {
   if (!can(user, E.contract, 'r')) deny();
   const c = C.notFound(await one(`SELECT c.*, u.code unit, u.floor, u.area_tt, u.direction, b.code building, p.name project, p.address p_addr, p.investor,
@@ -322,7 +325,7 @@ async function printContract(id, user, tplCode) {
     ma_can: c.unit, du_an: c.project, dia_diem: c.p_addr, chu_dau_tu: c.investor, toa: c.building, tang: c.floor, dien_tich: String(c.area_tt).replace('.', ','), huong: c.direction,
     gia_tri: fmtMoney(c.value), gia_tri_chu: moneyWords(c.value), ngay: dmy(c.signed_on || C.today()),
     lich_thanh_toan: `<table class="sch"><tr><th>Đợt</th><th>Nội dung</th><th>Hạn thanh toán</th><th>Tỷ lệ</th><th>Số tiền (đồng)</th></tr>${inst.map(i => `<tr><td>${i.seq}</td><td>${escH(i.name)}</td><td>${dmy(i.due_on)}</td><td>${i.pct ?? ''}${i.pct != null ? '%' : ''}</td><td style="text-align:right">${fmtMoney(i.amount)}</td></tr>`).join('')}</table>` };
-  const body = escH(tpl.content).replace(/\n/g, '<br>').replace(/\{(\w+)\}/g, (m, k) => k in map ? (k === 'lich_thanh_toan' ? map[k] : escH(map[k])) : m);
+  const body = escH(tpl.content).replace(/\n/g, '<br>').replace(/\{(\w+)\}/g, (m, k) => k in map ? (k === 'lich_thanh_toan' ? map[k] : mergeVal(map, k)) : m);
   await C.audit({ q }, 'contract', c.id, 'in_hop_dong', null, null, user, tpl.code);
   return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${escH(c.number)}</title><style>
     @page{size:A4;margin:20mm 18mm 20mm 25mm} body{font:13pt/1.5 "Times New Roman",serif;color:#000;max-width:170mm;margin:auto}
@@ -337,7 +340,19 @@ const EDIT_CSS = `.bar{font:13px system-ui;background:#f5f8fc;border:1px solid #
     @media screen and (max-width:640px){body{padding:0 14px} table.kv3 td{display:block;white-space:normal!important} table.b td{padding:3pt 4pt}}
     @media print{.bar{display:none} .doc,.doc:focus{outline:none}}`;
 const editBar = info => `<div class="bar"><span class="tip">${info}<br>✎ Bấm vào chữ để sửa trực tiếp, xong bấm <b>In</b>. Sửa ở đây chỉ áp dụng cho bản in này.</span><button onclick="location.reload()">Hoàn tác</button><button class="pri" onclick="print()">In / Lưu PDF</button></div>`;
-const editDoc = body => `<div class="doc" contenteditable="true" spellcheck="false">${body}</div>`;
+const editDoc = body => `<div class="doc" contenteditable="true" spellcheck="false">${body}</div>
+<script>(() => { const DIGITS = ${JSON.stringify(DIGITS)}; ${read3} ${moneyWords}
+  const d = document.querySelector('.doc');   // sửa số tiền → dòng bằng chữ cùng trường tự đổi
+  // xóa hết số rồi gõ lại thì trình duyệt bỏ thẻ đánh dấu → nhớ ô đang sửa (theo đoạn chứa nó) và gắn lại vào phần số mới gõ
+  const box = [...d.querySelectorAll('[data-so]')].map(s => ({ k: s.dataset.so, s, blk: s.closest('p,td,li,div') }));
+  const at = () => { const n = getSelection().anchorNode; return n?.nodeType === 3 ? n.parentElement : n; };
+  let cur = null;
+  d.addEventListener('beforeinput', () => { const el = at(); cur = box.find(b => b.s.isConnected && b.s.contains(el)) || (cur && !cur.s.isConnected && cur.blk.contains(el) ? cur : null); });
+  d.addEventListener('input', () => { if (!cur) return; const el = at();
+    if (!cur.s.isConnected && el && el !== cur.blk && cur.blk.contains(el) && /^[0-9.,\\s]*$/.test(el.textContent)) { el.dataset.so = cur.k; cur.s = el; }
+    const v = cur.s.isConnected ? +cur.s.textContent.replace(/[^0-9]/g, '') : 0;
+    d.querySelectorAll('[data-chu="' + cur.k + '"]').forEach(w => w.textContent = v ? moneyWords(v) : ''); });
+})()</script>`;
 
 // bản đăng ký căn hộ / nội thất từ phiếu đăng ký (GD-01) — chọn mẫu ở Quản trị › Mẫu biểu
 const DOTS = '..............................';     // ô trống trên bản in → để khách / nhân viên điền tay
@@ -390,7 +405,7 @@ async function printReservation(id, user, kind, tplCode) {
     ma_so_thue: pii ? (k?.tax_code || r.id_no || '') : '(ẩn)', chinh_sach: pol ? `${pol.code} v${pol.version}` : '' };
   // nội dung bắt đầu bằng thẻ HTML → in theo HTML (bỏ script / thuộc tính on…); còn lại in nguyên văn
   const html = /^\s*</.test(tpl.content || '');
-  const merge = t => t.replace(/\{(\w+)\}/g, (m, x) => x in map ? escH(map[x] ?? '') : m);
+  const merge = t => t.replace(/\{(\w+)\}/g, (m, x) => x in map ? mergeVal(map, x) : m);
   const body = html
     ? merge(tpl.content.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, ''))
     : `<div style="white-space:pre-wrap">${merge(escH(tpl.content))}</div>`;
