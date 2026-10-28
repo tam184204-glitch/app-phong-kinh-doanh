@@ -313,7 +313,7 @@ V.board = async (main, params) => {
   };
   await draw();
 };
-// mặt đứng tòa: mỗi tầng một hàng, căn cùng trục (2 số cuối mã căn) thẳng cột; ô chỉ là khối màu theo trạng thái —
+// mặt đứng tòa: mỗi tầng một hàng, căn cùng trục (2 số cuối mã căn) thẳng cột; ô = icon nhà (màu theo trạng thái) + tên căn —
 // rê chuột hiện thẻ tóm tắt (unitTip), bấm mở chi tiết; cuối hàng là thanh tỷ lệ còn bán của tầng
 function boardGrid(units, floors, s) {
   const axis = u => (/(\d{2})$/.exec(u.code) || [])[1] || '';
@@ -324,10 +324,10 @@ function boardGrid(units, floors, s) {
   const row = fl => {
     const us = units.filter(u => u.floor === fl), left = us.filter(u => u.status === 'con_ban').length;
     return `<div class="fl">${fl}</div>${cols.map((k, i) => { const u = cell(fl, k, i); return u
-      ? `<div class="u ${u.status} ${(s.st && s.st !== u.status) || (s.kind && s.kind !== u.kind) ? 'dim' : ''}" data-u="${u.id}">${u.hold_until ? '<i class="hold"></i>' : ''}</div>`
+      ? `<div class="u ${u.status} ${(s.st && s.st !== u.status) || (s.kind && s.kind !== u.kind) ? 'dim' : ''}" data-u="${u.id}">${ico('fa-house')}<span>${esc(u.code.split('-').pop())}</span>${u.hold_until ? '<i class="hold"></i>' : ''}</div>`
       : '<span class="u-none"></span>'; }).join('')}<div class="fbar" title="Tầng ${fl}: còn ${left}/${us.length} căn"><i style="width:${us.length ? Math.round(left / us.length * 100) : 0}%"></i></div>`;
   };
-  return `<div class="fwrap"><div class="fgrid" style="grid-template-columns:28px repeat(${cols.length},34px) 64px">${floors.map(row).join('')}</div></div>`;
+  return `<div class="fwrap"><div class="fgrid" style="grid-template-columns:28px repeat(${cols.length},56px) 64px">${floors.map(row).join('')}</div></div>`;
 }
 let tipEl = null;
 function unitTip(el, u) {
