@@ -375,8 +375,10 @@ async function printReservation(id, user, kind, tplCode) {
   if (u.base_price == null && unitPrice && u.total_price) {   // đơn giá suy ra: dò quanh để tổng khớp đúng Tổng giá căn hộ
     const want = +u.total_price; for (let d = 0; d <= 300 && sumOf(unitPrice) !== want; d++) { if (sumOf(unitPrice + d) === want) { unitPrice += d; break; } if (sumOf(unitPrice - d) === want) { unitPrice -= d; break; } }
   }
-  const pretax = unitPrice && area ? r3(area * unitPrice) : null;
-  const tax = pretax ? Math.round(pretax * 0.05) : null, maint = pretax ? r3(pretax * 0.02) : null;
+  // căn đã có số Bravo ở Danh mục sản phẩm → in đúng các số đó; chưa có mới tính theo công thức
+  const pretax = u.pretax != null ? Math.round(+u.pretax) : unitPrice && area ? r3(area * unitPrice) : null;
+  const tax = u.tax_amt != null ? Math.round(+u.tax_amt) : pretax ? Math.round(pretax * 0.05) : null;
+  const maint = u.maint_fee != null ? Math.round(+u.maint_fee) : pretax ? r3(pretax * 0.02) : null;
   const total = u.total_price ? +u.total_price : pretax ? r3(pretax + tax + maint) : r.price;   // tổng = Tổng giá căn hộ ở Danh mục sản phẩm (giá bán chính thức)
   const rd = r.reg_at ? new Date(Date.parse(r.reg_at) + 7 * 3600e3) : new Date(r.reg_date || Date.now());
   const map = { ma_phieu: r.code, ngay_dk: r.reg_at ? new Date(Date.parse(r.reg_at) + 7 * 3600e3).toISOString().replace(/^(\d+)-(\d+)-(\d+)T(\d+:\d+).*/, '$4 ngày $3/$2/$1') : dmy(r.reg_date), ten_kh: r.cust_name, dien_thoai: r.phone, cccd: pii ? r.id_no : '(ẩn)', ngay_cap: pii ? dmy(r.id_date) : '', noi_cap: pii ? r.id_place : '', dia_chi: r.address,
