@@ -381,7 +381,8 @@ async function printReservation(id, user, kind, tplCode) {
   const k = r.customer_id ? await one('SELECT tax_code FROM kd_customer WHERE id = $1', [r.customer_id]) : null;
   const pol = r.policy_id ? await one('SELECT code, version FROM kd_price_policy WHERE id = $1', [r.policy_id]) : null;
   const lab = (f, v) => E.reservation.fields.find(x => x.k === f).o.find(o => o[0] === v)?.[1] || '';
-  const finish = u.finish_value ?? u.pk_value ?? require('./mau-dang-ky').NT_GIA[tpl.code];
+  // giá trị hoàn thiện: số nhập trên phiếu đăng ký trước, chưa có thì theo căn / gói / mẫu
+  const finish = r.finish_value ?? u.finish_value ?? u.pk_value ?? require('./mau-dang-ky').NT_GIA[tpl.code];
   // giá căn theo công thức đơn đăng ký Excel: trước thuế = ROUND(DT × đơn giá, -3); VAT 5%; bảo trì = ROUND(trước thuế × 2%, -3); tổng = ROUND(cộng, -3)
   // đơn giá lấy ở Danh mục sản phẩm; căn chưa có thì suy ra từ giá sau thuế
   const r3 = v => Math.round(v / 1000) * 1000, area = +(u.area_tt || 0), net = +(u.price_net || 0);
@@ -394,7 +395,8 @@ async function printReservation(id, user, kind, tplCode) {
   const pretax = u.pretax != null ? Math.round(+u.pretax) : unitPrice && area ? r3(area * unitPrice) : null;
   const tax = u.tax_amt != null ? Math.round(+u.tax_amt) : pretax ? Math.round(pretax * 0.05) : null;
   const maint = u.maint_fee != null ? Math.round(+u.maint_fee) : pretax ? r3(pretax * 0.02) : null;
-  const total = u.total_price ? +u.total_price : pretax ? r3(pretax + tax + maint) : r.price;   // tổng = Tổng giá căn hộ ở Danh mục sản phẩm (giá bán chính thức)
+  // tổng giá trị căn hộ in riêng với nội thất: = sau thuế + bảo trì ở Danh mục sản phẩm (không cộng giá trị hoàn thiện)
+  const total = u.price_net != null ? +u.price_net + (+u.maint_fee || 0) : u.total_price ? +u.total_price - (+u.finish_value || 0) : pretax ? r3(pretax + tax + maint) : +r.unit_value || r.price;
   const rd = r.reg_at ? new Date(Date.parse(r.reg_at) + 7 * 3600e3) : new Date(r.reg_date || Date.now());
   const map = { ma_phieu: r.code, ngay_dk: r.reg_at ? new Date(Date.parse(r.reg_at) + 7 * 3600e3).toISOString().replace(/^(\d+)-(\d+)-(\d+)T(\d+:\d+).*/, '$4 ngày $3/$2/$1') : dmy(r.reg_date), ten_kh: r.cust_name, dien_thoai: r.phone, cccd: pii ? r.id_no : '(ẩn)', ngay_cap: pii ? dmy(r.id_date) : '', noi_cap: pii ? r.id_place : '', dia_chi: r.address,
     ma_can: u.code, du_an: u.project, dia_diem: u.p_addr, chu_dau_tu: u.investor, toa: u.building, tang: u.floor, dien_tich: String(u.area_tt ?? '').replace('.', ','), huong: u.direction,
