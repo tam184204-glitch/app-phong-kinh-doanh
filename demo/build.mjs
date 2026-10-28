@@ -2,6 +2,7 @@
 // docs/demo.js = máy chủ gói cho trình duyệt (esbuild + shims), docs/front.js = giao diện public/*.js nối lại.
 import { build } from 'esbuild';
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -29,5 +30,10 @@ await build({
 // giao diện: nối ui → screens → ai, đường dẫn ảnh tương đối (Pages chạy trong thư mục con)
 const front = ['ui', 'screens', 'ai'].map(f => `// ---- ${f}.js\n` + fs.readFileSync(path.join(ROOT, 'public', f + '.js'), 'utf8').replace(/(["'(])\/logo\.png/g, '$1logo.png')).join('\n');
 fs.writeFileSync(path.join(OUT, 'front.js'), front);
-for (const [from, to] of [['public/app.css', 'app.css'], ['public/logo.png', 'logo.png'], ['demo/index.html', 'index.html'], ['demo/fa.css', 'fa.css']]) fs.copyFileSync(path.join(ROOT, from), path.join(OUT, to));
+for (const [from, to] of [['public/app.css', 'app.css'], ['public/logo.png', 'logo.png'], ['demo/fa.css', 'fa.css']]) fs.copyFileSync(path.join(ROOT, from), path.join(OUT, to));
+// gắn ?v=<mã băm nội dung> → bản mới lên Pages thì trình duyệt tải lại ngay, không dùng tệp cũ trong bộ nhớ đệm (Pages cho giữ 10 phút)
+const ver = f => createHash('sha1').update(fs.readFileSync(path.join(OUT, f))).digest('hex').slice(0, 10);
+fs.writeFileSync(path.join(OUT, 'index.html'), fs.readFileSync(path.join(ROOT, 'demo/index.html'), 'utf8')
+  .replace("'./demo.js'", `'./demo.js?v=${ver('demo.js')}'`).replace("['front.js']", `['front.js?v=${ver('front.js')}']`)
+  .replace('href="app.css"', `href="app.css?v=${ver('app.css')}"`));
 console.log('Đã dựng docs/ —', fs.readdirSync(OUT).map(f => `${f} ${(fs.statSync(path.join(OUT, f)).size / 1024).toFixed(0)}KB`).join(', '));
