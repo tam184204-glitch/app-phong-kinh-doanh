@@ -482,6 +482,33 @@ async function cancelPrefill(db, { contract_id, reservation_id }) {
     project_id: p?.id ?? null, project_label: p ? `${p.code} · ${p.name}` : '', unit_id: u?.id ?? null, unit_label: u?.code || '', paid };
 }
 
+// thông báo mở bán: căn thuộc đợt theo «Căn hộ mở bán» (* = cả dự án / mã tòa / mã căn)
+async function noticeUnits(db, n) {
+  const g = String(n.unit_group || '*').split(/[,;\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+  const us = await db.q('SELECT u.id, u.code, u.status, u.activated, u.lock, b.code b FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = $1', [n.project_id]);
+  return us.filter(u => g.includes('*') || g.includes(String(u.b).toUpperCase()) || g.includes(u.code.toUpperCase()));
+}
+H.sale_notice = {
+  async beforeSave(r) {
+    if (r.close_on && r.open_on && r.close_on < r.open_on) bad('Ngày kết thúc nhận hồ sơ phải sau ngày bắt đầu');
+    if (!String(r.unit_group || '').trim()) r.unit_group = '*';
+  },
+  async onSubmit(r, { db }) { if (!(await noticeUnits(db, r)).length) bad('Đợt mở bán chưa có căn nào'); },
+  // duyệt (phát hành): căn trong đợt chưa mở bán → kích hoạt «Còn bán»
+  async afterApprove(r, ok, { db, user }) {
+    if (!ok) return;
+    for (const u of await noticeUnits(db, r)) if (!u.activated && !u.lock) { await sys(db, 'unit', u.id, { activated: true }, user, 'kich_hoat', `Theo thông báo mở bán ${r.code}`); await recomputeUnit(db, u.id, user); }
+  },
+  // theo dõi: số căn trong đợt, đã đăng ký / giữ chỗ (đã có phiếu đăng ký hoặc hợp đồng), còn trống
+  async decorate(rows, { db }) {
+    for (const r of rows) {
+      const us = await noticeUnits(db, r);
+      r.n_units = us.length; r.n_free = us.filter(u => u.status === 'con_ban').length;
+      r.n_reg = us.filter(u => !['con_ban', 'chua_mo_ban', 'tam_khoa', 'ngung_kd'].includes(u.status)).length;
+    }
+  },
+};
+
 H.cancel_req = {
   async beforeSave(r, old, { db }) {
     // thông tin khách hàng theo hợp đồng / phiếu giữ chỗ (chọn lại thì lấy lại); số tiền đề nghị để trống = số khách đã nộp

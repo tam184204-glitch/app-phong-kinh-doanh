@@ -198,6 +198,27 @@ const RES_ST = [['nhap', 'Nháp', 's'], ['cho_duyet', 'Chờ duyệt', 'a'], ['g
 // phiếu đăng ký căn hộ (lập từ Bảng hàng): trạng thái căn + tiến trình do nhân viên chọn
 const REG_ST = [['giu_cho', 'Giữ chỗ', 'a'], ['ky_hdmb', 'Ký HĐMB', 'g'], ['huy', 'Hủy đăng ký', 'r']];
 const REG_PROG = [['tiep_nhan', 'Đã tiếp nhận hồ sơ', 's'], ['cho_xet_duyet', 'Đã nộp hồ sơ chờ xét duyệt', 'a'], ['du_dk', 'Đủ điều kiện ký HĐMB', 'b'], ['da_ky', 'Đã ký HĐMB', 'g']];
+// thông báo mở bán căn hộ: mỗi đợt mở bán (văn bản thông báo, thời gian nhận hồ sơ, căn mở bán) — duyệt thì căn chưa mở bán trong đợt chuyển «Còn bán»
+def('sale_notice', {
+  title: 'Thông báo mở bán căn hộ', one: 'thông báo', code: 'GD-03', mod: '04', icon: 'fa-bullhorn', disp: "t.code||coalesce(' · '||t.title,'')",
+  purpose: 'Theo dõi các đợt thông báo mở bán và tình hình đăng ký theo đợt', users: 'Trưởng phòng / nhân viên kinh doanh',
+  how: 'Lập thông báo (dự án, căn mở bán, thời gian nhận hồ sơ, nơi đăng) → trình duyệt → duyệt thì căn chưa mở bán trong đợt tự chuyển «Còn bán» → theo dõi số căn đã đăng ký / còn trống',
+  rules: 'Ngày kết thúc nhận hồ sơ phải sau ngày bắt đầu; đính kèm văn bản thông báo trước khi trình duyệt',
+  c: ['truong_phong', 'ban_hang'], u: ['truong_phong', 'ban_hang'], a: MGR, search: ['code', 'title', 'doc_no'], files: [['van_ban', 'Văn bản thông báo mở bán', 1]], fields: [
+    { k: 'code', l: 'Mã thông báo', t: 'code', prefix: 'TB-{Y}-', pad: 4 },
+    { k: 'project_id', l: 'Dự án', t: 'ref', ref: 'project', req: 1 },
+    { k: 'title', l: 'Tên đợt mở bán', t: 'text', req: 1, help: 'VD: Mở bán đợt 2 – tòa O' },
+    { k: 'doc_no', l: 'Số văn bản thông báo', t: 'text' },
+    { k: 'notice_on', l: 'Ngày thông báo', t: 'date', def: 'today' },
+    { k: 'open_on', l: 'Ngày bắt đầu nhận hồ sơ', t: 'date', req: 1 },
+    { k: 'close_on', l: 'Ngày kết thúc nhận hồ sơ', t: 'date' },
+    { k: 'channels', l: 'Nơi đăng thông báo', t: 'text', sug: ['Website công ty; Cổng thông tin Sở Xây dựng', 'Website công ty', 'Cổng thông tin Sở Xây dựng', 'Bảng tin tại dự án', 'Fanpage / Zalo OA', 'Báo điện tử'] },
+    { k: 'unit_group', l: 'Căn hộ mở bán', t: 'text', req: 1, def: '*', pick: 'units', help: 'Tích chọn tòa / từng căn — * = cả dự án' },
+    { k: 'note', l: 'Ghi chú', t: 'long' },
+    { k: 'status', l: 'Trạng thái', t: 'sel', o: [['nhap', 'Nháp', 's'], ['cho_duyet', 'Chờ duyệt', 'a'], ['da_duyet', 'Đã phát hành', 'g'], ['tu_choi', 'Từ chối', 'r']], ro: 1, def: 'nhap' },
+  ], list: ['code', 'project_id', 'title', 'doc_no', 'notice_on', 'open_on', 'close_on', 'n_units', 'n_reg', 'n_free', 'status'],
+  lock: ['cho_duyet', 'da_duyet'], lockKeep: ['note', 'close_on', 'channels'], flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'da_duyet', no: 'tu_choi' }, submitLabel: 'Trình duyệt' },
+});
 def('reservation', {
   title: 'Đăng ký mua – giữ chỗ', one: 'phiếu đăng ký', code: 'GD-01', mod: '04', icon: 'fa-hand-holding-hand', disp: "t.code||coalesce(' · '||t.cust_name,'')",
   purpose: 'Ghi nhận khách đăng ký mua căn, giữ căn cho khách', users: 'Nhân viên bán hàng',
@@ -831,7 +852,7 @@ const MENU = [
   ['01', 'Tổng quan điều hành', 'fa-gauge-high', [['dashboard', 'Dashboard'], ['ai', 'Trợ lý AI tra cứu'], ['alerts', 'Cảnh báo tồn đọng'], ['approvals', 'Hộp phê duyệt']]],
   ['02', 'Dự án & giỏ hàng', 'fa-city', [['board', 'Bảng hàng'], ['projects', 'Danh mục dự án'], ['products', 'Danh mục sản phẩm/căn hộ', 'DA-01'], ['customers', 'Danh mục khách hàng', 'KH-01'], ['e:price_policy']]],
   ['03', 'Khách hàng tiềm năng', 'fa-users', [['e:contact_log']]],   // hồ sơ khách tự sinh từ kênh liên hệ (Website, Messenger, Zalo, Hotline, trực tiếp)
-  ['04', 'Giao dịch bán hàng', 'fa-handshake-angle', [['e:reservation'], ['e:noxh_check'], ['payouts', 'Theo dõi thanh lý & chi trả', 'GD-04']]],
+  ['04', 'Giao dịch bán hàng', 'fa-handshake-angle', [['e:sale_notice'], ['e:reservation'], ['e:noxh_check'], ['payouts', 'Theo dõi thanh lý & chi trả', 'GD-04']]],
   ['05', 'Hồ sơ & hợp đồng', 'fa-file-contract', [['e:contract?group=can_ho', 'Hợp đồng căn hộ chung cư'], ['e:contract?group=lien_ke', 'Hợp đồng nhà liền kề'], ['signing', 'Lịch ký hợp đồng'], ['e:contract_change'], ['vault', 'Lưu trữ hồ sơ pháp lý']]],
   ['06', 'Công nợ & kế hoạch thu', 'fa-sack-dollar', [['ledger', 'Sổ công nợ căn hộ'], ['e:installment'], ['e:receipt'], ['e:collect_plan'], ['e:debt_call'], ['e:refund']]],
   ['07', 'Bàn giao căn hộ', 'fa-key', [['ready', 'Căn đủ điều kiện'], ['e:handover'], ['e:defect']]],
@@ -875,7 +896,7 @@ const SETTINGS = {
 const VIRT = {
   id: 'Số', created_by: 'Người lập', created_at: 'Ngày lập', stage: 'Tiến trình giao dịch', paid: 'Đã thu', pay_status: 'Tình trạng kỳ thu',
   actual: 'Thực thu', gap: 'Chênh lệch', promise_st: 'Tình trạng cam kết', defects_open: 'Tồn tại chưa đóng', days_in: 'Ngày xử lý nội bộ',
-  days_out: 'Ngày tại cơ quan', sla: 'SLA', project: 'Dự án', building: 'Tòa', stt: 'STT', prints: 'In bản đăng ký', bbgn: 'In biên bản giao nhận',
+  days_out: 'Ngày tại cơ quan', sla: 'SLA', n_units: 'Số căn mở bán', n_reg: 'Đã đăng ký / giữ chỗ', n_free: 'Còn trống', project: 'Dự án', building: 'Tòa', stt: 'STT', prints: 'In bản đăng ký', bbgn: 'In biên bản giao nhận',
 };
 
 module.exports = { M4, SELLERS, PROSPECT_ST, VIRT,  ROLES, ALL, MGR, PII_ROLES, E, MENU, VIEW_ROLES, LOOKUPS, SETTINGS, UNIT_ST };

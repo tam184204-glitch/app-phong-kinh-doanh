@@ -99,7 +99,7 @@ function show(f, row, { plain } = {}) {
     default: return esc(v);
   }
 }
-const VIRT_MONEY = new Set(['paid', 'actual', 'gap']);
+const VIRT_MONEY = new Set(['paid', 'actual', 'gap']), VIRT_NUM = new Set(['n_units', 'n_reg', 'n_free']);
 function cell(ent, k, row) {
   const f = M.ents[ent].fields.find(x => x.k === k);
   if (f) return { html: show(f, row), num: ['money', 'num', 'int'].includes(f.t) };
@@ -108,6 +108,7 @@ function cell(ent, k, row) {
   if (k === 'prints') return { html: `<span class="nowrap"><button type="button" class="btn sm" data-print="dang_ky_can" title="In bản đăng ký căn hộ (chọn mẫu in)">${ico('fa-print')} Căn hộ</button> <button type="button" class="btn sm" data-print="dang_ky_noi_that" title="In bản đăng ký nội thất (chọn mẫu in)">${ico('fa-couch')} Nội thất</button></span>` };
   if (k === 'bbgn') return { html: `<button type="button" class="btn sm" data-bbgn title="In biên bản bàn giao tài liệu hồ sơ mua nhà (chọn mẫu Cát Tường / Thống Nhất)">${ico('fa-file-signature')} Biên bản</button>` };
   if (k === 'created_at') return { html: dmy(v) };
+  if (VIRT_NUM.has(k)) return { html: v == null ? '' : fnum(v), num: true };
   if (VIRT_MONEY.has(k)) return { html: v == null ? '' : `<span class="${k === 'gap' ? (v < 0 ? 'neg' : v > 0 ? 'pos' : '') : ''}">${fm(v)}</span>`, num: true };
   if (k === 'promise_st') return { html: v ? pill(v, /Thất/.test(v) ? 'r' : /Đúng/.test(v) ? 'g' : /một phần/.test(v) ? 'a' : 'b') : '' };
   if (k === 'pay_status') return { html: v ? pill(v, /Quá hạn/.test(v) ? 'r' : /Đã thu/.test(v) ? 'g' : /Đến hạn|Sắp/.test(v) ? 'a' : /Hết hiệu lực/.test(v) ? 's' : 'b') : '' };
