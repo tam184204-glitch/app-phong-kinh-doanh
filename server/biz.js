@@ -472,11 +472,28 @@ H.noxh_check = {
   },
 };
 
+// phiếu đề nghị hủy / đổi: chọn hợp đồng hoặc phiếu giữ chỗ → khách hàng, SĐT, dự án, mã căn, số tiền khách đã nộp
+async function cancelPrefill(db, { contract_id, reservation_id }) {
+  const c = contract_id && await raw(db, 'contract', +contract_id), res = (c?.reservation_id || reservation_id) && await raw(db, 'reservation', +(c?.reservation_id || reservation_id));
+  const unitId = c?.unit_id || res?.unit_id, custId = c?.customer_id || res?.customer_id;
+  const u = unitId && await raw(db, 'unit', unitId), k = custId && await raw(db, 'customer', custId), p = u && await raw(db, 'project', u.project_id);
+  const paid = c ? (await debtOf(db, [c.id])).get(c.id).paid : +res?.deposit || 0;
+  return { reservation_id: res?.id ?? null, reservation_label: res?.code || '', cust_name: k?.full_name || res?.cust_name || '', phone: k?.phone || res?.phone || '',
+    project_id: p?.id ?? null, project_label: p ? `${p.code} · ${p.name}` : '', unit_id: u?.id ?? null, unit_label: u?.code || '', paid };
+}
+
 H.cancel_req = {
   async beforeSave(r, old, { db }) {
-    // theo dõi chi trả: ngày dự kiến = ngày ký thanh lý + thời gian chờ; ghi ngày thì tự đổi tình trạng
+    // thông tin khách hàng theo hợp đồng / phiếu giữ chỗ (chọn lại thì lấy lại); số tiền đề nghị để trống = số khách đã nộp
+    if (r.contract_id || r.reservation_id) {
+      const src = !old || old.contract_id !== r.contract_id || old.reservation_id !== r.reservation_id;
+      const f = await cancelPrefill(db, r);
+      for (const k of ['cust_name', 'phone', 'project_id', 'unit_id']) if (src || r[k] == null || r[k] === '') r[k] = f[k];
+      if (r.pay_amount == null) r.pay_amount = f.paid || null;
+    }
+    // ngày đề nghị chi trả: để trống / đổi ngày thanh lý hoặc thời gian chờ → ngày ký thanh lý + thời gian chờ; ghi ngày thì tự đổi tình trạng
     if (r.wait_days == null) r.wait_days = 30;
-    r.pay_due = r.liquidate_on ? C.addDays(r.liquidate_on, +r.wait_days || 0) : null;
+    if (r.liquidate_on && (!r.pay_due || (old && (old.liquidate_on !== r.liquidate_on || +old.wait_days !== +r.wait_days) && r.pay_due === old.pay_due))) r.pay_due = C.addDays(r.liquidate_on, +r.wait_days || 0);
     if (r.acct_on && r.acct_status !== 'da') r.acct_status = 'da';
     if (r.paid_on && !['da_chi', 'mot_phan'].includes(r.pay_status)) r.pay_status = 'da_chi';
     if (r.pay_status === 'da_chi' && !r.paid_on) bad('Ghi «Ngày chi tiền thực tế» khi tình trạng là Đã chi');
@@ -888,4 +905,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { ckItem, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, pricing, normSchedule, writeSchedule, syncContractValue, contractPrice, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { ckItem, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, pricing, normSchedule, writeSchedule, syncContractValue, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

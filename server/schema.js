@@ -91,11 +91,22 @@ const SPECIAL = [
       'housing', coalesce(n.housing, ''), 'province', coalesce(n.province, ''), 'district', coalesce(n.district, ''), 'commune', coalesce(n.commune, ''), 'income', coalesce(n.income, ''), 'relation', 'Chủ hộ'))
     FROM kd_customer k WHERE k.id = n.customer_id AND n.head IS NULL`,
   `UPDATE kd_noxh_check n SET project_id = u.project_id, unit_area = coalesce(n.unit_area, u.area_tt) FROM kd_unit u WHERE u.id = n.unit_id AND n.project_id IS NULL`,
+  // đề nghị hủy / đổi trước khi có phần «1. Thông tin khách hàng»: lấy theo hợp đồng / phiếu giữ chỗ
+  `UPDATE kd_cancel_req t SET cust_name = k.full_name, phone = k.phone, unit_id = u.id, project_id = u.project_id
+    FROM kd_cancel_req x LEFT JOIN kd_contract c ON c.id = x.contract_id LEFT JOIN kd_reservation r ON r.id = coalesce(x.reservation_id, c.reservation_id)
+      JOIN kd_unit u ON u.id = coalesce(c.unit_id, r.unit_id) JOIN kd_customer k ON k.id = coalesce(c.customer_id, r.customer_id)
+    WHERE t.id = x.id AND t.cust_name IS NULL`,
   // phiếu đăng ký trước khi tách 3 cột giá: Tổng giá bán cũ = Giá trị căn hộ
   `UPDATE kd_reservation SET unit_value = price - coalesce(finish_value, 0) WHERE unit_value IS NULL AND price IS NOT NULL`,
   `CREATE INDEX IF NOT EXISTS kd_price_policy_pids ON kd_price_policy USING gin (project_ids)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS kd_customer_code ON kd_customer (upper(code)) WHERE code IS NOT NULL`,
   `CREATE UNIQUE INDEX IF NOT EXISTS kd_customer_idno ON kd_customer (upper(id_no)) WHERE id_no IS NOT NULL`,
+];
+// chạy trước khi dựng lại ràng buộc: đổi giá trị danh sách chọn đã bỏ
+const PRE = [
+  // phương án xử lý tiền rút gọn (28/10/2026): giữ lại / không phát sinh → Khác
+  'ALTER TABLE IF EXISTS kd_cancel_req DROP CONSTRAINT IF EXISTS ck_kd_cancel_req_money_plan',
+  `UPDATE kd_cancel_req SET money_note = coalesce(money_note, CASE money_plan WHEN 'giu_lai' THEN 'Giữ lại theo chính sách' ELSE 'Không phát sinh tiền' END), money_plan = 'khac' WHERE money_plan IN ('giu_lai', 'khong_phat_sinh')`,
 ];
 // CHECK nghiệp vụ thêm (ngoài money ≥ 0 và giá trị danh sách chọn)
 const CHECKS = {
@@ -128,6 +139,8 @@ async function migrate(db) {
       for (const f of e.fields) if (!have.has(f.k)) await db.q(`ALTER TABLE ${t} ADD COLUMN ${f.k} ${SQLT[f.t]}${f.t === 'bool' ? ` DEFAULT ${f.def === true}` : ''}`);
     }
   }
+  // đổi giá trị danh sách chọn trước khi dựng lại CHECK (giá trị cũ không còn trong danh sách)
+  for (const s of PRE) await db.q(s);
   // khóa ngoại + CHECK + chỉ mục: dựng lại theo meta (tên cố định → không trùng)
   for (const e of Object.values(E)) {
     const t = e.table;

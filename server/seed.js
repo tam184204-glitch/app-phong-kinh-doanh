@@ -372,7 +372,7 @@ async function loadDemo() {
     // phiếu giữ chỗ quá hạn (cần xử lý) + phiếu chờ duyệt + phiếu nháp
     { const c = await mkCustomer(bh1, { stage: 'quan_tam_cao' }); const r = (await C.create('reservation', { customer_id: c.id, unit_id: O[24].id, reg_date: D(-5), hold_until: at(D(-1), 17), source: 'truc_tiep', owner_id: bh1.id }, bh1, o({ system: true }))).row;
       await C.submit('reservation', r.id, bh1, { db, demo: true }); await C.approve('reservation', r.id, tp, { ok: true, db }); await C.sys(db, 'reservation', r.id, { status: 'qua_han' }, null, 'qua_han_giu_cho');
-      await C.create('cancel_req', { kind: 'huy', reservation_id: r.id, reason: 'Khách không thu xếp được tài chính, xin hủy giữ chỗ', money_plan: 'khong_phat_sinh' }, bh1, o());
+      await C.create('cancel_req', { kind: 'huy', reservation_id: r.id, reason: 'Khách không thu xếp được tài chính, xin hủy giữ chỗ', money_plan: 'khac', money_note: 'Không phát sinh tiền' }, bh1, o());
       inc('Giữ chỗ quá hạn'); }
     { const c = await mkCustomer(bh2, { stage: 'quan_tam_cao' }); const r = (await C.create('reservation', { customer_id: c.id, unit_id: O[25].id, reg_date: T, hold_until: at(D(3), 17), source: 'dai_ly', agent_id: ag1.id, owner_id: bh2.id }, bh2, o({ system: true }))).row;
       await C.submit('reservation', r.id, bh2, { db, demo: true }); inc('Giữ chỗ chờ duyệt'); }

@@ -360,6 +360,18 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [] } = {}
     form.addEventListener('input', e => { if (['base_price', 'area_tt', 'floor_price', 'area_floor', 'discount', 'corner_pct', 'vat_pct', 'finish_value'].includes(e.target.name)) contractCalc(); else if (e.target.name === 'value') sch?._redraw?.(); });
     form.addEventListener('change', e => { if (e.target.name === 's_name') fillSeller().catch(er => toast(er.message, true)); if (e.target.name === 'seller_unit') { const s = (M.sellers || []).find(x => x.unit === e.target.value); if (s) { form.elements.s_name.value = s.name; fillSeller().catch(er => toast(er.message, true)); } } });
   }
+  // phiếu đề nghị hủy / đổi: chọn hợp đồng hoặc phiếu giữ chỗ → khách hàng, SĐT, dự án, mã căn, số tiền khách đã nộp
+  if (ent === 'cancel_req') form.addEventListener('change', async e => {
+    if (!['contract_id', 'reservation_id'].includes(e.target.name) || !e.target.value) return;
+    const setRef = (k, id, label) => { const h = form.elements[k]; if (!h) return; h.value = id ?? ''; const t = h.closest('.combo')?.querySelector('[data-combo]'); if (t) t.value = id ? label : ''; };
+    try {
+      const d = await api('GET', `/api/cancel_prefill?${e.target.name === 'contract_id' ? 'contract_id' : 'reservation_id'}=${e.target.value}`);
+      form.elements.cust_name.value = d.cust_name; form.elements.phone.value = d.phone;
+      setRef('project_id', d.project_id, d.project_label); setRef('unit_id', d.unit_id, d.unit_label);
+      if (e.target.name === 'contract_id' && d.reservation_id) setRef('reservation_id', d.reservation_id, d.reservation_label);
+      if (form.elements.pay_amount && !form.elements.pay_amount.value && d.paid) form.elements.pay_amount.value = moneyStr(d.paid);
+    } catch (er) { toast(er.message, true); }
+  });
   // phiếu đăng ký: Tổng giá bán = Giá trị căn hộ + Giá trị hoàn thiện nội thất
   const sumRes = () => { const rd = k => readField(form, fields.find(f => f.k === k) || {}), uv = rd('unit_value'); if (uv != null && form.elements.price) form.elements.price.value = moneyStr(uv + (rd('finish_value') || 0)); };
   if (ent === 'reservation') form.addEventListener('input', e => { if (['unit_value', 'finish_value'].includes(e.target.name)) sumRes(); });

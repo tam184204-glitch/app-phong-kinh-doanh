@@ -424,4 +424,39 @@ async function printReservation(id, user, kind, tplCode) {
     ${EDIT_CSS}</style></head><body>${editBar(`Bản in từ mẫu «${escH(tpl.name)}» · phiếu ${escH(r.code)}`)}${editDoc(body)}</body></html>`;
 }
 
-module.exports = { EDIT_CSS, editBar, editDoc, A, strip, mapRows, exportList, sheet, importFile, importTemplate, IMPORTS, createUser, hashPw, checkPw, printContract, printReservation, regTemplates, moneyWords };
+// phiếu đề nghị hủy giao dịch / đổi căn / đổi khách (3 phần + ký: người lập phiếu – bộ phận kiểm tra – người phê duyệt)
+async function printCancelReq(id, user) {
+  const { row: r } = await C.get('cancel_req', id, user, { reveal: true });
+  const x = await one(`SELECT p.name project, u.code unit, c.number contract, s.code res, nu.code new_unit, nk.full_name new_cust, o.full_name maker
+    FROM kd_cancel_req t LEFT JOIN kd_project p ON p.id = t.project_id LEFT JOIN kd_unit u ON u.id = t.unit_id LEFT JOIN kd_contract c ON c.id = t.contract_id LEFT JOIN kd_reservation s ON s.id = t.reservation_id
+      LEFT JOIN kd_unit nu ON nu.id = t.new_unit_id LEFT JOIN kd_customer nk ON nk.id = t.new_customer_id LEFT JOIN kd_user o ON o.id = t.created_by WHERE t.id = $1`, [r.id]);
+  const lab = (k, v) => E.cancel_req.fields.find(f => f.k === k).o.find(o => o[0] === v)?.[1] || '';
+  const D = '..............................', v = s => s ? escH(s) : D, box = on => on ? '☒' : '☐';
+  const plan = ['hoan_tien', 'chuyen_can_moi', 'khac'].map(k => `${box(r.money_plan === k)} ${lab('money_plan', k)}`).join('&nbsp;&nbsp;&nbsp;') + (r.money_plan === 'khac' && r.money_note ? `: ${escH(r.money_note)}` : '');
+  const kind = lab('kind', r.kind) + (r.kind === 'doi_can' && x.new_unit ? ` → căn ${escH(x.new_unit)}` : '') + (r.kind === 'doi_kh' && x.new_cust ? ` → ${escH(x.new_cust)}` : '');
+  const rd = new Date(Date.parse(r.created_at || Date.now()) + 7 * 3600e3);
+  const body = `<div class="qh"><b>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</b><br><b class="tn">Độc lập - Tự do - Hạnh phúc</b></div>
+<h2>PHIẾU ĐỀ NGHỊ ${escH(lab('kind', r.kind).toUpperCase())}</h2><p class="c">Số: ${escH(r.code)}</p>
+<p class="h">1. Thông tin khách hàng</p>
+<p>Họ tên khách hàng: <b>${v(r.cust_name)}</b></p><p>Số điện thoại: ${v(r.phone)}</p>
+<p>Dự án: ${v(x.project)}&nbsp;&nbsp;&nbsp;&nbsp;Mã căn hộ: <b>${v(x.unit)}</b></p><p>Mã hợp đồng: ${v(x.contract)}${x.res ? `&nbsp;&nbsp;&nbsp;&nbsp;Phiếu giữ chỗ: ${escH(x.res)}` : ''}</p>
+<p class="h">2. Nội dung đề nghị</p>
+<p>Loại đề nghị: ${kind}</p><p>Phương án xử lý: ${plan}</p>
+<p>Số tiền đề nghị xử lý: <b>${r.pay_amount ? fmtMoney(r.pay_amount) : D}</b> đồng${r.pay_amount ? ` <i>(${moneyWords(r.pay_amount)})</i>` : ''}</p>
+<p>Ngày ký thanh lý HĐMB (nếu có): ${r.liquidate_on ? dmy(r.liquidate_on) : '....../....../......'}</p><p>Ngày đề nghị chi trả: ${r.pay_due ? dmy(r.pay_due) : '....../....../......'}</p>
+${r.reason ? `<p>Lý do: ${escH(r.reason)}</p>` : ''}
+<p class="h">3. Chuyển xử lý</p>
+<p>Bộ phận tiếp nhận xử lý: ${v(r.handler_dept)}</p><p>Hồ sơ kèm theo: ${v(r.attachments)}</p><p>Ghi chú: ${v(r.note)}</p>
+<p class="r"><i>Bắc Ninh, ngày ${String(rd.getUTCDate()).padStart(2, '0')} tháng ${String(rd.getUTCMonth() + 1).padStart(2, '0')} năm ${rd.getUTCFullYear()}</i></p>
+<table class="sign3"><tr><td><b>NGƯỜI LẬP PHIẾU</b><br><i>(Ký, ghi rõ họ tên)</i></td><td><b>BỘ PHẬN KIỂM TRA</b><br><i>(Ký, ghi rõ họ tên)</i></td><td><b>NGƯỜI PHÊ DUYỆT</b><br><i>(Ký, ghi rõ họ tên)</i></td></tr>
+<tr class="nm"><td>${escH(x.maker || '')}</td><td></td><td></td></tr></table>`;
+  await C.audit({ q }, 'cancel_req', r.id, 'in_phieu', null, null, user);
+  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${escH(r.code)} – Phiếu đề nghị</title><style>
+    @page{size:A4;margin:20mm 15mm 20mm 25mm} body{font:13pt/1.45 "Times New Roman",serif;color:#000;max-width:170mm;margin:auto}
+    .qh{text-align:center;line-height:1.3} .qh .tn{display:inline-block;padding-bottom:2pt;border-bottom:1px solid #000} h2{text-align:center;font-size:14pt;margin:14pt 0 2pt}
+    p{margin:3pt 0} .c{text-align:center} .r{text-align:right;margin-top:10pt} .h{font-weight:bold;margin-top:9pt}
+    table.sign3{width:100%;border-collapse:collapse;margin-top:6pt;page-break-inside:avoid} table.sign3 td{width:33%;text-align:center;vertical-align:top} table.sign3 tr.nm td{padding-top:70pt}
+    ${EDIT_CSS}</style></head><body>${editBar(`Phiếu đề nghị ${escH(r.code)}`)}${editDoc(body)}</body></html>`;
+}
+
+module.exports = { printCancelReq, EDIT_CSS, editBar, editDoc, A, strip, mapRows, exportList, sheet, importFile, importTemplate, IMPORTS, createUser, hashPw, checkPw, printContract, printReservation, regTemplates, moneyWords };
