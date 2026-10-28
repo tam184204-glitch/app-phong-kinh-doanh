@@ -489,6 +489,7 @@ async function noticeUnits(db, n) {
   return us.filter(u => g.includes('*') || g.includes(String(u.b).toUpperCase()) || g.includes(u.code.toUpperCase()));
 }
 H.sale_notice = {
+  noDelete: r => r.status !== 'nhap' && 'Chỉ xóa được thông báo đang ở bản nháp',
   async beforeSave(r) {
     if (r.close_on && r.open_on && r.close_on < r.open_on) bad('Ngày kết thúc nhận hồ sơ phải sau ngày bắt đầu');
     if (!String(r.unit_group || '').trim()) r.unit_group = '*';

@@ -654,10 +654,11 @@ async function listView(main, ent, params = {}) {
     const p = new URLSearchParams(); if (S.q) p.set('q', S.q); if (S.status) p.set('status', S.status); if (S.project) p.set('project', S.project); if (S.mine) p.set('mine', '1'); if (S.sort) p.set('sort', S.sort); p.set('limit', S.limit); if (S.group) p.set('group', S.group);
     for (const [k, v] of Object.entries(S)) if (k.startsWith('f_') && v) p.set(k, v);
     const d = await api('GET', `/api/e/${ent}?${p}`);
+    S.rowSt = new Map(d.rows.map(r => [r.id, r.status]));   // trạng thái từng dòng: nút Xóa hàng loạt chỉ cho bản nháp
     $('#cnt', main).textContent = `${d.rows.length < d.total ? `${d.rows.length} / ` : ''}${d.total} ${E.one}`;
     if (st) { const all = Object.values(d.counts || {}).reduce((a, b) => a + b, 0); $('#stTabs', main).innerHTML = `<button data-s="" class="${!S.status ? 'on' : ''}">Tất cả<span class="c">${all}</span></button>` + st.o.filter(o => d.counts?.[o[0]] || S.status === o[0]).map(o => `<button data-s="${o[0]}" class="${S.status === o[0] ? 'on' : ''}">${esc(o[1])}<span class="c">${d.counts?.[o[0]] || 0}</span></button>`).join(''); }
     const cols = E.list;
-    const bulk = E.bulk || (E.flow && E.perm.a);
+    const bulk = E.bulk || (E.flow && (E.perm.a || E.perm.d));
     $('#tb', main).innerHTML = d.rows.length ? `<table class="t"><thead><tr>${bulk ? '<th style="width:30px"><input type="checkbox" id="selAll"></th>' : ''}${cols.map(k => { const f = E.fields.find(x => x.k === k); const s = S.sort.replace('-', '') === k ? (S.sort[0] === '-' ? ' ↓' : ' ↑') : ''; return `<th class="${f ? 'sort' : ''} ${f && ['money', 'num', 'int'].includes(f.t) || VIRT_MONEY.has(k) ? 'num' : ''}" data-k="${f ? k : ''}">${esc(colLabel(ent, k))}${s}</th>`; }).join('')}</tr></thead>
       <tbody>${d.rows.map((r, i) => `<tr data-id="${r.id}" class="${S.sel.has(r.id) ? 'sel' : ''}">${bulk ? `<td><input type="checkbox" data-sel="${r.id}" ${S.sel.has(r.id) ? 'checked' : ''}></td>` : ''}${cols.map(k => { const c = cell(ent, k, r); const lf = E.fields.find(x => x.k === k); return `<td class="${c.num ? 'num' : ''} ${lf?.t === 'long' ? 'wrap' : ''}">${k === 'id' ? '#' + r.id : k === 'stt' ? i + 1 : c.html}${k === cols[0] && r.is_demo ? ' <span class="tag demo" title="Dữ liệu thử">thử</span>' : ''}</td>`; }).join('')}</tr>`).join('')}</tbody>
       ${cols.some(k => E.fields.find(f => f.k === k)?.t === 'money' || VIRT_MONEY.has(k)) ? `<tfoot><tr>${bulk ? '<td></td>' : ''}${cols.map((k, i) => { const f = E.fields.find(x => x.k === k); return (f?.t === 'money' || VIRT_MONEY.has(k)) ? `<td class="num">${fm(d.rows.reduce((s, r) => s + (+r[k] || 0), 0))}</td>` : `<td>${i === 0 ? 'Tổng' : ''}</td>`; }).join('')}</tr></tfoot>` : ''}</table>`
@@ -668,7 +669,7 @@ async function listView(main, ent, params = {}) {
   };
   const drawBulk = () => {
     const n = S.sel.size, b = $('#bulk', main);
-    b.innerHTML = n ? `<div class="bulk"><b>Đã chọn ${n}</b>${E.flow ? `<button class="btn sm amb" data-b="submit">${ico('fa-paper-plane')} Trình duyệt</button>` : ''}${E.flow && E.perm.a ? `<button class="btn sm ok" data-b="ok">${ico('fa-check')} Duyệt</button><button class="btn sm danger" data-b="no">${ico('fa-xmark')} Từ chối</button>` : ''}<button class="btn sm ghost" data-b="clr">Bỏ chọn</button></div>` : '';
+    b.innerHTML = n ? `<div class="bulk"><b>Đã chọn ${n}</b>${E.flow ? `<button class="btn sm amb" data-b="submit">${ico('fa-paper-plane')} Trình duyệt</button>` : ''}${E.flow && E.perm.a ? `<button class="btn sm ok" data-b="ok">${ico('fa-check')} Duyệt</button><button class="btn sm danger" data-b="no">${ico('fa-xmark')} Từ chối</button>` : ''}${E.perm.d && [...S.sel].every(id => (S.rowSt?.get(id) ?? 'nhap') === 'nhap') ? `<button class="btn sm danger" data-b="del">${ico('fa-trash')} Xóa</button>` : ''}<button class="btn sm ghost" data-b="clr">Bỏ chọn</button></div>` : '';
   };
   ST.reload = load;
   main.onclick = run(async e => {
@@ -688,6 +689,13 @@ async function listView(main, ent, params = {}) {
     const bb = t.closest('[data-b]');
     if (bb) {
       if (bb.dataset.b === 'clr') { S.sel.clear(); return load(); }
+      if (bb.dataset.b === 'del') {   // xóa bản nháp đã chọn
+        if (!await ask('Xóa bản nháp', `Xóa ${S.sel.size} ${E.one} đang ở bản nháp? Không khôi phục được.`, { danger: 1, okLabel: 'Xóa' })) return;
+        let ok = 0; const errs = [];
+        for (const id of S.sel) { try { await api('DELETE', `/api/e/${ent}/${id}`); ok++; } catch (er) { errs.push(`#${id} ${er.message}`); } }
+        toast(`Đã xóa ${ok}${errs.length ? ` · lỗi ${errs.length}: ${errs.slice(0, 2).join('; ')}` : ''}`, !!errs.length);
+        S.sel.clear(); updateBadges(); return load();
+      }
       let comment = null;
       if (bb.dataset.b === 'no') { comment = await ask('Từ chối', `Từ chối ${S.sel.size} bản ghi?`, { reason: 1, reasonReq: 1, danger: 1, okLabel: 'Từ chối' }); if (!comment) return; }
       else if (!await ask(bb.dataset.b === 'ok' ? 'Duyệt hàng loạt' : 'Trình duyệt hàng loạt', `Thực hiện cho ${S.sel.size} bản ghi đã chọn?`)) return;
