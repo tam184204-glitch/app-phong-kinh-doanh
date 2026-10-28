@@ -102,6 +102,28 @@ async function writeSchedule(db, contractId, rows, src, user, demo) {
   await C.audit(db, 'contract', contractId, 'lich_thanh_toan', null, { lich: rows }, user, `${rows.length} kỳ · ${src === 'phu_luc' ? 'theo phụ lục' : 'theo hợp đồng'}`, demo);
 }
 
+// giá trị hợp đồng căn hộ theo Danh mục sản phẩm (sau thuế + bảo trì): cập nhật các ô giá + tính lại từng đợt theo tỷ lệ / ngày đến hạn cũ.
+// Phiếu thu đã có giữ nguyên (công nợ tự tính lại theo lịch mới). Trả về true nếu có đổi.
+async function syncContractValue(db, contractId, user, note = 'Đồng bộ giá trị theo Danh mục sản phẩm') {
+  const c = await raw(db, 'contract', contractId);
+  const u = c && c.kind !== 'hoan_thien' && await raw(db, 'unit', c.unit_id);
+  if (!u || u.price_net == null) return false;
+  const value = +u.price_net + (+u.maint_fee || 0);
+  if (+c.value === value) return false;
+  const patch = { value, pretax: u.pretax, vat_pct: u.vat_pct, vat_amt: u.tax_amt, after_tax: u.price_net, maint_fee: u.maint_fee, base_price: u.base_price };
+  for (const k of Object.keys(patch)) if (patch[k] == null || !C.F.contract[k]) delete patch[k];
+  const sets = Object.keys(patch);
+  await db.q(`UPDATE kd_contract SET ${sets.map((k, i) => `${k} = $${i + 1}`).join(', ')}, updated_at = now() WHERE id = $${sets.length + 1}`, [...sets.map(k => patch[k]), c.id]);
+  await C.audit(db, 'contract', c.id, 'sua', { value: c.value }, { value }, user, note, c.is_demo);
+  const inst = await db.q('SELECT name, due_on, pct, amount, src FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [c.id]);
+  if (inst.length) {
+    const rows = inst.map(i => ({ name: i.name, due_on: i.due_on, pct: i.pct, amount: i.pct != null ? null : Math.round(+i.amount * value / +c.value) }));
+    await writeSchedule(db, c.id, await normSchedule(db, rows, value), inst[0].src || 'hop_dong', user, c.is_demo);
+  }
+  await refreshCommission(db, c.id, user, c.is_demo);
+  return true;
+}
+
 // ======================= HOA HỒNG =======================
 async function refreshCommission(db, contractId, user, demo) {
   const c = await raw(db, 'contract', contractId); if (!c) return;
@@ -799,4 +821,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { ckItem, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, pricing, normSchedule, writeSchedule, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { ckItem, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, pricing, normSchedule, writeSchedule, syncContractValue, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

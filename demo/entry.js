@@ -78,6 +78,11 @@ async function boot(pgliteUrl) {
   try {
     await q(`UPDATE kd_reservation r SET unit_value = u.price_net + coalesce(u.maint_fee, 0), price = u.price_net + coalesce(u.maint_fee, 0) + coalesce(r.finish_value, 0)
       FROM kd_unit u WHERE u.id = r.unit_id AND u.price_net IS NOT NULL AND r.unit_value IS DISTINCT FROM u.price_net + coalesce(u.maint_fee, 0)`);
+    // hợp đồng căn hộ cũng theo Danh mục sản phẩm: giá trị + lịch thanh toán tính lại theo tỷ lệ cũ (như máy thật 28/10/2026)
+    const B = require('../server/biz'), u = await one("SELECT * FROM kd_user WHERE role = 'admin' ORDER BY id LIMIT 1");
+    const cs = await q(`SELECT c.id FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id WHERE c.kind <> 'hoan_thien' AND c.status NOT IN ('huy', 'thanh_ly')
+      AND u.price_net IS NOT NULL AND c.value IS DISTINCT FROM u.price_net + coalesce(u.maint_fee, 0)`);
+    if (cs.length) await tx(async db => { for (const c of cs) await B.syncContractValue(db, c.id, u); });
   } catch (e) { console.warn('đồng bộ giá phiếu', e); }
   // mẫu in đơn đăng ký chuẩn (thêm 27/10/2026) — giống máy thật: nạp mẫu còn thiếu, tắt mẫu khung cũ
   try { await require('../server/seed').ensureTemplates(); } catch (e) { console.warn('mẫu in', e); }
