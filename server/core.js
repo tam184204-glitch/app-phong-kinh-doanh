@@ -57,6 +57,8 @@ const fmtMoney = n => n == null ? '' : Math.round(n).toLocaleString('vi-VN');
 
 // ---------- quyền ----------
 const SYS = { id: null, username: 'he_thong', full_name: 'Hệ thống', role: 'admin', sys: true };
+// chạy thử (NO_LOGIN): cho tự duyệt phiếu mình trình để test một mình; vận hành thật (bỏ NO_LOGIN) thì tách nhiệm như cũ
+const SELF_OK = /^(1|true|yes)$/i.test(process.env.NO_LOGIN || '');
 function can(user, e, op) {
   if (!user) return false;
   if (user.role === 'admin') return op !== 'a' || true;
@@ -291,7 +293,7 @@ async function perms(e, row, user, approvals, db) {
   return out;
 }
 function canApprove(e, row, user, open) {
-  if (open.requested_by === user.id && user.role !== 'admin') return false;          // tách nhiệm: không tự duyệt
+  if (open.requested_by === user.id && user.role !== 'admin' && !SELF_OK) return false;          // tách nhiệm: không tự duyệt
   if (open.approver_id) return open.approver_id === user.id || user.role === 'admin';
   return user.role === 'admin' || open.roles.includes(user.role);
 }
@@ -456,7 +458,7 @@ async function approve(entKey, id, user, { ok, comment, db: outer } = {}) {
     const rec = notFound(await raw(db, entKey, +id, true));
     const open = await db.one("SELECT * FROM kd_approval WHERE ent = $1 AND rec_id = $2 AND status = 'cho_duyet' FOR UPDATE", [entKey, rec.id]);
     if (!open || rec[fl.field] !== 'cho_duyet') bad('Không có đề nghị nào đang chờ duyệt');
-    if (open.requested_by === user.id && user.role !== 'admin') deny('Không tự phê duyệt đề nghị do mình trình (tách nhiệm)');
+    if (open.requested_by === user.id && user.role !== 'admin' && !SELF_OK) deny('Không tự phê duyệt đề nghị do mình trình (tách nhiệm)');
     if (!canApprove(e, rec, user, open)) deny('Bạn không phải cấp phê duyệt của đề nghị này');
     if (!ok && !comment) bad('Từ chối cần ghi rõ lý do');
     const ctx = ctxOf(db, user, { demo: rec.is_demo });
