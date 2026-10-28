@@ -291,10 +291,22 @@ async function intakeLead(db, b, user, { demo } = {}) {
   return { customer_id: k.id, log_id: log.id, new_customer: isNew };
 }
 
+// mã căn phải có trong thông báo mở bán đã duyệt gần nhất của dự án — không có thì cảnh báo, vẫn cho lưu / trình duyệt
+async function saleCheck(db, unitId) {
+  const u = unitId && await raw(db, 'unit', unitId); if (!u) return null;
+  const n = await db.one("SELECT * FROM kd_sale_notice WHERE project_id = $1 AND status = 'da_duyet' ORDER BY notice_on DESC NULLS LAST, id DESC LIMIT 1", [u.project_id]);
+  if (!n) return { ok: false, text: `⚠ Dự án chưa có thông báo mở bán được duyệt (căn ${u.code})` };
+  return (await noticeUnits(db, n)).some(x => x.id === u.id) ? { ok: true, text: `✓ Có trong ${n.code} · ${n.title}` }
+    : { ok: false, text: `⚠ Căn ${u.code} không có trong thông báo mở bán gần nhất (${n.code} · ${n.title})` };
+}
+const saleWarn = async (db, r, warn) => { const sc = await saleCheck(db, r.unit_id); r.sale_check = sc?.text ?? null; if (sc && !sc.ok) warn.push(sc.text.slice(2)); };
+const saleLive = async (db, rows) => { for (const r of rows) if (r.unit_id) r.sale_check = (await saleCheck(db, r.unit_id))?.text ?? r.sale_check; };   // chi tiết: theo thông báo hiện tại
+
 H.reservation = {
   async beforeSave(r, old, { db, warn, opts, user, demo }) {
     const changedUnit = !old || old.unit_id !== r.unit_id;
     const u = await raw(db, 'unit', r.unit_id);
+    await saleWarn(db, r, warn);
     // ngày giờ đăng ký (reg_at) → ngày đăng ký (reg_date, giờ VN); phiếu hệ thống tạo chỉ có ngày thì suy ra giờ
     const vnDay = iso => new Date(Date.parse(iso) + 7 * 3600e3).toISOString().slice(0, 10);
     if (!old && r.reg_date && (!r.reg_at || vnDay(r.reg_at) !== r.reg_date)) r.reg_at = new Date(r.reg_date === today() ? Date.now() : Date.parse(r.reg_date + 'T09:00:00+07:00')).toISOString();
@@ -355,7 +367,7 @@ H.reservation = {
     if (r.customer_id && ['giu_cho', 'da_coc', 'chuyen_hd'].includes(r.status)) await markCustomer(db, r.customer_id, user);
     if (old && old.unit_id !== r.unit_id) await recomputeUnit(db, old.unit_id, user);
   },
-  async decorate(rows, { db }) { await stageOf(db, rows); },
+  async decorate(rows, { db, one }) { await stageOf(db, rows); if (one) await saleLive(db, rows); },
   acts: {
     async deposit(r, d) { if (d.deposit > r.price) bad('Tiền đặt cọc lớn hơn giá bán'); return { patch: { deposit: d.deposit, deposit_on: d.deposit_on, status: 'da_coc' } }; },
     async extend(r, d) { if (Date.parse(d.hold_until) <= Date.now()) bad('Hạn mới phải sau thời điểm hiện tại'); return { patch: { hold_until: d.hold_until, status: r.deposit > 0 ? 'da_coc' : 'giu_cho' } }; },
@@ -437,11 +449,13 @@ async function noxhHead(db, r, old, user, demo) {
 }
 
 H.noxh_check = {
+  async decorate(rows, { db, one }) { if (one) await saleLive(db, rows); },
   async beforeSave(r, old, { db, warn, user, opts, demo }) {
     if (r.reservation_id && (!old || old.reservation_id !== r.reservation_id)) { const s = await raw(db, 'reservation', r.reservation_id); r.customer_id = s.customer_id; r.unit_id = s.unit_id; }
     if (!opts?.check) await noxhHead(db, r, old, user, demo);
     if (!r.customer_id) bad('Nhập thông tin chủ hộ hoặc chọn khách hàng');
     if (r.unit_id) { const u = await raw(db, 'unit', r.unit_id); r.project_id = u.project_id; r.unit_area = u.area_tt; }   // diện tích theo Danh mục sản phẩm
+    await saleWarn(db, r, warn);
     // hồ sơ lập xong → gắn vào phiếu đăng ký đang hiệu lực của khách (cùng căn nếu đã chọn căn) để in biên bản / cập nhật tiến trình từ phiếu
     if (!r.reservation_id && r.customer_id) r.reservation_id = (await db.one(`SELECT id FROM kd_reservation WHERE customer_id = $1 AND status IN ('cho_duyet','giu_cho','qua_han','da_coc','chuyen_hd')
       AND ($2::int IS NULL OR unit_id = $2) ORDER BY id DESC LIMIT 1`, [r.customer_id, r.unit_id ?? null]))?.id ?? null;

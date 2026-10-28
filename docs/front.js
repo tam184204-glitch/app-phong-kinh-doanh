@@ -410,7 +410,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [] } = {}
       // tệp đính kèm chọn ngay trong form (vd. Tệp nguồn PDF) → lưu vào mục Tệp của bản ghi
       for (const f of fields.filter(x => x.upload)) { const file = $(`[name="${f.k}"]`, form)?.files?.[0]; if (!file) continue; const fd = new FormData(); fd.append('kind', 'nguon'); fd.append('file', file, file.name); await api('POST', `/api/files/${ent}/${r.row.id}`, fd); }
       if (andSubmit) await api('POST', `/api/e/${ent}/${r.row.id}/submit`, {});
-      m.close(); toast(andSubmit ? 'Đã lưu và trình duyệt' : 'Đã lưu' + (r.warnings?.length ? ' — lưu ý: ' + r.warnings.join('; ') : ''));
+      m.close(); toast((andSubmit ? 'Đã lưu và trình duyệt' : 'Đã lưu') + (r.warnings?.length ? ' — lưu ý: ' + r.warnings.join('; ') : ''), !!r.warnings?.some(w => /thông báo mở bán/.test(w)));
       onSaved ? onSaved(r.row) : refresh();
       return r.row;
     } catch (e) { showErr(e); } finally { btns.forEach(b => b.disabled = false); }

@@ -228,6 +228,7 @@ def('reservation', {
   rules: 'Chặn đăng ký trùng căn; khách chưa có hồ sơ thì tự tạo theo CCCD / số điện thoại; hủy đăng ký thì căn trở lại Còn bán, không tự hoàn tiền',
   c: ['ban_hang', 'truong_phong'], a: MGR, own: ['ban_hang'], search: ['code', 'cust_name', 'phone'], direct: 1, listPii: 1, fields: [
     { k: 'code', l: 'Mã phiếu', t: 'code', prefix: 'GD-{Y}-', pad: 4 },
+    { k: 'sale_check', l: 'Thông báo mở bán', t: 'text', ro: 1 },   // kiểm tra căn có trong thông báo mở bán đã duyệt gần nhất (cảnh báo, không chặn)
     { k: 'unit_id', l: 'Mã căn hộ', t: 'ref', ref: 'unit', req: 1, filter: 'con_ban,chua_mo_ban', fill: { price: 'total_price', finish_value: 'finish_value' } },
     { k: 'customer_id', l: 'Khách hàng đã có', t: 'ref', ref: 'customer', help: 'Chọn khách có sẵn để điền nhanh — để trống: hệ thống tự khớp theo CCCD / SĐT hoặc tạo khách mới',
       fill: { cust_code: 'code', cust_name: 'full_name', id_no: 'id_no', id_date: 'id_date', id_place: 'id_place', address: 'address', phone: 'phone', tax_code: 'tax_code', bank_account: 'bank_account' } },
@@ -294,6 +295,7 @@ def('noxh_check', {
     { k: 'project_id', l: 'Tên dự án', t: 'ref', ref: 'project', sec: '1. Thông tin căn hộ', help: 'Chọn căn thì tự lấy theo căn' },
     { k: 'unit_id', l: 'Mã căn hộ', t: 'ref', ref: 'unit', fill: { unit_area: 'area_tt' } },
     { k: 'unit_area', l: 'Diện tích thông thủy (m²)', t: 'num', help: 'Tự cập nhật theo Danh mục sản phẩm' },
+    { k: 'sale_check', l: 'Thông báo mở bán', t: 'text', ro: 1 },   // căn có trong thông báo mở bán đã duyệt gần nhất? (cảnh báo, không chặn)
     { k: 'received_on', l: 'Ngày nộp hồ sơ', t: 'date', def: 'today' },
     { k: 'reg_kind', l: 'Hình thức mua', t: 'sel', def: 'mua', o: M4.hinh_thuc },
     { k: 'unit_text', l: 'Mã căn hộ ngoài danh mục', t: 'text', help: 'Chỉ ghi khi căn chưa có trong Danh mục sản phẩm (VD CTS-L-0511)' },
