@@ -204,22 +204,18 @@ table.t.noclick tbody tr { cursor: default; }
 .tower.on { border-color: var(--cobalt); box-shadow: 0 0 0 2px rgba(30, 78, 140, .12), 0 12px 24px rgba(30, 78, 140, .14); }
 .tower b { display: block; color: var(--cobalt-d); font-size: 15px; } .tower small { color: var(--muted); }
 /* tông logo: cobalt = còn bán (ô trắng, vạch xanh), amber = giữ chỗ / đã cọc, xám xanh = đã ký / đã bàn giao (chìm xuống nền) */
-.fwrap { overflow-x: auto; padding: 14px 12px 12px; }
-.fgrid { display: grid; gap: 6px; align-items: stretch; max-width: 1180px; margin: 0 auto; }
-.fgrid .fl { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; padding-right: 8px; font-size: 13px; font-weight: 800; color: var(--cobalt-d); font-variant-numeric: tabular-nums; }
-.fgrid .fl small { font-size: 10px; font-weight: 700; color: var(--amber-d); white-space: nowrap; }
-.u { --c: var(--cobalt); --bg: #fff; --line: var(--cobalt-100); display: flex; flex-direction: column; gap: 0; padding: 4px 6px 4px 9px; border-radius: 9px; cursor: pointer; position: relative; min-width: 0;
-  background: var(--bg); border: 1px solid var(--line); box-shadow: inset 3px 0 0 var(--c); line-height: 1.25; font-variant-numeric: tabular-nums; transition: transform .15s, box-shadow .15s, opacity .2s; }
-.u b { display: flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 800; color: var(--cobalt-d); }
-.u b i { font-size: 10px; color: var(--c); }
-.u span { font-size: 10.5px; color: #4a5b70; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.u em { font-style: normal; font-size: 11.5px; font-weight: 800; color: var(--amber-d); }
-.u .u4 { color: #7a8aa0; }
-.u:hover { transform: translateY(-2px); box-shadow: inset 3px 0 0 var(--c), 0 10px 22px rgba(20, 56, 102, .14); z-index: 2; }
+.fwrap { overflow-x: auto; padding: 12px 12px 10px; }
+.fgrid { display: grid; gap: 4px; align-items: stretch; max-width: 1180px; margin: 0 auto; }
+.fgrid .fl { display: flex; align-items: center; justify-content: flex-end; padding-right: 6px; font-size: 12px; font-weight: 800; color: var(--cobalt-d); font-variant-numeric: tabular-nums; }
+.u { --c: var(--cobalt); --bg: #fff; --line: var(--cobalt-100); height: 26px; display: flex; align-items: center; gap: 3px; padding: 0 5px 0 7px; border-radius: 7px; cursor: pointer; position: relative; min-width: 0; white-space: nowrap;
+  background: var(--bg); border: 1px solid var(--line); box-shadow: inset 3px 0 0 var(--c); font-variant-numeric: tabular-nums; transition: transform .15s, box-shadow .15s, opacity .2s; }
+.u i.fa-house { font-size: 9px; color: var(--c); flex: none; }
+.u b { font-size: 11.5px; font-weight: 800; color: var(--cobalt-d); }
+.u em { margin-left: auto; font-style: normal; font-size: 10.5px; font-weight: 800; color: var(--amber-d); overflow: hidden; text-overflow: ellipsis; }
+.u:hover { transform: translateY(-1px); box-shadow: inset 3px 0 0 var(--c), 0 6px 14px rgba(20, 56, 102, .14); z-index: 2; }
 .u.da_ky_hd, .u.da_ban_giao, .u.chua_mo_ban, .u.ngung_kd { --bg: #f3f6f9; --line: transparent; }
-.u.da_ky_hd b, .u.da_ban_giao b, .u.chua_mo_ban b, .u.ngung_kd b { color: #56677d; }
-.u.da_ky_hd em, .u.da_ban_giao em, .u.chua_mo_ban em, .u.ngung_kd em { color: #7d8ca0; font-weight: 700; }
-.u.da_ky_hd span, .u.da_ban_giao span, .u.chua_mo_ban span, .u.ngung_kd span { color: #8796a9; }
+.u.da_ky_hd b, .u.da_ban_giao b, .u.chua_mo_ban b, .u.ngung_kd b { color: #5d6e84; }
+.u.da_ky_hd em, .u.da_ban_giao em, .u.chua_mo_ban em, .u.ngung_kd em { color: #8a99ac; font-weight: 700; }
 .sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; background: var(--c); }
 .legend b.n { width: auto; height: auto; background: none; color: var(--ink); }
 .u.con_ban, .sw.con_ban { --c: var(--cobalt); }
@@ -230,7 +226,7 @@ table.t.noclick tbody tr { cursor: default; }
 .u.chua_mo_ban, .u.ngung_kd, .sw.chua_mo_ban, .sw.ngung_kd { --c: #d5dce5; }
 .u.tam_khoa, .sw.tam_khoa { --c: var(--r-c); --bg: var(--r-bg); --line: #f5cdca; }
 .u.dim { opacity: .2; }
-.u .hold { position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: #e8590c; box-shadow: 0 0 0 2px #fff; }
+.u .hold { position: absolute; top: -3px; right: -3px; width: 7px; height: 7px; border-radius: 50%; background: #e8590c; box-shadow: 0 0 0 2px #fff; }
 
 /* form */
 .form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
