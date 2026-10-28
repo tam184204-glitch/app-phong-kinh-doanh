@@ -152,6 +152,7 @@ async function ensureTemplates() {
     for (const t of REG_TEMPLATES()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });
     // mẫu chuẩn theo file Excel phòng Kinh doanh: lần đầu nạp thì tắt các mẫu khung cũ
     let moi = 0;
+    for (const t of require('./mau-mo-ban').MAU_MO_BAN()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });
     for (const t of require('./mau4').MAU_BIEN_BAN()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });
     for (const t of MAU_DANG_KY()) {
       if (await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) continue;

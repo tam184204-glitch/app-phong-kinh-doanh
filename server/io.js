@@ -5,7 +5,7 @@
 const crypto = require('crypto');
 const C = require('./core');
 const B = require('./biz');
-const { E, VIRT, ROLES } = require('./meta');
+const M = require('./meta'), { E, VIRT, ROLES } = M;
 const { tx, q, one } = require('./db');
 const { buildXlsx, readXlsx } = require('./xlsx');
 const { bad, deny, can, fmtMoney, dmy } = C;
@@ -459,4 +459,39 @@ ${r.reason ? `<p>Lý do: ${escH(r.reason)}</p>` : ''}
     ${EDIT_CSS}</style></head><body>${editBar(`Phiếu đề nghị ${escH(r.code)}`)}${editDoc(body)}</body></html>`;
 }
 
-module.exports = { printCancelReq, EDIT_CSS, editBar, editDoc, A, strip, mapRows, exportList, sheet, importFile, importTemplate, IMPORTS, createUser, hashPw, checkPw, printContract, printReservation, regTemplates, moneyWords };
+// thông báo mở bán: «thong_bao» theo mẫu Thông báo (Mẫu biểu, mã TB-MOBAN-…, theo dự án) / «danh_sach» = danh sách căn mở bán (như «DS mở bán đợt 5 CTS.xlsx»)
+async function printSaleNotice(id, user, kind) {
+  const { row: n } = await C.get('sale_notice', id, user);
+  const p = await one('SELECT * FROM kd_project WHERE id = $1', [n.project_id]);
+  const seller = M.SELLERS.find(s => s.projects.includes(p.code)) || M.SELLERS[0];
+  const g = String(n.unit_group || '*').split(/[,;\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+  const units = (await q(`SELECT u.code, u.floor, u.area_tt, u.area_xd, b.code b FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = $1 ORDER BY b.code, u.floor, u.code`, [p.id]))
+    .filter(u => g.includes('*') || g.includes(String(u.b).toUpperCase()) || g.includes(u.code.toUpperCase()));
+  const d = n.notice_on ? new Date(n.notice_on + 'T00:00:00Z') : new Date(Date.now() + 7 * 3600e3);
+  const dot = String(n.title || '').trim(), DOT = dot ? dot[0].toUpperCase() + dot.slice(1) : '';
+  const num = v => v == null ? '' : String(+v).replace('.', ',');
+  const CSS = `@page{size:A4;margin:15mm 15mm 15mm 25mm} body{font:13pt/1.45 "Times New Roman",serif;color:#000;max-width:170mm;margin:auto}
+    p{margin:3pt 0} .c{text-align:center} .r{text-align:right} .j{text-align:justify} h2{text-align:center;font-size:14pt;margin:10pt 0 2pt}
+    table.hd2{width:100%;border-collapse:collapse} table.hd2 td{vertical-align:top} table.hd2 td:first-child{width:42%;padding-right:10pt} table.hd2:first-child{font-size:12pt} table.hd2:first-child b{white-space:nowrap} .tn{display:inline-block;padding-bottom:2pt;border-bottom:1px solid #000}
+    table.ds{width:100%;border-collapse:collapse;margin-top:8pt} table.ds th,table.ds td{border:1px solid #000;padding:2pt 6pt} table.ds th{text-align:center} table.ds td.n{text-align:right} table.ds td.ct{text-align:center} tr{page-break-inside:avoid}
+    ${EDIT_CSS}`;
+  let body;
+  if (kind === 'danh_sach') {
+    body = `<p class="c"><b>${escH(seller.name.toUpperCase())}</b></p><h2>DANH SÁCH MỞ BÁN ${escH(DOT.toUpperCase())}</h2><p class="c"><b>Dự án nhà ở xã hội ${escH(p.name)}</b></p>
+<table class="ds"><thead><tr><th>STT</th><th>Mã căn hộ</th><th>Diện tích thông thủy (m²)</th><th>Diện tích xây dựng (m²)</th></tr></thead><tbody>
+${units.map((u, i) => `<tr><td class="ct">${i + 1}</td><td>${escH(u.code)}</td><td class="n">${num(u.area_tt)}</td><td class="n">${num(u.area_xd)}</td></tr>`).join('')}
+<tr><td></td><td><b>Tổng cộng: ${units.length} căn</b></td><td class="n"><b>${num(Math.round(units.reduce((s, u) => s + (+u.area_tt || 0), 0) * 10) / 10)}</b></td><td class="n"><b>${num(Math.round(units.reduce((s, u) => s + (+u.area_xd || 0), 0) * 10) / 10)}</b></td></tr></tbody></table>`;
+  } else {
+    const tpl = await one(`SELECT * FROM kd_template WHERE active AND kind = 'thong_bao' AND code LIKE 'TB-MOBAN%' ORDER BY (upper(coalesce(scope,'')) = upper($1)) DESC, id LIMIT 1`, [p.code]);
+    if (!tpl) bad('Chưa có mẫu Thông báo mở bán — tạo ở Quản trị › Mẫu biểu (loại Thông báo, mã bắt đầu TB-MOBAN)');
+    const map = { cong_ty: seller.name, cong_ty_hoa: seller.name.toUpperCase(), so_vb: n.doc_no || `&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/${d.getUTCFullYear()}/TB-${p.code}`,
+      ngay_viet: `ngày ${String(d.getUTCDate()).padStart(2, '0')} tháng ${String(d.getUTCMonth() + 1).padStart(2, '0')} năm ${d.getUTCFullYear()}`, ten_dot: escH(DOT), du_an: escH(p.name),
+      ngay_bat_dau: n.open_on ? dmy(n.open_on) : '....../....../......', ngay_ket_thuc: n.close_on ? dmy(n.close_on) : '....../....../......', so_can: String(units.length) };
+    body = tpl.content.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '').replace(/\{(\w+)\}/g, (m, k) => k in map ? map[k] : m);
+  }
+  await C.audit({ q }, 'sale_notice', n.id, kind === 'danh_sach' ? 'in_danh_sach' : 'in_thong_bao', null, null, user);
+  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${escH(n.code)} – ${kind === 'danh_sach' ? 'Danh sách mở bán' : 'Thông báo mở bán'}</title><style>${CSS}</style></head>
+<body>${editBar(`${kind === 'danh_sach' ? 'Danh sách căn mở bán' : 'Thông báo mở bán'} ${escH(n.code)} · ${units.length} căn`)}${editDoc(body)}</body></html>`;
+}
+
+module.exports = { printSaleNotice, printCancelReq, EDIT_CSS, editBar, editDoc, A, strip, mapRows, exportList, sheet, importFile, importTemplate, IMPORTS, createUser, hashPw, checkPw, printContract, printReservation, regTemplates, moneyWords };
