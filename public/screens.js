@@ -299,7 +299,7 @@ V.board = async (main, params) => {
         <select id="bk"><option value="">Mọi loại căn</option>${kinds.map(k => `<option value="${k}" ${s.kind === k ? 'selected' : ''}>${esc(M.ents.unit.fields.find(f => f.k === 'kind').o.find(o => o[0] === k)?.[1] || k)}</option>`).join('')}</select>
         <span class="grow"></span>${d.policy ? `<span class="src">${ico('fa-tags')} Chính sách đang áp dụng: <b>${esc(d.policy.code)}</b> (${dmy(d.policy.start_on)} – ${dmy(d.policy.end_on)})${d.policy.src_file ? ' · ' + esc(d.policy.src_file) : ''}</span>` : '<span class="pill a">Chưa có chính sách giá đang phát hành</span>'}</div>
         <div style="padding:0 14px 12px"><div class="towers">${d.buildings.map(b => `<div class="tower ${b.id === d.building ? 'on' : ''}" data-b="${b.id}"><b>${esc(b.name || 'Tòa ' + b.code)}</b><small>${b.n} căn</small></div>`).join('')}</div></div></div>
-      <div class="card"><div class="toolbar"><div class="legend">${Object.entries(USTAT).filter(([k]) => cnt[k]).map(([k, l]) => `<span data-st="${k}" style="cursor:pointer;${s.st && s.st !== k ? 'opacity:.4' : ''}"><i class="sw ${k}"></i>${l} <b class="n">${cnt[k]}</b></span>`).join('')}</div>${s.st ? '<button class="btn sm ghost" data-st="">Bỏ lọc</button>' : ''}<span class="grow"></span><span class="small muted">${d.units.length} căn · ${floors.length} tầng · giá: tỷ đồng · rê chuột xem thêm, bấm để mở chi tiết</span></div>
+      <div class="card"><div class="toolbar"><div class="legend">${Object.entries(USTAT).filter(([k]) => cnt[k]).map(([k, l]) => `<span data-st="${k}" style="cursor:pointer;${s.st && s.st !== k ? 'opacity:.4' : ''}"><i class="sw ${k}"></i>${l} <b class="n">${cnt[k]}</b></span>`).join('')}</div>${s.st ? '<button class="btn sm ghost" data-st="">Bỏ lọc</button>' : ''}<span class="grow"></span><span class="small muted">${d.units.length} căn · ${floors.length} tầng · bấm căn để mở chi tiết</span></div>
       <div class="bd">${d.units.length ? boardGrid(d.units, floors, s) : '<div class="empty">Tòa chưa có căn</div>'}</div></div></div>`;
     $('#bp', main).onchange = e => { s.project = e.target.value; s.building = ''; draw(); };
     $('#bk', main).onchange = e => { s.kind = e.target.value; draw(); };
@@ -311,7 +311,7 @@ V.board = async (main, params) => {
   };
   await draw();
 };
-// mặt đứng tòa: mỗi tầng một hàng, căn cùng trục (2 số cuối mã căn) thẳng cột; ô 1 dòng: icon nhà · tên căn · giá (loại, diện tích, hướng, khách: rê chuột);
+// mặt đứng tòa: mỗi tầng một hàng, căn cùng trục (2 số cuối mã căn) thẳng cột; ô 2 dòng nhỏ: icon nhà · tên căn · giá / loại · diện tích · hướng (đã có khách: tên khách);
 // màu theo tông logo (cobalt = còn bán, amber = giữ chỗ / đã cọc, xám xanh = đã bán); bấm mở chi tiết
 function boardGrid(units, floors, s) {
   const axis = u => (/(\d{2})$/.exec(u.code) || [])[1] || '';
@@ -324,10 +324,10 @@ function boardGrid(units, floors, s) {
     const tip = u => [`Căn ${u.code}`, USTAT[u.status], [u.bedrooms && u.bedrooms + 'PN', fnum(u.area_tt) + 'm²', u.direction].filter(Boolean).join(' · '), fmB(u.total_price),
       u.customer && 'Khách: ' + u.customer, u.hold_until && 'Giữ chỗ đến ' + dmyhm(u.hold_until)].filter(Boolean).join('\n');
     return `<div class="fl" title="Tầng ${fl}: còn ${left}/${us.length} căn">${fl}</div>${cols.map((k, i) => { const u = cell(fl, k, i); return u
-      ? `<div class="u ${u.status} ${(s.st && s.st !== u.status) || (s.kind && s.kind !== u.kind) ? 'dim' : ''}" data-u="${u.id}" title="${esc(tip(u))}">${ico('fa-house')}<b>${esc(u.code.split('-').pop())}</b><em>${u.total_price ? (u.total_price / 1e9).toFixed(2).replace('.', ',') : ''}</em>${u.hold_until ? '<i class="hold"></i>' : ''}</div>`
+      ? `<div class="u ${u.status} ${(s.st && s.st !== u.status) || (s.kind && s.kind !== u.kind) ? 'dim' : ''}" data-u="${u.id}" title="${esc(tip(u))}"><div class="u1">${ico('fa-house')}<b>${esc(u.code.split('-').pop())}</b><em>${fmB(u.total_price)}</em></div><div class="u2">${esc(u.customer || [u.bedrooms && u.bedrooms + 'PN', fnum(u.area_tt) + 'm²', u.direction].filter(Boolean).join('·'))}</div>${u.hold_until ? '<i class="hold"></i>' : ''}</div>`
       : '<span></span>'; }).join('')}`;
   };
-  return `<div class="fwrap"><div class="fgrid" style="grid-template-columns:28px repeat(${cols.length},minmax(76px,1fr))">${floors.map(row).join('')}</div></div>`;
+  return `<div class="fwrap"><div class="fgrid" style="grid-template-columns:22px repeat(${cols.length},minmax(84px,1fr))">${floors.map(row).join('')}</div></div>`;
 }
 function unitPop(u, after) {
   const canRes = u.status === 'con_ban' && M.ents.reservation.perm.c;
