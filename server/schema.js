@@ -82,6 +82,8 @@ const SPECIAL = [
   `CREATE UNIQUE INDEX IF NOT EXISTS kd_customer_phone ON kd_customer (regexp_replace(phone, '\\D', '', 'g'))`,
   // chính sách giá trước đây chỉ 1 dự án → chép sang danh sách dự án
   `UPDATE kd_price_policy SET project_ids = ARRAY[project_id] WHERE project_ids IS NULL AND project_id IS NOT NULL`,
+  // giá niêm yết = Tổng cộng (số cũ từ bảng hàng 10/09/2026 bỏ đi)
+  `UPDATE kd_unit SET list_price = total_price WHERE total_price IS NOT NULL AND list_price IS DISTINCT FROM total_price`,
   // phiếu đăng ký trước khi tách 3 cột giá: Tổng giá bán cũ = Giá trị căn hộ
   `UPDATE kd_reservation SET unit_value = price - coalesce(finish_value, 0) WHERE unit_value IS NULL AND price IS NOT NULL`,
   `CREATE INDEX IF NOT EXISTS kd_price_policy_pids ON kd_price_policy USING gin (project_ids)`,

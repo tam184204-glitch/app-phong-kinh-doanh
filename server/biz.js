@@ -180,6 +180,7 @@ H.unit = {
       r.total_price = r.price_net + r.maint_fee + (+r.finish_value || 0);
     }
     if (r.total_price == null && r.price_net != null) r.total_price = r.price_net + (r.maint_fee || 0);
+    if (r.total_price != null) r.list_price = r.total_price;   // giá niêm yết = Tổng cộng ở Danh mục sản phẩm
     if (!old) { r.status = 'chua_mo_ban'; r.activated = r.activated ?? false; }
     if (old && r.lock !== old.lock && r.lock) {
       if (!['con_ban', 'chua_mo_ban', 'tam_khoa', 'ngung_kd'].includes(old.status)) bad('Căn đang có giao dịch — không khóa kinh doanh được');

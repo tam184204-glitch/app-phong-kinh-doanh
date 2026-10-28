@@ -80,7 +80,7 @@ def('unit', {
     { k: 'door_dir', l: 'Hướng cửa chính', t: 'text' },
     { k: 'balcony_dir', l: 'Hướng ban công', t: 'text' },
     { k: 'position', l: 'Vị trí', t: 'sel', o: [['thuong', 'Thường'], ['goc', 'Căn góc'], ['thang', 'Cạnh thang']] },
-    money('list_price', 'Đơn giá niêm yết (gồm VAT)'),
+    money('list_price', 'Giá niêm yết (gồm VAT)', { help: 'Tự lấy = Tổng cộng (Danh mục sản phẩm)' }),
     money('base_price', 'Đơn giá nền (đ/m²)', { help: 'Theo bảng giá Bravo — trước thuế, trên m² thông thủy' }),
     money('pretax', 'Tổng tiền trước thuế'),
     { k: 'vat_pct', l: '% thuế', t: 'num' },
