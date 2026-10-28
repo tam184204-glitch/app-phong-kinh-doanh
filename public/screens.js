@@ -299,22 +299,20 @@ V.board = async (main, params) => {
         <select id="bk"><option value="">Mọi loại căn</option>${kinds.map(k => `<option value="${k}" ${s.kind === k ? 'selected' : ''}>${esc(M.ents.unit.fields.find(f => f.k === 'kind').o.find(o => o[0] === k)?.[1] || k)}</option>`).join('')}</select>
         <span class="grow"></span>${d.policy ? `<span class="src">${ico('fa-tags')} Chính sách đang áp dụng: <b>${esc(d.policy.code)}</b> (${dmy(d.policy.start_on)} – ${dmy(d.policy.end_on)})${d.policy.src_file ? ' · ' + esc(d.policy.src_file) : ''}</span>` : '<span class="pill a">Chưa có chính sách giá đang phát hành</span>'}</div>
         <div style="padding:0 14px 12px"><div class="towers">${d.buildings.map(b => `<div class="tower ${b.id === d.building ? 'on' : ''}" data-b="${b.id}"><b>${esc(b.name || 'Tòa ' + b.code)}</b><small>${b.n} căn</small></div>`).join('')}</div></div></div>
-      <div class="card"><div class="toolbar"><div class="legend">${Object.entries(USTAT).filter(([k]) => cnt[k]).map(([k, l]) => `<span data-st="${k}" style="cursor:pointer;${s.st && s.st !== k ? 'opacity:.4' : ''}"><i class="sw ${k}"></i>${l} <b class="n">${cnt[k]}</b></span>`).join('')}</div>${s.st ? '<button class="btn sm ghost" data-st="">Bỏ lọc</button>' : ''}<span class="grow"></span><span class="small muted">${d.units.length} căn · ${floors.length} tầng · rê chuột xem nhanh, bấm để xem chi tiết</span></div>
+      <div class="card"><div class="toolbar"><div class="legend">${Object.entries(USTAT).filter(([k]) => cnt[k]).map(([k, l]) => `<span data-st="${k}" style="cursor:pointer;${s.st && s.st !== k ? 'opacity:.4' : ''}"><i class="sw ${k}"></i>${l} <b class="n">${cnt[k]}</b></span>`).join('')}</div>${s.st ? '<button class="btn sm ghost" data-st="">Bỏ lọc</button>' : ''}<span class="grow"></span><span class="small muted">${d.units.length} căn · ${floors.length} tầng · bấm căn để xem chi tiết</span></div>
       <div class="bd">${d.units.length ? boardGrid(d.units, floors, s) : '<div class="empty">Tòa chưa có căn</div>'}</div></div></div>`;
     $('#bp', main).onchange = e => { s.project = e.target.value; s.building = ''; draw(); };
     $('#bk', main).onchange = e => { s.kind = e.target.value; draw(); };
     main.onclick = run(async e => {
       const b = e.target.closest('[data-b]'); if (b) { s.building = b.dataset.b; return draw(); }
       const st = e.target.closest('[data-st]'); if (st) { s.st = s.st === st.dataset.st ? '' : st.dataset.st; return draw(); }
-      const u = e.target.closest('[data-u]'); if (u) { unitTip(); return unitPop(d.units.find(x => x.id === +u.dataset.u), draw); }
+      const u = e.target.closest('[data-u]'); if (u) return unitPop(d.units.find(x => x.id === +u.dataset.u), draw);
     });
-    main.onmouseover = e => { const u = e.target.closest('.fgrid [data-u]'); unitTip(u, u && d.units.find(x => x.id === +u.dataset.u)); };
-    main.onmouseleave = () => unitTip();
   };
   await draw();
 };
-// mặt đứng tòa: mỗi tầng một hàng, căn cùng trục (2 số cuối mã căn) thẳng cột; ô = icon nhà (màu theo trạng thái) + tên căn —
-// rê chuột hiện thẻ tóm tắt (unitTip), bấm mở chi tiết; cuối hàng là thanh tỷ lệ còn bán của tầng
+// mặt đứng tòa: mỗi tầng một hàng, căn cùng trục (2 số cuối mã căn) thẳng cột; ô gọn 4 dòng: tên căn · loại – diện tích · giá · hướng (đã bán: khách);
+// màu theo tông logo (cobalt = còn bán, amber = giữ chỗ / đã cọc, xám xanh = đã bán); bấm mở chi tiết
 function boardGrid(units, floors, s) {
   const axis = u => (/(\d{2})$/.exec(u.code) || [])[1] || '';
   const by = new Map(units.map(u => [u.floor + '|' + axis(u), u]));
@@ -323,23 +321,12 @@ function boardGrid(units, floors, s) {
   const cell = (fl, k, i) => byAxis ? by.get(fl + '|' + k) : units.filter(u => u.floor === fl)[i];
   const row = fl => {
     const us = units.filter(u => u.floor === fl), left = us.filter(u => u.status === 'con_ban').length;
-    return `<div class="fl">${fl}</div>${cols.map((k, i) => { const u = cell(fl, k, i); return u
-      ? `<div class="u ${u.status} ${(s.st && s.st !== u.status) || (s.kind && s.kind !== u.kind) ? 'dim' : ''}" data-u="${u.id}">${ico('fa-house')}<span>${esc(u.code.split('-').pop())}</span>${u.hold_until ? '<i class="hold"></i>' : ''}</div>`
-      : '<span></span>'; }).join('')}${left ? `<div class="fbar" title="Tầng ${fl}: còn ${left}/${us.length} căn"><i style="width:${Math.round(left / us.length * 100)}%"></i></div>` : '<span></span>'}`;
+    return `<div class="fl">${fl}${left ? `<small>còn ${left}</small>` : ''}</div>${cols.map((k, i) => { const u = cell(fl, k, i); return u
+      ? `<div class="u ${u.status} ${(s.st && s.st !== u.status) || (s.kind && s.kind !== u.kind) ? 'dim' : ''}" data-u="${u.id}" title="${esc(u.code)} · ${USTAT[u.status]}${u.hold_until ? ' · giữ chỗ đến ' + dmyhm(u.hold_until) : ''}">
+        <b>${ico('fa-house')}${esc(u.code.split('-').pop())}</b><span>${u.bedrooms ? u.bedrooms + 'PN · ' : ''}${fnum(u.area_tt)}m²</span><em>${fmB(u.total_price)}</em><span class="u4">${esc(u.customer || u.direction || '')}</span>${u.hold_until ? '<i class="hold"></i>' : ''}</div>`
+      : '<span></span>'; }).join('')}`;
   };
-  return `<div class="fwrap"><div class="fgrid" style="grid-template-columns:34px repeat(${cols.length},60px) 60px">${floors.map(row).join('')}</div></div>`;
-}
-let tipEl = null;
-function unitTip(el, u) {
-  if (!el || !u) { tipEl && tipEl.classList.remove('on'); return; }
-  tipEl ||= document.body.appendChild(Object.assign(document.createElement('div'), { className: 'utip' }));
-  tipEl.innerHTML = `<div class="ut-h"><b>Căn ${esc(u.code.split('-').pop())}</b><span class="ut-st"><i class="sw ${u.status}"></i>${USTAT[u.status]}</span></div>
-    <div class="ut-m">${u.bedrooms ? u.bedrooms + ' PN · ' : ''}${fnum(u.area_tt)} m²${u.direction ? ' · ' + esc(u.direction) : ''}</div>
-    <div class="ut-p">${fmB(u.total_price)}</div>${u.customer ? `<div class="ut-c">${ico('fa-user')} ${esc(u.customer)}</div>` : ''}${u.hold_until ? `<div class="ut-c">${ico('fa-clock')} Giữ chỗ đến ${dmyhm(u.hold_until)}</div>` : ''}`;
-  const r = el.getBoundingClientRect();
-  tipEl.style.left = Math.min(Math.max(r.left + r.width / 2, 110), innerWidth - 110) + 'px';
-  tipEl.style.top = r.top + 'px';
-  tipEl.classList.add('on');
+  return `<div class="fwrap"><div class="fgrid" style="grid-template-columns:46px repeat(${cols.length},minmax(80px,1fr))">${floors.map(row).join('')}</div></div>`;
 }
 function unitPop(u, after) {
   const canRes = u.status === 'con_ban' && M.ents.reservation.perm.c;
