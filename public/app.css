@@ -206,14 +206,14 @@ table.t.noclick tbody tr { cursor: default; }
 /* căn còn giao dịch được (còn bán / giữ chỗ / đã cọc / tạm khóa): ô trắng nổi, icon màu; căn đã ký – đã bàn giao – chưa mở bán: chìm xuống nền */
 .fwrap { overflow-x: auto; padding: 22px 12px 18px; display: flex; justify-content: center; }
 .fgrid { display: grid; gap: 10px 8px; align-items: center; min-width: max-content; }
-.fgrid .fl { font-size: 12px; font-weight: 700; color: #8a99ac; text-align: right; padding-right: 10px; font-variant-numeric: tabular-nums; }
+.fgrid .fl { font-size: 12.5px; font-weight: 800; color: #5b6b80; text-align: right; padding-right: 10px; font-variant-numeric: tabular-nums; }
 .u { --c: #94a3b8; --line: #e6ebf2; height: 50px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border-radius: 12px; cursor: pointer; position: relative;
   background: #fff; border: 1px solid var(--line); box-shadow: 0 1px 2px rgba(15, 27, 45, .04); transition: transform .15s, box-shadow .15s, opacity .2s, border-color .15s; }
 .u i.fa-house { font-size: 15px; color: var(--c); }
-.u span { font-size: 11.5px; font-weight: 600; color: #2c3e55; font-variant-numeric: tabular-nums; }
+.u span { font-size: 12.5px; font-weight: 800; color: #14243a; font-variant-numeric: tabular-nums; }
 .u:hover { transform: translateY(-2px); border-color: var(--c); box-shadow: 0 10px 22px rgba(15, 27, 45, .12); z-index: 2; }
 .u.da_ky_hd, .u.da_ban_giao, .u.chua_mo_ban, .u.ngung_kd { background: #f4f6f9; border-color: transparent; box-shadow: none; }
-.u.da_ky_hd span, .u.da_ban_giao span, .u.chua_mo_ban span, .u.ngung_kd span { color: #a3afbf; font-weight: 500; }
+.u.da_ky_hd span, .u.da_ban_giao span, .u.chua_mo_ban span, .u.ngung_kd span { color: #6b7c92; font-weight: 700; }
 .u.da_ky_hd i.fa-house, .u.da_ban_giao i.fa-house, .u.chua_mo_ban i.fa-house, .u.ngung_kd i.fa-house { opacity: .5; }
 .fbar { height: 4px; margin-left: 12px; border-radius: 99px; background: #edf1f6; overflow: hidden; }
 .fbar i { display: block; height: 100%; border-radius: 99px; background: #3dae6c; }
