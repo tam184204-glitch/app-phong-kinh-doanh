@@ -311,7 +311,9 @@ V.board = async (main, params) => {
   };
   await draw();
 };
-// mặt đứng tòa: mỗi tầng một hàng, căn cùng trục (2 số cuối mã căn) thẳng cột; ô 2 dòng nhỏ: icon nhà · tên căn · giá / loại · diện tích · hướng (đã có khách: tên khách);
+// mặt đứng tòa: mỗi tầng một hàng, căn cùng trục (2 số cuối mã căn) thẳng cột; ô 2 dòng nhỏ:
+// căn còn giao dịch: icon nhà · tên căn · giá / loại · diện tích · hướng; căn đã ký – bàn giao: tên căn / tên khách (giá ở chú thích rê chuột);
+const SOLD_DONE = new Set(['da_ky_hd', 'da_ban_giao']);
 // màu theo tông logo (cobalt = còn bán, amber = giữ chỗ / đã cọc, xám xanh = đã bán); bấm mở chi tiết
 function boardGrid(units, floors, s) {
   const axis = u => (/(\d{2})$/.exec(u.code) || [])[1] || '';
@@ -324,7 +326,7 @@ function boardGrid(units, floors, s) {
     const tip = u => [`Căn ${u.code}`, USTAT[u.status], [u.bedrooms && u.bedrooms + 'PN', fnum(u.area_tt) + 'm²', u.direction].filter(Boolean).join(' · '), fmB(u.total_price),
       u.customer && 'Khách: ' + u.customer, u.hold_until && 'Giữ chỗ đến ' + dmyhm(u.hold_until)].filter(Boolean).join('\n');
     return `<div class="fl" title="Tầng ${fl}: còn ${left}/${us.length} căn">${fl}</div>${cols.map((k, i) => { const u = cell(fl, k, i); return u
-      ? `<div class="u ${u.status} ${(s.st && s.st !== u.status) || (s.kind && s.kind !== u.kind) ? 'dim' : ''}" data-u="${u.id}" title="${esc(tip(u))}"><div class="u1">${ico('fa-house')}<b>${esc(u.code.split('-').pop())}</b><em>${fmB(u.total_price)}</em></div><div class="u2">${esc(u.customer || [u.bedrooms && u.bedrooms + 'PN', fnum(u.area_tt) + 'm²', u.direction].filter(Boolean).join('·'))}</div>${u.hold_until ? '<i class="hold"></i>' : ''}</div>`
+      ? `<div class="u ${u.status} ${(s.st && s.st !== u.status) || (s.kind && s.kind !== u.kind) ? 'dim' : ''}" data-u="${u.id}" title="${esc(tip(u))}"><div class="u1">${ico('fa-house')}<b>${esc(u.code.split('-').pop())}</b>${SOLD_DONE.has(u.status) ? '' : `<em>${fmB(u.total_price)}</em>`}</div><div class="u2">${SOLD_DONE.has(u.status) ? esc(u.customer || '') : [u.bedrooms && u.bedrooms + 'PN', fnum(u.area_tt) + 'm²', esc(u.direction || '')].filter(Boolean).join('<i>·</i>')}</div>${u.hold_until ? '<i class="hold"></i>' : ''}</div>`
       : '<span></span>'; }).join('')}`;
   };
   return `<div class="fwrap"><div class="fgrid" style="grid-template-columns:22px repeat(${cols.length},minmax(84px,1fr))">${floors.map(row).join('')}</div></div>`;

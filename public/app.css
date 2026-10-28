@@ -205,16 +205,18 @@ table.t.noclick tbody tr { cursor: default; }
 .tower b { display: block; color: var(--cobalt-d); font-size: 15px; } .tower small { color: var(--muted); }
 /* tông logo: cobalt = còn bán (ô trắng, vạch xanh), amber = giữ chỗ / đã cọc, xám xanh = đã ký / đã bàn giao (chìm xuống nền) */
 .fwrap { overflow-x: auto; padding: 8px 2px 6px; }
-.fgrid { display: grid; gap: 4px 3px; align-items: stretch; max-width: 1240px; margin: 0 auto; }
+.fgrid { display: grid; gap: 5px 4px; align-items: stretch; max-width: 1240px; margin: 0 auto; }
 .fgrid .fl { display: flex; align-items: center; justify-content: flex-end; padding-right: 3px; font-size: 12px; font-weight: 800; color: var(--cobalt-d); font-variant-numeric: tabular-nums; }
 .u { --c: var(--cobalt); --bg: #fff; --line: var(--cobalt-100); height: 36px; display: flex; flex-direction: column; justify-content: center; padding: 0 4px 0 6px; border-radius: 7px; cursor: pointer; position: relative; min-width: 0; white-space: nowrap;
   background: var(--bg); border: 1px solid var(--line); box-shadow: inset 3px 0 0 var(--c); line-height: 1.3; font-variant-numeric: tabular-nums; transition: transform .15s, box-shadow .15s, opacity .2s; }
 .u .u1 { display: flex; align-items: center; gap: 2px; min-width: 0; }
-.u .u2 { font-size: 9px; letter-spacing: -.15px; color: #55667c; overflow: hidden; text-overflow: ellipsis; }
+.u .u2 { font-size: 9px; letter-spacing: -.15px; color: #75869b; overflow: hidden; text-overflow: ellipsis; }
+.u .u2 i { font-style: normal; color: #b3bfcd; }
 .u i.fa-house { font-size: 8.5px; color: var(--c); flex: none; }
 .u b { font-size: 11px; font-weight: 800; color: var(--cobalt-d); }
 .u em { margin-left: auto; padding-left: 2px; font-style: normal; font-size: 10px; font-weight: 800; letter-spacing: -.15px; color: var(--amber-d); white-space: nowrap; }
-.u.da_ky_hd .u2, .u.da_ban_giao .u2, .u.chua_mo_ban .u2, .u.ngung_kd .u2 { color: #8090a4; }
+.u.da_ky_hd .u2, .u.da_ban_giao .u2, .u.chua_mo_ban .u2, .u.ngung_kd .u2 { color: #95a3b5; }
+.u.da_ky_hd i.fa-house, .u.da_ban_giao i.fa-house { opacity: .6; }
 .u:hover { transform: translateY(-1px); box-shadow: inset 3px 0 0 var(--c), 0 6px 14px rgba(20, 56, 102, .14); z-index: 2; }
 .u.da_ky_hd, .u.da_ban_giao, .u.chua_mo_ban, .u.ngung_kd { --bg: #f3f6f9; --line: transparent; }
 .u.da_ky_hd b, .u.da_ban_giao b, .u.chua_mo_ban b, .u.ngung_kd b { color: #5d6e84; }
