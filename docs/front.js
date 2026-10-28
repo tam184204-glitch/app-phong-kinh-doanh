@@ -883,7 +883,7 @@ function boardGrid(units, floors, s) {
       ? `<div class="u ${u.status} ${(s.st && s.st !== u.status) || (s.kind && s.kind !== u.kind) ? 'dim' : ''}" data-u="${u.id}" title="${esc(tip(u))}"><div class="u1">${ico('fa-house')}<b>${esc(u.code.split('-').pop())}</b>${SOLD_DONE.has(u.status) ? '' : `<em>${fmB(u.total_price)}</em>`}</div><div class="u2">${SOLD_DONE.has(u.status) ? esc(u.customer || '') : [u.bedrooms && u.bedrooms + 'PN', fnum(u.area_tt) + 'm²', esc(u.direction || '')].filter(Boolean).join('<i>·</i>')}</div>${u.hold_until ? '<i class="hold"></i>' : ''}</div>`
       : '<span></span>'; }).join('')}`;
   };
-  return `<div class="fwrap"><div class="fgrid" style="grid-template-columns:22px repeat(${cols.length},minmax(84px,1fr))">${floors.map(row).join('')}</div></div>`;
+  return `<div class="fwrap"><div class="fgrid" style="grid-template-columns:18px repeat(${cols.length},minmax(84px,1fr))">${floors.map(row).join('')}</div></div>`;
 }
 function unitPop(u, after) {
   const canRes = u.status === 'con_ban' && M.ents.reservation.perm.c;
