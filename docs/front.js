@@ -650,7 +650,7 @@ async function listView(main, ent, params = {}) {
     receipt: M.imports.receipts ? `<button class="btn amb" data-x="imp" data-k="receipts">${ico('fa-file-import')} Nhập chứng từ Bravo</button>` : '', unit: M.imports.units ? `<button class="btn" data-x="imp" data-k="units">${ico('fa-file-import')} Nhập bảng hàng</button>` : '',
     customer: M.imports.customers ? `<button class="btn" data-x="imp" data-k="customers">${ico('fa-file-import')} Nhập Excel</button>` : '',
     contact_log: `${M.imports.leads ? `<button class="btn" data-x="imp" data-k="leads">${ico('fa-file-import')} Nhập Excel khách</button>` : ''}${E.perm.c ? `<button class="btn amb" data-x="lead">${ico('fa-user-plus')} Thêm khách trực tiếp / Hotline</button>` : ''}`, contract: M.imports.contracts ? `<button class="btn" data-x="imp" data-k="contracts">${ico('fa-file-import')} Nhập HĐ cũ</button>` : '' }[ent] || '';
-  main.innerHTML = `<div class="page"><div class="ph"><div>${eyebrow(E)}<h1>${ico(E.icon)} ${esc(S.group === 'tiem_nang' ? E.title + ' tiềm năng' : E.groups?.[S.group] || E.title)}</h1></div><div class="acts">${E.purpose ? `<button class="btn ghost" id="infoBtn">${ico('fa-circle-info')} Quy trình</button>` : ''}${extra}${E.perm.x ? `<button class="btn" id="xls">${ico('fa-file-excel')} Xuất Excel</button>` : ''}<button class="btn" onclick="print()">${ico('fa-print')} In / PDF</button>${E.perm.c && ent !== 'reservation' ? `<button class="btn pri" id="newBtn">${ico('fa-plus')} Tạo ${esc(E.one)}</button>` : ''}</div></div>${infoBox(E)}
+  main.innerHTML = `<div class="page"><div class="ph"><div>${eyebrow(E)}<h1>${ico(E.icon)} ${esc(S.group === 'tiem_nang' ? E.title + ' tiềm năng' : E.groups?.[S.group] || E.title)}</h1></div><div class="acts">${E.purpose ? `<button class="btn ghost" id="infoBtn">${ico('fa-circle-info')} Quy trình</button>` : ''}${extra}${E.perm.x ? `<button class="btn" id="xls">${ico('fa-file-excel')} Xuất Excel</button>` : ''}<button class="btn" onclick="print()">${ico('fa-print')} In / PDF</button>${E.perm.c ? `<button class="btn pri" id="newBtn">${ico('fa-plus')} ${ent === 'reservation' ? 'Tạo phiếu đăng ký' : `Tạo ${esc(E.one)}`}</button>` : ''}</div></div>${infoBox(E)}
     <div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="q" placeholder="Tìm mã, tên, mã căn, khách hàng…" value="${esc(S.q)}"></div>
       ${projFilter ? `<select id="pj"><option value="">Tất cả dự án</option>${M.projects.map(p => `<option value="${p.id}" ${+S.project === p.id ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select>` : ''}
       ${E.fields.some(f => ['owner_id', 'assignee_id'].includes(f.k)) ? `<label class="chk"><input type="checkbox" id="mine" ${S.mine ? 'checked' : ''}> Của tôi</label>` : ''}
@@ -680,6 +680,8 @@ async function listView(main, ent, params = {}) {
   ST.reload = load;
   main.onclick = run(async e => {
     const t = e.target;
+    if ((t.id === 'newBtn' || t.closest('#newBtn')) && ent === 'reservation')   // phiếu đăng ký căn hộ (chuyển từ Bảng hàng sang đây 28/10/2026)
+      return openForm('reservation', { title: `${ico('fa-hand-holding-hand')} Phiếu đăng ký căn hộ`, onSaved: row => { load(); updateBadges(); openDetail('reservation', row.id); } });
     if (t.id === 'newBtn' || t.closest('#newBtn')) return openForm(ent, { preset: { ...(S.project && E.fields.some(f => f.k === 'project_id') ? { project_id: +S.project } : {}), ...(E.groups?.[S.group] ? { ptype: S.group } : {}) } });
     if (t.closest('#infoBtn')) return $('#infoBox', main)?.classList.toggle('hidden');
     if (t.closest('#xls')) { const p = new URLSearchParams(); if (S.q) p.set('q', S.q); if (S.status) p.set('status', S.status); if (S.project) p.set('project', S.project); if (S.mine) p.set('mine', '1'); return download(`/api/export/${ent}?${p}`); }
@@ -1076,7 +1078,7 @@ V.board = async (main, params) => {
     const cnt = {}; d.units.forEach(u => cnt[BGRP[u.status]] = (cnt[BGRP[u.status]] || 0) + 1);
     const floors = [...new Set(d.units.map(u => u.floor))].sort((a, b) => b - a);
     const kinds = [...new Set(d.units.map(u => u.kind))];
-    main.innerHTML = `<div class="page">${head('02', 'Bảng hàng', 'fa-table-cells', M.ents.reservation.perm.c ? `<span class="small muted">Bấm căn còn trống hoặc</span><button class="btn pri" id="bNew">${ico('fa-plus')} Tạo phiếu đăng ký</button>` : '')}
+    main.innerHTML = `<div class="page">${head('02', 'Bảng hàng', 'fa-table-cells', M.ents.reservation.perm.c ? `<span class="small muted">Bấm căn còn trống để lập phiếu đăng ký</span>` : '')}
       <div class="card mb"><div class="toolbar" style="border:0"><select id="bp">${d.projects.filter(p => p.n).map(p => `<option value="${p.id}" ${p.id === d.project ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)} (${p.n} căn)</option>`).join('')}</select>
         <select id="bk"><option value="">Mọi loại căn</option>${kinds.map(k => `<option value="${k}" ${s.kind === k ? 'selected' : ''}>${esc(M.ents.unit.fields.find(f => f.k === 'kind').o.find(o => o[0] === k)?.[1] || k)}</option>`).join('')}</select>
         <span class="grow"></span>${d.policy ? `<span class="src">${ico('fa-tags')} Chính sách đang áp dụng: <b>${esc(d.policy.code)}</b> (${dmy(d.policy.start_on)} – ${dmy(d.policy.end_on)})${d.policy.src_file ? ' · ' + esc(d.policy.src_file) : ''}</span>` : '<span class="pill a">Chưa có chính sách giá đang phát hành</span>'}</div>
@@ -1086,7 +1088,6 @@ V.board = async (main, params) => {
     $('#bp', main).onchange = e => { s.project = e.target.value; s.building = ''; draw(); };
     $('#bk', main).onchange = e => { s.kind = e.target.value; draw(); };
     main.onclick = run(async e => {
-      if (e.target.closest('#bNew')) return openForm('reservation', { title: `${ico('fa-hand-holding-hand')} Phiếu đăng ký căn hộ`, onSaved: row => { draw(); toast('Đã lưu — phiếu đã vào «Đăng ký mua – giữ chỗ» (04)'); openDetail('reservation', row.id); } });
       const b = e.target.closest('[data-b]'); if (b) { s.building = b.dataset.b; return draw(); }
       const st = e.target.closest('[data-st]'); if (st) { s.st = s.st === st.dataset.st ? '' : st.dataset.st; return draw(); }
       const u = e.target.closest('[data-u]'); if (u) return unitPop(d.units.find(x => x.id === +u.dataset.u), draw);

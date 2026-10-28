@@ -284,7 +284,7 @@ V.board = async (main, params) => {
     const cnt = {}; d.units.forEach(u => cnt[BGRP[u.status]] = (cnt[BGRP[u.status]] || 0) + 1);
     const floors = [...new Set(d.units.map(u => u.floor))].sort((a, b) => b - a);
     const kinds = [...new Set(d.units.map(u => u.kind))];
-    main.innerHTML = `<div class="page">${head('02', 'Bảng hàng', 'fa-table-cells', M.ents.reservation.perm.c ? `<span class="small muted">Bấm căn còn trống hoặc</span><button class="btn pri" id="bNew">${ico('fa-plus')} Tạo phiếu đăng ký</button>` : '')}
+    main.innerHTML = `<div class="page">${head('02', 'Bảng hàng', 'fa-table-cells', M.ents.reservation.perm.c ? `<span class="small muted">Bấm căn còn trống để lập phiếu đăng ký</span>` : '')}
       <div class="card mb"><div class="toolbar" style="border:0"><select id="bp">${d.projects.filter(p => p.n).map(p => `<option value="${p.id}" ${p.id === d.project ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)} (${p.n} căn)</option>`).join('')}</select>
         <select id="bk"><option value="">Mọi loại căn</option>${kinds.map(k => `<option value="${k}" ${s.kind === k ? 'selected' : ''}>${esc(M.ents.unit.fields.find(f => f.k === 'kind').o.find(o => o[0] === k)?.[1] || k)}</option>`).join('')}</select>
         <span class="grow"></span>${d.policy ? `<span class="src">${ico('fa-tags')} Chính sách đang áp dụng: <b>${esc(d.policy.code)}</b> (${dmy(d.policy.start_on)} – ${dmy(d.policy.end_on)})${d.policy.src_file ? ' · ' + esc(d.policy.src_file) : ''}</span>` : '<span class="pill a">Chưa có chính sách giá đang phát hành</span>'}</div>
@@ -294,7 +294,6 @@ V.board = async (main, params) => {
     $('#bp', main).onchange = e => { s.project = e.target.value; s.building = ''; draw(); };
     $('#bk', main).onchange = e => { s.kind = e.target.value; draw(); };
     main.onclick = run(async e => {
-      if (e.target.closest('#bNew')) return openForm('reservation', { title: `${ico('fa-hand-holding-hand')} Phiếu đăng ký căn hộ`, onSaved: row => { draw(); toast('Đã lưu — phiếu đã vào «Đăng ký mua – giữ chỗ» (04)'); openDetail('reservation', row.id); } });
       const b = e.target.closest('[data-b]'); if (b) { s.building = b.dataset.b; return draw(); }
       const st = e.target.closest('[data-st]'); if (st) { s.st = s.st === st.dataset.st ? '' : st.dataset.st; return draw(); }
       const u = e.target.closest('[data-u]'); if (u) return unitPop(d.units.find(x => x.id === +u.dataset.u), draw);
