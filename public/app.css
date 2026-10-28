@@ -204,10 +204,10 @@ table.t.noclick tbody tr { cursor: default; }
 .tower.on { border-color: var(--cobalt); box-shadow: 0 0 0 2px rgba(30, 78, 140, .12), 0 12px 24px rgba(30, 78, 140, .14); }
 .tower b { display: block; color: var(--cobalt-d); font-size: 15px; } .tower small { color: var(--muted); }
 /* tông logo: cobalt = còn bán (ô trắng, vạch xanh), amber = giữ chỗ / đã cọc, xám xanh = đã ký / đã bàn giao (chìm xuống nền) */
-.fwrap { overflow-x: auto; padding: 16px 0 14px; }
-.fgrid { display: grid; gap: 12px 4px; align-items: stretch; max-width: 1240px; margin: 0 auto; }
+.fwrap { overflow-x: auto; padding: 18px 0 16px; }
+.fgrid { display: grid; gap: 14px 4px; align-items: stretch; max-width: 1240px; margin: 0 auto; }
 .fgrid .fl { display: flex; align-items: center; justify-content: flex-end; padding-right: 3px; font-size: 12px; font-weight: 800; color: var(--cobalt-d); font-variant-numeric: tabular-nums; }
-.u { --c: var(--cobalt); --bg: #fff; --line: var(--cobalt-100); height: 44px; display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 0 4px 0 6px; border-radius: 9px; cursor: pointer; position: relative; min-width: 0; white-space: nowrap;
+.u { --c: var(--cobalt); --bg: #fff; --line: var(--cobalt-100); height: 50px; display: flex; flex-direction: column; justify-content: center; gap: 5px; padding: 0 4px 0 6px; border-radius: 9px; cursor: pointer; position: relative; min-width: 0; white-space: nowrap;
   background: var(--bg); border: 1px solid var(--line); box-shadow: inset 3px 0 0 var(--c); line-height: 1.3; font-variant-numeric: tabular-nums; transition: transform .15s, box-shadow .15s, opacity .2s; }
 .u .u1 { display: flex; align-items: center; gap: 2px; min-width: 0; }
 .u .u2 { font-size: 9px; letter-spacing: -.15px; color: #75869b; overflow: hidden; text-overflow: ellipsis; }
