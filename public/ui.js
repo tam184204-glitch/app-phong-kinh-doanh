@@ -368,10 +368,11 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [] } = {}
   }
   // phiếu đề nghị hủy / đổi: chọn hợp đồng hoặc phiếu giữ chỗ → khách hàng, SĐT, dự án, mã căn, số tiền khách đã nộp
   if (ent === 'cancel_req') form.addEventListener('change', async e => {
-    if (!['contract_id', 'reservation_id'].includes(e.target.name) || !e.target.value) return;
+    if (!['unit_id', 'contract_id', 'reservation_id'].includes(e.target.name) || !e.target.value) return;
     const setRef = (k, id, label) => { const h = form.elements[k]; if (!h) return; h.value = id ?? ''; const t = h.closest('.combo')?.querySelector('[data-combo]'); if (t) t.value = id ? label : ''; };
     try {
-      const d = await api('GET', `/api/cancel_prefill?${e.target.name === 'contract_id' ? 'contract_id' : 'reservation_id'}=${e.target.value}`);
+      const d = await api('GET', `/api/cancel_prefill?${e.target.name}=${e.target.value}`);
+      if (e.target.name === 'unit_id') { setRef('contract_id', d.contract_id, d.contract_label); setRef('reservation_id', d.reservation_id, d.reservation_label); if (!d.contract_id && !d.reservation_id) toast('Căn chưa có hợp đồng / phiếu giữ chỗ đang hiệu lực', true); }
       form.elements.cust_name.value = d.cust_name; form.elements.phone.value = d.phone;
       setRef('project_id', d.project_id, d.project_label); setRef('unit_id', d.unit_id, d.unit_label);
       if (e.target.name === 'contract_id' && d.reservation_id) setRef('reservation_id', d.reservation_id, d.reservation_label);

@@ -342,12 +342,12 @@ def('cancel_req', {
   c: ['ban_hang', 'truong_phong', 'ho_so'], u: ['ban_hang', 'truong_phong', 'ho_so', 'cong_no', 'ke_toan'], a: MGR, fields: [
     { k: 'code', l: 'Mã đề nghị', t: 'code', prefix: 'HG-{Y}-', pad: 4 },
     // phiếu đề nghị 3 phần: 1. thông tin khách hàng (tự lấy theo hợp đồng / phiếu giữ chỗ) → 2. nội dung đề nghị → 3. chuyển xử lý; ký: người lập – bộ phận kiểm tra – người phê duyệt
-    { k: 'contract_id', l: 'Mã hợp đồng', t: 'ref', ref: 'contract', sec: '1. Thông tin khách hàng', help: 'Chọn hợp đồng (hoặc phiếu giữ chỗ) → tự điền khách hàng, dự án, mã căn, số tiền' },
+    { k: 'unit_id', l: 'Mã căn hộ', t: 'ref', ref: 'unit', sec: '1. Thông tin khách hàng', help: 'Chọn căn → tự lấy hợp đồng / phiếu giữ chỗ đang hiệu lực, khách hàng, dự án, số tiền' },
+    { k: 'contract_id', l: 'Mã hợp đồng', t: 'ref', ref: 'contract', help: 'Chọn hợp đồng (hoặc phiếu giữ chỗ) → tự điền khách hàng, dự án, mã căn, số tiền' },
     { k: 'reservation_id', l: 'Phiếu giữ chỗ', t: 'ref', ref: 'reservation', help: 'Khi chưa có hợp đồng' },
     { k: 'cust_name', l: 'Họ tên khách hàng', t: 'text', help: 'Tự lấy theo hợp đồng / phiếu giữ chỗ' },
     { k: 'phone', l: 'Số điện thoại', t: 'text' },
     { k: 'project_id', l: 'Dự án', t: 'ref', ref: 'project' },
-    { k: 'unit_id', l: 'Mã căn hộ', t: 'ref', ref: 'unit' },
     { k: 'kind', l: 'Loại đề nghị', t: 'sel', req: 1, o: [['huy', 'Hủy giao dịch'], ['doi_can', 'Đổi căn'], ['doi_kh', 'Thay đổi khách hàng']], sec: '2. Nội dung đề nghị' },
     { k: 'new_unit_id', l: 'Căn mới', t: 'ref', ref: 'unit', filter: 'con_ban', show: { kind: ['doi_can'] } },
     { k: 'new_customer_id', l: 'Khách hàng mới', t: 'ref', ref: 'customer', show: { kind: ['doi_kh'] } },

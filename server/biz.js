@@ -487,12 +487,18 @@ H.noxh_check = {
 };
 
 // phiếu đề nghị hủy / đổi: chọn hợp đồng hoặc phiếu giữ chỗ → khách hàng, SĐT, dự án, mã căn, số tiền khách đã nộp
-async function cancelPrefill(db, { contract_id, reservation_id }) {
+async function cancelPrefill(db, { contract_id, reservation_id, unit_id }) {
+  if (unit_id && !contract_id && !reservation_id) {   // chọn căn → hợp đồng / phiếu giữ chỗ đang hiệu lực của căn
+    contract_id = (await db.one("SELECT id FROM kd_contract WHERE unit_id = $1 AND kind <> 'hoan_thien' AND status NOT IN ('huy','thanh_ly') ORDER BY id DESC LIMIT 1", [+unit_id]))?.id;
+    if (!contract_id) reservation_id = (await db.one(`SELECT id FROM kd_reservation WHERE unit_id = $1 AND status IN ${ACTIVE_RES} ORDER BY id DESC LIMIT 1`, [+unit_id]))?.id;
+    if (!contract_id && !reservation_id) { const u = await raw(db, 'unit', +unit_id), p = u && await raw(db, 'project', u.project_id);
+      return { contract_id: null, contract_label: '', reservation_id: null, reservation_label: '', cust_name: '', phone: '', project_id: p?.id ?? null, project_label: p ? `${p.code} · ${p.name}` : '', unit_id: u?.id ?? null, unit_label: u?.code || '', paid: 0 }; }
+  }
   const c = contract_id && await raw(db, 'contract', +contract_id), res = (c?.reservation_id || reservation_id) && await raw(db, 'reservation', +(c?.reservation_id || reservation_id));
   const unitId = c?.unit_id || res?.unit_id, custId = c?.customer_id || res?.customer_id;
   const u = unitId && await raw(db, 'unit', unitId), k = custId && await raw(db, 'customer', custId), p = u && await raw(db, 'project', u.project_id);
   const paid = c ? (await debtOf(db, [c.id])).get(c.id).paid : +res?.deposit || 0;
-  return { reservation_id: res?.id ?? null, reservation_label: res?.code || '', cust_name: k?.full_name || res?.cust_name || '', phone: k?.phone || res?.phone || '',
+  return { contract_id: c?.id ?? null, contract_label: c?.number || '', reservation_id: res?.id ?? null, reservation_label: res?.code || '', cust_name: k?.full_name || res?.cust_name || '', phone: k?.phone || res?.phone || '',
     project_id: p?.id ?? null, project_label: p ? `${p.code} · ${p.name}` : '', unit_id: u?.id ?? null, unit_label: u?.code || '', paid };
 }
 
