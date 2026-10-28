@@ -84,6 +84,13 @@ const SPECIAL = [
   `UPDATE kd_price_policy SET project_ids = ARRAY[project_id] WHERE project_ids IS NULL AND project_id IS NOT NULL`,
   // giá niêm yết = Tổng cộng (số cũ từ bảng hàng 10/09/2026 bỏ đi)
   `UPDATE kd_unit SET list_price = total_price WHERE total_price IS NOT NULL AND list_price IS DISTINCT FROM total_price`,
+  // hồ sơ NOXH trước khi có dòng «2.1 Thông tin chủ hộ»: dựng từ khách hàng + cột Mẫu 4; dự án theo căn
+  `UPDATE kd_noxh_check n SET head = jsonb_build_array(jsonb_build_object('name', coalesce(k.full_name, ''), 'phone', concat_ws('/ ', k.phone, nullif(k.phone2, '')),
+      'bday', coalesce(to_char(k.birth, 'FMDD'), ''), 'bmonth', coalesce(to_char(k.birth, 'FMMM'), ''), 'byear', coalesce(to_char(k.birth, 'YYYY'), ''),
+      'old_id_no', coalesce(n.old_id_no, ''), 'id_no', coalesce(k.id_no, ''), 'job', coalesce(n.job, ''), 'doi_tuong', coalesce(n.doi_tuong, ''), 'confirm_org', coalesce(n.confirm_org, ''),
+      'housing', coalesce(n.housing, ''), 'province', coalesce(n.province, ''), 'district', coalesce(n.district, ''), 'commune', coalesce(n.commune, ''), 'income', coalesce(n.income, ''), 'relation', 'Chủ hộ'))
+    FROM kd_customer k WHERE k.id = n.customer_id AND n.head IS NULL`,
+  `UPDATE kd_noxh_check n SET project_id = u.project_id, unit_area = coalesce(n.unit_area, u.area_tt) FROM kd_unit u WHERE u.id = n.unit_id AND n.project_id IS NULL`,
   // phiếu đăng ký trước khi tách 3 cột giá: Tổng giá bán cũ = Giá trị căn hộ
   `UPDATE kd_reservation SET unit_value = price - coalesce(finish_value, 0) WHERE unit_value IS NULL AND price IS NOT NULL`,
   `CREATE INDEX IF NOT EXISTS kd_price_policy_pids ON kd_price_policy USING gin (project_ids)`,

@@ -388,8 +388,51 @@ async function markCustomer(db, id, user) { const c = await raw(db, 'customer', 
 // đối tượng chính sách (nguyên văn Mẫu 4) → nhóm đối tượng dùng cho danh mục giấy tờ
 const grpOf = t => { const s = String(t || '').toLowerCase(); if (!s.trim()) return null;
   return /thu nhập thấp|nghèo/.test(s) ? 'cn_thu_nhap_thap' : /sĩ quan|quân nhân|công an|quân đội/.test(s) ? 'luc_luong_vt' : /doanh nghiệp|khu công nghiệp|công nhân/.test(s) ? 'cong_nhan' : /cán bộ|công chức|viên chức/.test(s) ? 'can_bo' : 'khac'; };
+// hồ sơ NOXH: dòng «2.1 Thông tin chủ hộ» (cột như Mẫu 4) ↔ cột Mẫu 4 của hồ sơ + hồ sơ khách hàng (họ tên, SĐT, ngày sinh, CCCD)
+const HEAD_COLS = ['old_id_no', 'job', 'doi_tuong', 'confirm_org', 'housing', 'province', 'district', 'commune', 'income'];
+async function noxhHead(db, r, old, user, demo) {
+  const h = Array.isArray(r.head) ? r.head[0] : null, t = v => String(v ?? '').trim();
+  const k = r.customer_id ? await raw(db, 'customer', r.customer_id) : null;
+  if (!h || !(t(h.name) || t(h.phone) || t(h.id_no))) {   // hồ sơ cũ / nhập file Mẫu 4: dựng dòng chủ hộ từ dữ liệu đang có
+    const [y, m, d] = String(k?.birth || '').split('-');
+    r.head = [{ name: k?.full_name || '', phone: [k?.phone, k?.phone2].filter(Boolean).join('/ '), bday: d ? String(+d) : '', bmonth: m ? String(+m) : '', byear: y || '', id_no: k?.id_no || '',
+      ...Object.fromEntries(HEAD_COLS.map(c => [c, r[c] || ''])), relation: 'Chủ hộ' }];
+    return;
+  }
+  const oh = Array.isArray(old?.head) ? old.head[0] || {} : {};   // ô định danh bị che (•••) với người không có quyền xem → giữ số cũ
+  for (const [c, v] of Object.entries(h)) if (String(v ?? '').startsWith('•')) h[c] = oh[c] ?? (c === 'old_id_no' ? old?.old_id_no : '') ?? '';
+  for (const c of HEAD_COLS) r[c] = t(h[c]) || null;
+  h.relation = 'Chủ hộ';
+  const dd = +h.bday, mm = +h.bmonth, yy = +h.byear;
+  if (t(h.bday) && !(dd >= 1 && dd <= 31)) bad('Chủ hộ: ngày sinh phải từ 1 đến 31');
+  if (t(h.bmonth) && !(mm >= 1 && mm <= 12)) bad('Chủ hộ: tháng sinh phải từ 1 đến 12');
+  if (t(h.byear) && !(yy >= 1900 && yy <= 2100)) bad('Chủ hộ: năm sinh không hợp lệ');
+  const birth = dd && mm && yy ? `${yy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}` : null;
+  const [phone, phone2] = t(h.phone).split(/\s*[\/;,]\s*/).map(x => x.replace(/[\s.]/g, '')).filter(Boolean);
+  const patch = { full_name: t(h.name) || undefined, phone, phone2, id_no: t(h.id_no) || undefined, birth: birth || undefined };
+  for (const x of Object.keys(patch)) if (patch[x] === undefined) delete patch[x];
+  if (!r.customer_id) {   // chưa chọn khách: khớp theo CCCD rồi SĐT, không có thì tạo khách mới
+    const c = (patch.id_no && await db.one('SELECT id FROM kd_customer WHERE upper(id_no) = upper($1) ORDER BY id LIMIT 1', [patch.id_no]))
+      || (phone && await db.one("SELECT id FROM kd_customer WHERE regexp_replace($1,'[^0-9]','','g') IN (regexp_replace(phone,'[^0-9]','','g'), regexp_replace(coalesce(phone2,''),'[^0-9]','','g')) ORDER BY id LIMIT 1", [phone]));
+    if (c) r.customer_id = c.id;
+    else {
+      if (!patch.full_name || !phone) bad('Chủ hộ: cần họ tên và số điện thoại (hoặc chọn khách hàng)');
+      r.customer_id = (await create('customer', { ...patch, address: [r.commune, r.district, r.province].filter(Boolean).join(', ') || null, kind: 'giao_dich', source: 'truc_tiep', owner_id: r.owner_id || user?.id },
+        user, { db, system: true, demo, note: 'Tự tạo từ hồ sơ mua NOXH' })).row.id;
+      return;
+    }
+  }
+  const cur = await raw(db, 'customer', r.customer_id), diff = {};
+  for (const [x, v] of Object.entries(patch)) if (String(cur[x] ?? '') !== String(v)) diff[x] = v;
+  if (Object.keys(diff).length) await sys(db, 'customer', cur.id, diff, user, 'sua', `Theo hồ sơ mua NOXH${r.id ? ' #' + r.id : ''}`);
+}
+
 H.noxh_check = {
-  async beforeSave(r, old, { db, warn }) {
+  async beforeSave(r, old, { db, warn, user, opts, demo }) {
+    if (r.reservation_id && (!old || old.reservation_id !== r.reservation_id)) { const s = await raw(db, 'reservation', r.reservation_id); r.customer_id = s.customer_id; r.unit_id = s.unit_id; }
+    if (!opts?.check) await noxhHead(db, r, old, user, demo);
+    if (!r.customer_id) bad('Nhập thông tin chủ hộ hoặc chọn khách hàng');
+    if (r.unit_id) { const u = await raw(db, 'unit', r.unit_id); r.project_id = u.project_id; r.unit_area = u.area_tt; }   // diện tích theo Danh mục sản phẩm
     // hồ sơ lập xong → gắn vào phiếu đăng ký đang hiệu lực của khách (cùng căn nếu đã chọn căn) để in biên bản / cập nhật tiến trình từ phiếu
     if (!r.reservation_id && r.customer_id) r.reservation_id = (await db.one(`SELECT id FROM kd_reservation WHERE customer_id = $1 AND status IN ('cho_duyet','giu_cho','qua_han','da_coc','chuyen_hd')
       AND ($2::int IS NULL OR unit_id = $2) ORDER BY id DESC LIMIT 1`, [r.customer_id, r.unit_id ?? null]))?.id ?? null;
