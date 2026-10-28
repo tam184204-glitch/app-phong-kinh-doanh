@@ -303,7 +303,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [] } = {}
     body, foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="fSave">${ico('fa-floppy-disk')} ${id ? 'Lưu' : E.direct ? `Lưu ${E.one}` : 'Lưu nháp'}</button>${canSubmit ? `<button class="btn amb" id="fSub">${ico('fa-paper-plane')} Lưu & ${esc(E.flow.submitLabel || 'trình duyệt')}</button>` : ''}` });
   const form = $('form', m.el);
   const sch = $('[data-sched]', form);
-  if (sch) schedEditor(sch, rec.new_schedule || [], { total: () => readField(form, E.fields.find(f => f.k === 'value_after')) || rec.value_before || 0 });
+  if (sch) schedEditor(sch, rec.new_schedule || [], { total: () => ent === 'contract' ? readField(form, E.fields.find(f => f.k === 'value')) || 0 : readField(form, E.fields.find(f => f.k === 'value_after')) || rec.value_before || 0 });
   const vis = () => { const cur = collect(true); for (const f of fields) { const box = $(`[data-f="${f.k}"]`, form); if (box) box.classList.toggle('hidden', !isShown(f, cur)); } };
   const collect = (all) => { const out = {}; for (const f of fields) { if (f.ro || (f.t === 'code' && !f.manual)) continue; if (lockKeep && !lockKeep.has(f.k)) continue; const v = readField(form, f); if (v !== undefined) out[f.k] = v; } return all ? { ...rec, ...out } : out; };
   // checklist theo nhóm / mẫu
@@ -328,12 +328,39 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [] } = {}
         if (f.ref === 'customer' && el.value) continue;        // thông tin khách đã gõ thì giữ
         el.value = tf.t === 'money' ? moneyStr(v) : tf.t === 'date' ? dmy(v) : v;
       }
+      if (ent === 'contract' && f.ref === 'unit') {   // như BRAVO: dự án của căn → Đơn vị / Bên A → thông tin bên bán
+        const pc = M.projects.find(p => p.id === src.project_id)?.code, s = (M.sellers || []).find(x => x.projects.includes(pc)) || (M.sellers || [])[0];
+        if (s && form.elements.s_name) { form.elements.seller_unit.value = s.unit; form.elements.s_name.value = s.name; await fillSeller(); }
+        contractCalc();
+      }
       if (ent === 'reservation' && f.ref === 'unit' && form.elements.unit_value) {   // giá trị căn hộ = sau thuế + bảo trì; hoàn thiện theo căn
         const uv = src.price_net != null ? +src.price_net + (+src.maint_fee || 0) : src.total_price != null ? +src.total_price - (+src.finish_value || 0) : null;
         form.elements.unit_value.value = moneyStr(uv); form.elements.finish_value.value = moneyStr(src.finish_value); sumRes();
       }
     } catch (er) { toast(er.message, true); }
   });
+  // hợp đồng (như BRAVO): chọn Bên A → điền thông tin bên bán; sửa ô giá → tính lại tiền (cùng công thức máy chủ) + bảng Lần thanh toán
+  const fillSeller = async () => {
+    const n = form.elements.s_name?.value.trim(); if (!n) return;
+    const d = await api('GET', '/api/seller?name=' + encodeURIComponent(n));
+    for (const [k, v] of Object.entries(d)) if (form.elements[k] && (v || k !== 'seller_unit')) form.elements[k].value = v;
+  };
+  const contractCalc = () => {
+    if (ent !== 'contract' || !form.elements.base_price) return;
+    const rd = k => readField(form, fields.find(f => f.k === k) || {}), base = +rd('base_price'), area = +rd('area_tt');
+    if (base > 0 && area > 0 && readField(form, fields.find(f => f.k === 'ptype')) !== 'lien_ke') {
+      const r3 = v => Math.round(v / 1000) * 1000, F0 = base * area + (+rd('floor_price') || 0) * (+rd('area_floor') || 0), cp = rd('corner_pct');
+      const corner = cp != null ? Math.round(F0 * cp / 100) : +rd('corner_amt') || 0, F = F0 + corner - (+rd('discount') || 0), vat = rd('vat_pct') ?? 5, H = F * vat / 100;
+      const out = { corner_amt: corner || null, pretax: Math.round(F), vat_amt: Math.round(H), after_tax: r3(F + H), maint_fee: r3(F * 0.02) };
+      out.value = out.after_tax + out.maint_fee + (+rd('finish_value') || 0);
+      for (const [k, v] of Object.entries(out)) if (form.elements[k]) form.elements[k].value = moneyStr(v);
+    }
+    sch?._redraw?.();
+  };
+  if (ent === 'contract') {
+    form.addEventListener('input', e => { if (['base_price', 'area_tt', 'floor_price', 'area_floor', 'discount', 'corner_pct', 'vat_pct', 'finish_value'].includes(e.target.name)) contractCalc(); else if (e.target.name === 'value') sch?._redraw?.(); });
+    form.addEventListener('change', e => { if (e.target.name === 's_name') fillSeller().catch(er => toast(er.message, true)); if (e.target.name === 'seller_unit') { const s = (M.sellers || []).find(x => x.unit === e.target.value); if (s) { form.elements.s_name.value = s.name; fillSeller().catch(er => toast(er.message, true)); } } });
+  }
   // phiếu đăng ký: Tổng giá bán = Giá trị căn hộ + Giá trị hoàn thiện nội thất
   const sumRes = () => { const rd = k => readField(form, fields.find(f => f.k === k) || {}), uv = rd('unit_value'); if (uv != null && form.elements.price) form.elements.price.value = moneyStr(uv + (rd('finish_value') || 0)); };
   if (ent === 'reservation') form.addEventListener('input', e => { if (['unit_value', 'finish_value'].includes(e.target.name)) sumRes(); });

@@ -109,7 +109,7 @@ async function metaFor(user) {
   const menu = M.MENU.map(([no, t, icon, items]) => [no, t, icon, items.map(([id, l, code]) => { const e = id.startsWith('e:') && ents[id.slice(2).split('?')[0]]; return e ? (e.perm.r ? [id, l || e.title, e.icon, e.code] : null) : viewOk(id) ? [id, l, null, code] : null; }).filter(Boolean)]).filter(m => m[3].length);
   const settings = Object.fromEntries((await q("SELECT key, value FROM kd_setting WHERE key IN ('checklist_noxh','checklist_so_hong','checklist_ban_giao','schedule_presets','sla_hours','handover_pay_pct','bravo','bsc')")).map(r => [r.key, r.value]));
   return {
-    me: user, roles: M.ROLES, menu, ents, virt: M.VIRT, piiRoles: M.PII_ROLES, settings, alertCat: V.ALERT_CAT, reports: V.REPORTS,
+    me: user, roles: M.ROLES, menu, ents, virt: M.VIRT, piiRoles: M.PII_ROLES, sellers: M.SELLERS, settings, alertCat: V.ALERT_CAT, reports: V.REPORTS,
     imports: Object.fromEntries(Object.entries(IO.IMPORTS).filter(([, i]) => user.role === 'admin' || i.roles.includes(user.role)).map(([k, i]) => [k, { title: i.title, note: i.note }])),
     users: await q('SELECT id, full_name, role, title, active FROM kd_user ORDER BY active DESC, full_name'),
     projects: await q('SELECT id, code, name FROM kd_project ORDER BY code'), buildings: await q('SELECT id, project_id, code, name FROM kd_building ORDER BY code'),
@@ -421,6 +421,13 @@ R('POST', '/api/admin/load-demo', async (req, res, u) => { admin(u); const S = r
 R('GET', '/print/reservation/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printReservation(p.id, u, qs.kind, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 R('GET', '/api/handover-templates', async (req, res, u, p, qs) => send(res, 200, await M4.handoverTemplates(qs)));
 R('GET', '/print/handover/:kind/:id', async (req, res, u, p, qs) => send(res, 200, await M4.printHandover(p.kind, p.id, u, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
+// bên bán theo tên (Bên A): thông tin mặc định + ô đã ghi ở hợp đồng gần nhất cùng Bên A
+R('GET', '/api/seller', async (req, res, u, p, qs) => {
+  const name = String(qs.name || '').trim(), base = M.SELLERS.find(s => s.name === name) || {};
+  const last = name ? await one(`SELECT s_addr, s_phone, s_tax, s_bank_acc, s_bank_name, s_rep, s_title, s_poa, seller_unit FROM kd_contract WHERE s_name = $1 ORDER BY id DESC LIMIT 1`, [name]) : null;
+  send(res, 200, { s_addr: last?.s_addr || base.addr || '', s_phone: last?.s_phone || '', s_tax: last?.s_tax || '', s_bank_acc: last?.s_bank_acc || '', s_bank_name: last?.s_bank_name || '',
+    s_rep: last?.s_rep || '', s_title: last?.s_title || '', s_poa: last?.s_poa || '', seller_unit: base.unit || last?.seller_unit || '' });
+});
 R('GET', '/api/mau4', async (req, res, u, p, qs) => send(res, 200, await M4.data(u, qs)));
 R('GET', '/api/mau4/xlsx', async (req, res, u, p, qs) => sendFile(res, await M4.xlsx(u, qs), `Mau4_ho_so_mua_NOXH_${C.today()}.xlsx`, MIME['.xlsx']));
 R('GET', '/print/contract/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printContract(p.id, u, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });

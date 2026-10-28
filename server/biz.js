@@ -102,6 +102,15 @@ async function writeSchedule(db, contractId, rows, src, user, demo) {
   await C.audit(db, 'contract', contractId, 'lich_thanh_toan', null, { lich: rows }, user, `${rows.length} kỳ · ${src === 'phu_luc' ? 'theo phụ lục' : 'theo hợp đồng'}`, demo);
 }
 
+// tiền hợp đồng chung cư (như BRAVO, cùng công thức Danh mục sản phẩm): F = giá nền × DT thông thủy + giá sàn × DT sàn + tiền hệ số góc − giảm giá;
+// thuế = F × thuế suất; sau thuế = ROUND(F + thuế, -3); bảo trì = ROUND(F × 2%, -3); tổng = sau thuế + bảo trì + giá trị hoàn thiện
+function contractPrice(r) {
+  const r3 = v => Math.round(v / 1000) * 1000, F0 = +r.base_price * +r.area_tt + (+r.floor_price || 0) * (+r.area_floor || 0);
+  const corner_amt = r.corner_pct != null && r.corner_pct !== '' ? Math.round(F0 * +r.corner_pct / 100) : +r.corner_amt || 0;
+  const F = F0 + corner_amt - (+r.discount || 0), vat = r.vat_pct ?? 5, H = F * vat / 100, after_tax = r3(F + H), maint_fee = r3(F * 0.02);
+  return { corner_amt: corner_amt || null, pretax: Math.round(F), vat_pct: vat, vat_amt: Math.round(H), after_tax, maint_fee, value: after_tax + maint_fee + (+r.finish_value || 0) };
+}
+
 // giá trị hợp đồng căn hộ theo Danh mục sản phẩm (sau thuế + bảo trì): cập nhật các ô giá + tính lại từng đợt theo tỷ lệ / ngày đến hạn cũ.
 // Phiếu thu đã có giữ nguyên (công nợ tự tính lại theo lịch mới). Trả về true nếu có đổi.
 async function syncContractValue(db, contractId, user, note = 'Đồng bộ giá trị theo Danh mục sản phẩm') {
@@ -511,7 +520,8 @@ H.cancel_req = {
 H.contract = {
   // danh sách theo nhóm: ?group=can_ho | lien_ke
   where(qs) { if (['can_ho', 'lien_ke'].includes(qs.group)) return { sql: 't.ptype = $1', params: [qs.group] }; },
-  async beforeSave(r, old, { db, opts }) {
+  async beforeSave(r, old, ctx) {
+    const { db, opts } = ctx;
     r.number = r.number?.trim().toUpperCase().replace(/\s+/g, '') || null;
     // phân loại theo loại căn
     if (!old || old.unit_id !== r.unit_id || !r.ptype) { const u0 = await raw(db, 'unit', r.unit_id); if (u0) r.ptype = ['lien_ke', 'shophouse'].includes(u0.kind) ? 'lien_ke' : 'can_ho'; }
@@ -521,9 +531,16 @@ H.contract = {
       const last = await db.one("SELECT max(substring(number from '\\d+$')::int) n FROM kd_contract WHERE number LIKE $1", [pre + '%']);
       r.number = pre + String((last?.n || 0) + 1).padStart(4, '0');
     }
+    // chung cư có giá nền: tính như BRAVO / Danh mục sản phẩm — chỉ khi tạo mới hoặc đổi ô giá (hợp đồng cũ giữ nguyên số)
+    const PK = ['base_price', 'area_tt', 'floor_price', 'area_floor', 'discount', 'corner_pct', 'vat_pct', 'finish_value', 'unit_id'];
+    if (r.ptype !== 'lien_ke' && +r.base_price > 0 && +r.area_tt > 0 && (!old || PK.some(k => String(old[k] ?? '') !== String(r[k] ?? '')))) Object.assign(r, contractPrice(r));
     if (r.pretax > 0 && r.vat_pct != null && r.vat_amt == null) r.vat_amt = Math.round(r.pretax * r.vat_pct / 100);
     if (r.pretax > 0 && r.after_tax == null) r.after_tax = r.pretax + (r.vat_amt || 0);
     if (!(r.value > 0)) bad('Giá trị hợp đồng phải > 0');
+    // bảng «Lần thanh toán» trên form: kiểm tra khớp Tổng tiền (ghi thành lịch thu ở afterSave)
+    // không lưu vào cột (lịch thu nằm ở kd_installment) — chuyển sang afterSave qua ctx
+    ctx.sched = Array.isArray(r.new_schedule) && r.new_schedule.length ? await normSchedule(db, r.new_schedule.map(x => x.pct != null ? { ...x, amount: null } : x), r.value, 'Lần thanh toán') : null;
+    r.new_schedule = null;
     if (!old || old.unit_id !== r.unit_id) {
       const u = await raw(db, 'unit', r.unit_id);
       if (!u.activated && !opts.system) bad(`Căn ${u.code} chưa được duyệt mở bán`);
@@ -543,7 +560,12 @@ H.contract = {
     if (r.kind !== 'thue' && !n.n) bad('Chưa lập lịch thanh toán — bấm «Lập lịch thanh toán» trước khi gửi rà soát');
     if (n.n && n.s !== r.value) bad(`Tổng lịch thanh toán ${fmtMoney(n.s)} khác giá trị hợp đồng ${fmtMoney(r.value)}`);
   },
-  async afterSave(r, old, { db, user }) {
+  async afterSave(r, old, { db, user, demo, sched }) {
+    if (sched?.length && ['du_thao', 'tu_choi'].includes(r.status)) {   // ghi lịch thu khi khác lịch đang có
+      const cur = await db.q('SELECT name, due_on, pct, amount FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [r.id]);
+      const key = xs => JSON.stringify(xs.map(x => [x.name, String(x.due_on).slice(0, 10), x.pct == null ? null : +x.pct, +x.amount]));
+      if (key(cur) !== key(sched)) await writeSchedule(db, r.id, sched, 'hop_dong', user, demo);
+    }
     if (r.status === 'da_ky' && old?.status !== 'da_ky' && r.reservation_id && r.kind !== 'hoan_thien') {
       const s = await raw(db, 'reservation', r.reservation_id);
       if (s && s.reg_state !== 'ky_hdmb') await sys(db, 'reservation', s.id, { reg_state: 'ky_hdmb', progress: 'da_ky' }, user, 'cap_nhat_tien_trinh', `Đã ký hợp đồng ${r.number}`);
@@ -554,6 +576,8 @@ H.contract = {
   async decorate(rows, { db, one }) {
     const D = await debtOf(db, rows.map(r => r.id));
     for (const r of rows) { const d = D.get(r.id); r.paid = d.paid; r.left = d.left; r.overdue = d.overdue; if (one) r._debt = d; }
+    if (one && rows[0]) rows[0].new_schedule = (await db.q('SELECT name, due_on, pct, amount FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [rows[0].id]))
+      .map(x => ({ name: x.name, due_on: x.due_on, pct: x.pct == null ? null : +x.pct, amount: x.pct == null ? +x.amount : null }));   // form sửa: lịch thu đang có
   },
   acts: {
     async schedule(r, d, { db, user, demo }) {
@@ -864,4 +888,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { ckItem, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, pricing, normSchedule, writeSchedule, syncContractValue, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { ckItem, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, pricing, normSchedule, writeSchedule, syncContractValue, contractPrice, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

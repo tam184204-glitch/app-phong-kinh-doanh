@@ -344,6 +344,12 @@ def('cancel_req', {
 const HD_PTYPE = [['can_ho', 'Hợp đồng căn hộ chung cư'], ['lien_ke', 'Hợp đồng nhà liền kề']];
 const CT_ONLY = { ptype: ['can_ho'] }, LK_ONLY = { ptype: ['lien_ke'] };
 const HD_KIND = [['hdmb', 'HĐ mua bán'], ['thue', 'HĐ thuê'], ['thue_mua', 'HĐ thuê mua'], ['hoan_thien', 'HĐ thỏa thuận hoàn thiện']];
+// bên bán (chủ đầu tư) theo BRAVO: chọn Đơn vị / Bên A → tự điền thông tin bên bán (ô trống lấy theo hợp đồng gần nhất cùng Bên A)
+const SELLERS = [
+  { unit: 'A01: Công ty Cổ phần Cát Tường', name: 'Công ty Cổ phần Cát Tường', addr: 'Tầng 3 tòa CTN, đường Lý Thái Tổ, Phường Tiền Ninh Vệ, TP Bắc Ninh, Tỉnh Bắc Ninh', projects: [] },
+  { unit: 'A02: Công ty CP TM&ĐTPT Thống Nhất', name: 'Công ty CP TM&ĐTPT Thống Nhất', addr: '', projects: ['TNS', 'TN'] },
+];
+const CHUC_VU = ['Tổng Giám đốc', 'Phó Tổng Giám đốc', 'Giám đốc', 'Phó Giám đốc', 'Trưởng phòng Kinh doanh'];
 def('contract', {
   title: 'Sổ theo dõi hợp đồng', one: 'hợp đồng', code: 'HD-01', mod: '05', icon: 'fa-file-contract', disp: "t.number",
   purpose: 'Theo dõi ký kết và lưu hợp đồng', users: 'Nhân viên quản lý hợp đồng',
@@ -356,7 +362,7 @@ def('contract', {
     { k: 'kind', l: 'Loại hợp đồng', t: 'sel', req: 1, o: HD_KIND, def: 'hdmb' },
     { k: 'contract_on', l: 'Ngày hợp đồng', t: 'date', def: 'today' },
     { k: 'number', l: 'Số hợp đồng', t: 'text', uniq: 1, help: 'Để trống → tự cấp HDCH.YYMM-0001 (chung cư) / HDLK.YYMM-0001 (liền kề)' },
-    { k: 'seller_unit', l: 'Đơn vị', t: 'text', def: 'A01: Công ty Cổ phần Cát Tường' },
+    { k: 'seller_unit', l: 'Đơn vị', t: 'text', def: SELLERS[0].unit, sug: SELLERS.map(s => s.unit), help: 'Chọn căn → tự lấy theo dự án' },
     { k: 'agreement', l: 'Văn bản thỏa thuận', t: 'text' },
     { k: 'unit_id', l: 'Mã căn', t: 'ref', ref: 'unit', req: 1,
       fill: { area_tt: 'area_tt', base_price: 'base_price', pretax: 'pretax', vat_pct: 'vat_pct', vat_amt: 'tax_amt', after_tax: 'price_net', maint_fee: 'maint_fee', finish_value: 'finish_value', value: 'total_price', area_land: 'area_dat', area_build: 'area_xd' } },
@@ -377,14 +383,14 @@ def('contract', {
     { k: 'request_on', l: 'Ngày đề nghị mua', t: 'date' },
     { k: 'co_owner', l: 'Đồng sở hữu', t: 'text', help: 'Họ tên người đồng sở hữu (nếu có)' },
     // bên bán nhà ở
-    { k: 's_name', l: 'Bên A', t: 'text', def: 'Công ty Cổ phần Cát Tường', sec: 'Bên bán nhà ở' },
-    { k: 's_addr', l: 'Địa chỉ liên hệ (bên bán)', t: 'text', def: 'Tầng 3 tòa CTN, đường Lý Thái Tổ, Phường Tiền Ninh Vệ, TP Bắc Ninh, Tỉnh Bắc Ninh' },
+    { k: 's_name', l: 'Bên A', t: 'text', def: SELLERS[0].name, sug: SELLERS.map(s => s.name), sec: 'Bên bán nhà ở', help: 'Chọn Bên A → tự điền các ô bên bán' },
+    { k: 's_addr', l: 'Địa chỉ liên hệ (bên bán)', t: 'text', def: SELLERS[0].addr },
     { k: 's_phone', l: 'Điện thoại (bên bán)', t: 'text' },
     { k: 's_tax', l: 'MST', t: 'text' },
     { k: 's_bank_acc', l: 'TK ngân hàng (bên bán)', t: 'text' },
     { k: 's_bank_name', l: 'Tên ngân hàng (bên bán)', t: 'text' },
     { k: 's_rep', l: 'Người đại diện', t: 'text' },
-    { k: 's_title', l: 'Chức vụ', t: 'text' },
+    { k: 's_title', l: 'Chức vụ', t: 'text', sug: CHUC_VU },
     { k: 's_poa', l: 'Giấy UQ số', t: 'text' },
     money('commission_amt', 'Tiền hoa hồng'),
     { k: 'commission_pct', l: 'Tỷ lệ hoa hồng (%)', t: 'num' },
@@ -411,10 +417,11 @@ def('contract', {
     money('maint_fee', 'Phí bảo trì'),
     { k: 'corner_pct', l: 'Hệ số góc %', t: 'num' },
     money('corner_amt', 'Tiền hệ số góc'),
-    money('value', 'Tổng tiền (giá trị hợp đồng)', { req: 1 }),
+    money('value', 'Tổng tiền (giá trị hợp đồng)', { req: 1, help: 'Chung cư có giá nền: tự tính = tiền sau thuế + phí bảo trì + giá trị hoàn thiện' }),
     { k: 'closed', l: 'Hợp đồng đóng', t: 'bool' },
     { k: 'cn', l: 'CN', t: 'bool' },
     { k: 'vbtt_hold', l: 'Tạm đóng VBTT', t: 'bool' },
+    { k: 'new_schedule', l: 'Lần TT · % · Giá trị VND', t: 'json', sec: 'Lần thanh toán', help: 'Nhập tỷ lệ % → giá trị tự tính theo Tổng tiền' },
     { k: 'pay_method', l: 'Phương thức thanh toán', t: 'text' },
     { k: 'plan_sign', l: 'Ngày dự kiến ký', t: 'date' },
     { k: 'sign_place', l: 'Địa điểm ký', t: 'text' },
@@ -863,4 +870,4 @@ const VIRT = {
   days_out: 'Ngày tại cơ quan', sla: 'SLA', project: 'Dự án', building: 'Tòa', stt: 'STT', prints: 'In bản đăng ký', bbgn: 'In biên bản giao nhận',
 };
 
-module.exports = { M4, PROSPECT_ST, VIRT,  ROLES, ALL, MGR, PII_ROLES, E, MENU, VIEW_ROLES, LOOKUPS, SETTINGS, UNIT_ST };
+module.exports = { M4, SELLERS, PROSPECT_ST, VIRT,  ROLES, ALL, MGR, PII_ROLES, E, MENU, VIEW_ROLES, LOOKUPS, SETTINGS, UNIT_ST };
