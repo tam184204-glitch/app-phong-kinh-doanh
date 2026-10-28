@@ -298,10 +298,13 @@ H.reservation = {
     if (changedUnit && old && ['huy', 'het_han'].includes(r.status)) bad('Phiếu đã hủy — không đổi căn được');
     if (changedUnit || r.price == null || !r.policy_id) {
       const p = await pricing(db, u, r.reg_date);
-      if (r.price == null) r.price = u.total_price != null ? +u.total_price : p.price;   // giá theo mã căn ở Danh mục sản phẩm (khớp bản in đơn đăng ký)
+      // giá theo mã căn ở Danh mục sản phẩm: giá trị căn hộ = sau thuế + bảo trì; hoàn thiện = giá trị hoàn thiện căn
+      if (r.unit_value == null || (old && changedUnit)) r.unit_value = u.price_net != null ? +u.price_net + (+u.maint_fee || 0) : u.total_price != null ? +u.total_price - (+u.finish_value || 0) : p.price;
+      if (old ? changedUnit : r.finish_value == null) r.finish_value = u.finish_value;
       if (!r.policy_id) r.policy_id = p.policy?.id ?? null;   // nhân viên chọn chính sách thì giữ, để trống thì tự lấy
       if (!p.policy && !r.policy_id) warn.push('Không có chính sách bán hàng đang phát hành cho căn này — giá lấy theo bảng hàng');
     }
+    if (r.unit_value != null) r.price = +r.unit_value + (+r.finish_value || 0);   // Tổng giá bán = giá trị căn hộ + hoàn thiện nội thất
     if (r.price == null) bad('Chưa có giá bán: nhập giá hoặc phát hành bảng giá cho dự án');
     if (r.deposit > r.price) bad('Tiền đặt cọc lớn hơn giá bán');
   },

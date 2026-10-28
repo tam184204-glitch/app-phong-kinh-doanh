@@ -205,7 +205,7 @@ def('reservation', {
   rules: 'Chặn đăng ký trùng căn; khách chưa có hồ sơ thì tự tạo theo CCCD / số điện thoại; hủy đăng ký thì căn trở lại Còn bán, không tự hoàn tiền',
   c: ['ban_hang', 'truong_phong'], a: MGR, own: ['ban_hang'], search: ['code', 'cust_name', 'phone'], direct: 1, listPii: 1, fields: [
     { k: 'code', l: 'Mã phiếu', t: 'code', prefix: 'GD-{Y}-', pad: 4 },
-    { k: 'unit_id', l: 'Mã căn hộ', t: 'ref', ref: 'unit', req: 1, filter: 'con_ban,chua_mo_ban', fill: { price: 'total_price' } },
+    { k: 'unit_id', l: 'Mã căn hộ', t: 'ref', ref: 'unit', req: 1, filter: 'con_ban,chua_mo_ban', fill: { price: 'total_price', finish_value: 'finish_value' } },
     { k: 'customer_id', l: 'Khách hàng đã có', t: 'ref', ref: 'customer', help: 'Chọn khách có sẵn để điền nhanh — để trống: hệ thống tự khớp theo CCCD / SĐT hoặc tạo khách mới',
       fill: { cust_code: 'code', cust_name: 'full_name', id_no: 'id_no', id_date: 'id_date', id_place: 'id_place', address: 'address', phone: 'phone', tax_code: 'tax_code', bank_account: 'bank_account' } },
     { k: 'cust_code', l: 'Mã khách hàng', t: 'text', help: 'Để trống → lấy mã khách đã có (khớp CCCD / SĐT) hoặc tự cấp mã mới (KH000001…)' },
@@ -217,7 +217,9 @@ def('reservation', {
     { k: 'phone', l: 'Số điện thoại', t: 'text', req: 1, help: '09xxxxxxxx' },
     { k: 'tax_code', l: 'Mã số thuế cá nhân', t: 'text', pii: 1, help: 'In trên biên bản bàn giao hồ sơ' },
     { k: 'bank_account', l: 'Tài khoản ngân hàng', t: 'text', pii: 1, help: 'Số tài khoản - Ngân hàng (VD 0070101168008 - Ngân hàng MB)' },
-    money('price', 'Tổng giá bán căn hộ', { help: 'Tự lấy theo Danh mục sản phẩm khi chọn căn — sửa tay được' }),
+    money('unit_value', 'Giá trị căn hộ', { help: 'Giá trị sau thuế + phí bảo trì — tự lấy theo Danh mục sản phẩm khi chọn căn' }),
+    money('finish_value', 'Giá trị hoàn thiện nội thất'),
+    money('price', 'Tổng giá bán', { help: 'Tự tính = Giá trị căn hộ + Giá trị hoàn thiện nội thất' }),
     { k: 'reg_state', l: 'Trạng thái căn hộ', t: 'sel', req: 1, def: 'giu_cho', o: REG_ST },
     { k: 'progress', l: 'Tiến trình giao dịch', t: 'sel', req: 1, def: 'tiep_nhan', o: REG_PROG },
     { k: 'policy_id', l: 'Chính sách áp dụng', t: 'ref', ref: 'price_policy', filter: 'phat_hanh', help: 'Để trống → tự lấy chính sách bán hàng đang phát hành cho căn' },
@@ -232,7 +234,7 @@ def('reservation', {
     { k: 'agent_id', l: 'Đại lý bán hàng', t: 'ref', ref: 'agent', show: { source: ['dai_ly', 'ctv'] } },
     owner('Người thực hiện', { hide: 1 }),   // tự lấy người lập phiếu
     { k: 'status', l: 'Tình trạng phiếu', t: 'sel', o: RES_ST, ro: 1, def: 'nhap' },
-  ], list: ['stt', 'unit_id', 'cust_code', 'cust_name', 'id_no', 'id_date', 'id_place', 'address', 'phone', 'price', 'reg_at', 'hold_until', 'reg_state', 'progress', 'agent_id', 'note', 'prints'],
+  ], list: ['stt', 'unit_id', 'cust_code', 'cust_name', 'id_no', 'id_date', 'id_place', 'address', 'phone', 'unit_value', 'finish_value', 'price', 'reg_at', 'hold_until', 'reg_state', 'progress', 'agent_id', 'note', 'prints'],
   lock: ['chuyen_hd', 'het_han', 'huy', 'cho_duyet'], lockKeep: ['note', 'progress', 'reg_state'],
   flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'giu_cho' } },
   acts: [
