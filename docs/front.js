@@ -853,8 +853,8 @@ V.board = async (main, params) => {
         <select id="bk"><option value="">Mọi loại căn</option>${kinds.map(k => `<option value="${k}" ${s.kind === k ? 'selected' : ''}>${esc(M.ents.unit.fields.find(f => f.k === 'kind').o.find(o => o[0] === k)?.[1] || k)}</option>`).join('')}</select>
         <span class="grow"></span>${d.policy ? `<span class="src">${ico('fa-tags')} Chính sách đang áp dụng: <b>${esc(d.policy.code)}</b> (${dmy(d.policy.start_on)} – ${dmy(d.policy.end_on)})${d.policy.src_file ? ' · ' + esc(d.policy.src_file) : ''}</span>` : '<span class="pill a">Chưa có chính sách giá đang phát hành</span>'}</div>
         <div style="padding:0 14px 12px"><div class="towers">${d.buildings.map(b => `<div class="tower ${b.id === d.building ? 'on' : ''}" data-b="${b.id}"><b>${esc(b.name || 'Tòa ' + b.code)}</b><small>${b.n} căn</small></div>`).join('')}</div></div></div>
-      <div class="card"><div class="toolbar"><div class="legend">${Object.entries(USTAT).filter(([k]) => cnt[k]).map(([k, l]) => `<span data-st="${k}" style="cursor:pointer;${s.st && s.st !== k ? 'opacity:.4' : ''}"><b class="u ${k}" style="width:12px;height:12px;min-height:0;padding:0;border-radius:3px"></b>${l} <b style="background:none;width:auto;height:auto;color:var(--ink)">${cnt[k]}</b></span>`).join('')}</div>${s.st ? '<button class="btn sm ghost" data-st="">Bỏ lọc</button>' : ''}<span class="grow"></span><span class="small muted">${d.units.length} căn · ${floors.length} tầng</span></div>
-      <div class="bd"><div class="floors">${floors.map(fl => `<div class="floor"><div class="fl">Tầng ${fl}</div><div class="us">${d.units.filter(u => u.floor === fl).map(u => `<div class="u ${u.status} ${(s.st && s.st !== u.status) || (s.kind && s.kind !== u.kind) ? 'dim' : ''}" data-u="${u.id}" title="${esc(u.code)} · ${USTAT[u.status]}${u.customer ? ' · ' + esc(u.customer) : ''}">${u.hold_until ? `<span class="hold">${ico('fa-clock')}</span>` : ''}<b>${esc(u.code.split('-').pop())}</b>${u.bedrooms || ''}PN · ${fnum(u.area_tt)}m²<br>${fmB(u.total_price)}<div class="cu">${esc(u.customer || u.direction || '')}</div></div>`).join('')}</div></div>`).join('') || '<div class="empty">Tòa chưa có căn</div>'}</div></div></div></div>`;
+      <div class="card"><div class="toolbar"><div class="legend">${Object.entries(USTAT).filter(([k]) => cnt[k]).map(([k, l]) => `<span data-st="${k}" style="cursor:pointer;${s.st && s.st !== k ? 'opacity:.4' : ''}"><i class="sw ${k}"></i>${l} <b class="n">${cnt[k]}</b></span>`).join('')}</div>${s.st ? '<button class="btn sm ghost" data-st="">Bỏ lọc</button>' : ''}<span class="grow"></span><span class="small muted">${d.units.length} căn · ${floors.length} tầng · bấm căn để xem chi tiết</span></div>
+      <div class="bd">${d.units.length ? boardGrid(d.units, floors, s) : '<div class="empty">Tòa chưa có căn</div>'}</div></div></div>`;
     $('#bp', main).onchange = e => { s.project = e.target.value; s.building = ''; draw(); };
     $('#bk', main).onchange = e => { s.kind = e.target.value; draw(); };
     main.onclick = run(async e => {
@@ -865,6 +865,24 @@ V.board = async (main, params) => {
   };
   await draw();
 };
+// mặt đứng tòa: mỗi tầng một hàng, căn cùng trục (2 số cuối mã căn) thẳng cột; ô chỉ ghi số căn, bấm mới mở chi tiết
+function boardGrid(units, floors, s) {
+  const axis = u => (/(\d{2})$/.exec(u.code) || [])[1] || '';
+  const by = new Map(units.map(u => [u.floor + '|' + axis(u), u]));
+  const byAxis = by.size === units.length;   // mã căn không theo trục → xếp lần lượt
+  const cols = byAxis ? [...new Set(units.map(axis))].sort() : [...Array(Math.max(...floors.map(fl => units.filter(u => u.floor === fl).length))).keys()].map(i => String(i + 1).padStart(2, '0'));
+  const cell = (fl, k, i) => byAxis ? by.get(fl + '|' + k) : units.filter(u => u.floor === fl)[i];
+  const tip = u => [u.code, USTAT[u.status], `${u.bedrooms || ''}PN · ${fnum(u.area_tt)}m²`, u.direction, fmB(u.total_price), u.customer].filter(Boolean).join(' · ');
+  const row = fl => {
+    const us = units.filter(u => u.floor === fl), left = us.filter(u => u.status === 'con_ban').length;
+    return `<div class="fl">${fl}</div>${cols.map((k, i) => { const u = cell(fl, k, i); return u
+      ? `<div class="u ${u.status} ${(s.st && s.st !== u.status) || (s.kind && s.kind !== u.kind) ? 'dim' : ''}" data-u="${u.id}" title="${esc(tip(u))}">${esc(u.code.split('-').pop())}${u.hold_until ? '<i class="hold"></i>' : ''}</div>`
+      : '<span class="u-none"></span>'; }).join('')}<div class="fc">${left ? `<b>${left}</b>/${us.length}` : `<span>0/${us.length}</span>`}</div>`;
+  };
+  return `<div class="fwrap"><div class="fgrid" style="grid-template-columns:44px repeat(${cols.length},minmax(46px,1fr)) 56px">
+    <div class="fh">Tầng</div>${cols.map(k => `<div class="fh">${k}</div>`).join('')}<div class="fh r">Còn bán</div>
+    ${floors.map(row).join('')}</div></div>`;
+}
 function unitPop(u, after) {
   const canRes = u.status === 'con_ban' && M.ents.reservation.perm.c;
   const m = modal({ title: `${ico('fa-door-open')} Căn ${esc(u.code)} ${pill(USTAT[u.status], { con_ban: 'g', giu_cho: 'a', da_coc: 'v', da_ky_hd: 'b', da_ban_giao: 't', tam_khoa: 'r' }[u.status])}`, narrow: true,
