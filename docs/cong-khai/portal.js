@@ -237,17 +237,27 @@ const LEAD_TOWER_PROJECTS = [
   { ten: 'Khu nhà ở xã hội cho người thu nhập thấp Cát Tường', towers: ['TNT-CT1', 'TNT-CT2', 'TNT-CT3', 'TNT-CT4', 'TNT-CT5'] },
   { ten: 'Khu nhà ở xã hội Cát Tường ECO', towers: ['ECO-CT1', 'ECO-CT2', 'ECO-CT3', 'ECO-CT4'] },
   { ten: 'Khu nhà ở xã hội Thống Nhất', towers: ['TN-N1', 'TN-N2', 'TN-N3', 'TN-N4'] },
-  { ten: 'Khu nhà ở xã hội Cát Tường Smart City', towers: ['Nhà Liền kề CTS', 'M1', 'M2', 'K', 'L', 'P', 'Q', 'R', 'S', 'T', 'O'] },
-  { ten: 'Khu nhà ở xã hội Thống Nhất Smart City', towers: ['Nhà Liền kề TNS', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'] },
+  { ten: 'Khu nhà ở xã hội Cát Tường Smart City', towers: ['Nhà Liền kề CTS', 'M1', 'M2', 'K', 'L', 'P', 'Q', 'R', 'S', 'T', 'O', 'G'] },
+  { ten: 'Khu nhà ở xã hội Thống Nhất Smart City', towers: ['Nhà Liền kề TNS', 'A', 'B', 'C', 'D', 'E', 'F', 'H', 'I', 'J'] },
 ];
 
 const TOWER_OPEN_PROJECTS = {
-  'Khu nhà ở xã hội Cát Tường Smart City': new Set(['O']),
-  'Khu nhà ở xã hội Thống Nhất Smart City': new Set(['G']),
+  'Khu nhà ở xã hội Cát Tường Smart City': new Set(['O', 'G']),
+  'Khu nhà ở xã hội Thống Nhất Smart City': new Set(),
 };
 const OPEN_TOWER_CODES_072026 = ['O', 'G'];
 
+// [App PKD] Tòa G thuộc Cát Tường Smart City — bảng hàng trang gốc ghi nhầm Thống Nhất Smart City (TNS)
+function suaToaGThuocCTS(data) {
+  (data?.toa || []).forEach(t => {
+    if (t.maDuAn !== 'TNS' || String(t.maToa).toUpperCase() !== 'G') return;
+    t.maDuAn = 'CTS'; t.tenDuAn = 'CTS';
+    (t.canHo || []).forEach(c => { c.maCan = String(c.maCan || '').replace(/^TNS-G-/, 'CTS-G-'); });
+  });
+  return data;
+}
 function syncOpenTowersFromInventory(data) {
+  suaToaGThuocCTS(data);
   const projectNames = { CTS: 'Khu nhà ở xã hội Cát Tường Smart City', TNS: 'Khu nhà ở xã hội Thống Nhất Smart City' };
   Object.values(projectNames).forEach(name => TOWER_OPEN_PROJECTS[name]?.clear());
   (data?.toa || []).forEach(tower => {

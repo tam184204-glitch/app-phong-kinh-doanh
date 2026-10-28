@@ -28,6 +28,17 @@ function must(s, from, to) {   // trang gốc đổi cấu trúc thì dừng h�
   if (!(from instanceof RegExp ? from.test(s) : s.includes(from))) throw new Error('Không thấy đoạn cần sửa: ' + from);
   return s.replace(from, to);
 }
+// chèn vào portal.js — đổi tòa G từ TNS sang CTS (mã dự án, tên dự án, mã căn TNS-G-… → CTS-G-…)
+const TOA_G_FN = `// [App PKD] Tòa G thuộc Cát Tường Smart City — bảng hàng trang gốc ghi nhầm Thống Nhất Smart City (TNS)
+function suaToaGThuocCTS(data) {
+  (data?.toa || []).forEach(t => {
+    if (t.maDuAn !== 'TNS' || String(t.maToa).toUpperCase() !== 'G') return;
+    t.maDuAn = 'CTS'; t.tenDuAn = 'CTS';
+    (t.canHo || []).forEach(c => { c.maCan = String(c.maCan || '').replace(/^TNS-G-/, 'CTS-G-'); });
+  });
+  return data;
+}`;
+const toaG = new Function('data', TOA_G_FN + '\nreturn suaToaGThuocCTS(data);');
 const texts = [];   // mọi nội dung đã sinh — quét tìm tài nguyên marketing/… cần tải
 const save = (f, s) => { texts.push(s); fs.writeFileSync(path.join(OUT, f), s); console.log('  ', f, (Buffer.byteLength(s) / 1024).toFixed(0) + 'KB'); };
 
@@ -47,12 +58,21 @@ console.log('   gioi-thieu.html', (html.length / 1024).toFixed(0) + 'KB');
 let js = await get('/marketing/portal.js');
 js = must(js, "location.protocol === 'file:' ? `gioi-thieu.html?blog=${slug}` : `/blog/${slug}`", '`gioi-thieu.html?blog=${slug}`');
 js = must(js, "location.protocol === 'file:' ? 'gioi-thieu.html' : '/gioi-thieu'", "'gioi-thieu.html'");
+// tòa G thuộc Cát Tường Smart City (trang gốc xếp nhầm vào Thống Nhất Smart City): danh sách tòa + dữ liệu bảng hàng (cả dữ liệu trực tiếp lẫn đã chụp)
+js = must(js, "towers: ['Nhà Liền kề CTS', 'M1', 'M2', 'K', 'L', 'P', 'Q', 'R', 'S', 'T', 'O'] }", "towers: ['Nhà Liền kề CTS', 'M1', 'M2', 'K', 'L', 'P', 'Q', 'R', 'S', 'T', 'O', 'G'] }");
+js = must(js, "towers: ['Nhà Liền kề TNS', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'] }", "towers: ['Nhà Liền kề TNS', 'A', 'B', 'C', 'D', 'E', 'F', 'H', 'I', 'J'] }");
+js = must(js, "'Khu nhà ở xã hội Cát Tường Smart City': new Set(['O']),\n  'Khu nhà ở xã hội Thống Nhất Smart City': new Set(['G']),",
+  "'Khu nhà ở xã hội Cát Tường Smart City': new Set(['O', 'G']),\n  'Khu nhà ở xã hội Thống Nhất Smart City': new Set(),");
+js = must(js, 'function syncOpenTowersFromInventory(data) {\n', `${TOA_G_FN}
+function syncOpenTowersFromInventory(data) {
+  suaToaGThuocCTS(data);
+`);
 js = rel(js);
 save('portal.js', js);
 save('estate-background.css', rel(await get('/marketing/estate-background.css'), '../'));
 
 console.log('Chụp dữ liệu API công khai…');
-const api = async (p, f) => save('data/' + f + '.json', JSON.stringify(relJson(JSON.parse(await get('/api/public' + p)))));
+const api = async (p, f) => { const j = relJson(JSON.parse(await get('/api/public' + p))); if (f === 'bang-hang') toaG(j.data); save('data/' + f + '.json', JSON.stringify(j)); };
 const duAn = JSON.parse(await get('/api/public/du-an')).data;
 await api('/du-an', 'du-an');
 for (const p of duAn) await api('/du-an/' + encodeURIComponent(p.ma), 'du-an__' + p.ma);
@@ -60,7 +80,7 @@ for (const p of ['bieu-mau', 'bang-hang', 'phap-ly']) await api('/' + p, p);
 await api('/luot-truy-cap?path=%2Fgioi-thieu', 'luot-truy-cap');
 const blogIds = [...js.slice(js.indexOf('const BLOG_BAI_VIET_MAC_DINH'), js.indexOf('const TIN_TUC_NOI_BAT_MAC_DINH')).matchAll(/^ {4}id: '([^']+)'/gm)].map(m => m[1]);
 for (const id of blogIds) await api('/blog/' + encodeURIComponent(id), 'blog__' + id).catch(e => console.warn('   bỏ qua bài (trang gốc chỉ cho nội bộ):', id, e.message));
-save('data/quy-can-072026.json', JSON.stringify(relJson(JSON.parse(await get('/marketing/data/quy-can-072026.json')))));
+save('data/quy-can-072026.json', JSON.stringify(toaG(relJson(JSON.parse(await get('/marketing/data/quy-can-072026.json'))))));
 
 // ---- tài nguyên marketing/… : đường dẫn chữ + đường dẫn ghép trong portal.js (hằng …_BASE / …_VERSION, bộ mẫu NOXH)
 const consts = Object.fromEntries([...js.matchAll(/^const (\w+) = '([^'\n]*)';/gm)].map(m => [m[1], m[2]]));
