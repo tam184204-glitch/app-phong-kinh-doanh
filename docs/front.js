@@ -879,9 +879,9 @@ function boardGrid(units, floors, s) {
     const us = units.filter(u => u.floor === fl), left = us.filter(u => u.status === 'con_ban').length;
     return `<div class="fl">${fl}</div>${cols.map((k, i) => { const u = cell(fl, k, i); return u
       ? `<div class="u ${u.status} ${(s.st && s.st !== u.status) || (s.kind && s.kind !== u.kind) ? 'dim' : ''}" data-u="${u.id}">${ico('fa-house')}<span>${esc(u.code.split('-').pop())}</span>${u.hold_until ? '<i class="hold"></i>' : ''}</div>`
-      : '<span class="u-none"></span>'; }).join('')}<div class="fbar" title="Tầng ${fl}: còn ${left}/${us.length} căn"><i style="width:${us.length ? Math.round(left / us.length * 100) : 0}%"></i></div>`;
+      : '<span></span>'; }).join('')}${left ? `<div class="fbar" title="Tầng ${fl}: còn ${left}/${us.length} căn"><i style="width:${Math.round(left / us.length * 100)}%"></i></div>` : '<span></span>'}`;
   };
-  return `<div class="fwrap"><div class="fgrid" style="grid-template-columns:28px repeat(${cols.length},56px) 64px">${floors.map(row).join('')}</div></div>`;
+  return `<div class="fwrap"><div class="fgrid" style="grid-template-columns:34px repeat(${cols.length},60px) 60px">${floors.map(row).join('')}</div></div>`;
 }
 let tipEl = null;
 function unitTip(el, u) {
