@@ -203,8 +203,8 @@ def('sale_notice', {
   title: 'Thông báo mở bán căn hộ', one: 'thông báo', code: 'GD-03', mod: '04', icon: 'fa-bullhorn', disp: "t.code||coalesce(' · '||t.title,'')",
   purpose: 'Theo dõi các đợt thông báo mở bán và tình hình đăng ký theo đợt', users: 'Trưởng phòng / nhân viên kinh doanh',
   how: 'Lập thông báo (dự án, căn mở bán, thời gian nhận hồ sơ, nơi đăng) → trình duyệt → duyệt thì căn chưa mở bán trong đợt tự chuyển «Còn bán» → theo dõi số căn đã đăng ký / còn trống',
-  rules: 'Ngày kết thúc nhận hồ sơ phải sau ngày bắt đầu; đính kèm văn bản thông báo trước khi trình duyệt',
-  c: ['truong_phong', 'ban_hang'], u: ['truong_phong', 'ban_hang'], a: MGR, search: ['code', 'title', 'doc_no'], files: [['van_ban', 'Văn bản thông báo mở bán', 1]], fields: [
+  rules: 'Ngày kết thúc nhận hồ sơ phải sau ngày bắt đầu',
+  c: ['truong_phong', 'ban_hang'], u: ['truong_phong', 'ban_hang'], a: MGR, search: ['code', 'title', 'doc_no'], files: [['van_ban', 'Văn bản thông báo mở bán']], fields: [
     { k: 'code', l: 'Mã thông báo', t: 'code', prefix: 'TB-{Y}-', pad: 4 },
     { k: 'project_id', l: 'Dự án', t: 'ref', ref: 'project', req: 1 },
     { k: 'title', l: 'Tên đợt mở bán', t: 'text', req: 1, help: 'VD: Mở bán đợt 2 – tòa O' },
