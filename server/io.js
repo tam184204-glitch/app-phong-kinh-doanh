@@ -291,7 +291,8 @@ async function createUser(db, d, by, { trial, pw } = {}) {
 }
 
 // ---------- in hợp đồng theo mẫu ----------
-const DIGITS = ['không', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín'];
+// đọc số tiền thành chữ — giữ dạng mã nguồn (chuỗi) để chèn nguyên văn vào trang in; bản demo nén mã đổi tên hàm nên không dùng fn.toString()
+const MONEY_SRC = String.raw`const DIGITS = ['không', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín'];
 function read3(n, full) {
   const h = Math.floor(n / 100), t = Math.floor(n % 100 / 10), u = n % 10, out = [];
   if (h || full) out.push(DIGITS[h], 'trăm');
@@ -307,7 +308,8 @@ function moneyWords(n) {
   for (let g = groups.length - 1; g >= 0; g--) if (groups[g]) parts.push(read3(groups[g], g < groups.length - 1), scales[g]);
   const s = parts.filter(Boolean).join(' ');
   return s[0].toUpperCase() + s.slice(1) + ' đồng';
-}
+}`;
+const { moneyWords } = new Function(MONEY_SRC + ';return { moneyWords };')();
 const escH = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 // trường trộn tiền có cặp «…_chu» → đánh dấu để bản in sửa số thì dòng bằng chữ tự đổi theo (script trong editDoc)
 const mergeVal = (map, x) => x + '_chu' in map ? `<span data-so="${x}">${escH(map[x] ?? '')}</span>`
@@ -341,7 +343,7 @@ const EDIT_CSS = `.bar{font:13px system-ui;background:#f5f8fc;border:1px solid #
     @media print{.bar{display:none} .doc,.doc:focus{outline:none}}`;
 const editBar = info => `<div class="bar"><span class="tip">${info}<br>✎ Bấm vào chữ để sửa trực tiếp, xong bấm <b>In</b>. Sửa ở đây chỉ áp dụng cho bản in này.</span><button onclick="location.reload()">Hoàn tác</button><button class="pri" onclick="print()">In / Lưu PDF</button></div>`;
 const editDoc = body => `<div class="doc" contenteditable="true" spellcheck="false">${body}</div>
-<script>(() => { const DIGITS = ${JSON.stringify(DIGITS)}; ${read3} ${moneyWords}
+<script>(() => { ${MONEY_SRC}
   const d = document.querySelector('.doc');   // sửa số tiền → dòng bằng chữ cùng trường tự đổi
   // xóa hết số rồi gõ lại thì trình duyệt bỏ thẻ đánh dấu → nhớ ô đang sửa (theo đoạn chứa nó) và gắn lại vào phần số mới gõ
   const box = [...d.querySelectorAll('[data-so]')].map(s => ({ k: s.dataset.so, s, blk: s.closest('p,td,li,div') }));

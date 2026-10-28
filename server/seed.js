@@ -153,8 +153,14 @@ async function ensureTemplates() {
     // mẫu chuẩn theo file Excel phòng Kinh doanh: lần đầu nạp thì tắt các mẫu khung cũ
     let moi = 0;
     for (const t of require('./mau4').MAU_BIEN_BAN()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });
-    for (const t of MAU_DANG_KY()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) { await C.create('template', { ...t, active: true }, sysU, { db, system: true }); moi++; }
+    for (const t of MAU_DANG_KY()) {
+      if (await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) continue;
+      if (t.kind === 'dang_ky_noi_that' && await db.one('SELECT 1 FROM kd_template WHERE kind = $1 AND name = $2', [t.kind, t.name])) continue;   // đã tự tạo mẫu cùng tên
+      await C.create('template', { ...t, active: true }, sysU, { db, system: true }); moi++;
+    }
     if (moi) await db.q('UPDATE kd_template SET active = false WHERE code = ANY($1)', [MAU_CU]);
+    // nội thất chỉ giữ một mẫu «Đơn đăng ký G (NT) – hoàn thiện căn hộ»: tắt 2 mẫu tách theo 2 / 3 phòng ngủ
+    await db.q('UPDATE kd_template SET active = false WHERE active AND code = ANY($1)', [require('./mau-dang-ky').NT_CU]);
     // mẫu đã nạp trước 27/10: đổi quốc hiệu «o0o» sang thể thức NĐ 30 + tách «Nơi cấp» xuống dòng (chỉ thay đúng đoạn cũ, giữ phần đã sửa tay)
     // mẫu G (NT) nạp trước 27/10 ghi cứng giá gói → đổi sang trường trộn (giá theo Danh mục sản phẩm)
     for (const [code, gia] of Object.entries(require('./mau-dang-ky').NT_GIA)) {
