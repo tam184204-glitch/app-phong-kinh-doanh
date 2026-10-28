@@ -776,3 +776,7 @@ table.prod-t tfoot td { font-weight: 800 !important; color: var(--ink) !importan
 .pyt th { white-space: normal; min-width: 90px; vertical-align: middle; }
 .pyt td.wrap { white-space: normal; min-width: 180px; }
 .pyt tr.warn td { background: #fff8e6; } .pyt tr.neg td { background: #fff1f0; } .pyt tr.neg td.due { color: #c0392b; font-weight: 700; }
+
+/* bảng căn mở bán trong chi tiết thông báo: cuộn, giữ dòng tiêu đề */
+.ds-can{max-height:420px;overflow:auto}
+.ds-can thead th{position:sticky;top:0;z-index:1;text-align:center}

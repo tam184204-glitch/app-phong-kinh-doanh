@@ -485,7 +485,7 @@ async function cancelPrefill(db, { contract_id, reservation_id }) {
 // thông báo mở bán: căn thuộc đợt theo «Căn hộ mở bán» (* = cả dự án / mã tòa / mã căn)
 async function noticeUnits(db, n) {
   const g = String(n.unit_group || '*').split(/[,;\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
-  const us = await db.q('SELECT u.id, u.code, u.status, u.activated, u.lock, b.code b FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = $1', [n.project_id]);
+  const us = await db.q('SELECT u.id, u.code, u.status, u.activated, u.lock, u.floor, u.area_tt, u.area_xd, b.code b FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = $1 ORDER BY b.code, u.floor, u.code', [n.project_id]);
   return us.filter(u => g.includes('*') || g.includes(String(u.b).toUpperCase()) || g.includes(u.code.toUpperCase()));
 }
 H.sale_notice = {
@@ -501,9 +501,10 @@ H.sale_notice = {
     for (const u of await noticeUnits(db, r)) if (!u.activated && !u.lock) { await sys(db, 'unit', u.id, { activated: true }, user, 'kich_hoat', `Theo thông báo mở bán ${r.code}`); await recomputeUnit(db, u.id, user); }
   },
   // theo dõi: số căn trong đợt, đã đăng ký / giữ chỗ (đã có phiếu đăng ký hoặc hợp đồng), còn trống
-  async decorate(rows, { db }) {
+  async decorate(rows, { db, one }) {
     for (const r of rows) {
       const us = await noticeUnits(db, r);
+      if (one) r._units = us.map(u => ({ code: u.code, area_tt: u.area_tt, area_xd: u.area_xd }));   // màn chi tiết: bảng căn mở bán như «DS mở bán» Excel
       r.n_units = us.length; r.n_free = us.filter(u => u.status === 'con_ban').length;
       r.n_reg = us.filter(u => !['con_ban', 'chua_mo_ban', 'tam_khoa', 'ngung_kd'].includes(u.status)).length;
     }
