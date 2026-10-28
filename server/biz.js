@@ -172,6 +172,13 @@ H.unit = {
     const b = r.building_id && await raw(db, 'building', r.building_id);
     if (b && b.project_id !== r.project_id) bad('Tòa không thuộc dự án đã chọn');
     if (r.area_tt != null && r.area_tt <= 0) bad('Diện tích thông thủy phải > 0');
+    // có đơn giá nền → tính lại theo công thức «DM bảng hàng và sản phẩm»: F = đơn giá × DT thông thủy; H = F × %thuế;
+    // I (sau thuế) = ROUND(F+H, -3); J (bảo trì) = ROUND(F×2%, -3); L (tổng cộng) = I + J + K (giá trị hoàn thiện)
+    if (+r.base_price > 0 && +r.area_tt > 0) {
+      const r3 = v => Math.round(v / 1000) * 1000, F = +r.base_price * +r.area_tt, H = F * (r.vat_pct ?? 5) / 100;
+      Object.assign(r, { pretax: Math.round(F), tax_amt: Math.round(H), price_net: r3(F + H), maint_fee: r3(F * 0.02) });
+      r.total_price = r.price_net + r.maint_fee + (+r.finish_value || 0);
+    }
     if (r.total_price == null && r.price_net != null) r.total_price = r.price_net + (r.maint_fee || 0);
     if (!old) { r.status = 'chua_mo_ban'; r.activated = r.activated ?? false; }
     if (old && r.lock !== old.lock && r.lock) {

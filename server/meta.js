@@ -88,7 +88,7 @@ def('unit', {
     money('price_net', 'Giá căn hộ sau thuế'),
     money('maint_fee', 'Phí bảo trì (2%)'),
     money('finish_value', 'Giá trị hoàn thiện căn hộ'),
-    money('total_price', 'Tổng giá căn hộ', { help: 'Giá sau thuế + phí bảo trì — dùng làm giá bán mặc định' }),
+    money('total_price', 'Tổng giá căn hộ', { help: 'Giá sau thuế + phí bảo trì + giá trị hoàn thiện — có đơn giá nền thì tự tính, dùng làm giá bán mặc định' }),
     { k: 'handover_plan', l: 'Dự kiến bàn giao', t: 'text', help: 'tháng 3/2028' },
     { k: 'data_src', l: 'Nguồn dữ liệu', t: 'text', ro: 1 },
     { k: 'package_id', l: 'Gói hoàn thiện', t: 'ref', ref: 'package' },

@@ -329,6 +329,15 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [] } = {}
       }
     } catch (er) { toast(er.message, true); }
   });
+  // căn hộ: sửa đơn giá nền / diện tích / % thuế / giá trị hoàn thiện → tự tính lại giá theo công thức Danh mục sản phẩm (máy chủ tính lại khi lưu)
+  if (ent === 'unit') form.addEventListener('input', e => {
+    if (!['base_price', 'area_tt', 'vat_pct', 'finish_value'].includes(e.target.name)) return;
+    const rd = k => readField(form, fields.find(f => f.k === k) || {}), base = +rd('base_price'), area = +rd('area_tt');
+    if (!(base > 0 && area > 0)) return;
+    const r3 = v => Math.round(v / 1000) * 1000, F = base * area, H = F * (rd('vat_pct') ?? 5) / 100, I = r3(F + H), J = r3(F * 0.02);
+    const out = { pretax: Math.round(F), tax_amt: Math.round(H), price_net: I, maint_fee: J, total_price: I + J + (+rd('finish_value') || 0) };
+    for (const [k, v] of Object.entries(out)) if (form.elements[k]) form.elements[k].value = moneyStr(v);
+  });
   $$('[data-pick-units]', form).forEach(el => unitPicker(el, form).catch(e => toast(e.message, true)));
   if (ckF && !id) { fillCheck(); form.addEventListener('change', e => { if (e.target.name === ckF.srcBy) fillCheck(); }); }
   vis();
