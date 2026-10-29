@@ -292,15 +292,18 @@ async function intakeLead(db, b, user, { demo } = {}) {
 }
 
 // mã căn phải có trong thông báo mở bán đã duyệt gần nhất của dự án — không có thì cảnh báo, vẫn cho lưu / trình duyệt
-async function saleCheck(db, unitId) {
+async function saleCheck(db, unitId, cache = new Map()) {   // cache: theo dự án (đợt gần nhất + id căn trong đợt) khi kiểm nhiều dòng
   const u = unitId && await raw(db, 'unit', unitId); if (!u) return null;
-  const n = await db.one("SELECT * FROM kd_sale_notice WHERE project_id = $1 AND status = 'da_duyet' ORDER BY notice_on DESC NULLS LAST, id DESC LIMIT 1", [u.project_id]);
+  if (!cache.has(u.project_id)) {
+    const n = await db.one("SELECT * FROM kd_sale_notice WHERE project_id = $1 AND status = 'da_duyet' ORDER BY notice_on DESC NULLS LAST, id DESC LIMIT 1", [u.project_id]);
+    cache.set(u.project_id, { n, ids: n ? new Set((await noticeUnits(db, n)).map(x => x.id)) : null });
+  }
+  const { n, ids } = cache.get(u.project_id);
   if (!n) return { ok: false, text: `⚠ Dự án chưa có thông báo mở bán được duyệt (căn ${u.code})` };
-  return (await noticeUnits(db, n)).some(x => x.id === u.id) ? { ok: true, text: `✓ Có trong ${n.code} · ${n.title}` }
-    : { ok: false, text: `⚠ Căn ${u.code} không có trong thông báo mở bán gần nhất (${n.code} · ${n.title})` };
+  return ids.has(u.id) ? { ok: true, text: `✓ Có trong ${n.code} · ${n.title}` } : { ok: false, text: `⚠ Căn ${u.code} không có trong thông báo mở bán gần nhất (${n.code} · ${n.title})` };
 }
 const saleWarn = async (db, r, warn) => { const sc = await saleCheck(db, r.unit_id); r.sale_check = sc?.text ?? null; if (sc && !sc.ok) warn.push(sc.text.slice(2)); };
-const saleLive = async (db, rows) => { for (const r of rows) if (r.unit_id) r.sale_check = (await saleCheck(db, r.unit_id))?.text ?? r.sale_check; };   // chi tiết: theo thông báo hiện tại
+const saleLive = async (db, rows) => { const c = new Map(); for (const r of rows) if (r.unit_id) r.sale_check = (await saleCheck(db, r.unit_id, c))?.text ?? r.sale_check; };   // danh sách / chi tiết: theo thông báo hiện tại
 
 H.reservation = {
   async beforeSave(r, old, { db, warn, opts, user, demo }) {
@@ -367,7 +370,7 @@ H.reservation = {
     if (r.customer_id && ['giu_cho', 'da_coc', 'chuyen_hd'].includes(r.status)) await markCustomer(db, r.customer_id, user);
     if (old && old.unit_id !== r.unit_id) await recomputeUnit(db, old.unit_id, user);
   },
-  async decorate(rows, { db, one }) { await stageOf(db, rows); if (one) await saleLive(db, rows); },
+  async decorate(rows, { db }) { await stageOf(db, rows); await saleLive(db, rows); },
   acts: {
     async deposit(r, d) { if (d.deposit > r.price) bad('Tiền đặt cọc lớn hơn giá bán'); return { patch: { deposit: d.deposit, deposit_on: d.deposit_on, status: 'da_coc' } }; },
     async extend(r, d) { if (Date.parse(d.hold_until) <= Date.now()) bad('Hạn mới phải sau thời điểm hiện tại'); return { patch: { hold_until: d.hold_until, status: r.deposit > 0 ? 'da_coc' : 'giu_cho' } }; },
