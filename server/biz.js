@@ -325,6 +325,10 @@ H.reservation = {
     if (r.reg_state === 'ky_hdmb' && (!old || old.reg_state !== 'ky_hdmb')) r.progress = 'da_ky';
     if (r.reg_state === 'huy') { if (!['huy', 'het_han'].includes(r.status)) r.status = 'huy'; }
     else if (!opts.system && (!r.status || ['nhap', 'tu_choi'].includes(r.status))) r.status = r.deposit > 0 ? 'da_coc' : 'giu_cho';
+    // qua «Hạn giữ chỗ» mà chưa đặt cọc → «Quá hạn giữ chỗ»; gia hạn sang ngày sau → về lại «Giữ chỗ»
+    const expired = !!r.hold_until && Date.parse(r.hold_until) < Date.now() && !(+r.deposit > 0);
+    if (expired && r.reg_state === 'giu_cho') { r.reg_state = 'qua_han'; if (r.status === 'giu_cho') r.status = 'qua_han'; }
+    else if (!expired && (r.reg_state === 'qua_han' || r.status === 'qua_han')) { if (r.reg_state === 'qua_han') r.reg_state = 'giu_cho'; if (r.status === 'qua_han') r.status = +r.deposit > 0 ? 'da_coc' : 'giu_cho'; }
     await linkCustomer(db, r, old, user, opts, demo);
     // MST / tài khoản ghi ở phiếu mà hồ sơ khách còn trống → bổ sung cho khách
     if (r.customer_id && !opts.check && (r.tax_code || r.bank_account)) {
@@ -336,7 +340,7 @@ H.reservation = {
       // căn còn trống (Còn bán / Chưa mở bán) mới lập phiếu được — căn chưa mở bán tự mở bán khi lưu phiếu
       if (!FREE_UNIT.includes(u.status)) bad(`Căn ${u.code} đang «${await C.optLabel(C.F.unit.status, u.status)}» — không giữ chỗ được`);
     }
-    if (r.hold_until && r.reg_date && new Date(Date.parse(r.hold_until) + 7 * 3600e3).toISOString().slice(0, 10) < r.reg_date) bad('Hạn giữ chỗ phải sau ngày đăng ký');
+    if (r.hold_until && r.reg_date && !opts.system && new Date(Date.parse(r.hold_until) + 7 * 3600e3).toISOString().slice(0, 10) < r.reg_date) bad('Hạn giữ chỗ phải sau ngày đăng ký');
     if (!old && r.hold_until && Date.parse(r.hold_until) < Date.now() && !opts.system) bad('Hạn giữ chỗ đã qua');
     if (['dai_ly', 'ctv'].includes(r.source) && !r.agent_id) {
       const c = await raw(db, 'customer', r.customer_id); if (c?.agent_id) r.agent_id = c.agent_id; else bad('Nguồn bán đại lý / CTV cần chọn đối tác');
@@ -913,10 +917,15 @@ H.report = {
 C.hooks(H);
 
 // ---------- việc chạy nền ----------
+// giữ chỗ quá hạn (chưa đặt cọc) → trạng thái căn hộ + tình trạng phiếu «Quá hạn giữ chỗ» (không tự giải phóng, không tự hoàn tiền)
+async function expireHolds(db) {   // chỉ đổi 2 cột trạng thái (không qua kiểm tra phiếu — dữ liệu cũ sai ngày không chặn cả lượt) + ghi nhật ký
+  const rows = await db.q(`UPDATE kd_reservation SET reg_state = 'qua_han', status = CASE WHEN status = 'giu_cho' THEN 'qua_han' ELSE status END, updated_at = now()
+    WHERE hold_until < now() AND coalesce(deposit, 0) = 0 AND (reg_state = 'giu_cho' OR status = 'giu_cho') AND status IN ('nhap','cho_duyet','giu_cho','qua_han') RETURNING id, status, is_demo`);
+  for (const r of rows) await C.audit(db, 'reservation', r.id, 'qua_han_giu_cho', null, { reg_state: 'qua_han', status: r.status }, null, 'Qua hạn giữ chỗ', r.is_demo);
+}
 async function jobs(db) {
   const t0 = Date.now();
-  // giữ chỗ quá hạn → cảnh báo (không tự giải phóng, không tự hoàn tiền)
-  for (const r of await db.q("SELECT id FROM kd_reservation WHERE status = 'giu_cho' AND hold_until < now()")) await sys(db, 'reservation', r.id, { status: 'qua_han' }, null, 'qua_han_giu_cho');
+  await expireHolds(db);
   // điều kiện bàn giao cập nhật theo thu tiền
   for (const h of await db.q("SELECT id, unit_id, cond_tech, cond_contract, cond_pay, status FROM kd_handover WHERE status IN ('chua_du_dk','du_dk')")) {
     const k = await handoverCond(db, h.unit_id);
@@ -957,4 +966,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { ckItem, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, pricing, normSchedule, writeSchedule, syncContractValue, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { ckItem, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
