@@ -764,8 +764,9 @@ table.prod-t tfoot td { font-weight: 800 !important; color: var(--ink) !importan
 .combo.multi .opts { top: calc(100% + 2px); }
 /* Bảng tổng hợp Mẫu 4: tiêu đề 2 tầng, ô gộp theo hộ */
 .m4t th { white-space: normal; text-align: center; vertical-align: middle; min-width: 70px; }
-/* tiêu đề 2 tầng: tầng dưới (Số CMND / Số CCCD…) dính ngay dưới tầng trên — --h1 = chiều cao tầng trên, đo khi vẽ bảng */
-.main .card .tbl-wrap table.m4t thead tr:nth-child(2) th { top: var(--h1, 37px); z-index: 2; }
+/* tiêu đề 2 tầng: cả khối thead dính (từng ô th dính riêng thì tầng dưới đè tầng trên khi cuộn) */
+.main .card .tbl-wrap table.m4t thead { position: sticky; top: 0; z-index: 3; }
+.main .card .tbl-wrap table.m4t thead th { position: static; }
 .m4t td { border-right: 1px solid #eef2f6; vertical-align: middle; }
 .m4t td.wrap { white-space: normal; min-width: 200px; }
 .m4t tr.m4head td { border-top: 1px solid #c9d6e6; }

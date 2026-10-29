@@ -776,7 +776,6 @@ V.mau4 = async (main, params) => {
           <td class="center">${p.birth[0]}</td><td class="center">${p.birth[1]}</td><td class="center">${p.birth[2]}</td><td>${esc(p.old_id_no || '')}</td><td>${esc(p.id_no || '')}</td><td class="wrap">${esc(p.job || '')}</td><td class="wrap">${esc(p.doi_tuong || '')}</td><td class="wrap">${esc(p.confirm_org || '')}</td>
           ${j ? '' : td(esc(h.housing || ''), n, 'wrap') + td(esc(h.province || ''), n) + td(esc(h.district || ''), n) + td(esc(h.commune || ''), n) + td(esc(h.income || ''), n, 'wrap')}<td>${esc(p.relation)}</td>
           ${j ? '' : td(`<b>${esc(h.unit_code || '')}</b>`, n) + td(h.area != null ? fnum(h.area) : '', n, 'num') + td(M4_ST[h.status] ? pill(...M4_ST[h.status]) : '', n) + td(`<button type="button" class="btn sm" data-bbgn title="In biên bản bàn giao tài liệu hồ sơ mua nhà">${ico('fa-file-signature')} Biên bản</button>`, n)}</tr>`).join(''); }).join('')}</tbody></table>`;
-    const t = $('.m4t', main); if (t) t.style.setProperty('--h1', t.tHead.rows[0].getBoundingClientRect().height + 'px');   // tiêu đề 2 tầng dính đúng chỗ
     syncTopScroll();
   };
   $('#m4Q', main).oninput = debounce(e => { s.q = e.target.value; draw(); }, 200);
