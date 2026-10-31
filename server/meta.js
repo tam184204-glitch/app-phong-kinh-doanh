@@ -470,6 +470,7 @@ def('contract', {
     { k: 'sign_status', l: 'Tình trạng lịch ký', t: 'sel', def: 'chua_lien_he', o: [['chua_lien_he', 'Chưa liên hệ', 's'], ['da_lien_he', 'Đã liên hệ', 'b'], ['da_hen', 'Đã hẹn', 'v'], ['can_bo_sung', 'Cần bổ sung hồ sơ', 'a'], ['da_ky', 'Đã ký', 'g']] },
     { k: 'signed_on', l: 'Ngày ký thực tế', t: 'date', ro: 1 },
     { k: 'loan_status', l: 'Tình trạng vay vốn', t: 'sel', o: [['co_vay', 'Có vay'], ['khong_vay', 'Không vay']] },
+    { k: 'loan_doc3', l: 'Chứng từ 3 bên', t: 'sel', show: { loan_status: ['co_vay'] }, o: [['da_co', 'Đã có'], ['chua_co', 'Chưa có']] },
     { k: 'loan_bank', l: 'Ngân hàng cho vay', t: 'text', show: { loan_status: ['co_vay'] }, req: 0, sug: ['BIDV', 'Vietinbank', 'Vietcombank', 'Agribank', 'MB Bank', 'Techcombank', 'VPBank', 'ACB', 'Sacombank', 'TPBank', 'Ngân hàng Chính sách xã hội'] },
     { k: 'package_id', l: 'Gói hoàn thiện', t: 'ref', ref: 'package', show: { kind: ['hoan_thien'] } },
     { k: 'design_change', l: 'Thay đổi thiết kế', t: 'long', show: { kind: ['hoan_thien'] } },
@@ -483,9 +484,9 @@ def('contract', {
     owner('Nhân viên KD'),
     { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'du_thao', o: [['du_thao', 'Dự thảo', 's'], ['cho_duyet', 'Đang rà soát', 'a'], ['cho_ky', 'Chờ ký', 'b'], ['tu_choi', 'Trả lại dự thảo', 'r'], ['da_ky', 'Đã ký', 'g'], ['thanh_ly', 'Đã thanh lý', 't'], ['huy', 'Đã hủy', 's']] },
   ], list: ['number', 'contract_on', 'kind', 'unit_id', 'customer_id', 'value', 'plan_sign', 'sign_status', 'signed_on', 'status'],
-  lock: ['da_ky', 'thanh_ly', 'huy'], lockKeep: ['sign_status', 'sign_place', 'plan_sign', 'owner_id', 'loan_status', 'loan_bank'],
+  lock: ['da_ky', 'thanh_ly', 'huy'], lockKeep: ['sign_status', 'sign_place', 'plan_sign', 'owner_id', 'loan_status', 'loan_bank', 'loan_doc3'],
   // đã trình duyệt / chờ ký: nhân viên chỉ sửa được lần thanh toán (+ lockKeep); quản lý vẫn sửa được
-  softLock: { st: ['cho_duyet', 'cho_ky'], keep: ['sign_status', 'sign_place', 'plan_sign', 'new_schedule', 'loan_status', 'loan_bank'], boss: MGR },
+  softLock: { st: ['cho_duyet', 'cho_ky'], keep: ['sign_status', 'sign_place', 'plan_sign', 'new_schedule', 'loan_status', 'loan_bank', 'loan_doc3'], boss: MGR },
   flow: { field: 'status', submit: ['du_thao', 'tu_choi'], approve: { ok: 'cho_ky' }, submitLabel: 'Gửi rà soát' },
   acts: [
     { k: 'schedule', l: 'Lập lịch thanh toán', icon: 'fa-calendar-days', from: ['du_thao', 'tu_choi'], roles: ['ho_so', 'cong_no', 'truong_phong'] },

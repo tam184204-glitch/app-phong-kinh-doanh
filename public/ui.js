@@ -320,7 +320,7 @@ const HD_LAYOUT = [
     ['pretax', 'vat_pct', 'vat_amt', 'after_tax'], ['finish_value', 'maint_fee', 'corner_pct', 'corner_amt'], ['value', 'closed', 'cn', 'vbtt_hold']] },
   { t: 'Lần thanh toán', rows: [['new_schedule'], ['pay_method']] },
   { t: 'Lịch ký', cols: 4, rows: [['plan_sign', 'sign_place', 'sign_status', 'signed_on']] },
-  { t: 'Tình trạng vay vốn', cols: 4, rows: [['loan_status', 'loan_bank']] },
+  { t: 'Tình trạng vay vốn', cols: 4, rows: [['loan_status', 'loan_bank', 'loan_doc3']] },
 ];
 function bravoLayout(form, layout) {
   const take = k => { const el = $(`:scope > [data-f="${k}"]`, form); el?.classList.remove('wide'); return el; };

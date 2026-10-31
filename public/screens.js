@@ -834,40 +834,66 @@ V.payouts = async (main, params) => {
   await load();
 };
 
-// theo dõi vay vốn: lấy từ Hợp đồng căn hộ chung cư, bấm dòng mở hợp đồng để cập nhật
-const LOAN_COLS = [['number', 'Số hợp đồng'], ['contract_on', 'Ngày ký HĐMB', 'date'], ['unit', 'Mã căn'], ['customer', 'Khách hàng'], ['phone', 'Điện thoại'], ['value', 'Tổng tiền', 'money'], ['loan_l', 'Tình trạng vay vốn'], ['loan_bank', 'Ngân hàng cho vay'], ['status_l', 'Tình trạng hợp đồng']];
+// theo dõi vay vốn: lấy từ hợp đồng căn hộ chung cư + nhà liền kề, sửa / xóa ngay trên dòng, bấm dòng mở hợp đồng
+const LOAN_COLS = [['unit', 'Mã căn hộ'], ['customer', 'Tên khách hàng'], ['number', 'Số HĐ'], ['loan_l', 'Tình trạng vay'], ['loan_bank', 'Tên ngân hàng'], ['doc3_l', 'Tình trạng chứng từ 3 bên']];
 V.loans = async main => {
-  const s = ST.loan ||= { project: '', q: '', st: '' };
+  const s = ST.loan ||= { project: '', q: '', st: '', pt: '' }, canEdit = M.ents.contract.perm.u;
   const L = (k, v) => M.ents.contract.fields.find(f => f.k === k)?.o?.find(o => o[0] === v)?.[1] || v || '';
   main.innerHTML = `<div class="page">${head('05', 'Theo dõi tình trạng vay vốn', 'fa-building-columns', `<button class="btn" id="lnX">${ico('fa-file-excel')} Xuất Excel</button>`, 'HD-05')}
     <div class="grid g4 mb" id="lnK"></div>
     <div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="lnQ" placeholder="Tìm mã căn, khách hàng, SĐT, số HĐ, ngân hàng…" value="${esc(s.q)}"></div>
       <select id="lnP"><option value="">Tất cả dự án</option>${M.projects.map(p => `<option value="${p.id}" ${+s.project === p.id ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select>
+      <select id="lnL"><option value="">Căn hộ + liền kề</option><option value="can_ho">Căn hộ chung cư</option><option value="lien_ke">Nhà liền kề</option></select>
       <select id="lnS"><option value="">Mọi tình trạng vay</option><option value="co_vay">Có vay</option><option value="khong_vay">Không vay</option><option value="chua">Chưa cập nhật</option></select>
       <span class="grow"></span><span class="small muted" id="lnN"></span></div><div class="tbl-wrap" id="lnT"><div class="empty">Đang tải…</div></div></div></div>`;
-  $('#lnS', main).value = s.st;
+  $('#lnS', main).value = s.st; $('#lnL', main).value = s.pt || '';
   let rows = [];
   const load = async () => {
-    rows = (await api('GET', '/api/loans' + (s.project ? '?project=' + s.project : ''))).map(r => ({ ...r, loan_l: L('loan_status', r.loan_status) || 'Chưa cập nhật', status_l: L('status', r.status) }));
+    rows = (await api('GET', '/api/loans' + (s.project ? '?project=' + s.project : ''))).map(r => ({ ...r, loan_l: L('loan_status', r.loan_status) || 'Chưa cập nhật', doc3_l: r.loan_status === 'co_vay' ? L('loan_doc3', r.loan_doc3 || 'chua_co') : '' }));
     draw();
   };
   const shown = () => { const q = s.q.trim().toLowerCase();
-    return rows.filter(r => (!s.st || (s.st === 'chua' ? !r.loan_status : r.loan_status === s.st)) && (!q || [r.number, r.unit, r.customer, r.phone, r.loan_bank].some(x => String(x ?? '').toLowerCase().includes(q)))); };
+    return rows.filter(r => (!s.pt || r.ptype === s.pt) && (!s.st || (s.st === 'chua' ? !r.loan_status : r.loan_status === s.st)) && (!q || [r.number, r.unit, r.customer, r.phone, r.loan_bank].some(x => String(x ?? '').toLowerCase().includes(q)))); };
   const draw = () => {
     const n = k => rows.filter(r => k ? r.loan_status === k : !r.loan_status).length, tile = (l, icon, v) => `<div class="card kpi"><div class="l">${ico(icon)} ${l}</div><div class="v">${v}</div></div>`;
     $('#lnK', main).innerHTML = tile('Tổng hợp đồng', 'fa-file-contract', rows.length) + tile('Có vay', 'fa-building-columns', n('co_vay')) + tile('Không vay', 'fa-wallet', n('khong_vay')) + tile('Chưa cập nhật', 'fa-circle-question', n());
     const rs = shown(); $('#lnN', main).textContent = `${rs.length} hợp đồng`;
-    $('#lnT', main).innerHTML = rs.length ? `<table class="t"><thead><tr><th>STT</th>${LOAN_COLS.map(c => `<th class="${c[2] === 'money' ? 'num' : ''}">${c[1]}</th>`).join('')}</tr></thead><tbody>${rs.map((r, i) => `<tr data-id="${r.id}"><td class="center">${i + 1}</td>${LOAN_COLS.map(c => {
+    $('#lnT', main).innerHTML = rs.length ? `<table class="t"><thead><tr><th>STT</th>${LOAN_COLS.map(c => `<th>${c[1]}</th>`).join('')}${canEdit ? '<th></th>' : ''}</tr></thead><tbody>${rs.map((r, i) => `<tr data-id="${r.id}"><td class="center">${i + 1}</td>${LOAN_COLS.map(c => {
       const v = r[c[0]];
-      return `<td class="${c[2] === 'money' ? 'num' : ''}">${c[2] === 'money' ? fm(v) : c[2] === 'date' ? dmy(v) : c[0] === 'loan_l' ? pill(v, r.loan_status === 'co_vay' ? 'b' : r.loan_status ? 'g' : 's') : esc(v ?? '')}</td>`; }).join('')}</tr>`).join('')}</tbody></table>`
+      return `<td>${c[0] === 'loan_l' ? pill(v, r.loan_status === 'co_vay' ? 'b' : r.loan_status ? 'g' : 's') : c[0] === 'doc3_l' && v ? pill(v, r.loan_doc3 === 'da_co' ? 'g' : 'a') : esc(v ?? '')}</td>`; }).join('')}${canEdit ? `<td class="nowrap"><button class="btn sm" data-ed="${r.id}">${ico('fa-pen')} Sửa</button> <button class="btn sm danger" data-rm="${r.id}" ${r.loan_status ? '' : 'disabled'}>${ico('fa-trash')} Xóa</button></td>` : ''}</tr>`).join('')}</tbody></table>`
       : '<div class="empty">Không có hợp đồng phù hợp</div>';
     syncTopScroll();
   };
   $('#lnQ', main).oninput = debounce(e => { s.q = e.target.value; draw(); }, 200);
   $('#lnP', main).onchange = run(async e => { s.project = e.target.value; await load(); });
   $('#lnS', main).onchange = e => { s.st = e.target.value; draw(); };
-  $('#lnX', main).onclick = () => download('/api/export-rows', { title: 'THEO DÕI TÌNH TRẠNG VAY VỐN', cols: LOAN_COLS, rows: shown(), sum: ['value'], file: 'theo_doi_vay_von' });
-  $('#lnT', main).onclick = e => { const tr = e.target.closest('tr[data-id]'); if (tr) openDetail('contract', +tr.dataset.id); };
+  $('#lnL', main).onchange = e => { s.pt = e.target.value; draw(); };
+  $('#lnX', main).onclick = () => download('/api/export-rows', { title: 'THEO DÕI TÌNH TRẠNG VAY VỐN', cols: LOAN_COLS, rows: shown(), file: 'theo_doi_vay_von' });
+  const saveLoan = (id, d) => api('PUT', `/api/e/contract/${id}`, d);
+  const editLoan = r => {
+    const opt = (o, v) => o.map(([k, l]) => `<option value="${k}" ${k === v ? 'selected' : ''}>${l}</option>`).join('');
+    const m = modal({ title: `${ico('fa-building-columns')} Vay vốn · ${esc(r.unit)} · ${esc(r.customer)}`, narrow: true, body: `<div id="lerr"></div><form class="form" style="grid-template-columns:1fr">
+      <div class="fld"><label>Tình trạng vay</label><select id="lS"><option value="">— chọn —</option>${opt([['co_vay', 'Có vay'], ['khong_vay', 'Không vay']], r.loan_status)}</select></div>
+      <div class="fld" data-co><label>Tên ngân hàng</label><input id="lB" value="${esc(r.loan_bank || '')}" list="dlLn" autocomplete="off">${sugList('dlLn', M.ents.contract.fields.find(f => f.k === 'loan_bank').sug)}</div>
+      <div class="fld" data-co><label>Tình trạng chứng từ 3 bên</label><select id="lD">${opt([['chua_co', 'Chưa có'], ['da_co', 'Đã có']], r.loan_doc3 || 'chua_co')}</select></div></form>`,
+      foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="lOk">${ico('fa-floppy-disk')} Lưu</button>` });
+    const vis = () => $$('[data-co]', m.el).forEach(x => x.classList.toggle('hidden', $('#lS', m.el).value !== 'co_vay'));
+    $('#lS', m.el).onchange = vis; vis();
+    $('#lOk', m.el).onclick = async () => {
+      const st = $('#lS', m.el).value || null;
+      try { await saveLoan(r.id, { loan_status: st, loan_bank: st === 'co_vay' ? $('#lB', m.el).value.trim() : null, loan_doc3: st === 'co_vay' ? $('#lD', m.el).value : null }); m.close(); toast('Đã lưu tình trạng vay vốn'); await load(); }
+      catch (er) { $('#lerr', m.el).innerHTML = `<div class="errbar">${esc(er.message)}</div>`; }
+    };
+  };
+  $('#lnT', main).onclick = async e => {
+    const ed = e.target.closest('[data-ed]'), rm = e.target.closest('[data-rm]'), r = rows.find(x => x.id === +(ed?.dataset.ed || rm?.dataset.rm));
+    if (ed) return editLoan(r);
+    if (rm) {
+      if (await ask('Xóa thông tin vay vốn', `Xóa thông tin vay vốn của căn ${esc(r.unit)}? Hợp đồng vẫn giữ nguyên, dòng này về «Chưa cập nhật».`, { danger: 1, okLabel: 'Xóa' })) { try { await saveLoan(r.id, { loan_status: null, loan_bank: null, loan_doc3: null }); toast('Đã xóa thông tin vay vốn'); await load(); } catch (er) { toast(er.message, true); } }
+      return;
+    }
+    const tr = e.target.closest('tr[data-id]'); if (tr) openDetail('contract', +tr.dataset.id);
+  };
   await load();
 };
 
