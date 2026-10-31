@@ -460,6 +460,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [] } = {}
   const contractNo = () => { const el = form.elements.number; if (!el || id) return; api('GET', `/api/contract-number?ptype=${form.elements.ptype?.value || 'can_ho'}&on=${readField(form, fields.find(f => f.k === 'contract_on')) || ''}`).then(d => { el.placeholder = d.number; }).catch(() => {}); };
   if (ent === 'contract') {
     contractNo();
+    if (!id) fillSeller().catch(() => {});   // form mới: sổ sẵn bên bán đã lưu
     form.addEventListener('input', e => { if (['base_price', 'area_tt', 'floor_price', 'area_floor', 'discount', 'corner_pct', 'vat_pct', 'finish_value', 'commission_pct', 'value'].includes(e.target.name)) contractCalc(); });
     form.addEventListener('input', e => { if (e.target.name === 'contract_on') sch?._redraw?.(); });
     form.addEventListener('change', e => { if (e.target.name === 'contract_on') sch?._redraw?.(); if (e.target.name === 'building_id' && form.elements.unit_id.value) { form.elements.unit_id.value = ''; const t = form.elements.unit_id.closest('.combo')?.querySelector('[data-combo]'); if (t) t.value = ''; }   /* đổi tòa → chọn lại căn */ if (['contract_on', 'ptype'].includes(e.target.name)) contractNo(); if (e.target.name === 's_name') fillSeller().catch(er => toast(er.message, true)); if (e.target.name === 'seller_unit') { const s = (M.sellers || []).find(x => x.unit === e.target.value); if (s) { form.elements.s_name.value = s.name; fillSeller().catch(er => toast(er.message, true)); } } });

@@ -429,7 +429,8 @@ R('GET', '/api/cancel_prefill', async (req, res, u, p, qs) => { if (!can(u, M.E.
 // bên bán theo tên (Bên A): thông tin mặc định + ô đã ghi ở hợp đồng gần nhất cùng Bên A
 R('GET', '/api/seller', async (req, res, u, p, qs) => {
   const name = String(qs.name || '').trim(), base = M.SELLERS.find(s => s.name === name) || {};
-  const last = name ? await one(`SELECT s_addr, s_phone, s_tax, s_bank_acc, s_bank_name, s_rep, s_title, s_poa, seller_unit FROM kd_contract WHERE s_name = $1 ORDER BY id DESC LIMIT 1`, [name]) : null;
+  // từng ô lấy giá trị đã lưu gần nhất (hợp đồng mới nhất để trống ô nào thì lấy ở hợp đồng trước đó)
+  const last = name ? await one(`SELECT ${['s_addr', 's_phone', 's_tax', 's_bank_acc', 's_bank_name', 's_rep', 's_title', 's_poa', 'seller_unit'].map(k => `(array_agg(${k} ORDER BY id DESC) FILTER (WHERE ${k} <> ''))[1] ${k}`).join(', ')} FROM kd_contract WHERE s_name = $1`, [name]) : null;
   send(res, 200, { s_addr: last?.s_addr || base.addr || '', s_phone: last?.s_phone || '', s_tax: last?.s_tax || '', s_bank_acc: last?.s_bank_acc || '', s_bank_name: last?.s_bank_name || '',
     s_rep: last?.s_rep || '', s_title: last?.s_title || '', s_poa: last?.s_poa || '', seller_unit: base.unit || last?.seller_unit || '' });
 });
