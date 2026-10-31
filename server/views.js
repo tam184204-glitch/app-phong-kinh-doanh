@@ -454,6 +454,10 @@ async function signing(db, user, f) {
   const rows = await db.q(`SELECT c.id, c.number, c.kind, c.plan_sign, c.sign_place, c.sign_status, c.status, c.value, u.code unit, u.id unit_id, pj.code project, k.full_name customer, k.phone, own.full_name owner
     FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_project pj ON pj.id = u.project_id JOIN kd_customer k ON k.id = c.customer_id LEFT JOIN kd_user own ON own.id = c.owner_id
     WHERE c.status IN ('du_thao','cho_duyet','cho_ky','tu_choi') ${w} ORDER BY c.plan_sign NULLS LAST, c.number`, p);
+  // hồ sơ NOXH đã hẹn ký nhưng chưa lập hợp đồng cũng lên lịch
+  rows.push(...(await db.q(`SELECT n.id, 'noxh_check' ent, '' number, n.plan_sign, n.sign_place, n.sign_status, 'du_thao' status, coalesce(u.code, n.unit_text, '') unit, coalesce(pj.code, '') project, k.full_name customer, k.phone, own.full_name owner
+    FROM kd_noxh_check n JOIN kd_customer k ON k.id = n.customer_id LEFT JOIN kd_unit u ON u.id = n.unit_id LEFT JOIN kd_project pj ON pj.id = coalesce(u.project_id, n.project_id) LEFT JOIN kd_user own ON own.id = n.owner_id
+    WHERE n.plan_sign IS NOT NULL AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.customer_id = n.customer_id AND c.status NOT IN ('huy', 'thanh_ly')) ${w}`, p)));
   const recent = await db.q(`SELECT c.id, c.number, c.signed_on, u.code unit, k.full_name customer FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id WHERE c.status = 'da_ky' AND c.signed_on >= $${p.length + 1}::date - 30 ${w} ORDER BY c.signed_on DESC`, [...p, today()]);
   const signed = await db.q(`SELECT c.id, c.number, c.plan_sign, c.signed_on, c.status, u.code unit, pj.code project, k.full_name customer, own.full_name owner, c.sign_place FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_project pj ON pj.id = u.project_id JOIN kd_customer k ON k.id = c.customer_id LEFT JOIN kd_user own ON own.id = c.owner_id WHERE c.status = 'da_ky' AND c.signed_on IS NOT NULL ${w}`, p);
   return { rows, recent, signed };

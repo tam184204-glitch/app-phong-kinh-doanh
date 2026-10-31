@@ -1473,7 +1473,7 @@ V.signing = async main => {
   const evs = () => [...d.rows.filter(r => r.plan_sign).map(r => { const day = r.plan_sign.slice(0, 10); return { ...r, day, cls: r.status === 'cho_ky' ? 'g' : day < t ? 'r' : 'b' }; }), ...d.signed.map(r => ({ ...r, day: String(r.signed_on).slice(0, 10), cls: 'g' }))];
   const late = r => Math.round((Date.parse(t) - Date.parse(r.day)) / 864e5);
   const signSt = r => r.cls === 'g' ? pill('Đã ký', 'g') : r.cls === 'r' ? pill(`Quá hạn ${late(r)} ngày`, 'r') : pill('Chưa ký', 's');
-  const line = r => `<div class="alert-row" data-id="${r.id}"><span class="lv ${r.cls}"></span><div class="tx"><b>${esc(r.unit)}</b> · ${esc(r.customer)} ${r.day ? signSt(r) : pill('Chưa ký', 's')}</div></div>`;   // chi tiết xem khi bấm dòng
+  const line = r => `<div class="alert-row" data-id="${r.id}" data-ent="${r.ent || 'contract'}"><span class="lv ${r.cls}"></span><div class="tx"><b>${esc(r.unit)}</b> · ${esc(r.customer)} ${r.day ? signSt(r) : pill('Chưa ký', 's')}</div></div>`;   // chi tiết xem khi bấm dòng
   // danh sách theo dõi: mọi hợp đồng đang mở + đã ký; hợp đồng thiếu ngày ở cuối
   const SIGN_COLS = [['project', 'Dự án'], ['unit', 'Mã căn hộ'], ['customer', 'Khách hàng'], ['number', 'Số HĐ'], ['plan_d', 'Ngày dự kiến ký', 'date'], ['signed_d', 'Ngày ký', 'date'], ['st_l', 'Tình trạng ký'], ['owner', 'Nhân viên KD']];
   const tracked = () => [...d.rows.map(r => { const day = r.plan_sign ? r.plan_sign.slice(0, 10) : ''; return { ...r, day, plan_d: day, signed_d: '', cls: r.status === 'cho_ky' ? 'g' : day && day < t ? 'r' : 'b' }; }),
@@ -1485,7 +1485,7 @@ V.signing = async main => {
     return tracked().filter(r => (!ls || (ls === 'qua_han' ? r.cls === 'r' : r.cap === ls)) && (!lf || (r.day && r.day >= lf)) && (!lt || (r.day && r.day <= lt)) && (cq ? r.cap === cq : !q || [r.project, r.unit, r.customer, r.number, r.owner].some(x => String(x ?? '').toLowerCase().includes(q)))); };
   const drawList = () => {
     const rs = listed(); $('#scN', main).textContent = `${rs.length} hợp đồng`;
-    $('#scT', main).innerHTML = rs.length ? `<table class="t"><thead><tr><th>STT</th>${SIGN_COLS.map(c => `<th>${c[1]}</th>`).join('')}</tr></thead><tbody>${rs.map((r, i) => `<tr data-id="${r.id}"><td class="center">${i + 1}</td>${SIGN_COLS.map(c => `<td>${c[0] === 'st_l' ? pill(r.st_l, r.cls === 'g' ? 'g' : r.cls === 'r' ? 'r' : 's') : c[2] === 'date' ? dmy(r[c[0]]) : esc(r[c[0]] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '<div class="empty">Không có hợp đồng phù hợp</div>';
+    $('#scT', main).innerHTML = rs.length ? `<table class="t"><thead><tr><th>STT</th>${SIGN_COLS.map(c => `<th>${c[1]}</th>`).join('')}</tr></thead><tbody>${rs.map((r, i) => `<tr data-id="${r.id}" data-ent="${r.ent || 'contract'}"><td class="center">${i + 1}</td>${SIGN_COLS.map(c => `<td>${c[0] === 'st_l' ? pill(r.st_l, r.cls === 'g' ? 'g' : r.cls === 'r' ? 'r' : 's') : c[2] === 'date' ? dmy(r[c[0]]) : esc(r[c[0]] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '<div class="empty">Không có hợp đồng phù hợp</div>';
     syncTopScroll();
   };
   const byProject = es => Object.entries(es.reduce((g, r) => ((g[r.project] ||= []).push(r), g), {})).sort((a, b) => a[0].localeCompare(b[0]));
@@ -1525,7 +1525,7 @@ V.signing = async main => {
     if (e.target.closest('[data-late]')) { const o = evs().filter(r => r.cls === 'r').sort((a, b) => a.day.localeCompare(b.day))[0]; if (o) { sel = o.day; ym = sel.slice(0, 7); render(); } return; }   // tới ngày quá hạn lâu nhất
     const go = e.target.closest('[data-go]');
     if (go) { if (go.dataset.go === 'now') { ym = t.slice(0, 7); sel = t; } else { const [y, m] = ym.split('-').map(Number), x = new Date(Date.UTC(y, m - 1 + +go.dataset.go, 1)); ym = x.toISOString().slice(0, 7); } return render(); }
-    const r = e.target.closest('[data-id]'); if (r) return openDetail('contract', +r.dataset.id, undefined, true);
+    const r = e.target.closest('[data-id]'); if (r) return openDetail(r.dataset.ent, +r.dataset.id, undefined, true);
     const c = e.target.closest('[data-day]'); if (c) { sel = c.dataset.day; return render(); }
   };
   await draw();

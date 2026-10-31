@@ -502,6 +502,10 @@ H.noxh_check = {
     if (miss.length) bad('Chưa khai đủ thông tin Mẫu 4: ' + miss.join(', '));
   },
   async afterSave(r, old, { db, user }) {
+    // lịch ký nhập ở hồ sơ → sang hợp đồng chưa duyệt của khách (cùng căn nếu hồ sơ đã chọn căn)
+    if (['plan_sign', 'sign_place', 'sign_status'].some(k => String(old?.[k] ?? '') !== String(r[k] ?? '')))
+      await db.q(`UPDATE kd_contract SET plan_sign = $1, sign_place = $2, sign_status = coalesce($3, sign_status), updated_at = now() WHERE customer_id = $4 AND ($5::int IS NULL OR unit_id = $5) AND status IN ('du_thao', 'cho_duyet', 'tu_choi')`,
+        [r.plan_sign ?? null, r.sign_place ?? null, r.sign_status ?? null, r.customer_id, r.unit_id ?? null]);
     if (!r.reservation_id || old?.status === r.status) return;
     const s = await raw(db, 'reservation', r.reservation_id), to = { cho_duyet: 'cho_xet_duyet', da_duyet: 'du_dk' }[r.status];
     if (s && to && REG_ORDER.indexOf(to) > REG_ORDER.indexOf(s.progress)) await sys(db, 'reservation', s.id, { progress: to }, user, 'cap_nhat_tien_trinh', `Theo hồ sơ NOXH #${r.id}`);
@@ -636,6 +640,10 @@ H.contract = {
     if (!old || old.unit_id !== r.unit_id || !r.ptype) { const u0 = await raw(db, 'unit', r.unit_id); if (u0) r.ptype = ['lien_ke', 'shophouse'].includes(u0.kind) ? 'lien_ke' : 'can_ho'; }
     // số hợp đồng để trống → HDCH.YYMM-0001 / HDLK.YYMM-0001
     if (!r.number) r.number = await nextContractNo(db, r.ptype, r.contract_on);
+    if (!old && !r.plan_sign) {   // hợp đồng mới: lấy lịch ký đã nhập ở Hồ sơ mua NOXH
+      const n = await db.one('SELECT plan_sign, sign_place, sign_status FROM kd_noxh_check WHERE customer_id = $1 AND plan_sign IS NOT NULL ORDER BY (unit_id = $2) DESC NULLS LAST, id DESC LIMIT 1', [r.customer_id, r.unit_id]);
+      if (n) Object.assign(r, n);
+    }
     // số bảng giá = tòa của căn (Danh mục sản phẩm); chính sách giá lấy theo phiếu giữ chỗ / chính sách đang phát hành
     r.building_id = (await raw(db, 'unit', r.unit_id))?.building_id ?? null;
     if (!r.price_policy_id) r.price_policy_id = (await contractPrefill(db, r.unit_id, r.contract_on || undefined)).policy_id;
