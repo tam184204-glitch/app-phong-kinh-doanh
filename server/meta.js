@@ -112,7 +112,7 @@ def('price_policy', {
     { k: 'mode', l: 'Cách tính giá', t: 'sel', hide: 1, def: 'bang_hang', o: [['bang_hang', 'Theo giá từng căn trên bảng hàng'], ['don_gia', 'Đơn giá × diện tích thông thủy']] },
     money('unit_price', 'Đơn giá (đ/m² thông thủy)', { show: { mode: ['don_gia'] } }),
     { k: 'maint_pct', l: 'Phí bảo trì (%)', t: 'num', def: 2, show: { mode: ['don_gia'] } },
-    { k: 'vat_pct', l: 'Thuế GTGT (%)', t: 'num', def: 5, help: 'NOXH 5% — dùng tách giá trước thuế / tiền thuế trong chi tiết bảng giá' },
+    { k: 'vat_pct', l: 'Thuế GTGT (%)', t: 'num', hide: 1, def: 5 },   // bỏ khỏi form 31/10/2026 — vẫn mặc định 5% để tách giá trong chi tiết bảng giá
     { k: 'src_file', l: 'Tệp nguồn (PDF)', t: 'text', upload: '.pdf', help: 'Chọn tệp PDF chính sách / bảng giá — lưu vào mục Tệp của chính sách' },
     { k: 'discount', l: 'Ưu đãi / chiết khấu', t: 'long' },
     { k: 'pay_method', l: 'Phương thức thanh toán', t: 'long' },
