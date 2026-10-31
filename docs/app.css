@@ -850,3 +850,4 @@ table.prod-t tfoot td { font-weight: 800 !important; color: var(--ink) !importan
 .sc-ev { font-size: 11px; padding: 1px 4px; margin-bottom: 2px; -webkit-line-clamp: 1; }
 .sc-more { font-size: 11px; line-height: 1.1; }
 .sc-leg { margin-top: 6px; }
+.drawer.plain .dacts { display: none; }

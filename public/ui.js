@@ -632,15 +632,15 @@ async function handoverPick(kind, id) {
 // ---------- ngăn chi tiết ----------
 let DR = null;
 function closeDetail() { DR?.ov.remove(); DR?.el.remove(); DR = null; }
-async function openDetail(ent, id, tab) {
+async function openDetail(ent, id, tab, plain) {   // plain: chỉ xem (mở từ Lịch ký) — không hàng nút, không dòng báo chốt, ẩn ô trống
   const E = M.ents[ent]; if (!E) return;
   let g; try { g = await api('GET', `/api/e/${ent}/${id}`); } catch (e) { return toast(e.message, true); }
   closeDetail();
   const ov = document.createElement('div'); ov.className = 'drawer-ov'; ov.onclick = closeDetail;
-  const el = document.createElement('aside'); el.className = 'drawer'; el.setAttribute('role', 'dialog');
+  const el = document.createElement('aside'); el.className = `drawer ${plain ? 'plain' : ''}`; el.setAttribute('role', 'dialog');
   document.body.append(ov, el);
   DR = { ov, el, ent, id };
-  const reload = async (t) => { const keepTab = t || $('.tabs button.on', el)?.dataset.tab; await openDetail(ent, id, keepTab); refresh(true); };
+  const reload = async (t) => { const keepTab = t || $('.tabs button.on', el)?.dataset.tab; await openDetail(ent, id, keepTab, plain); refresh(true); };
   const r = g.row, p = g.perm, st = E.fields.find(f => f.k === 'status');
   const title = r.code || r.number || r.voucher_no || r.title || r.full_name || r[E.fields[0].k + '__l'] || `${E.one} #${r.id}`;
   const unitId = ent === 'unit' ? r.id : r.unit_id;
@@ -667,10 +667,10 @@ async function openDetail(ent, id, tab) {
   const T = {
     info: () => {
       const fs = E.fields.filter(f => f.t !== 'json' || f.k === 'reviews' || f.k === 'new_schedule');
-      let h = p.locked ? `<div class="lockbar">${ico('fa-lock')} ${E.one[0].toUpperCase() + E.one.slice(1)} đã chốt / đang trình duyệt — ${ent === 'contract' && E.softLock?.st.includes(r.status) ? 'nhân viên chỉ sửa được Lần thanh toán, nội dung khác do quản lý sửa.' : `không sửa trực tiếp${ent === 'contract' ? '. Thay đổi qua «Điều chỉnh – phụ lục hợp đồng».' : '.'}`}</div>` : '';
+      let h = !plain && p.locked ? `<div class="lockbar">${ico('fa-lock')} ${E.one[0].toUpperCase() + E.one.slice(1)} đã chốt / đang trình duyệt — ${ent === 'contract' && E.softLock?.st.includes(r.status) ? 'nhân viên chỉ sửa được Lần thanh toán, nội dung khác do quản lý sửa.' : `không sửa trực tiếp${ent === 'contract' ? '. Thay đổi qua «Điều chỉnh – phụ lục hợp đồng».' : '.'}`}</div>` : '';
       if (E.note) h += `<div class="warnbar">${ico('fa-circle-info')}<span>${esc(E.note)}</span></div>`;
       if (String(r.sale_check || '').startsWith('⚠')) h += `<div class="warnbar">${ico('fa-triangle-exclamation')} <div><b>Cảnh báo mở bán:</b> ${esc(r.sale_check.slice(2))}</div></div>`;   // căn ngoài thông báo mở bán đã duyệt gần nhất
-      h += `<dl class="kv">${fs.filter(f => f.t !== 'check' && (f.t !== 'json' || f.grid) && isShown(f, r)).map(f => `<div class="${f.t === 'long' || f.grid || (f.pick && r._units) ? 'wide' : ''}"><dt>${esc(f.l)}</dt><dd>${show(f, r)}${(f.pii || f.grid?.some(c => c.pii)) && r._masked && M.piiRoles.includes(M.me.role) ? ` <button class="btn ghost sm" data-do="pii">${ico('fa-eye')} Hiện</button>` : ''}</dd></div>`).join('')}</dl>`;
+      h += `<dl class="kv">${fs.filter(f => f.t !== 'check' && (f.t !== 'json' || f.grid) && isShown(f, r) && (!plain || (r[f.k] != null && r[f.k] !== '' && r[f.k] !== false && !(Array.isArray(r[f.k]) && !r[f.k].length)))).map(f => `<div class="${f.t === 'long' || f.grid || (f.pick && r._units) ? 'wide' : ''}"><dt>${esc(f.l)}</dt><dd>${show(f, r)}${(f.pii || f.grid?.some(c => c.pii)) && r._masked && M.piiRoles.includes(M.me.role) ? ` <button class="btn ghost sm" data-do="pii">${ico('fa-eye')} Hiện</button>` : ''}</dd></div>`).join('')}</dl>`;
       for (const f of fs.filter(f => f.t === 'check')) h += `<div class="sec-title">${esc(f.l)}</div><table class="t compact noclick"><thead><tr><th>Giấy tờ</th><th>Tình trạng</th><th>Ghi chú</th></tr></thead><tbody>${(r[f.k] || []).map(x => `<tr><td>${esc(x.n)}</td><td>${x.st ? pill(CK.find(o => o[0] === x.st)[1], x.st === 'da_nhan' ? 'g' : 'r') : '<span class="muted">chưa</span>'}</td><td>${esc(x.note)}</td></tr>`).join('')}</tbody></table>`;
       if (r.reviews?.length) h += `<div class="sec-title">Các bước xét duyệt nội bộ</div><div class="tl">${r.reviews.map(x => `<div><b>${esc({ kiem_tra_1: 'Kiểm tra lần 1', kiem_tra_cheo: 'Kiểm tra chéo', doi_chieu_goc: 'Đối chiếu bản gốc' }[x.step] || x.step)}</b> — ${x.conclusion === 'dat' ? pill('Đạt', 'g') : pill('Cần bổ sung', 'a')}<br><small>${esc(x.by)} · ${dmyhm(x.at)}${x.note ? ' · ' + esc(x.note) : ''}</small></div>`).join('')}</div>`;
       if (r.new_schedule?.length) h += `<div class="sec-title">Tiến độ thanh toán mới</div>${schedTable(r.new_schedule)}`;

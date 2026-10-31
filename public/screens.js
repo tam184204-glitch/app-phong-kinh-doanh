@@ -624,7 +624,7 @@ V.signing = async main => {
   main.onclick = e => {
     const go = e.target.closest('[data-go]');
     if (go) { if (go.dataset.go === 'now') { ym = t.slice(0, 7); sel = t; } else { const [y, m] = ym.split('-').map(Number), x = new Date(Date.UTC(y, m - 1 + +go.dataset.go, 1)); ym = x.toISOString().slice(0, 7); } return render(); }
-    const r = e.target.closest('[data-id]'); if (r) return openDetail('contract', +r.dataset.id);
+    const r = e.target.closest('[data-id]'); if (r) return openDetail('contract', +r.dataset.id, undefined, true);
     const c = e.target.closest('[data-day]'); if (c) { sel = c.dataset.day; return render(); }
   };
   await draw();
