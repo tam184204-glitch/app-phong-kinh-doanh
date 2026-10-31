@@ -470,6 +470,12 @@ H.noxh_check = {
     if (!r.reg_kind) r.reg_kind = 'mua';
     if (!r.grp) r.grp = grpOf(r.doi_tuong) || bad('Chọn nhóm đối tượng hoặc ghi đối tượng chính sách');
     const rel = (r.members || []).filter(m => !m.relation); if (rel.length) bad(`Thành viên hộ «${rel[0].name || '(chưa có tên)'}»: chọn quan hệ với chủ hộ`);
+    for (const m of r.members || []) {
+      const who = `Thành viên hộ «${m.name || '(chưa có tên)'}»`, dd = +m.bday, mm = +m.bmonth, yy = +m.byear;   // ô bị che (•••) đã được khôi phục trước khi vào đây
+      if (m.bday && !(dd >= 1 && dd <= 31)) bad(`${who}: ngày sinh phải từ 1 đến 31`);
+      if (m.bmonth && !(mm >= 1 && mm <= 12)) bad(`${who}: tháng sinh phải từ 1 đến 12`);
+      if (m.byear && !(yy >= 1900 && yy <= 2100)) bad(`${who}: năm sinh không hợp lệ`);
+    }
     if ((!r.items || !r.items.length) && r.grp) r.items = await defaultList(db, 'checklist_noxh', r.grp);
     const it = r.items || [];
     r.result = it.length && it.every(x => x.st === 'da_nhan') ? 'du' : it.some(x => ['thieu', 'can_sua'].includes(x.st)) ? 'can_bo_sung' : 'chua_kt';

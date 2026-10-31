@@ -98,6 +98,12 @@ const SPECIAL = [
     WHERE t.id = x.id AND t.cust_name IS NULL`,
   // phiếu đăng ký có giờ đăng ký lệch ngày đăng ký (dữ liệu thử cũ): đưa giờ về đúng ngày (09:00) — không thì lưu phiếu tính lại ngày, vướng «hạn giữ chỗ phải sau ngày đăng ký»
   `UPDATE kd_reservation SET reg_at = (reg_date + time '09:00') AT TIME ZONE 'Asia/Ho_Chi_Minh' WHERE reg_at IS NOT NULL AND reg_date IS NOT NULL AND (reg_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date <> reg_date`,
+  // thành viên hộ trước khi tách ngày / tháng / năm sinh như dòng chủ hộ: birth 'dd/mm/yyyy' (hoặc chỉ năm) → bday, bmonth, byear
+  `UPDATE kd_noxh_check n SET members = (SELECT jsonb_agg((e - 'birth') || jsonb_build_object(
+      'bday', coalesce(ltrim(substring(e->>'birth' from '^(\\d{1,2})[/.-]\\d{1,2}[/.-]\\d{4}$'), '0'), ''),
+      'bmonth', coalesce(ltrim(substring(e->>'birth' from '^\\d{1,2}[/.-](\\d{1,2})[/.-]\\d{4}$'), '0'), ''),
+      'byear', coalesce(substring(e->>'birth' from '(\\d{4})$'), '')) ORDER BY o) FROM jsonb_array_elements(n.members) WITH ORDINALITY x(e, o))
+    WHERE jsonb_typeof(n.members) = 'array' AND jsonb_path_exists(n.members, '$[*].birth')`,
   // phiếu đăng ký trước khi tách 3 cột giá: Tổng giá bán cũ = Giá trị căn hộ
   `UPDATE kd_reservation SET unit_value = price - coalesce(finish_value, 0) WHERE unit_value IS NULL AND price IS NOT NULL`,
   `CREATE INDEX IF NOT EXISTS kd_price_policy_pids ON kd_price_policy USING gin (project_ids)`,
