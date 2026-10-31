@@ -248,7 +248,7 @@ H.price_policy = {
   async afterApprove(r, ok, { db, user }) { if (ok && r.parent_id) await sys(db, 'price_policy', r.parent_id, { status: 'thay_the' }, user, 'thay_the', `Thay bằng phiên bản ${r.version}`); },
   acts: {
     async new_version(r, d, { db, user, demo }) {
-      const keep = ['code', 'project_ids', 'unit_group', 'mode', 'unit_price', 'maint_pct', 'discount', 'pay_method', 'bank_policy', 'target', 'start_on', 'end_on', 'src_file'];
+      const keep = ['code', 'project_ids', 'unit_group', 'mode', 'unit_price', 'maint_pct', 'vat_pct', 'content', 'target', 'start_on', 'end_on', 'src_file'];
       const n = (await create('price_policy', { ...Object.fromEntries(keep.map(k => [k, r[k]])), version: r.version + 1, parent_id: r.id, status: 'nhap' }, user, { db, system: true, demo })).row;
       return { open: ['price_policy', n.id], msg: `Đã tạo phiên bản ${n.version} (nháp). Phiên bản đang phát hành giữ nguyên tới khi bản mới được duyệt.` };
     },

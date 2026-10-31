@@ -114,9 +114,10 @@ def('price_policy', {
     { k: 'maint_pct', l: 'Phí bảo trì (%)', t: 'num', def: 2, show: { mode: ['don_gia'] } },
     { k: 'vat_pct', l: 'Thuế GTGT (%)', t: 'num', hide: 1, def: 5 },   // bỏ khỏi form 31/10/2026 — vẫn mặc định 5% để tách giá trong chi tiết bảng giá
     { k: 'src_file', l: 'Tệp nguồn (PDF)', t: 'text', upload: '.pdf', help: 'Chọn tệp PDF chính sách / bảng giá — lưu vào mục Tệp của chính sách' },
-    { k: 'discount', l: 'Ưu đãi / chiết khấu', t: 'long' },
-    { k: 'pay_method', l: 'Phương thức thanh toán', t: 'long' },
-    { k: 'bank_policy', l: 'Chính sách ngân hàng', t: 'long' },
+    { k: 'content', l: 'Nội dung chính sách bán hàng', t: 'long' },   // gộp 3 ô cũ Ưu đãi, Phương thức thanh toán, Chính sách ngân hàng 31/10/2026 (schema.js PRE chuyển dữ liệu)
+    { k: 'discount', l: 'Ưu đãi / chiết khấu', t: 'long', hide: 1 },
+    { k: 'pay_method', l: 'Phương thức thanh toán', t: 'long', hide: 1 },
+    { k: 'bank_policy', l: 'Chính sách ngân hàng', t: 'long', hide: 1 },
     { k: 'target', l: 'Đối tượng áp dụng', t: 'text' },
     { k: 'start_on', l: 'Ngày bắt đầu', t: 'date', req: 1 },
     { k: 'end_on', l: 'Ngày kết thúc', t: 'date', req: 1 },
@@ -258,7 +259,7 @@ def('reservation', {
     { k: 'agent_id', l: 'Đại lý bán hàng', t: 'ref', ref: 'agent', show: { source: ['dai_ly', 'ctv'] } },
     owner('Người thực hiện', { hide: 1 }),   // tự lấy người lập phiếu
     { k: 'status', l: 'Tình trạng phiếu', t: 'sel', o: RES_ST, ro: 1, def: 'nhap' },
-  ], list: ['stt', 'unit_id', 'sale_check', 'cust_code', 'cust_name', 'id_no', 'id_date', 'id_place', 'address', 'phone', 'unit_value', 'finish_value', 'price', 'reg_at', 'hold_until', 'reg_state', 'progress', 'agent_id', 'note', 'prints'],
+  ], list: ['stt', 'unit_id', 'sale_check', 'cust_code', 'cust_name', 'id_no', 'id_date', 'id_place', 'address', 'phone', 'unit_value', 'finish_value', 'price', 'reg_at', 'hold_until', 'reg_state', 'progress', 'source', 'agent_id', 'note', 'prints'],
   lock: ['chuyen_hd', 'het_han', 'huy', 'cho_duyet'], lockKeep: ['note', 'progress', 'reg_state'],
   flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'giu_cho' } },
   acts: [

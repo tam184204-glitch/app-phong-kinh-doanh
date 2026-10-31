@@ -234,8 +234,8 @@ async function seedBase() {
       }
       if (!await db.one('SELECT 1 FROM kd_price_policy WHERE $1 = ANY(project_ids)', [pj.id]))
         await C.create('price_policy', { code: `CSBH-T9-2026-${t.maDuAn}`, version: 1, project_ids: [pj.id], unit_group: '*', mode: 'bang_hang', start_on: BH.capNhat, end_on: '2026-12-31', status: 'phat_hanh',
-          src_file: BH.fileNguon, target: 'Khách hàng mua căn hộ', discount: 'Theo chính sách mua hàng T9/2026', pay_method: 'Theo tiến độ hợp đồng',
-          bank_policy: 'Ngày kết thúc hiệu lực 31/12/2026 là giả định — Trưởng phòng xác nhận lại theo văn bản chính sách' }, sysU, { db, system: true });
+          src_file: BH.fileNguon, target: 'Khách hàng mua căn hộ',
+          content: 'Ưu đãi / chiết khấu: Theo chính sách mua hàng T9/2026\nPhương thức thanh toán: Theo tiến độ hợp đồng\nChính sách ngân hàng: Ngày kết thúc hiệu lực 31/12/2026 là giả định — Trưởng phòng xác nhận lại theo văn bản chính sách' }, sysU, { db, system: true });
       await db.q('UPDATE kd_project SET units_total = (SELECT count(*) FROM kd_unit WHERE project_id = $1) WHERE id = $1', [pj.id]);
     }
     for (const t of TEMPLATES) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });

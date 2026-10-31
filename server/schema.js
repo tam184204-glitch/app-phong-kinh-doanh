@@ -117,6 +117,8 @@ const PRE = [
   // phương án xử lý tiền rút gọn (28/10/2026): giữ lại / không phát sinh → Khác
   'ALTER TABLE IF EXISTS kd_cancel_req DROP CONSTRAINT IF EXISTS ck_kd_cancel_req_money_plan',
   `UPDATE kd_cancel_req SET money_note = coalesce(money_note, CASE money_plan WHEN 'giu_lai' THEN 'Giữ lại theo chính sách' ELSE 'Không phát sinh tiền' END), money_plan = 'khac' WHERE money_plan IN ('giu_lai', 'khong_phat_sinh')`,
+  // gộp 3 ô chính sách thành Nội dung chính sách bán hàng (31/10/2026): chuyển xong xóa ô cũ để không gộp lại lần sau
+  `UPDATE kd_price_policy SET content = concat_ws(E'\\n', nullif(content, ''), 'Ưu đãi / chiết khấu: ' || nullif(discount, ''), 'Phương thức thanh toán: ' || nullif(pay_method, ''), 'Chính sách ngân hàng: ' || nullif(bank_policy, '')), discount = NULL, pay_method = NULL, bank_policy = NULL WHERE coalesce(discount, pay_method, bank_policy) IS NOT NULL`,
 ];
 // CHECK nghiệp vụ thêm (ngoài money ≥ 0 và giá trị danh sách chọn)
 const CHECKS = {
