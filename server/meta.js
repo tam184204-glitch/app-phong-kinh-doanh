@@ -894,6 +894,13 @@ const SETTINGS = {
   checklist_ban_giao: ['Biên bản bàn giao (bắt buộc)', 'Phiếu kiểm tra hiện trạng (bắt buộc)', 'Tài liệu hướng dẫn sử dụng', 'Chìa khóa', 'Thẻ từ / thẻ cư dân', 'Khách ký xác nhận hoàn tất (bắt buộc)'],
   sla_hours: { khan: 24, cao: 48, thuong: 72 },
   handover_pay_pct: 95,
+  // nội dung các đợt thanh toán theo hợp đồng mua bán: chọn đợt ở form → gợi ý nội dung, tỷ lệ, hạn (sửa được). days = số ngày sau ngày ký; null = theo sự kiện, người nhập tự ghi ngày dự kiến
+  schedule_contents: [
+    { dot: 'Đợt 1', pct: 30, days: 0, name: 'Sau khi ký hợp đồng, Bên Mua thanh toán cho Bên Bán 30% giá trị căn hộ' },
+    { dot: 'Đợt 2', pct: 40, days: 60, name: 'Sau 60 ngày kể từ ngày ký hợp đồng mua bán, Bên Mua thanh toán cho Bên Bán 40% giá trị căn hộ' },
+    { dot: 'Đợt 3', pct: 25, days: null, name: 'Trong vòng 10 (mười) ngày kể từ ngày Bên Bán phát hành thông báo bàn giao Căn hộ gửi Bên Mua, Bên Mua thanh toán cho Bên Bán 25% giá trị căn hộ' },
+    { dot: 'Đợt 4', pct: 5, days: null, name: 'Chậm nhất 15 (mười lăm) ngày kể từ ngày Bên Mua nhận được thông báo nhận bàn giao Giấy chứng nhận quyền sở hữu căn hộ, Bên Mua thanh toán cho Bên Bán 5% giá trị căn hộ còn lại' },
+  ],
   schedule_presets: [
     { name: 'NOXH – 3 đợt', rows: [['Đợt 1 – ký HĐ', 30, 0], ['Đợt 2 – theo tiến độ', 40, 90], ['Đợt 3 – bàn giao', 25, 180], ['Đợt 4 – nhận GCN', 5, 365]] },
     { name: 'Thương mại – 5 đợt', rows: [['Đợt 1', 20, 0], ['Đợt 2', 20, 60], ['Đợt 3', 20, 120], ['Đợt 4', 35, 210], ['Đợt 5 – GCN', 5, 365]] },

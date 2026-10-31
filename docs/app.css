@@ -810,3 +810,9 @@ table.prod-t tfoot td { font-weight: 800 !important; color: var(--ink) !importan
 .sched { width: 100%; table-layout: fixed; }
 .sched th:nth-child(1) { width: 52px; } .sched th:nth-child(3) { width: 140px; } .sched th:nth-child(4) { width: 100px; } .sched th:nth-child(5) { width: 180px; } .sched th:nth-child(6) { width: 56px; }
 .sched td input[data-k] { width: 100% !important; }
+
+/* lần thanh toán hợp đồng: cột Đợt chọn gợi ý, Nội dung nhiều dòng */
+.sched.pick th:nth-child(1) { width: 130px; }
+.sched td select { height: 32px; width: 100%; border: 1px solid #cfdbe8; border-radius: 8px; padding: 0 4px; font: inherit; background: #fff; }
+.sched td textarea { width: 100%; min-height: 50px; border: 1px solid #cfdbe8; border-radius: 8px; padding: 5px 8px; font: inherit; line-height: 1.3; resize: vertical; }
+.sched td { vertical-align: top; }
