@@ -805,3 +805,8 @@ table.prod-t tfoot td { font-weight: 800 !important; color: var(--ink) !importan
 /* danh sách hợp đồng căn hộ: 2 tầng tiêu đề như BRAVO */
 .t.hd2 thead .h1 th { text-align: center; border-bottom: 1px solid var(--line2); border-left: 1px solid var(--line2); }
 .t.hd2 td, .t.hd2 th { white-space: nowrap; }
+
+/* bảng lần thanh toán: cột cố định, ô nhập thẳng hàng với tiêu đề và dòng tổng */
+.sched { width: 100%; table-layout: fixed; }
+.sched th:nth-child(1) { width: 52px; } .sched th:nth-child(3) { width: 140px; } .sched th:nth-child(4) { width: 100px; } .sched th:nth-child(5) { width: 180px; } .sched th:nth-child(6) { width: 56px; }
+.sched td input[data-k] { width: 100% !important; }
