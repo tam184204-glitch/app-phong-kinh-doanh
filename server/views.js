@@ -302,13 +302,13 @@ async function payouts(db, user, f = {}) {
     LEFT JOIN kd_unit u ON u.id = coalesce(c.unit_id, r.unit_id) LEFT JOIN kd_project pj ON pj.id = u.project_id
     LEFT JOIN kd_customer k ON k.id = coalesce(c.customer_id, r.customer_id) WHERE true ${w} ORDER BY t.pay_due NULLS LAST, t.id DESC`, p);
 }
-// theo dõi vay vốn: đọc thẳng từ hợp đồng căn hộ chung cư + nhà liền kề còn hiệu lực (sửa ở hợp đồng là cập nhật)
+// theo dõi vay vốn: hợp đồng căn hộ chung cư + nhà liền kề đã ký tự sổ vào đây (sửa ở hợp đồng là cập nhật)
 async function loans(db, user, f = {}) {
   if (!can(user, E.contract, 'r')) deny();
   const p = []; const w = uf(f, p);
   return db.q(`SELECT c.id, c.number, c.contract_on, c.value, c.status, c.loan_status, c.loan_bank, c.loan_doc3, c.ptype, u.code unit, pj.code project, k.full_name customer, coalesce(c.b_phone, k.phone) phone
     FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_project pj ON pj.id = u.project_id JOIN kd_customer k ON k.id = c.customer_id
-    WHERE c.kind <> 'hoan_thien' AND c.status NOT IN ('huy', 'thanh_ly') ${w} ORDER BY c.id DESC`, p);
+    WHERE c.kind <> 'hoan_thien' AND c.status = 'da_ky' ${w} ORDER BY c.id DESC`, p);
 }
 async function priceSheet(db, user, id) {
   if (!can(user, E.price_policy, 'r')) deny();
