@@ -269,7 +269,8 @@ function schedEditor(el, rows, { total, base, first } = {}) {   // first(): ngà
   let R = (rows || []).map(r => ({ ...r }));
   const totalOf = () => typeof total === 'function' ? total() : total;
   const C = first ? M.settings.schedule_contents || [] : [];   // gợi ý nội dung từng đợt (hợp đồng)
-  const nDays = s => +(/sau\s+(\d+)\s+ngày/i.exec(s || '')?.[1] || 0);   // «Sau 60 ngày…» trong nội dung = số ngày sau ngày ký
+  // «Sau 60 ngày…», «Trong 60 ngày…», «Trong vòng 60 (sáu mươi) ngày…» = số ngày sau ngày ký; «… ngày kể từ ngày Bên Bán…» theo sự kiện khác nên không tính
+  const nDays = s => +(/(?:sau|trong)(?:\s+vòng)?\s+(\d+)(?:\s*\([^)]*\))?\s+ngày(?!\s+kể từ ngày\s+(?!ký))/i.exec(s || '')?.[1] || 0);
   const useC = (r, c) => { const d = first?.(); Object.assign(r, { name: c.name, pct: c.pct, amount: null, _days: c.days || 0, due_on: c.days && d ? addDays(d, c.days) : c.days === 0 ? r.due_on || d : '' }); };
   if (first?.()) for (const r of R) { const n = nDays(r.name); if (n && addDays(first(), n) === r.due_on) r._days = n; }   // lịch đã lưu: hạn đúng «Sau N ngày» thì vẫn đi theo ngày ký
   const draw = () => {
