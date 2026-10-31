@@ -22,14 +22,14 @@ async function exportList(entKey, user, qs) {
   const e = E[entKey] || bad('Loại dữ liệu không hợp lệ');
   if (!can(user, e, 'x')) deny('Vai trò của bạn không được xuất dữ liệu này');
   const { rows } = await C.list(entKey, user, qs, { limit: 20000 });
-  const keys = qs.cols ? String(qs.cols).split(',') : e.list;
+  const L = e.lists?.[qs.group], keys = qs.cols ? String(qs.cols).split(',') : L?.cols || e.list;
   const cols = [];
   rows.forEach((r, i) => { r.stt = i + 1; });
   for (const k of keys) {
     if (k === 'prints' || k === 'bbgn') continue;
     const f = C.F[entKey][k];
-    if (f) cols.push([f.t === 'ref' || f.t === 'refs' || f.t === 'user' ? k + '__l' : k, f.l, f.t === 'sel' ? null : f.t, f]);
-    else if (VIRT[k]) cols.push([k === 'created_by' ? 'created_by__l' : k, VIRT[k], ['paid', 'actual', 'gap'].includes(k) ? 'money' : null]);
+    if (f) cols.push([f.t === 'ref' || f.t === 'refs' || f.t === 'user' ? k + '__l' : k, L?.label?.[k] || f.l, f.t === 'sel' ? null : f.t, f]);
+    else if (VIRT[k]) cols.push([k === 'created_by' ? 'created_by__l' : k, L?.label?.[k] || VIRT[k], ['paid', 'actual', 'gap'].includes(k) ? 'money' : null]);
   }
   for (const r of rows) for (const c of cols) if (c[3]?.t === 'sel') r[c[0]] = await C.optLabel(c[3], r[c[0]]);
   for (const r of rows) for (const c of cols) if (c[3]?.t === 'check') r[c[0]] = (r[c[0]] || []).filter(x => x.st === 'da_nhan').length + '/' + (r[c[0]] || []).length;

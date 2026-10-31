@@ -783,3 +783,25 @@ table.prod-t tfoot td { font-weight: 800 !important; color: var(--ink) !importan
 /* bảng căn mở bán trong chi tiết thông báo: cuộn, giữ dòng tiêu đề */
 .ds-can{max-height:420px;overflow:auto}
 .ds-can thead th{position:sticky;top:0;z-index:1;text-align:center}
+
+/* form hợp đồng bố cục BRAVO: nhãn bên trái ô, 2 cột bên mua | bên bán, lưới 4 cột thông tin chi tiết */
+.modal.full { width: min(1560px, 100%); } .modal.full .mb { max-height: 80vh; }
+.form.bv { display: block; }
+.bv-side { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
+.bv-sec { margin-bottom: 10px; min-width: 0; }
+.bv-sec .fsec { margin: 0 0 6px; padding: 4px 10px; }
+.bv-row { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: 5px 12px; margin-bottom: 5px; }
+.bv .fld { flex-direction: row; align-items: center; gap: 8px; }
+.bv .hidden { display: none; }
+.bv .fld > label { flex: 0 0 118px; font-weight: 600; line-height: 1.2; }
+.bv .fld > :not(label) { flex: 1; min-width: 0; }
+.bv .fld > label .tag { font-size: 0; padding: 0; border: 0; background: none; } .bv .fld > label .tag i { font-size: 10px; }
+.bv .fld .help { display: none; }
+.bv .fld input[type=text], .bv .fld input:not([type]), .bv .fld select { height: 32px; border-radius: 7px; padding-top: 3px; padding-bottom: 3px; font-size: 13px; }
+.bv .fld .chk { height: 32px !important; }
+.bv .fld[data-f="new_schedule"] { display: block; } .bv .fld[data-f="new_schedule"] > label { display: none; }
+@media (max-width: 900px) { .bv-side, .bv-row { grid-template-columns: 1fr; } }
+
+/* danh sách hợp đồng căn hộ: 2 tầng tiêu đề như BRAVO */
+.t.hd2 thead .h1 th { text-align: center; border-bottom: 1px solid var(--line2); border-left: 1px solid var(--line2); }
+.t.hd2 td, .t.hd2 th { white-space: nowrap; }

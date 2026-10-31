@@ -111,6 +111,21 @@ function contractPrice(r) {
   return { corner_amt: corner_amt || null, pretax: Math.round(F), vat_pct: vat, vat_amt: Math.round(H), after_tax, maint_fee, value: after_tax + maint_fee + (+r.finish_value || 0) };
 }
 
+// số hợp đồng kế tiếp: HDCH.YYMM-0001 (chung cư) / HDLK.YYMM-0001 (liền kề)
+async function nextContractNo(db, ptype, on) {
+  const d = String(on || today()), pre = `${ptype === 'lien_ke' ? 'HDLK' : 'HDCH'}.${d.slice(2, 4)}${d.slice(5, 7)}-`;
+  const last = await db.one("SELECT max(substring(number from '\\d+$')::int) n FROM kd_contract WHERE number LIKE $1", [pre + '%']);
+  return pre + String((last?.n || 0) + 1).padStart(4, '0');
+}
+// form hợp đồng: chọn căn → lấy theo phiếu giữ chỗ đang hiệu lực (khách, ngày đề nghị mua, chính sách, hoàn thiện, nhân viên); chưa có chính sách thì lấy bảng giá đang phát hành của dự án
+async function contractPrefill(db, unitId, on = today()) {
+  const u = await raw(db, 'unit', unitId); if (!u) return {};
+  const res = await db.one(`SELECT r.customer_id, r.reg_date, r.policy_id, r.finish_value, r.owner_id, k.code || ' · ' || k.full_name customer_label FROM kd_reservation r
+    LEFT JOIN kd_customer k ON k.id = r.customer_id WHERE r.unit_id = $1 AND r.status IN ${ACTIVE_RES} ORDER BY r.id DESC LIMIT 1`, [unitId]);
+  const pol = await db.one(`SELECT id, code || ' v' || version label FROM kd_price_policy WHERE ${res?.policy_id ? 'id = $1' : "status = 'phat_hanh' AND $1 = ANY(project_ids) AND start_on <= $2 AND end_on >= $2 ORDER BY start_on DESC, version DESC LIMIT 1"}`, res?.policy_id ? [res.policy_id] : [u.project_id, on]);
+  return { customer_id: res?.customer_id ?? null, customer_label: res?.customer_label ?? null, request_on: res?.reg_date ?? null, finish_value: res?.finish_value ?? null, owner_id: res?.owner_id ?? null, policy_id: pol?.id ?? null, policy_label: pol?.label ?? null };
+}
+
 // giá trị hợp đồng căn hộ theo Danh mục sản phẩm (sau thuế + bảo trì): cập nhật các ô giá + tính lại từng đợt theo tỷ lệ / ngày đến hạn cũ.
 // Phiếu thu đã có giữ nguyên (công nợ tự tính lại theo lịch mới). Trả về true nếu có đổi.
 async function syncContractValue(db, contractId, user, note = 'Đồng bộ giá trị theo Danh mục sản phẩm') {
@@ -597,6 +612,18 @@ H.cancel_req = {
 };
 
 H.contract = {
+  // danh sách: hợp đồng cũ chưa có thông tin bên mua / chi tiết giá thì hiện theo khách hàng và căn
+  async listFill(rows, db) {
+    if (!rows.length) return;
+    const ks = await db.q('SELECT id, full_name, id_no, id_date, id_place, address, phone FROM kd_customer WHERE id = ANY($1)', [rows.map(r => r.customer_id)]);
+    const us = await db.q('SELECT id, area_tt, base_price, pretax, vat_pct, tax_amt, price_net, maint_fee FROM kd_unit WHERE id = ANY($1)', [rows.map(r => r.unit_id)]);
+    const K = new Map(ks.map(x => [x.id, x])), U = new Map(us.map(x => [x.id, x]));
+    for (const r of rows) {
+      const k = K.get(r.customer_id) || {}, u = U.get(r.unit_id) || {};
+      r.b_name = k.full_name; r.b_id_no ??= k.id_no; r.b_id_date ??= k.id_date; r.b_id_place ??= k.id_place; r.b_addr ??= k.address; r.b_phone ??= k.phone;
+      r.area_tt ??= u.area_tt; r.base_price ??= u.base_price; r.pretax ??= u.pretax; r.vat_pct ??= u.vat_pct; r.vat_amt ??= u.tax_amt; r.after_tax ??= u.price_net; r.maint_fee ??= u.maint_fee;
+    }
+  },
   // danh sách theo nhóm: ?group=can_ho | lien_ke
   where(qs) { if (['can_ho', 'lien_ke'].includes(qs.group)) return { sql: 't.ptype = $1', params: [qs.group] }; },
   async beforeSave(r, old, ctx) {
@@ -605,11 +632,7 @@ H.contract = {
     // phân loại theo loại căn
     if (!old || old.unit_id !== r.unit_id || !r.ptype) { const u0 = await raw(db, 'unit', r.unit_id); if (u0) r.ptype = ['lien_ke', 'shophouse'].includes(u0.kind) ? 'lien_ke' : 'can_ho'; }
     // số hợp đồng để trống → HDCH.YYMM-0001 / HDLK.YYMM-0001
-    if (!r.number) {
-      const d = String(r.contract_on || today()), pre = `${r.ptype === 'lien_ke' ? 'HDLK' : 'HDCH'}.${d.slice(2, 4)}${d.slice(5, 7)}-`;
-      const last = await db.one("SELECT max(substring(number from '\\d+$')::int) n FROM kd_contract WHERE number LIKE $1", [pre + '%']);
-      r.number = pre + String((last?.n || 0) + 1).padStart(4, '0');
-    }
+    if (!r.number) r.number = await nextContractNo(db, r.ptype, r.contract_on);
     // chung cư có giá nền: tính như BRAVO / Danh mục sản phẩm — chỉ khi tạo mới hoặc đổi ô giá (hợp đồng cũ giữ nguyên số)
     const PK = ['base_price', 'area_tt', 'floor_price', 'area_floor', 'discount', 'corner_pct', 'vat_pct', 'finish_value', 'unit_id'];
     if (r.ptype !== 'lien_ke' && +r.base_price > 0 && +r.area_tt > 0 && (!old || PK.some(k => String(old[k] ?? '') !== String(r[k] ?? '')))) Object.assign(r, contractPrice(r));
@@ -655,6 +678,7 @@ H.contract = {
   async decorate(rows, { db, one }) {
     const D = await debtOf(db, rows.map(r => r.id));
     for (const r of rows) { const d = D.get(r.id); r.paid = d.paid; r.left = d.left; r.overdue = d.overdue; if (one) r._debt = d; }
+    if (!one) await H.contract.listFill(rows, db);
     if (one && rows[0]) rows[0].new_schedule = (await db.q('SELECT name, due_on, pct, amount FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [rows[0].id]))
       .map(x => ({ name: x.name, due_on: x.due_on, pct: x.pct == null ? null : +x.pct, amount: x.pct == null ? +x.amount : null }));   // form sửa: lịch thu đang có
   },
@@ -972,4 +996,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { ckItem, saleCheck, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
