@@ -427,19 +427,20 @@ R('GET', '/print/handover/:kind/:id', async (req, res, u, p, qs) => send(res, 20
 // phiếu đề nghị hủy / đổi: tự điền theo hợp đồng / phiếu giữ chỗ
 R('GET', '/api/cancel_prefill', async (req, res, u, p, qs) => { if (!can(u, M.E.cancel_req, 'c') && !can(u, M.E.cancel_req, 'u')) C.deny(); send(res, 200, await B.cancelPrefill({ q, one }, qs)); });
 // bên bán theo tên (Bên A): thông tin mặc định + ô đã ghi ở hợp đồng gần nhất cùng Bên A
-// thông tin bên bán: ghi nhớ theo từng Bên A ngay khi nhập (kd_setting.seller_info), không phụ thuộc hợp đồng có lưu được hay không; chưa nhập thì lấy giá trị gần nhất trên hợp đồng
+// thông tin bên bán: ghi nhớ theo từng Bên A ngay khi nhập (kd_setting.seller_info_v2), không phụ thuộc hợp đồng có lưu được hay không; chưa nhập thì lấy giá trị gần nhất trên hợp đồng
 const SELLER_K = ['s_addr', 's_phone', 's_tax', 's_bank_acc', 's_bank_name', 's_rep', 's_title', 's_poa'];
 R('GET', '/api/seller', async (req, res, u, p, qs) => {
   const name = String(qs.name || '').trim(), base = M.SELLERS.find(s => s.name === name) || {};
   const last = name ? await one(`SELECT ${[...SELLER_K, 'seller_unit'].map(k => `(array_agg(${k} ORDER BY id DESC) FILTER (WHERE ${k} <> ''))[1] ${k}`).join(', ')} FROM kd_contract WHERE s_name = $1`, [name]) : null;
-  const saved = (await one("SELECT value FROM kd_setting WHERE key = 'seller_info'"))?.value?.[name] || {};
-  send(res, 200, { ...Object.fromEntries(SELLER_K.map(k => [k, saved[k] ?? last?.[k] ?? ''])), s_addr: saved.s_addr ?? last?.s_addr ?? base.addr ?? '', seller_unit: base.unit || last?.seller_unit || '' });
+  const saved = (await one("SELECT value FROM kd_setting WHERE key = 'seller_info_v2'"))?.value?.[name] || {};   // v2: chỉ tính từ khi có bảng thông tin bên bán 31/10/2026
+  const def = { s_addr: base.addr, s_phone: base.phone, s_bank_acc: base.bank_acc, s_bank_name: base.bank_name, s_rep: base.rep, s_title: base.title, s_poa: base.poa };   // người dùng đã sửa > bảng mặc định > hợp đồng gần nhất
+  send(res, 200, { ...Object.fromEntries(SELLER_K.map(k => [k, saved[k] ?? def[k] ?? last?.[k] ?? ''])), seller_unit: base.unit || last?.seller_unit || '' });
 });
 R('PUT', '/api/seller', async (req, res, u) => {
   if (!can(u, M.E.contract, 'c') && !can(u, M.E.contract, 'u')) C.deny();
   const b = await readJson(req), name = String(b.name || '').trim();
   if (!name || !SELLER_K.includes(b.k)) bad('Thông tin bên bán không hợp lệ');
-  await q(`INSERT INTO kd_setting (key, value, updated_by) VALUES ('seller_info', jsonb_build_object($1::text, jsonb_build_object($2::text, $3::text)), $4)
+  await q(`INSERT INTO kd_setting (key, value, updated_by) VALUES ('seller_info_v2', jsonb_build_object($1::text, jsonb_build_object($2::text, $3::text)), $4)
     ON CONFLICT (key) DO UPDATE SET value = jsonb_set(kd_setting.value, ARRAY[$1::text], coalesce(kd_setting.value -> $1::text, '{}'::jsonb) || jsonb_build_object($2::text, $3::text)), updated_at = now(), updated_by = $4`, [name, b.k, String(b.v ?? '').trim(), u.id]);
   send(res, 200, { ok: true });
 });

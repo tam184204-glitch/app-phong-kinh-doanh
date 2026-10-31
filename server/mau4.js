@@ -135,14 +135,16 @@ const bbBody = cty => `<table class="hd"><tr><td><b>${cty.name.toUpperCase()}</b
 <p>Chi tiết tài liệu bàn giao:</p>
 {bang_tai_lieu}
 <table class="sign"><tr><td><b>BÊN GIAO</b></td><td><b>BÊN NHẬN</b></td></tr></table>`;
-const DOT = '……………………………';
+const DOT = '……………………………', [BB_CT, BB_TN] = require('./meta').SELLERS;
 const MAU_BIEN_BAN = () => [
   { code: 'BBGN-CT', kind: BB_KIND, name: 'Biên bản giao nhận hồ sơ — Công ty CP Cát Tường', scope: '',
-    content: bbBody({ name: 'Công ty cổ phần Cát Tường', addr: 'Tầng 3 tòa CTN, đường Lý Thái Tổ, Phường Tiền Ninh Vệ, TP Bắc Ninh, Tỉnh Bắc Ninh', place: 'Bắc Ninh' }) },
-  // tên pháp nhân / địa chỉ bên Thống Nhất chưa có trong dữ liệu → để trống cho phòng Kinh doanh điền ở Quản trị › Mẫu biểu
+    content: bbBody({ name: 'Công ty cổ phần Cát Tường', addr: BB_CT.addr, place: 'Bắc Ninh' }) },
   { code: 'BBGN-TN', kind: BB_KIND, name: 'Biên bản giao nhận hồ sơ — Thống Nhất', scope: 'TNS,TN',
-    content: bbBody({ name: `Công ty ${DOT} Thống Nhất`, addr: DOT + DOT, place: 'Bắc Ninh' }) },
+    content: bbBody({ name: BB_TN.name, addr: BB_TN.addr, place: 'Bắc Ninh' }) },
 ];
+// mẫu đã nạp trong CSDL: chỉ thay đúng đoạn cũ, giữ phần đã sửa tay ở Quản trị › Mẫu biểu
+const BB_CU = () => [['BBGN-CT', 'Tầng 3 tòa CTN, đường Lý Thái Tổ, Phường Tiền Ninh Vệ, TP Bắc Ninh, Tỉnh Bắc Ninh', BB_CT.addr],
+  ['BBGN-TN', `Công ty ${DOT} Thống Nhất`, BB_TN.name], ['BBGN-TN', `Công ty ${DOT} Thống Nhất`.toUpperCase(), BB_TN.name.toUpperCase()], ['BBGN-TN', DOT + DOT, BB_TN.addr]];
 async function handoverTemplates(qs) {
   const unitId = qs.reservation ? (await one('SELECT unit_id FROM kd_reservation WHERE id = $1', [+qs.reservation]))?.unit_id
     : qs.noxh ? (await one('SELECT unit_id FROM kd_noxh_check WHERE id = $1', [+qs.noxh]))?.unit_id : null;
@@ -189,4 +191,4 @@ ${items.map((x, i) => `<tr><td class="c">${i + 1}</td><td>${esc(x.n)}</td><td cl
     ${IO.EDIT_CSS}</style></head><body>${IO.editBar(`Bản in từ mẫu «${esc(tpl?.name || 'Biên bản giao nhận hồ sơ')}»${n ? ` · hồ sơ NOXH #${n.id}` : ' · chưa lập hồ sơ NOXH — danh mục mặc định, số lượng điền tay'}`)}${IO.editDoc(body)}</body></html>`;
 }
 
-module.exports = { data, xlsx, printHandover, handoverTemplates, MAU_BIEN_BAN };
+module.exports = { data, xlsx, printHandover, handoverTemplates, MAU_BIEN_BAN, BB_CU };

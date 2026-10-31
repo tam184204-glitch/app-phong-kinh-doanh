@@ -378,9 +378,12 @@ const HD_PTYPE = [['can_ho', 'Hợp đồng căn hộ chung cư'], ['lien_ke', '
 const CT_ONLY = { ptype: ['can_ho'] }, LK_ONLY = { ptype: ['lien_ke'] };
 const HD_KIND = [['hdmb', 'HĐ mua bán'], ['thue', 'HĐ thuê'], ['thue_mua', 'HĐ thuê mua'], ['hoan_thien', 'HĐ thỏa thuận hoàn thiện']];
 // bên bán (chủ đầu tư) theo BRAVO: chọn Đơn vị / Bên A → tự điền thông tin bên bán (ô trống lấy theo hợp đồng gần nhất cùng Bên A)
+// thông tin mặc định bên bán theo bảng phòng Kinh doanh 31/10/2026
 const SELLERS = [
-  { unit: 'A01: Công ty Cổ phần Cát Tường', name: 'Công ty Cổ phần Cát Tường', addr: 'Tầng 3 tòa CTN, đường Lý Thái Tổ, Phường Tiền Ninh Vệ, TP Bắc Ninh, Tỉnh Bắc Ninh', projects: [] },
-  { unit: 'A02: Công ty CP TM&ĐTPT Thống Nhất', name: 'Công ty CP TM&ĐTPT Thống Nhất', addr: '', projects: ['TNS', 'TN'] },
+  { unit: 'A01: Công ty Cổ phần Cát Tường', name: 'Công ty Cổ phần Cát Tường', addr: 'Tầng 4 tòa Cát Tường New, Đường Lý Thái Tổ, Phường Kinh Bắc, Thành Phố Bắc Ninh', phone: '0829376666', bank_acc: '2567966666', bank_name: 'BIDV - CN Kinh Bắc',
+    rep: 'Bà Nguyễn Thị Thanh Dung', title: 'Trưởng phòng Kinh Doanh và Marketing', poa: '05/2026/UQ-CT ký ngày 1/8/2026', projects: [] },
+  { unit: 'A02: Công ty Cổ phần TM&ĐTPT Thống Nhất', name: 'Công ty Cổ phần TM&ĐTPT Thống Nhất', addr: 'Tầng 3 tòa Cát Tường New, Đường Lý Thái Tổ, Phường Kinh Bắc, Thành Phố Bắc Ninh', phone: '0829376666', bank_acc: '111653823456', bank_name: 'Vietinbank - CN KCN Quế Võ',
+    rep: 'Bà Nguyễn Thị Thanh Dung', title: 'Trưởng phòng Kinh Doanh và Marketing', poa: '06/2026/UQ-TN ký ngày 1/8/2026', projects: ['TNS', 'TN'] },
 ];
 const CHUC_VU = ['Tổng Giám đốc', 'Phó Tổng Giám đốc', 'Giám đốc', 'Phó Giám đốc', 'Trưởng phòng Kinh doanh'];
 def('contract', {
