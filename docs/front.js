@@ -1479,7 +1479,7 @@ V.signing = async main => {
   const tracked = () => [...d.rows.map(r => { const day = r.plan_sign ? r.plan_sign.slice(0, 10) : ''; return { ...r, day, plan_d: day, signed_d: '', cls: r.status === 'cho_ky' ? 'g' : day && day < t ? 'r' : 'b' }; }),
     ...d.signed.map(r => ({ ...r, day: String(r.signed_on).slice(0, 10), plan_d: r.plan_sign ? r.plan_sign.slice(0, 10) : '', signed_d: String(r.signed_on).slice(0, 10), cls: 'g' }))]
     .map(r => { const cap = r.cls === 'g' ? 'III' : r.sign_status === 'chua_lien_he' ? 'I' : 'II';   // III đã ký · II chưa ký · I chưa liên hệ được
-      return { ...r, cap, st_l: `${cap} · ${cap === 'III' ? 'Đã ký' : cap === 'I' ? 'Chưa liên hệ được' : 'Chưa ký'}${r.cls === 'r' ? ` · quá hạn ${late(r)} ngày` : ''}` }; })
+      return { ...r, cap, st_l: `${cap === 'III' ? 'Đã ký' : cap === 'I' ? 'Chưa liên hệ được' : 'Chưa ký'}${r.cls === 'r' ? ` · quá hạn ${late(r)} ngày` : ''}` }; })
     .sort((a, b) => (a.cls === 'r' ? 0 : 1) - (b.cls === 'r' ? 0 : 1) || (b.day || '').localeCompare(a.day || ''));
   const listed = () => { const q = lq.trim().toLowerCase(); const cq = /^(i{1,3})$/.exec(q)?.[1].toUpperCase();   // gõ I / II / III = tìm theo tình trạng
     return tracked().filter(r => (!ls || (ls === 'qua_han' ? r.cls === 'r' : r.cap === ls)) && (!lf || (r.day && r.day >= lf)) && (!lt || (r.day && r.day <= lt)) && (cq ? r.cap === cq : !q || [r.project, r.unit, r.customer, r.number, r.owner].some(x => String(x ?? '').toLowerCase().includes(q)))); };
