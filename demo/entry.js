@@ -111,6 +111,19 @@ async function boot(pgliteUrl) {
     await q("INSERT INTO kd_building (project_id, code, name, kind, created_at) SELECT id, 'K', 'Tòa K', 'chung_cu', now() FROM kd_project WHERE code = 'CTS'");
   // dữ liệu demo đã lưu: thêm 1 hợp đồng thử quá hạn ký để thấy cảnh báo (làm 1 lần trên mỗi trình duyệt)
   try { if (!localStorage.getItem('ctg-kd-demo-quahan')) { await q("UPDATE kd_contract SET plan_sign = CURRENT_DATE - 3 WHERE id = (SELECT id FROM kd_contract WHERE is_demo AND status = 'cho_duyet' ORDER BY id LIMIT 1)"); localStorage.setItem('ctg-kd-demo-quahan', '1'); } } catch (e) { console.warn('quá hạn ký', e); }
+  // hợp đồng thử cần ký hôm nay để xem màn Lịch ký: 8 dự thảo trên căn còn trống (5 CTS, 3 TNS), tạo 1 lần, mỗi lần mở dời ngày về hôm nay
+  const HD_THU = 'Thử lịch ký hôm nay';
+  try {
+    if (!localStorage.getItem('ctg-kd-demo-kyhomnay')) {
+      const C = require('../server/core'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1");
+      const can = await q(`SELECT x.* FROM (SELECT u.id, u.total_price, p.code, row_number() OVER (PARTITION BY p.code ORDER BY u.code) n FROM kd_unit u JOIN kd_project p ON p.id = u.project_id
+        WHERE p.code IN ('CTS', 'TNS') AND u.status IN ('con_ban', 'chua_mo_ban') AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id)) x WHERE x.n <= CASE x.code WHEN 'CTS' THEN 5 ELSE 3 END`);
+      const kh = await q('SELECT k.id FROM kd_customer k WHERE NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.customer_id = k.id) ORDER BY k.id LIMIT 8');
+      await tx(async db => { for (const [i, x] of can.entries()) if (kh[i]) await C.create('contract', { kind: 'hdmb', unit_id: x.id, customer_id: kh[i].id, value: +x.total_price || 1e9, sign_place: HD_THU, plan_sign: await (await db.one('SELECT CURRENT_DATE::text d')).d }, u, { db, system: true, demo: true }); });
+      localStorage.setItem('ctg-kd-demo-kyhomnay', '1');
+    }
+    await q("UPDATE kd_contract SET plan_sign = CURRENT_DATE WHERE sign_place = $1 AND status = 'du_thao'", [HD_THU]);
+  } catch (e) { console.warn('hợp đồng thử ký hôm nay', e); }
   const job = async () => { try { await tx(db => biz.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.warn('job', e.message); } };
   await job(); setInterval(job, 2 * 60e3);
 
