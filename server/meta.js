@@ -439,7 +439,7 @@ def('contract', {
     { k: 'price_policy_id', l: 'Chính sách giá', t: 'ref', ref: 'price_policy', hide: 1 },   // máy chủ tự lấy theo phiếu giữ chỗ / chính sách đang phát hành
     money('base_price', 'Giá nền (chưa VAT) đ/m²', { show: CT_ONLY }),
     { k: 'area_tt', l: 'Diện tích nền (thông thủy) m²', t: 'num', show: CT_ONLY },
-    money('floor_price', 'Giá sàn đ/m²', { show: CT_ONLY }),
+    money('floor_price', 'Giá sàn đ/m²', { show: CT_ONLY, hide: 1 }),   // bỏ khỏi form 31/10/2026
     { k: 'area_floor', l: 'Diện tích sàn m²', t: 'num', show: CT_ONLY },
     { k: 'area_land', l: 'Diện tích đất m²', t: 'num', show: LK_ONLY },
     money('land_price', 'Đơn giá đất đ/m²', { show: LK_ONLY }),
