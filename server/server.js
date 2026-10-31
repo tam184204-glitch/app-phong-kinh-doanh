@@ -427,12 +427,21 @@ R('GET', '/print/handover/:kind/:id', async (req, res, u, p, qs) => send(res, 20
 // phiếu đề nghị hủy / đổi: tự điền theo hợp đồng / phiếu giữ chỗ
 R('GET', '/api/cancel_prefill', async (req, res, u, p, qs) => { if (!can(u, M.E.cancel_req, 'c') && !can(u, M.E.cancel_req, 'u')) C.deny(); send(res, 200, await B.cancelPrefill({ q, one }, qs)); });
 // bên bán theo tên (Bên A): thông tin mặc định + ô đã ghi ở hợp đồng gần nhất cùng Bên A
+// thông tin bên bán: ghi nhớ theo từng Bên A ngay khi nhập (kd_setting.seller_info), không phụ thuộc hợp đồng có lưu được hay không; chưa nhập thì lấy giá trị gần nhất trên hợp đồng
+const SELLER_K = ['s_addr', 's_phone', 's_tax', 's_bank_acc', 's_bank_name', 's_rep', 's_title', 's_poa'];
 R('GET', '/api/seller', async (req, res, u, p, qs) => {
   const name = String(qs.name || '').trim(), base = M.SELLERS.find(s => s.name === name) || {};
-  // từng ô lấy giá trị đã lưu gần nhất (hợp đồng mới nhất để trống ô nào thì lấy ở hợp đồng trước đó)
-  const last = name ? await one(`SELECT ${['s_addr', 's_phone', 's_tax', 's_bank_acc', 's_bank_name', 's_rep', 's_title', 's_poa', 'seller_unit'].map(k => `(array_agg(${k} ORDER BY id DESC) FILTER (WHERE ${k} <> ''))[1] ${k}`).join(', ')} FROM kd_contract WHERE s_name = $1`, [name]) : null;
-  send(res, 200, { s_addr: last?.s_addr || base.addr || '', s_phone: last?.s_phone || '', s_tax: last?.s_tax || '', s_bank_acc: last?.s_bank_acc || '', s_bank_name: last?.s_bank_name || '',
-    s_rep: last?.s_rep || '', s_title: last?.s_title || '', s_poa: last?.s_poa || '', seller_unit: base.unit || last?.seller_unit || '' });
+  const last = name ? await one(`SELECT ${[...SELLER_K, 'seller_unit'].map(k => `(array_agg(${k} ORDER BY id DESC) FILTER (WHERE ${k} <> ''))[1] ${k}`).join(', ')} FROM kd_contract WHERE s_name = $1`, [name]) : null;
+  const saved = (await one("SELECT value FROM kd_setting WHERE key = 'seller_info'"))?.value?.[name] || {};
+  send(res, 200, { ...Object.fromEntries(SELLER_K.map(k => [k, saved[k] ?? last?.[k] ?? ''])), s_addr: saved.s_addr ?? last?.s_addr ?? base.addr ?? '', seller_unit: base.unit || last?.seller_unit || '' });
+});
+R('PUT', '/api/seller', async (req, res, u) => {
+  if (!can(u, M.E.contract, 'c') && !can(u, M.E.contract, 'u')) C.deny();
+  const b = await readJson(req), name = String(b.name || '').trim();
+  if (!name || !SELLER_K.includes(b.k)) bad('Thông tin bên bán không hợp lệ');
+  await q(`INSERT INTO kd_setting (key, value, updated_by) VALUES ('seller_info', jsonb_build_object($1::text, jsonb_build_object($2::text, $3::text)), $4)
+    ON CONFLICT (key) DO UPDATE SET value = jsonb_set(kd_setting.value, ARRAY[$1::text], coalesce(kd_setting.value -> $1::text, '{}'::jsonb) || jsonb_build_object($2::text, $3::text)), updated_at = now(), updated_by = $4`, [name, b.k, String(b.v ?? '').trim(), u.id]);
+  send(res, 200, { ok: true });
 });
 R('GET', '/api/mau4', async (req, res, u, p, qs) => send(res, 200, await M4.data(u, qs)));
 R('GET', '/api/mau4/xlsx', async (req, res, u, p, qs) => sendFile(res, await M4.xlsx(u, qs), `Mau4_ho_so_mua_NOXH_${C.today()}.xlsx`, MIME['.xlsx']));
