@@ -1478,9 +1478,11 @@ V.signing = async main => {
   const SIGN_COLS = [['project', 'Dự án'], ['unit', 'Mã căn hộ'], ['customer', 'Khách hàng'], ['number', 'Số HĐ'], ['plan_d', 'Ngày dự kiến ký', 'date'], ['signed_d', 'Ngày ký', 'date'], ['st_l', 'Tình trạng ký'], ['owner', 'Nhân viên KD']];
   const tracked = () => [...d.rows.map(r => { const day = r.plan_sign ? r.plan_sign.slice(0, 10) : ''; return { ...r, day, plan_d: day, signed_d: '', cls: r.status === 'cho_ky' ? 'g' : day && day < t ? 'r' : 'b' }; }),
     ...d.signed.map(r => ({ ...r, day: String(r.signed_on).slice(0, 10), plan_d: r.plan_sign ? r.plan_sign.slice(0, 10) : '', signed_d: String(r.signed_on).slice(0, 10), cls: 'g' }))]
-    .map(r => ({ ...r, st: r.cls === 'g' ? 'da_ky' : r.cls === 'r' ? 'qua_han' : 'chua_ky', st_l: r.cls === 'g' ? 'Đã ký' : r.cls === 'r' ? `Quá hạn ${late(r)} ngày` : 'Chưa ký' }))
+    .map(r => { const cap = r.cls === 'g' ? 'III' : r.sign_status === 'chua_lien_he' ? 'I' : 'II';   // III đã ký · II chưa ký · I chưa liên hệ được
+      return { ...r, cap, st_l: `${cap} · ${cap === 'III' ? 'Đã ký' : cap === 'I' ? 'Chưa liên hệ được' : 'Chưa ký'}${r.cls === 'r' ? ` · quá hạn ${late(r)} ngày` : ''}` }; })
     .sort((a, b) => (a.cls === 'r' ? 0 : 1) - (b.cls === 'r' ? 0 : 1) || (b.day || '').localeCompare(a.day || ''));
-  const listed = () => { const q = lq.trim().toLowerCase(); return tracked().filter(r => (!ls || r.st === ls) && (!lf || (r.day && r.day >= lf)) && (!lt || (r.day && r.day <= lt)) && (!q || [r.project, r.unit, r.customer, r.number, r.owner].some(x => String(x ?? '').toLowerCase().includes(q)))); };
+  const listed = () => { const q = lq.trim().toLowerCase(); const cq = /^(i{1,3})$/.exec(q)?.[1].toUpperCase();   // gõ I / II / III = tìm theo tình trạng
+    return tracked().filter(r => (!ls || (ls === 'qua_han' ? r.cls === 'r' : r.cap === ls)) && (!lf || (r.day && r.day >= lf)) && (!lt || (r.day && r.day <= lt)) && (cq ? r.cap === cq : !q || [r.project, r.unit, r.customer, r.number, r.owner].some(x => String(x ?? '').toLowerCase().includes(q)))); };
   const drawList = () => {
     const rs = listed(); $('#scN', main).textContent = `${rs.length} hợp đồng`;
     $('#scT', main).innerHTML = rs.length ? `<table class="t"><thead><tr><th>STT</th>${SIGN_COLS.map(c => `<th>${c[1]}</th>`).join('')}</tr></thead><tbody>${rs.map((r, i) => `<tr data-id="${r.id}"><td class="center">${i + 1}</td>${SIGN_COLS.map(c => `<td>${c[0] === 'st_l' ? pill(r.st_l, r.cls === 'g' ? 'g' : r.cls === 'r' ? 'r' : 's') : c[2] === 'date' ? dmy(r[c[0]]) : esc(r[c[0]] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '<div class="empty">Không có hợp đồng phù hợp</div>';
@@ -1503,9 +1505,9 @@ V.signing = async main => {
         <div class="card mt"><div class="hd"><h3>${ico('fa-triangle-exclamation')} Quá hạn ký (${over.length})</h3></div><div class="sc-list">${over.length ? byProject(over).map(([pj, es]) => `<div class="sc-pj">${esc(pj)} · ${es.length} căn</div>${es.map(line).join('')}`).join('') : '<div class="empty">Không có hợp đồng quá hạn</div>'}</div></div>
         <div class="card mt"><div class="hd"><h3>${ico('fa-clock')} Chưa hẹn lịch (${noDate.length})</h3></div><div class="sc-list">${noDate.length ? noDate.map(line).join('') : '<div class="empty">Không có</div>'}</div></div></div></div>
       <div class="card mt"><div class="hd"><h3>${ico('fa-list-check')} Danh sách theo dõi ký hợp đồng</h3><span class="grow"></span><button class="btn sm" id="scX">${ico('fa-file-excel')} Xuất Excel</button></div>
-        <div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="scQ" placeholder="Tìm dự án, mã căn, khách hàng, số HĐ, nhân viên…" value="${esc(lq)}"></div>
+        <div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="scQ" placeholder="Tìm mã căn, khách hàng, số HĐ… hoặc I, II, III" value="${esc(lq)}"></div>
           <span class="small muted">Từ ngày</span><input type="date" id="scF" class="inp" value="${lf}"><span class="small muted">đến</span><input type="date" id="scTo" class="inp" value="${lt}">
-          <select id="scS"><option value="">Mọi tình trạng ký</option><option value="chua_ky">Chưa ký</option><option value="qua_han">Quá hạn</option><option value="da_ky">Đã ký</option></select><span class="grow"></span><span class="small muted" id="scN"></span></div>
+          <select id="scS"><option value="">Mọi tình trạng ký</option><option value="III">III · Đã ký</option><option value="II">II · Chưa ký</option><option value="I">I · Chưa liên hệ được</option><option value="qua_han">Quá hạn</option></select><span class="grow"></span><span class="small muted" id="scN"></span></div>
         <div class="tbl-wrap" id="scT"></div></div></div>`;
     wireFilter(main, f, draw);
     $('#scS', main).value = ls; drawList();
