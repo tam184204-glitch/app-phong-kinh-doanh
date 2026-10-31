@@ -839,3 +839,14 @@ table.prod-t tfoot td { font-weight: 800 !important; color: var(--ink) !importan
 @media (max-width: 640px) { .sc { padding: 12px 8px; } .sc-d { min-height: 64px; padding: 2px; } .sc-ev { font-size: 0; height: 6px; padding: 0; } }
 .sc-pj { padding: 7px 12px; background: #f1f6fb; font-size: 12.5px; font-weight: 700; color: var(--cobalt-d); }
 .alert-row .lv.g { background: var(--g); }
+
+/* lịch ký gọn lại */
+.sc-wrap { grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr); }
+.sc { padding: 12px 14px; }
+.sc-h { flex-wrap: wrap; } .sc-h select, .sc-h input[type=date] { height: 30px; border: 1px solid #cfdbe8; border-radius: 8px; padding: 0 6px; font: inherit; font-size: 13px; background: #fff; }
+.sc-w { padding: 3px 0; }
+.sc-d { min-height: 62px; padding: 2px 3px; border-radius: 8px; }
+.sc-n { width: 22px; height: 22px; font-size: 12.5px; margin-bottom: 1px; }
+.sc-ev { font-size: 11px; padding: 1px 4px; margin-bottom: 2px; -webkit-line-clamp: 1; }
+.sc-more { font-size: 11px; line-height: 1.1; }
+.sc-leg { margin-top: 6px; }

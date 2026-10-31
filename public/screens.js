@@ -568,7 +568,7 @@ V.cust360 = async (main, params) => {
 // lịch tháng các buổi ký: đỏ = quá ngày dự kiến chưa ký, xanh dương = sắp ký, xanh lá = đã ký (hợp đồng đã duyệt tính là đã ký); bấm ngày xem danh sách, bấm thẻ mở hợp đồng
 V.signing = async main => {
   const f = filt(), t = today(), ss = M.ents.contract.fields.find(x => x.k === 'sign_status'), cs = M.ents.contract.fields.find(x => x.k === 'status');
-  let d = { rows: [], recent: [], signed: [] }, ym = t.slice(0, 7), sel = t, lq = '', ls = '';
+  let d = { rows: [], recent: [], signed: [] }, ym = t.slice(0, 7), sel = t, lq = '', ls = '', lf = '', lt = '';
   const opt = (fd, v) => fd.o.find(o => o[0] === v)?.[1] || v || '';
   const evs = () => [...d.rows.filter(r => r.plan_sign).map(r => { const day = r.plan_sign.slice(0, 10); return { ...r, day, cls: r.status === 'cho_ky' ? 'g' : day < t ? 'r' : 'b' }; }), ...d.signed.map(r => ({ ...r, day: String(r.signed_on).slice(0, 10), cls: 'g' }))];
   const late = r => Math.round((Date.parse(t) - Date.parse(r.day)) / 864e5);
@@ -581,7 +581,7 @@ V.signing = async main => {
     ...d.signed.map(r => ({ ...r, day: String(r.signed_on).slice(0, 10), plan_d: r.plan_sign ? r.plan_sign.slice(0, 10) : '', signed_d: String(r.signed_on).slice(0, 10), cls: 'g' }))]
     .map(r => ({ ...r, st: r.cls === 'g' ? 'da_ky' : r.cls === 'r' ? 'qua_han' : 'chua_ky', st_l: r.cls === 'g' ? 'Đã ký' : r.cls === 'r' ? `Quá hạn ${late(r)} ngày` : 'Chưa ký' }))
     .sort((a, b) => (a.cls === 'r' ? 0 : 1) - (b.cls === 'r' ? 0 : 1) || (b.day || '').localeCompare(a.day || ''));
-  const listed = () => { const q = lq.trim().toLowerCase(); return tracked().filter(r => (!ls || r.st === ls) && (!q || [r.project, r.unit, r.customer, r.number, r.owner].some(x => String(x ?? '').toLowerCase().includes(q)))); };
+  const listed = () => { const q = lq.trim().toLowerCase(); return tracked().filter(r => (!ls || r.st === ls) && (!lf || (r.day && r.day >= lf)) && (!lt || (r.day && r.day <= lt)) && (!q || [r.project, r.unit, r.customer, r.number, r.owner].some(x => String(x ?? '').toLowerCase().includes(q)))); };
   const drawList = () => {
     const rs = listed(); $('#scN', main).textContent = `${rs.length} hợp đồng`;
     $('#scT', main).innerHTML = rs.length ? `<table class="t"><thead><tr><th>STT</th>${SIGN_COLS.map(c => `<th>${c[1]}</th>`).join('')}</tr></thead><tbody>${rs.map((r, i) => `<tr data-id="${r.id}"><td class="center">${i + 1}</td>${SIGN_COLS.map(c => `<td>${c[0] === 'st_l' ? pill(r.st_l, r.cls === 'g' ? 'g' : r.cls === 'r' ? 'r' : 's') : c[2] === 'date' ? dmy(r[c[0]]) : esc(r[c[0]] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '<div class="empty">Không có hợp đồng phù hợp</div>';
@@ -596,22 +596,28 @@ V.signing = async main => {
       return `<div class="sc-d ${k === sel ? 'sel' : ''}" data-day="${k}"><span class="sc-n ${k === t ? 'now' : ''}">${i + 1}</span>${es.slice(0, 2).map(chip).join('')}${es.length > 2 ? `<small class="sc-more">+${es.length - 2}</small>` : ''}</div>`; })];
     const noDate = d.rows.filter(r => !r.plan_sign).map(r => ({ ...r, cls: 'b' })), day = by[sel] || [], todayEs = by[t] || [], over = evs().filter(r => r.cls === 'r').sort((a, b) => a.day.localeCompare(b.day));
     main.innerHTML = `<div class="page">${head('05', 'Lịch ký hợp đồng', 'fa-calendar-days', '', '5.5')}${filterBar(f, { period: false, building: false })}
-      ${over.length ? `<div class="warnbar mb">${ico('fa-triangle-exclamation')}<div><b>${over.length} hợp đồng quá ngày dự kiến ký</b> — lâu nhất ${late(over[0])} ngày. Xem danh sách «Quá hạn ký» bên phải.</div></div>` : ''}
-      <div class="sc-wrap"><div class="card sc"><div class="sc-h"><h3>Tháng ${String(m).padStart(2, '0')}/${y}</h3><span class="grow"></span><button class="btn sm" data-go="now">Hôm nay</button><button class="btn sm" data-go="-1" aria-label="Tháng trước">‹</button><button class="btn sm" data-go="1" aria-label="Tháng sau">›</button></div>
+      ${over.length ? `<div class="warnbar mb">${ico('fa-triangle-exclamation')}<div><b>${over.length} hợp đồng quá ngày dự kiến ký</b> — lâu nhất ${late(over[0])} ngày. Xem danh sách «Quá hạn ký» bên phải.</div></div>` : `<div class="okbar mb">${ico('fa-circle-check')} Không có hợp đồng quá hạn ký</div>`}
+      <div class="sc-wrap"><div class="card sc"><div class="sc-h"><select id="scM" aria-label="Tháng">${Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}" ${i + 1 === m ? 'selected' : ''}>Tháng ${i + 1}</option>`).join('')}</select><select id="scY" aria-label="Năm">${Array.from({ length: 7 }, (_, i) => +t.slice(0, 4) - 3 + i).map(v => `<option ${v === y ? 'selected' : ''}>${v}</option>`).join('')}</select><input type="date" id="scDay" aria-label="Chọn ngày" value="${sel}"><span class="grow"></span><button class="btn sm" data-go="now">Hôm nay</button><button class="btn sm" data-go="-1" aria-label="Tháng trước">‹</button><button class="btn sm" data-go="1" aria-label="Tháng sau">›</button></div>
         <div class="sc-g">${['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map(x => `<div class="sc-w">${x}</div>`).join('')}${cells.join('')}</div>
         <div class="sc-leg"><span class="r">Quá ngày dự kiến</span><span class="b">Sắp ký</span><span class="g">Đã ký</span></div></div>
       <div><div class="card"><div class="hd"><h3>${ico('fa-pen-nib')} Hôm nay ký (${todayEs.length})</h3></div>${todayEs.length ? byProject(todayEs).map(([pj, es]) => `<div class="sc-pj">${esc(pj)} · ${es.length} căn</div>${es.map(line).join('')}`).join('') : '<div class="empty">Hôm nay không có lịch ký</div>'}</div>
-        ${over.length ? `<div class="card mt"><div class="hd"><h3>${ico('fa-triangle-exclamation')} Quá hạn ký (${over.length})</h3></div><div class="sc-list">${byProject(over).map(([pj, es]) => `<div class="sc-pj">${esc(pj)} · ${es.length} căn</div>${es.map(line).join('')}`).join('')}</div></div>` : ''}
+        <div class="card mt"><div class="hd"><h3>${ico('fa-triangle-exclamation')} Quá hạn ký (${over.length})</h3></div><div class="sc-list">${over.length ? byProject(over).map(([pj, es]) => `<div class="sc-pj">${esc(pj)} · ${es.length} căn</div>${es.map(line).join('')}`).join('') : '<div class="empty">Không có hợp đồng quá hạn</div>'}</div></div>
         ${sel !== t ? `<div class="card mt"><div class="hd"><h3>${ico('fa-calendar-day')} Ngày ${dmy(sel)}</h3></div>${day.length ? day.map(line).join('') : '<div class="empty">Không có lịch ký</div>'}</div>` : ''}
         <div class="card mt"><div class="hd"><h3>${ico('fa-clock')} Chưa hẹn lịch (${noDate.length})</h3></div><div class="sc-list">${noDate.length ? noDate.map(line).join('') : '<div class="empty">Không có</div>'}</div></div></div></div>
       <div class="card mt"><div class="hd"><h3>${ico('fa-list-check')} Danh sách theo dõi ký hợp đồng</h3><span class="grow"></span><button class="btn sm" id="scX">${ico('fa-file-excel')} Xuất Excel</button></div>
         <div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="scQ" placeholder="Tìm dự án, mã căn, khách hàng, số HĐ, nhân viên…" value="${esc(lq)}"></div>
+          <span class="small muted">Từ ngày</span><input type="date" id="scF" class="inp" value="${lf}"><span class="small muted">đến</span><input type="date" id="scTo" class="inp" value="${lt}">
           <select id="scS"><option value="">Mọi tình trạng ký</option><option value="chua_ky">Chưa ký</option><option value="qua_han">Quá hạn</option><option value="da_ky">Đã ký</option></select><span class="grow"></span><span class="small muted" id="scN"></span></div>
         <div class="tbl-wrap" id="scT"></div></div></div>`;
     wireFilter(main, f, draw);
     $('#scS', main).value = ls; drawList();
     $('#scQ', main).oninput = debounce(e => { lq = e.target.value; drawList(); }, 200);
     $('#scS', main).onchange = e => { ls = e.target.value; drawList(); };
+    $('#scF', main).onchange = e => { lf = e.target.value; drawList(); };
+    $('#scTo', main).onchange = e => { lt = e.target.value; drawList(); };
+    const toMonth = () => { ym = `${$('#scY', main).value}-${String($('#scM', main).value).padStart(2, '0')}`; render(); };
+    $('#scM', main).onchange = toMonth; $('#scY', main).onchange = toMonth;
+    $('#scDay', main).onchange = e => { if (e.target.value) { sel = e.target.value; ym = sel.slice(0, 7); render(); } };
     $('#scX', main).onclick = () => download('/api/export-rows', { title: 'DANH SÁCH THEO DÕI KÝ HỢP ĐỒNG', cols: SIGN_COLS, rows: listed(), file: 'theo_doi_ky_hop_dong' });
   };
   const draw = async () => { d = await api('GET', '/api/signing?' + qsOf({ project: f.project })); render(); };

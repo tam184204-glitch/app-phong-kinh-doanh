@@ -109,6 +109,8 @@ async function boot(pgliteUrl) {
   // tòa K dự án CTS (thêm 27/10/2026, chưa có căn)
   if (!(await one("SELECT 1 FROM kd_building b JOIN kd_project p ON p.id = b.project_id WHERE p.code = 'CTS' AND b.code = 'K'")))
     await q("INSERT INTO kd_building (project_id, code, name, kind, created_at) SELECT id, 'K', 'Tòa K', 'chung_cu', now() FROM kd_project WHERE code = 'CTS'");
+  // dữ liệu demo đã lưu: thêm 1 hợp đồng thử quá hạn ký để thấy cảnh báo (làm 1 lần trên mỗi trình duyệt)
+  try { if (!localStorage.getItem('ctg-kd-demo-quahan')) { await q("UPDATE kd_contract SET plan_sign = CURRENT_DATE - 3 WHERE id = (SELECT id FROM kd_contract WHERE is_demo AND status = 'cho_duyet' ORDER BY id LIMIT 1)"); localStorage.setItem('ctg-kd-demo-quahan', '1'); } } catch (e) { console.warn('quá hạn ký', e); }
   const job = async () => { try { await tx(db => biz.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.warn('job', e.message); } };
   await job(); setInterval(job, 2 * 60e3);
 

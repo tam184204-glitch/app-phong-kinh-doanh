@@ -360,7 +360,7 @@ async function loadDemo() {
     }
     // giao dịch đang chạy ở CTS
     const pipe = [
-      { stopAt: 'cho_ky', sign: D(2) }, { stopAt: 'cho_ky', sign: D(-2) }, { stopAt: 'cho_duyet', sign: D(5) }, { stopAt: 'du_thao', sign: D(7) },
+      { stopAt: 'cho_ky', sign: D(2) }, { stopAt: 'cho_ky', sign: D(-2) }, { stopAt: 'cho_duyet', sign: D(-3) }, { stopAt: 'du_thao', sign: D(7) },
       { stopAt: 'da_coc', sign: D(10) }, { stopAt: 'da_coc', sign: D(12) }, { stopAt: 'giu_cho', sign: D(14) }, { stopAt: 'giu_cho', sign: D(14) },
     ];
     for (const [k, p] of pipe.entries()) {
