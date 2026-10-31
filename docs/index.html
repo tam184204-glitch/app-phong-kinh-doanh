@@ -24,7 +24,7 @@ const url = local ? new URL('pglite/index.js', location.href).href : 'https://cd
 const bar = document.getElementById('demobar');
 try {
   await window.__ctgBoot(url);
-  for (const s of ['front.js?v=7b85160a63']) await new Promise((res, rej) => { const el = document.createElement('script'); el.src = s; el.onload = res; el.onerror = rej; document.body.append(el); });
+  for (const s of ['front.js?v=32bc7c809a']) await new Promise((res, rej) => { const el = document.createElement('script'); el.src = s; el.onload = res; el.onerror = rej; document.body.append(el); });
   document.getElementById('boot').remove();
   setInterval(() => { if (!bar.isConnected) document.body.append(bar); }, 800);
 } catch (e) {
