@@ -324,6 +324,20 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [] } = {}
     if (list.length && JSON.stringify(list.map(x => x.n)) !== JSON.stringify(cur.map(x => x.n))) el.innerHTML = checkRows(list.map(x => ({ ...x, st: '', note: '' })), 'qty' in el.dataset);
   };
   wireInputs(form, () => { vis(); });
+  // chọn căn → cảnh báo ngay nếu căn / dự án ngoài thông báo mở bán đã duyệt gần nhất (chưa cần lưu; vẫn cho lưu như cũ)
+  const unitCombo = E.fields.some(f => f.k === 'sale_check') && form.elements.unit_id?.closest?.('.combo');
+  if (unitCombo) {
+    const box = document.createElement('div'); unitCombo.after(box);
+    let seq = 0;
+    const check = async () => {
+      const n = ++seq, v = form.elements.unit_id.value; box.innerHTML = ''; if (!v) return;
+      const sc = await api('GET', `/api/sale-check/${v}`).catch(() => null);
+      if (n === seq && sc && !sc.ok) box.innerHTML = `<div class="warnbar mt">${ico('fa-triangle-exclamation')}<div><b>Cảnh báo mở bán:</b> ${esc(sc.text.slice(2))}</div></div>`;
+    };
+    form.addEventListener('change', e => { if (e.target.name === 'unit_id') check(); });
+    unitCombo.addEventListener('input', () => { seq++; box.innerHTML = ''; });   // đang gõ lại mã căn
+    check();
+  }
   // chọn căn / khách → tự điền các ô liên quan (giá theo danh mục sản phẩm, thông tin khách)
   for (const f of fields.filter(f => f.fill)) form.addEventListener('change', async e => {
     if (e.target.name !== f.k || !e.target.value) return;
