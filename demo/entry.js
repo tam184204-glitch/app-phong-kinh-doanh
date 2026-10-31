@@ -43,11 +43,21 @@ function fakeRes(done) {
 const isApi = u => typeof u === 'string' && (u.startsWith('/api/') || u.startsWith('/print/'));
 
 async function boot(pgliteUrl) {
+  let pg = null;
+  // đặt trước mọi bước khởi động: dữ liệu trên trình duyệt hỏng thì màn hình lỗi vẫn gọi được để nạp lại
+  window.__ctgReset = async () => {
+    if (!confirm('Xóa toàn bộ dữ liệu demo trên trình duyệt này và nạp lại từ đầu?')) return;
+    try { if (pg) await pg.close(); } catch (e) { console.warn('đóng CSDL', e); }
+    const drop = n => new Promise(ok => { const r = indexedDB.deleteDatabase(n); r.onsuccess = r.onerror = ok; r.onblocked = () => { alert('Hãy đóng các tab khác đang mở bản demo rồi bấm OK.'); }; });
+    await drop('/pglite/ctg-kinhdoanh-demo'); await drop('ctg-kd-files');
+    try { localStorage.removeItem(SID_KEY); } catch {}
+    location.reload();
+  };
   say('Đang khởi tạo cơ sở dữ liệu trong trình duyệt…');
   const { PGlite } = await import(pgliteUrl);
   const ts = v => v == null ? null : new Date(v.replace(' ', 'T').replace(/([+-]\d\d)$/, '$1:00')).toISOString();
   const num = v => v == null ? null : +v;
-  const pg = await PGlite.create('idb://ctg-kinhdoanh-demo', { relaxedDurability: true, parsers: { 1082: v => v, 1700: num, 1184: ts, 20: num } });
+  pg = await PGlite.create('idb://ctg-kinhdoanh-demo', { relaxedDurability: true, parsers: { 1082: v => v, 1700: num, 1184: ts, 20: num } });
   await pg.exec("SET TIME ZONE 'Asia/Bangkok'");
   pgShim.setDb(Promise.resolve(pg));
   await fsShim.loadFiles();
@@ -130,13 +140,6 @@ async function boot(pgliteUrl) {
     if (a.hasAttribute('download') || /[?&]dl=1/.test(href)) openBlob(href, null, a.getAttribute('download') || 'tep-tai-ve');
     else openBlob(href, a.target === '_blank' || !a.target ? realOpen('about:blank', '_blank') : null);
   }, true);
-  window.__ctgReset = async () => {
-    if (!confirm('Xóa toàn bộ dữ liệu demo trên trình duyệt này và nạp lại từ đầu?')) return;
-    await pg.close();
-    indexedDB.deleteDatabase('/pglite/ctg-kinhdoanh-demo'); indexedDB.deleteDatabase('ctg-kd-files');
-    try { localStorage.removeItem(SID_KEY); } catch {}
-    setTimeout(() => location.reload(), 500);
-  };
   say('Đang mở giao diện…');
 }
 window.__ctgBoot = boot;

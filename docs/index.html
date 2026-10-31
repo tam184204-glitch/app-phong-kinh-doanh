@@ -18,7 +18,7 @@
 <div id="boot"><img src="logo.png" alt=""><b>CÁT TƯỜNG GROUP · PHÒNG KINH DOANH</b><span id="bootmsg">Đang tải…</span></div>
 <div id="demobar" data-keep>Bản demo · dữ liệu mẫu lưu trên trình duyệt của bạn<a onclick="window.__ctgReset&&__ctgReset()">Làm mới dữ liệu</a></div>
 <script type="module">
-import './demo.js?v=6fbb016161';
+import './demo.js?v=26439d108a';
 const local = new URLSearchParams(location.search).has('localpg');
 const url = local ? new URL('pglite/index.js', location.href).href : 'https://cdn.jsdelivr.net/npm/@electric-sql/pglite@0.5.12/dist/index.js';
 const bar = document.getElementById('demobar');
@@ -29,7 +29,11 @@ try {
   setInterval(() => { if (!bar.isConnected) document.body.append(bar); }, 800);
 } catch (e) {
   console.error(e);
-  document.getElementById('bootmsg').textContent = 'Không khởi động được bản demo: ' + e.message + ' — hãy thử Chrome/Edge bản mới và tải lại trang.';
+  document.getElementById('bootmsg').textContent = 'Không khởi động được bản demo: ' + e.message + ' — dữ liệu demo lưu trên trình duyệt này có thể đã hỏng.';
+  const btn = document.createElement('button');
+  btn.textContent = 'Xóa dữ liệu demo và nạp lại'; btn.style.cssText = 'padding:8px 16px;font:inherit;cursor:pointer';
+  btn.onclick = () => window.__ctgReset && window.__ctgReset();
+  document.getElementById('boot').append(btn);
 }
 </script>
 </body>
