@@ -295,7 +295,7 @@ const HD_LAYOUT = [
   { side: [
     { t: 'Bên mua nhà ở', rows: [['customer_id'], ['b_id_no'], ['b_id_date'], ['b_id_place'], ['b_addr'], ['b_perm_addr'], ['b_temp_addr'], ['b_phone', 'b_email'], ['b_bank_acc'], ['b_bank_name'], ['request_on', 'co_owner']] },
     { t: 'Bên bán nhà ở', rows: [['s_name'], ['s_addr'], ['s_phone', 's_tax'], ['s_bank_acc'], ['s_bank_name'], ['s_rep'], ['s_title'], ['s_poa'], ['owner_id'], ['commission_amt', 'commission_pct'], ['common_area_amt', 'all_signed']] }] },
-  { t: 'Thông tin chi tiết', cols: 4, rows: [['ptype', 'unit_id', 'price_policy_id', 'kind'], ['base_price', 'area_tt'], ['floor_price', 'area_floor', 'discount'], ['area_land', 'land_price', 'land_amt'], ['area_build', 'build_price', 'build_amt'],
+  { t: 'Thông tin chi tiết', cols: 4, rows: [['ptype', 'unit_id', 'building_id', 'kind'], ['base_price', 'area_tt'], ['floor_price', 'area_floor', 'discount'], ['area_land', 'land_price', 'land_amt'], ['area_build', 'build_price', 'build_amt'],
     ['pretax', 'vat_pct', 'vat_amt', 'after_tax'], ['finish_value', 'maint_fee', 'corner_pct', 'corner_amt'], ['value', 'closed', 'cn', 'vbtt_hold']] },
   { t: 'Lần thanh toán', rows: [['new_schedule'], ['pay_method']] },
   { t: 'Lịch ký', cols: 4, rows: [['plan_sign', 'sign_place', 'sign_status', 'signed_on']] },
@@ -397,6 +397,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [] } = {}
         const pc = M.projects.find(p => p.id === src.project_id)?.code, s = (M.sellers || []).find(x => x.projects.includes(pc)) || (M.sellers || [])[0];
         if (s && form.elements.s_name) { form.elements.seller_unit.value = s.unit; form.elements.s_name.value = s.name; await fillSeller(); }
         form.elements.ptype.value = ['lien_ke', 'shophouse'].includes(src.kind) ? 'lien_ke' : 'can_ho'; vis(); contractNo();
+        const bh = form.elements.building_id, bt = bh?.closest('.combo')?.querySelector('[data-combo]'); if (bh) { bh.value = src.building_id ?? ''; if (bt) bt.value = src.building_id__l || ''; }   // số bảng giá = tòa của căn
         await contractPrefill(src.id);
         contractCalc();
       }
@@ -431,7 +432,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [] } = {}
   // chọn căn → theo phiếu giữ chỗ đang hiệu lực: khách (điền cả bên mua), ngày đề nghị mua, số bảng giá, giá trị hoàn thiện, nhân viên KD
   const contractPrefill = async unit => {
     const d = await api('GET', `/api/contract-prefill/${unit}`);
-    pickRef('customer_id', d.customer_id, d.customer_label); pickRef('price_policy_id', d.policy_id, d.policy_label);
+    pickRef('customer_id', d.customer_id, d.customer_label);
     if (d.request_on && form.elements.request_on && !form.elements.request_on.value) form.elements.request_on.value = dmy(d.request_on);
     if (d.finish_value != null && form.elements.finish_value) form.elements.finish_value.value = moneyStr(d.finish_value);
     const o = form.elements.owner_id; if (d.owner_id && o?.tagName === 'SELECT' && [...o.options].some(x => x.value === String(d.owner_id))) o.value = d.owner_id;
@@ -441,7 +442,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [] } = {}
   if (ent === 'contract') {
     contractNo();
     form.addEventListener('input', e => { if (['base_price', 'area_tt', 'floor_price', 'area_floor', 'discount', 'corner_pct', 'vat_pct', 'finish_value', 'commission_pct', 'value'].includes(e.target.name)) contractCalc(); });
-    form.addEventListener('change', e => { if (['contract_on', 'ptype'].includes(e.target.name)) contractNo(); if (e.target.name === 's_name') fillSeller().catch(er => toast(er.message, true)); if (e.target.name === 'seller_unit') { const s = (M.sellers || []).find(x => x.unit === e.target.value); if (s) { form.elements.s_name.value = s.name; fillSeller().catch(er => toast(er.message, true)); } } });
+    form.addEventListener('change', e => { if (e.target.name === 'building_id' && form.elements.unit_id.value) { form.elements.unit_id.value = ''; const t = form.elements.unit_id.closest('.combo')?.querySelector('[data-combo]'); if (t) t.value = ''; }   /* đổi tòa → chọn lại căn */ if (['contract_on', 'ptype'].includes(e.target.name)) contractNo(); if (e.target.name === 's_name') fillSeller().catch(er => toast(er.message, true)); if (e.target.name === 'seller_unit') { const s = (M.sellers || []).find(x => x.unit === e.target.value); if (s) { form.elements.s_name.value = s.name; fillSeller().catch(er => toast(er.message, true)); } } });
   }
   // phiếu đề nghị hủy / đổi: chọn hợp đồng hoặc phiếu giữ chỗ → khách hàng, SĐT, dự án, mã căn, số tiền khách đã nộp
   if (ent === 'cancel_req') form.addEventListener('change', async e => {

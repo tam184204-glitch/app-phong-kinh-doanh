@@ -104,6 +104,8 @@ const SPECIAL = [
       'bmonth', coalesce(ltrim(substring(e->>'birth' from '^\\d{1,2}[/.-](\\d{1,2})[/.-]\\d{4}$'), '0'), ''),
       'byear', coalesce(substring(e->>'birth' from '(\\d{4})$'), '')) ORDER BY o) FROM jsonb_array_elements(n.members) WITH ORDINALITY x(e, o))
     WHERE jsonb_typeof(n.members) = 'array' AND jsonb_path_exists(n.members, '$[*].birth')`,
+  // hợp đồng trước khi có «Số bảng giá» theo tòa
+  `UPDATE kd_contract c SET building_id = u.building_id FROM kd_unit u WHERE u.id = c.unit_id AND c.building_id IS NULL`,
   // phiếu đăng ký trước khi tách 3 cột giá: Tổng giá bán cũ = Giá trị căn hộ
   `UPDATE kd_reservation SET unit_value = price - coalesce(finish_value, 0) WHERE unit_value IS NULL AND price IS NOT NULL`,
   `CREATE INDEX IF NOT EXISTS kd_price_policy_pids ON kd_price_policy USING gin (project_ids)`,

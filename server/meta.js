@@ -402,7 +402,7 @@ def('contract', {
     { k: 'number', l: 'Số hợp đồng', t: 'text', uniq: 1, help: 'Để trống → tự cấp HDCH.YYMM-0001 (chung cư) / HDLK.YYMM-0001 (liền kề)' },
     { k: 'seller_unit', l: 'Đơn vị', t: 'text', def: SELLERS[0].unit, sug: SELLERS.map(s => s.unit), help: 'Chọn căn → tự lấy theo dự án' },
     { k: 'agreement', l: 'Văn bản thỏa thuận', t: 'text' },
-    { k: 'unit_id', l: 'Mã căn hộ', t: 'ref', ref: 'unit', req: 1,
+    { k: 'unit_id', l: 'Mã căn hộ', t: 'ref', ref: 'unit', req: 1, dep: 'building_id',
       fill: { area_tt: 'area_tt', base_price: 'base_price', pretax: 'pretax', vat_pct: 'vat_pct', vat_amt: 'tax_amt', after_tax: 'price_net', maint_fee: 'maint_fee', finish_value: 'finish_value', value: 'total_price', area_land: 'area_dat', area_build: 'area_xd' } },
     { k: 'reservation_id', l: 'Phiếu giữ chỗ', t: 'ref', ref: 'reservation', ro: 1 },
     // bên mua nhà ở
@@ -435,7 +435,8 @@ def('contract', {
     money('common_area_amt', 'Tiền diện tích chung'),
     { k: 'all_signed', l: 'Các bên đã ký', t: 'bool' },
     // thông tin chi tiết — chung cư: giá nền × thông thủy / giá sàn; liền kề: đất + xây dựng
-    { k: 'price_policy_id', l: 'Số bảng giá', t: 'ref', ref: 'price_policy', sec: 'Thông tin chi tiết' },
+    { k: 'building_id', l: 'Số bảng giá', t: 'ref', ref: 'building', sec: 'Thông tin chi tiết', help: 'Bảng giá theo tòa trong Danh mục sản phẩm — chọn căn tự ra, chọn tòa trước thì lọc căn' },
+    { k: 'price_policy_id', l: 'Chính sách giá', t: 'ref', ref: 'price_policy', hide: 1 },   // máy chủ tự lấy theo phiếu giữ chỗ / chính sách đang phát hành
     money('base_price', 'Giá nền (chưa VAT) đ/m²', { show: CT_ONLY }),
     { k: 'area_tt', l: 'Diện tích nền (thông thủy) m²', t: 'num', show: CT_ONLY },
     money('floor_price', 'Giá sàn đ/m²', { show: CT_ONLY }),

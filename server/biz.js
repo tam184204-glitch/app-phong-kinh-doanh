@@ -633,6 +633,9 @@ H.contract = {
     if (!old || old.unit_id !== r.unit_id || !r.ptype) { const u0 = await raw(db, 'unit', r.unit_id); if (u0) r.ptype = ['lien_ke', 'shophouse'].includes(u0.kind) ? 'lien_ke' : 'can_ho'; }
     // số hợp đồng để trống → HDCH.YYMM-0001 / HDLK.YYMM-0001
     if (!r.number) r.number = await nextContractNo(db, r.ptype, r.contract_on);
+    // số bảng giá = tòa của căn (Danh mục sản phẩm); chính sách giá lấy theo phiếu giữ chỗ / chính sách đang phát hành
+    r.building_id = (await raw(db, 'unit', r.unit_id))?.building_id ?? null;
+    if (!r.price_policy_id) r.price_policy_id = (await contractPrefill(db, r.unit_id, r.contract_on || undefined)).policy_id;
     // chung cư có giá nền: tính như BRAVO / Danh mục sản phẩm — chỉ khi tạo mới hoặc đổi ô giá (hợp đồng cũ giữ nguyên số)
     const PK = ['base_price', 'area_tt', 'floor_price', 'area_floor', 'discount', 'corner_pct', 'vat_pct', 'finish_value', 'unit_id'];
     if (r.ptype !== 'lien_ke' && +r.base_price > 0 && +r.area_tt > 0 && (!old || PK.some(k => String(old[k] ?? '') !== String(r[k] ?? '')))) Object.assign(r, contractPrice(r));
