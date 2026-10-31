@@ -611,7 +611,10 @@ H.cancel_req = {
   },
 };
 
+// hợp đồng được duyệt là đã ký: ngày ký thực tế = ngày ký HĐMB trên hợp đồng (ghi ngày tương lai thì lấy hôm nay)
+const signedPatch = r => { const d = String(r.contract_on || today()).slice(0, 10); return { status: 'da_ky', signed_on: d > today() ? today() : d, sign_status: 'da_ky' }; };
 H.contract = {
+  onApprove(r, ok) { if (ok) return { patch: signedPatch(r) }; },
   // danh sách: hợp đồng cũ chưa có thông tin bên mua / chi tiết giá thì hiện theo khách hàng và căn
   async listFill(rows, db) {
     if (!rows.length) return;
@@ -692,11 +695,6 @@ H.contract = {
       const rows = await normSchedule(db, d.rows, r.value);
       await writeSchedule(db, r.id, rows, 'hop_dong', user, demo);
       return { msg: `Đã lập ${rows.length} kỳ thu, tổng ${fmtMoney(r.value)}đ` };
-    },
-    async sign(r, d, { db, user }) {
-      await C.requiredFiles(db, { key: 'contract', files: [['ban_ky', 'Bản hợp đồng đã ký', 1]] }, r);
-      if (d.signed_on > today()) bad('Ngày ký không được sau hôm nay');
-      return { patch: { status: 'da_ky', signed_on: d.signed_on, sign_status: 'da_ky' }, msg: 'Đã chốt hợp đồng. Từ nay mọi thay đổi phải qua phụ lục.' };
     },
     async liquidate() { return { patch: { status: 'thanh_ly' } }; },
     async print(r) { return { url: `/print/contract/${r.id}` }; },
@@ -961,6 +959,8 @@ async function expireHolds(db) {   // chỉ đổi 2 cột trạng thái (không
 async function jobs(db) {
   const t0 = Date.now();
   await expireHolds(db);
+  // hợp đồng duyệt trước 31/10/2026 đang «Chờ ký» → chuyển Đã ký như quy trình mới
+  for (const c of await db.q("SELECT * FROM kd_contract WHERE status = 'cho_ky'")) await sys(db, 'contract', c.id, signedPatch(c), null, 'tu_dong_da_ky', 'Hợp đồng đã duyệt tự chuyển Đã ký');
   // điều kiện bàn giao cập nhật theo thu tiền
   for (const h of await db.q("SELECT id, unit_id, cond_tech, cond_contract, cond_pay, status FROM kd_handover WHERE status IN ('chua_du_dk','du_dk')")) {
     const k = await handoverCond(db, h.unit_id);

@@ -321,10 +321,9 @@ async function loadDemo() {
       await C.submit('contract', cid, hs, { db, demo: true });
       if (stopAt === 'cho_duyet') return { cust, res, c };
       await C.approve('contract', cid, tp, { ok: true, db });
-      await C.update('contract', cid, { sign_status: 'da_hen', sign_place: 'Văn phòng bán hàng dự án' }, hs, { db });
+      await db.q("UPDATE kd_contract SET sign_place = 'Văn phòng bán hàng dự án', signed_on = $1 WHERE id = $2", [signDate > T ? T : signDate, cid]);
       if (stopAt === 'cho_ky') return { cust, res, c };
       await demoFile(db, 'contract', cid, 'ban_ky', `${number.replace(/\W+/g, '_')}_ban_ky.pdf`, hs);
-      await C.act('contract', cid, 'sign', hs, { signed_on: signDate }, { db, demo: true });
       inc('Hợp đồng đã ký');
       // thu tiền (Bravo): cọc được trừ vào đợt 1
       const inst = await db.q('SELECT * FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [cid]);

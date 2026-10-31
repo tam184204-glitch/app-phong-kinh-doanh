@@ -389,7 +389,7 @@ const CHUC_VU = ['Tổng Giám đốc', 'Phó Tổng Giám đốc', 'Giám đố
 def('contract', {
   title: 'Sổ theo dõi hợp đồng', one: 'hợp đồng', code: 'HD-01', mod: '05', icon: 'fa-file-contract', disp: "t.number",
   purpose: 'Theo dõi ký kết và lưu hợp đồng', users: 'Nhân viên quản lý hợp đồng',
-  how: 'Tạo dự thảo → rà soát → lịch ký → ký → tải bản ký → chốt dữ liệu',
+  how: 'Tạo dự thảo → gửi trình duyệt → duyệt là tự chuyển Đã ký → tải bản ký lưu hồ sơ',
   rules: 'Không thay trực tiếp bản đã ký; số hợp đồng không trùng theo quy tắc',
   c: ['ho_so', 'truong_phong'], a: MGR, search: ['number', 'code'], files: [['ban_ky', 'Bản hợp đồng đã ký'], ['du_thao', 'Dự thảo'], ['giay_to', 'Giấy tờ khách hàng']],
   groups: { can_ho: 'Hợp đồng căn hộ chung cư', lien_ke: 'Hợp đồng nhà liền kề' }, listPii: 1,
@@ -487,10 +487,9 @@ def('contract', {
   lock: ['da_ky', 'thanh_ly', 'huy'], lockKeep: ['sign_status', 'sign_place', 'plan_sign', 'owner_id', 'loan_status', 'loan_bank', 'loan_doc3'],
   // đã trình duyệt / chờ ký: nhân viên chỉ sửa được lần thanh toán (+ lockKeep); quản lý vẫn sửa được
   softLock: { st: ['cho_duyet', 'cho_ky'], keep: ['sign_status', 'sign_place', 'plan_sign', 'new_schedule', 'loan_status', 'loan_bank', 'loan_doc3'], boss: MGR },
-  flow: { field: 'status', submit: ['du_thao', 'tu_choi'], approve: { ok: 'cho_ky' }, submitLabel: 'Gửi trình duyệt' },
+  flow: { field: 'status', submit: ['du_thao', 'tu_choi'], approve: { ok: 'da_ky' }, submitLabel: 'Gửi trình duyệt' },
   acts: [
     { k: 'schedule', l: 'Lập lịch thanh toán', icon: 'fa-calendar-days', from: ['du_thao', 'tu_choi'], roles: ['ho_so', 'cong_no', 'truong_phong'] },
-    { k: 'sign', l: 'Xác nhận đã ký', icon: 'fa-signature', from: ['cho_ky'], roles: ['ho_so', 'truong_phong'], ask: [{ k: 'signed_on', l: 'Ngày ký thực tế', t: 'date', req: 1, def: 'today' }], help: 'Cần tải «Bản hợp đồng đã ký» trước' },
     { k: 'liquidate', l: 'Thanh lý', icon: 'fa-box-archive', from: ['da_ky'], roles: MGR, ask: [{ k: 'reason', l: 'Căn cứ thanh lý', t: 'long', req: 1 }] },
     { k: 'print', l: 'In theo mẫu', icon: 'fa-print', from: '*', roles: ALL },
   ],
