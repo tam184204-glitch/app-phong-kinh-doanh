@@ -275,13 +275,19 @@ async function get(entKey, id, user, { db = { q, one }, reveal } = {}) {
     WHERE a.ent = $1 AND a.rec_id = $2 ORDER BY a.requested_at`, [entKey, row.id]);
   return { row, files, notes, approvals, perm: await perms(e, row, user, approvals, db) };
 }
+// trường còn được sửa khi bản ghi bị khóa theo trạng thái; null = không khóa. softLock: quản lý (boss) không bị khóa
+function lockKeepOf(e, status, user) {
+  if (e.lock?.includes(status)) return e.lockKeep || [];
+  const s = e.softLock;
+  return s?.st.includes(status) && !s.boss.includes(user.role) && user.role !== 'admin' ? s.keep : null;
+}
 // quyền trên một bản ghi cụ thể — giao diện dựa vào đây để hiện nút
 async function perms(e, row, user, approvals, db) {
-  const locked = !!(e.lock && e.lock.includes(row.status));
+  const keep = lockKeepOf(e, row.status, user), locked = !!keep;
   const open = approvals.find(a => a.status === 'cho_duyet');
   const fl = e.flow;
   const out = {
-    edit: can(user, e, 'u') && (!locked || !!(e.lockKeep || []).length), locked, lockKeep: locked ? e.lockKeep || [] : null,
+    edit: can(user, e, 'u') && (!locked || !!keep.length), locked, lockKeep: keep, softOpen: !locked && !!e.softLock?.st.includes(row.status),
     del: can(user, e, 'd') && !(H[e.key]?.noDelete?.(row)),
     submit: !!fl && fl.submit.includes(row[fl.field]) && (can(user, e, 'c') || can(user, e, 'u')),
     approve: !!open && canApprove(e, row, user, open), selfApproval: !!open && open.requested_by === user.id && user.role !== 'admin',
@@ -385,8 +391,9 @@ async function update(entKey, id, input, user, opts = {}) {
     const ctx = ctxOf(db, user, opts);
     const data = await normalize(e, input, user, db, { old, system: opts.system });
     for (const k of Object.keys(data)) if (JSON.stringify(data[k]) === JSON.stringify(old[k])) delete data[k];
-    if (!opts.system && e.lock && e.lock.includes(old.status)) {
-      const blocked = Object.keys(data).filter(k => !(e.lockKeep || []).includes(k));
+    const keepK = !opts.system && lockKeepOf(e, old.status, user);
+    if (keepK) {
+      const blocked = Object.keys(data).filter(k => !keepK.includes(k));
       if (blocked.length) bad(`${e.one[0].toUpperCase() + e.one.slice(1)} đang ở trạng thái «${await optLabel(F[entKey].status, old.status)}» — không sửa trực tiếp (${blocked.map(k => F[entKey][k].l).join(', ')})${entKey === 'contract' ? '. Mọi thay đổi phải qua «Điều chỉnh – phụ lục hợp đồng».' : ''}`);
     }
     const rec = { ...old, ...data };
@@ -413,7 +420,7 @@ async function remove(entKey, id, user, opts = {}) {
     const old = notFound(await raw(db, entKey, +id, true));
     if (!opts.system) {
       if (!can(user, e, 'd')) deny(`Vai trò của bạn không được xóa ${e.one}`);
-      if (e.lock && e.lock.includes(old.status)) bad(`Không xóa ${e.one} đã chốt / đang trình duyệt`);
+      if (e.lock?.includes(old.status) || e.softLock?.st.includes(old.status)) bad(`Không xóa ${e.one} đã chốt / đang trình duyệt`);
     }
     const why = H[entKey]?.noDelete?.(old); if (why) bad(why);
     await db.q(`DELETE FROM ${e.table} WHERE id = $1`, [old.id]);

@@ -478,7 +478,9 @@ def('contract', {
     owner('Nhân viên KD'),
     { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'du_thao', o: [['du_thao', 'Dự thảo', 's'], ['cho_duyet', 'Đang rà soát', 'a'], ['cho_ky', 'Chờ ký', 'b'], ['tu_choi', 'Trả lại dự thảo', 'r'], ['da_ky', 'Đã ký', 'g'], ['thanh_ly', 'Đã thanh lý', 't'], ['huy', 'Đã hủy', 's']] },
   ], list: ['number', 'contract_on', 'kind', 'unit_id', 'customer_id', 'value', 'plan_sign', 'sign_status', 'signed_on', 'status'],
-  lock: ['da_ky', 'thanh_ly', 'huy', 'cho_duyet'], lockKeep: ['sign_status', 'sign_place', 'plan_sign', 'owner_id'],
+  lock: ['da_ky', 'thanh_ly', 'huy'], lockKeep: ['sign_status', 'sign_place', 'plan_sign', 'owner_id'],
+  // đã trình duyệt / chờ ký: nhân viên chỉ sửa được lần thanh toán (+ lockKeep); quản lý vẫn sửa được
+  softLock: { st: ['cho_duyet', 'cho_ky'], keep: ['sign_status', 'sign_place', 'plan_sign', 'new_schedule'], boss: MGR },
   flow: { field: 'status', submit: ['du_thao', 'tu_choi'], approve: { ok: 'cho_ky' }, submitLabel: 'Gửi rà soát' },
   acts: [
     { k: 'schedule', l: 'Lập lịch thanh toán', icon: 'fa-calendar-days', from: ['du_thao', 'tu_choi'], roles: ['ho_so', 'cong_no', 'truong_phong'] },

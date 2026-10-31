@@ -666,7 +666,7 @@ H.contract = {
     if (n.n && n.s !== r.value) bad(`Tổng lịch thanh toán ${fmtMoney(n.s)} khác giá trị hợp đồng ${fmtMoney(r.value)}`);
   },
   async afterSave(r, old, { db, user, demo, sched }) {
-    if (sched?.length && ['du_thao', 'tu_choi'].includes(r.status)) {   // ghi lịch thu khi khác lịch đang có
+    if (sched?.length && ['du_thao', 'tu_choi', 'cho_duyet', 'cho_ky'].includes(r.status)) {   // ghi lịch thu khi khác lịch đang có
       const cur = await db.q('SELECT name, due_on, pct, amount FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [r.id]);
       const key = xs => JSON.stringify(xs.map(x => [x.name, String(x.due_on).slice(0, 10), x.pct == null ? null : +x.pct, +x.amount]));
       if (key(cur) !== key(sched)) await writeSchedule(db, r.id, sched, 'hop_dong', user, demo);
