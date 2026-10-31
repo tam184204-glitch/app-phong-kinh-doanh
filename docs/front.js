@@ -1465,26 +1465,32 @@ V.cust360 = async (main, params) => {
 };
 
 // ======================= 05. LỊCH KÝ / KHO HỒ SƠ =======================
-// lịch tháng các buổi ký: đỏ = quá ngày dự kiến chưa ký, xanh dương = sắp ký, xanh lá = đã ký; bấm ngày xem danh sách, bấm thẻ mở hợp đồng
+// lịch tháng các buổi ký: đỏ = quá ngày dự kiến chưa ký, xanh dương = sắp ký, xanh lá = đã ký (hợp đồng đã duyệt tính là đã ký); bấm ngày xem danh sách, bấm thẻ mở hợp đồng
 V.signing = async main => {
   const f = filt(), t = today(), ss = M.ents.contract.fields.find(x => x.k === 'sign_status'), cs = M.ents.contract.fields.find(x => x.k === 'status');
   let d = { rows: [], recent: [], signed: [] }, ym = t.slice(0, 7), sel = t;
   const opt = (fd, v) => fd.o.find(o => o[0] === v)?.[1] || v || '';
-  const evs = () => [...d.rows.filter(r => r.plan_sign).map(r => ({ ...r, day: r.plan_sign.slice(0, 10), cls: r.plan_sign.slice(0, 10) < t ? 'r' : 'b' })), ...d.signed.map(r => ({ ...r, day: String(r.signed_on).slice(0, 10), cls: 'g' }))];
+  const evs = () => [...d.rows.filter(r => r.plan_sign).map(r => { const day = r.plan_sign.slice(0, 10); return { ...r, day, cls: r.status === 'cho_ky' ? 'g' : day < t ? 'r' : 'b' }; }), ...d.signed.map(r => ({ ...r, day: String(r.signed_on).slice(0, 10), cls: 'g' }))];
+  const late = r => Math.round((Date.parse(t) - Date.parse(r.day)) / 864e5);
+  const signSt = r => r.cls === 'g' ? pill('Đã ký', 'g') : r.cls === 'r' ? pill(`Quá hạn ${late(r)} ngày`, 'r') : pill('Chưa ký', 's');
   const chip = r => `<div class="sc-ev ${r.cls}" data-id="${r.id}" title="${esc(r.number)} · ${esc(r.unit)} · ${esc(r.customer)}">${esc(r.unit)} · ${esc(r.customer)}</div>`;
-  const line = r => `<div class="alert-row" data-id="${r.id}"><span class="lv ${r.cls === 'r' ? 'r' : r.cls === 'g' ? 'g' : 'b'}"></span><div class="tx"><b>${esc(r.number)}</b> · ${esc(r.unit)} · ${esc(r.customer)}<small>${r.cls === 'g' ? 'Đã ký' : `${esc(opt(ss, r.sign_status))} · ${esc(opt(cs, r.status))}`}${r.sign_place ? ' · ' + esc(r.sign_place) : ''}${r.owner ? ' · ' + esc(r.owner) : ''}</small></div></div>`;
+  const line = r => `<div class="alert-row" data-id="${r.id}"><span class="lv ${r.cls}"></span><div class="tx"><b>${esc(r.unit)}</b> · ${esc(r.customer)} ${r.day ? signSt(r) : pill('Chưa ký', 's')}<small>${esc(r.number)}${r.sign_status ? ' · ' + esc(opt(ss, r.sign_status)) : ''}${r.sign_place ? ' · ' + esc(r.sign_place) : ''}${r.owner ? ' · ' + esc(r.owner) : ''}</small></div></div>`;
+  const byProject = es => Object.entries(es.reduce((g, r) => ((g[r.project] ||= []).push(r), g), {})).sort((a, b) => a[0].localeCompare(b[0]));
   const render = () => {
     const [y, m] = ym.split('-').map(Number), n = new Date(Date.UTC(y, m, 0)).getUTCDate(), lead = (new Date(Date.UTC(y, m - 1, 1)).getUTCDay() + 6) % 7;
     const by = {}; evs().forEach(e => (by[e.day] ||= []).push(e));
     const iso = i => `${ym}-${String(i).padStart(2, '0')}`;
     const cells = [...Array(lead).fill('<div class="sc-d off"></div>'), ...Array.from({ length: n }, (_, i) => { const k = iso(i + 1), es = by[k] || [];
       return `<div class="sc-d ${k === sel ? 'sel' : ''}" data-day="${k}"><span class="sc-n ${k === t ? 'now' : ''}">${i + 1}</span>${es.slice(0, 2).map(chip).join('')}${es.length > 2 ? `<small class="sc-more">+${es.length - 2}</small>` : ''}</div>`; })];
-    const noDate = d.rows.filter(r => !r.plan_sign).map(r => ({ ...r, cls: 'b' })), day = by[sel] || [];
+    const noDate = d.rows.filter(r => !r.plan_sign).map(r => ({ ...r, cls: 'b' })), day = by[sel] || [], todayEs = by[t] || [], over = evs().filter(r => r.cls === 'r').sort((a, b) => a.day.localeCompare(b.day));
     main.innerHTML = `<div class="page">${head('05', 'Lịch ký hợp đồng', 'fa-calendar-days', '', '5.5')}${filterBar(f, { period: false, building: false })}
+      ${over.length ? `<div class="warnbar mb">${ico('fa-triangle-exclamation')}<div><b>${over.length} hợp đồng quá ngày dự kiến ký</b> — lâu nhất ${late(over[0])} ngày. Xem danh sách «Quá hạn ký» bên phải.</div></div>` : ''}
       <div class="sc-wrap"><div class="card sc"><div class="sc-h"><h3>Tháng ${String(m).padStart(2, '0')}/${y}</h3><span class="grow"></span><button class="btn sm" data-go="now">Hôm nay</button><button class="btn sm" data-go="-1" aria-label="Tháng trước">‹</button><button class="btn sm" data-go="1" aria-label="Tháng sau">›</button></div>
         <div class="sc-g">${['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map(x => `<div class="sc-w">${x}</div>`).join('')}${cells.join('')}</div>
         <div class="sc-leg"><span class="r">Quá ngày dự kiến</span><span class="b">Sắp ký</span><span class="g">Đã ký</span></div></div>
-      <div><div class="card"><div class="hd"><h3>${ico('fa-calendar-day')} Ngày ${dmy(sel)}</h3></div>${day.length ? day.map(line).join('') : '<div class="empty">Không có lịch ký</div>'}</div>
+      <div><div class="card"><div class="hd"><h3>${ico('fa-pen-nib')} Hôm nay ký (${todayEs.length})</h3></div>${todayEs.length ? byProject(todayEs).map(([pj, es]) => `<div class="sc-pj">${esc(pj)} · ${es.length} căn</div>${es.map(line).join('')}`).join('') : '<div class="empty">Hôm nay không có lịch ký</div>'}</div>
+        ${over.length ? `<div class="card mt"><div class="hd"><h3>${ico('fa-triangle-exclamation')} Quá hạn ký (${over.length})</h3></div><div class="sc-list">${byProject(over).map(([pj, es]) => `<div class="sc-pj">${esc(pj)} · ${es.length} căn</div>${es.map(line).join('')}`).join('')}</div></div>` : ''}
+        ${sel !== t ? `<div class="card mt"><div class="hd"><h3>${ico('fa-calendar-day')} Ngày ${dmy(sel)}</h3></div>${day.length ? day.map(line).join('') : '<div class="empty">Không có lịch ký</div>'}</div>` : ''}
         <div class="card mt"><div class="hd"><h3>${ico('fa-clock')} Chưa hẹn lịch (${noDate.length})</h3></div><div class="sc-list">${noDate.length ? noDate.map(line).join('') : '<div class="empty">Không có</div>'}</div></div></div></div>
       <div class="card mt"><div class="hd"><h3>${ico('fa-signature')} Đã ký 30 ngày gần đây</h3></div>${rowsTable([['signed_on', 'Ngày ký', 'date'], ['number', 'Số HĐ'], ['unit', 'Căn'], ['customer', 'Khách hàng']], d.recent.map(r => ({ ...r, _ent: ['contract', r.id] })))}</div></div>`;
     wireFilter(main, f, draw);

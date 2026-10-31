@@ -451,11 +451,11 @@ async function readyList(db, f = {}) {
 // ======================= LỊCH KÝ =======================
 async function signing(db, user, f) {
   const p = []; const w = uf(f, p);
-  const rows = await db.q(`SELECT c.id, c.number, c.kind, c.plan_sign, c.sign_place, c.sign_status, c.status, c.value, u.code unit, u.id unit_id, k.full_name customer, k.phone, own.full_name owner
-    FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id LEFT JOIN kd_user own ON own.id = c.owner_id
+  const rows = await db.q(`SELECT c.id, c.number, c.kind, c.plan_sign, c.sign_place, c.sign_status, c.status, c.value, u.code unit, u.id unit_id, pj.code project, k.full_name customer, k.phone, own.full_name owner
+    FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_project pj ON pj.id = u.project_id JOIN kd_customer k ON k.id = c.customer_id LEFT JOIN kd_user own ON own.id = c.owner_id
     WHERE c.status IN ('du_thao','cho_duyet','cho_ky','tu_choi') ${w} ORDER BY c.plan_sign NULLS LAST, c.number`, p);
   const recent = await db.q(`SELECT c.id, c.number, c.signed_on, u.code unit, k.full_name customer FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id WHERE c.status = 'da_ky' AND c.signed_on >= $${p.length + 1}::date - 30 ${w} ORDER BY c.signed_on DESC`, [...p, today()]);
-  const signed = await db.q(`SELECT c.id, c.number, c.signed_on, u.code unit, k.full_name customer, own.full_name owner, c.sign_place FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id LEFT JOIN kd_user own ON own.id = c.owner_id WHERE c.status = 'da_ky' AND c.signed_on IS NOT NULL ${w}`, p);
+  const signed = await db.q(`SELECT c.id, c.number, c.signed_on, c.status, u.code unit, pj.code project, k.full_name customer, own.full_name owner, c.sign_place FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_project pj ON pj.id = u.project_id JOIN kd_customer k ON k.id = c.customer_id LEFT JOIN kd_user own ON own.id = c.owner_id WHERE c.status = 'da_ky' AND c.signed_on IS NOT NULL ${w}`, p);
   return { rows, recent, signed };
 }
 
