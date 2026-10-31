@@ -455,7 +455,8 @@ async function signing(db, user, f) {
     FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id LEFT JOIN kd_user own ON own.id = c.owner_id
     WHERE c.status IN ('du_thao','cho_duyet','cho_ky','tu_choi') ${w} ORDER BY c.plan_sign NULLS LAST, c.number`, p);
   const recent = await db.q(`SELECT c.id, c.number, c.signed_on, u.code unit, k.full_name customer FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id WHERE c.status = 'da_ky' AND c.signed_on >= $${p.length + 1}::date - 30 ${w} ORDER BY c.signed_on DESC`, [...p, today()]);
-  return { rows, recent };
+  const signed = await db.q(`SELECT c.id, c.number, c.signed_on, u.code unit, k.full_name customer, own.full_name owner, c.sign_place FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id LEFT JOIN kd_user own ON own.id = c.owner_id WHERE c.status = 'da_ky' AND c.signed_on IS NOT NULL ${w}`, p);
+  return { rows, recent, signed };
 }
 
 // ======================= KHO HỒ SƠ PHÁP LÝ =======================

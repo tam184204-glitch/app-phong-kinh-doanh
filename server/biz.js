@@ -398,7 +398,7 @@ H.reservation = {
       const c = (await create('contract', { kind: d.kind, number: d.number, plan_sign: d.plan_sign, unit_id: r.unit_id, customer_id: r.customer_id, value: r.price, owner_id: r.owner_id || user.id, reservation_id: r.id },
         user, { db, system: true, demo })).row;
       await markCustomer(db, r.customer_id, user);
-      return { patch: { status: 'chuyen_hd' }, open: ['contract', c.id], msg: `Đã lập dự thảo hợp đồng ${c.number}. Bước tiếp: lập lịch thanh toán → gửi rà soát.` };
+      return { patch: { status: 'chuyen_hd' }, open: ['contract', c.id], msg: `Đã lập dự thảo hợp đồng ${c.number}. Bước tiếp: lập lịch thanh toán → gửi trình duyệt.` };
     },
   },
 };
@@ -664,7 +664,7 @@ H.contract = {
   },
   async onSubmit(r, { db }) {
     const n = await db.one('SELECT count(*) n, coalesce(sum(amount),0) s FROM kd_installment WHERE contract_id = $1 AND active', [r.id]);
-    if (r.kind !== 'thue' && !n.n) bad('Chưa lập lịch thanh toán — bấm «Lập lịch thanh toán» trước khi gửi rà soát');
+    if (r.kind !== 'thue' && !n.n) bad('Chưa lập lịch thanh toán — bấm «Lập lịch thanh toán» trước khi gửi trình duyệt');
     if (n.n && n.s !== r.value) bad(`Tổng lịch thanh toán ${fmtMoney(n.s)} khác giá trị hợp đồng ${fmtMoney(r.value)}`);
   },
   async afterSave(r, old, { db, user, demo, sched }) {
@@ -701,7 +701,7 @@ H.contract = {
     async liquidate() { return { patch: { status: 'thanh_ly' } }; },
     async print(r) { return { url: `/print/contract/${r.id}` }; },
   },
-  noDelete: r => r.status !== 'du_thao' && 'Chỉ xóa được dự thảo chưa gửi rà soát',
+  noDelete: r => r.status !== 'du_thao' && 'Chỉ xóa được dự thảo chưa gửi trình duyệt',
   async afterDelete(r, { db, user }) {
     await db.q('DELETE FROM kd_installment WHERE contract_id = $1', [r.id]);
     if (r.reservation_id) { const s = await raw(db, 'reservation', r.reservation_id); if (s?.status === 'chuyen_hd') await sys(db, 'reservation', s.id, { status: s.deposit > 0 ? 'da_coc' : 'giu_cho' }, user, 'hoan_tac'); }

@@ -6,7 +6,7 @@
 <title>Phòng Kinh doanh · Cát Tường Group (bản demo)</title>
 <link rel="icon" href="logo.png">
 <link rel="stylesheet" href="fa.css">
-<link rel="stylesheet" href="app.css?v=d2f33e5b93">
+<link rel="stylesheet" href="app.css?v=c43f67abb4">
 <style>
 #demobar{position:fixed;left:12px;bottom:12px;z-index:9999;background:#1E4E8C;color:#fff;font:12px/1.4 system-ui,sans-serif;padding:6px 10px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.2);opacity:.9}
 #demobar a{color:#F5A623;cursor:pointer;margin-left:8px;text-decoration:underline}
@@ -18,13 +18,13 @@
 <div id="boot"><img src="logo.png" alt=""><b>CÁT TƯỜNG GROUP · PHÒNG KINH DOANH</b><span id="bootmsg">Đang tải…</span></div>
 <div id="demobar" data-keep>Bản demo · dữ liệu mẫu lưu trên trình duyệt của bạn<a onclick="window.__ctgReset&&__ctgReset()">Làm mới dữ liệu</a></div>
 <script type="module">
-import './demo.js?v=ff17961ef3';
+import './demo.js?v=489de6e866';
 const local = new URLSearchParams(location.search).has('localpg');
 const url = local ? new URL('pglite/index.js', location.href).href : 'https://cdn.jsdelivr.net/npm/@electric-sql/pglite@0.5.12/dist/index.js';
 const bar = document.getElementById('demobar');
 try {
   await window.__ctgBoot(url);
-  for (const s of ['front.js?v=f2be1bc31a']) await new Promise((res, rej) => { const el = document.createElement('script'); el.src = s; el.onload = res; el.onerror = rej; document.body.append(el); });
+  for (const s of ['front.js?v=7c487f2565']) await new Promise((res, rej) => { const el = document.createElement('script'); el.src = s; el.onload = res; el.onerror = rej; document.body.append(el); });
   document.getElementById('boot').remove();
   setInterval(() => { if (!bar.isConnected) document.body.append(bar); }, 800);
 } catch (e) {

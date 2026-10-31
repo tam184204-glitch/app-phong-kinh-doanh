@@ -373,7 +373,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [] } = {}
   }).join('')}</form>`;
   const canSubmit = E.flow && !E.direct && !id && E.flow.submit.includes(E.fields.find(f => f.k === E.flow.field)?.def);
   const m = modal({ title: title || (id ? `Sửa ${E.one} ${esc(rec.code || rec.number || '')}` : `${E.code ? `<span class="tag">${E.code}</span> ` : ''}Tạo ${E.one}`), wide: fields.length > 8 || fields.some(wide),
-    body, foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="fSave">${ico('fa-floppy-disk')} ${id ? 'Lưu' : E.direct ? `Lưu ${E.one}` : 'Lưu nháp'}</button>${canSubmit ? `<button class="btn amb" id="fSub">${ico('fa-paper-plane')} Lưu & ${esc(E.flow.submitLabel || 'trình duyệt')}</button>` : ''}` });
+    body, foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="fSave">${ico('fa-floppy-disk')} ${id ? 'Lưu' : E.direct ? `Lưu ${E.one}` : 'Lưu nháp'}</button>${canSubmit ? `<button class="btn amb" id="fSub">${ico('fa-paper-plane')} Lưu và ${esc((E.flow.submitLabel || 'trình duyệt').toLowerCase())}</button>` : ''}` });
   const form = $('form', m.el);
   if (ent === 'contract') { bravoLayout(form, HD_LAYOUT); $('.modal', m.el).classList.add('full'); }
   const sch = $('[data-sched]', form);
@@ -1465,17 +1465,37 @@ V.cust360 = async (main, params) => {
 };
 
 // ======================= 05. LỊCH KÝ / KHO HỒ SƠ =======================
+// lịch tháng các buổi ký: đỏ = quá ngày dự kiến chưa ký, xanh dương = sắp ký, xanh lá = đã ký; bấm ngày xem danh sách, bấm thẻ mở hợp đồng
 V.signing = async main => {
-  const f = filt();
-  const draw = async () => {
-    const d = await api('GET', '/api/signing?' + qsOf({ project: f.project }));
-    const t = today(), groups = {}; d.rows.forEach(r => (groups[r.plan_sign || 'Chưa hẹn'] ||= []).push(r));
-    const ss = M.ents.contract.fields.find(x => x.k === 'sign_status'), cs = M.ents.contract.fields.find(x => x.k === 'status');
+  const f = filt(), t = today(), ss = M.ents.contract.fields.find(x => x.k === 'sign_status'), cs = M.ents.contract.fields.find(x => x.k === 'status');
+  let d = { rows: [], recent: [], signed: [] }, ym = t.slice(0, 7), sel = t;
+  const opt = (fd, v) => fd.o.find(o => o[0] === v)?.[1] || v || '';
+  const evs = () => [...d.rows.filter(r => r.plan_sign).map(r => ({ ...r, day: r.plan_sign.slice(0, 10), cls: r.plan_sign.slice(0, 10) < t ? 'r' : 'b' })), ...d.signed.map(r => ({ ...r, day: String(r.signed_on).slice(0, 10), cls: 'g' }))];
+  const chip = r => `<div class="sc-ev ${r.cls}" data-id="${r.id}" title="${esc(r.number)} · ${esc(r.unit)} · ${esc(r.customer)}">${esc(r.unit)} · ${esc(r.customer)}</div>`;
+  const line = r => `<div class="alert-row" data-id="${r.id}"><span class="lv ${r.cls === 'r' ? 'r' : r.cls === 'g' ? 'g' : 'b'}"></span><div class="tx"><b>${esc(r.number)}</b> · ${esc(r.unit)} · ${esc(r.customer)}<small>${r.cls === 'g' ? 'Đã ký' : `${esc(opt(ss, r.sign_status))} · ${esc(opt(cs, r.status))}`}${r.sign_place ? ' · ' + esc(r.sign_place) : ''}${r.owner ? ' · ' + esc(r.owner) : ''}</small></div></div>`;
+  const render = () => {
+    const [y, m] = ym.split('-').map(Number), n = new Date(Date.UTC(y, m, 0)).getUTCDate(), lead = (new Date(Date.UTC(y, m - 1, 1)).getUTCDay() + 6) % 7;
+    const by = {}; evs().forEach(e => (by[e.day] ||= []).push(e));
+    const iso = i => `${ym}-${String(i).padStart(2, '0')}`;
+    const cells = [...Array(lead).fill('<div class="sc-d off"></div>'), ...Array.from({ length: n }, (_, i) => { const k = iso(i + 1), es = by[k] || [];
+      return `<div class="sc-d ${k === sel ? 'sel' : ''}" data-day="${k}"><span class="sc-n ${k === t ? 'now' : ''}">${i + 1}</span>${es.slice(0, 2).map(chip).join('')}${es.length > 2 ? `<small class="sc-more">+${es.length - 2}</small>` : ''}</div>`; })];
+    const noDate = d.rows.filter(r => !r.plan_sign).map(r => ({ ...r, cls: 'b' })), day = by[sel] || [];
     main.innerHTML = `<div class="page">${head('05', 'Lịch ký hợp đồng', 'fa-calendar-days', '', '5.5')}${filterBar(f, { period: false, building: false })}
-      <div class="grid g3">${Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0])).map(([dte, rs]) => `<div class="card"><div class="hd"><h3>${ico('fa-calendar-day')} ${dte === 'Chưa hẹn' ? dte : dmy(dte)}</h3><span class="grow"></span>${dte !== 'Chưa hẹn' && dte < t ? pill('Quá ngày dự kiến', 'r') : dte === t ? pill('Hôm nay', 'a') : ''}</div>${rs.map(r => `<div class="alert-row" data-id="${r.id}"><span class="lv ${dte < t ? 'r' : 'b'}"></span><div class="tx"><b>${esc(r.number)}</b> · ${esc(r.unit)} · ${esc(r.customer)}<small>${show(cs, r)} ${show(ss, r)} · ${esc(r.owner || '')} ${r.sign_place ? '· ' + esc(r.sign_place) : ''}</small></div></div>`).join('')}</div>`).join('') || '<div class="card pad"><div class="empty">Không có hợp đồng chờ ký</div></div>'}</div>
+      <div class="sc-wrap"><div class="card sc"><div class="sc-h"><h3>Tháng ${String(m).padStart(2, '0')}/${y}</h3><span class="grow"></span><button class="btn sm" data-go="now">Hôm nay</button><button class="btn sm" data-go="-1" aria-label="Tháng trước">‹</button><button class="btn sm" data-go="1" aria-label="Tháng sau">›</button></div>
+        <div class="sc-g">${['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map(x => `<div class="sc-w">${x}</div>`).join('')}${cells.join('')}</div>
+        <div class="sc-leg"><span class="r">Quá ngày dự kiến</span><span class="b">Sắp ký</span><span class="g">Đã ký</span></div></div>
+      <div><div class="card"><div class="hd"><h3>${ico('fa-calendar-day')} Ngày ${dmy(sel)}</h3></div>${day.length ? day.map(line).join('') : '<div class="empty">Không có lịch ký</div>'}</div>
+        <div class="card mt"><div class="hd"><h3>${ico('fa-clock')} Chưa hẹn lịch (${noDate.length})</h3></div><div class="sc-list">${noDate.length ? noDate.map(line).join('') : '<div class="empty">Không có</div>'}</div></div></div></div>
       <div class="card mt"><div class="hd"><h3>${ico('fa-signature')} Đã ký 30 ngày gần đây</h3></div>${rowsTable([['signed_on', 'Ngày ký', 'date'], ['number', 'Số HĐ'], ['unit', 'Căn'], ['customer', 'Khách hàng']], d.recent.map(r => ({ ...r, _ent: ['contract', r.id] })))}</div></div>`;
     wireFilter(main, f, draw);
-    main.onclick = e => { const r = e.target.closest('[data-id]'); if (r) return openDetail('contract', +r.dataset.id); const tr = e.target.closest('tr[data-i]'); if (tr) openRow(d.recent.map(r => ({ _ent: ['contract', r.id] }))[+tr.dataset.i]); };
+  };
+  const draw = async () => { d = await api('GET', '/api/signing?' + qsOf({ project: f.project })); render(); };
+  main.onclick = e => {
+    const go = e.target.closest('[data-go]');
+    if (go) { if (go.dataset.go === 'now') { ym = t.slice(0, 7); sel = t; } else { const [y, m] = ym.split('-').map(Number), x = new Date(Date.UTC(y, m - 1 + +go.dataset.go, 1)); ym = x.toISOString().slice(0, 7); } return render(); }
+    const r = e.target.closest('[data-id]'); if (r) return openDetail('contract', +r.dataset.id);
+    const c = e.target.closest('[data-day]'); if (c) { sel = c.dataset.day; return render(); }
+    const tr = e.target.closest('tr[data-i]'); if (tr) openRow(d.recent.map(x => ({ _ent: ['contract', x.id] }))[+tr.dataset.i]);
   };
   await draw();
 };

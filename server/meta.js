@@ -487,7 +487,7 @@ def('contract', {
   lock: ['da_ky', 'thanh_ly', 'huy'], lockKeep: ['sign_status', 'sign_place', 'plan_sign', 'owner_id', 'loan_status', 'loan_bank', 'loan_doc3'],
   // đã trình duyệt / chờ ký: nhân viên chỉ sửa được lần thanh toán (+ lockKeep); quản lý vẫn sửa được
   softLock: { st: ['cho_duyet', 'cho_ky'], keep: ['sign_status', 'sign_place', 'plan_sign', 'new_schedule', 'loan_status', 'loan_bank', 'loan_doc3'], boss: MGR },
-  flow: { field: 'status', submit: ['du_thao', 'tu_choi'], approve: { ok: 'cho_ky' }, submitLabel: 'Gửi rà soát' },
+  flow: { field: 'status', submit: ['du_thao', 'tu_choi'], approve: { ok: 'cho_ky' }, submitLabel: 'Gửi trình duyệt' },
   acts: [
     { k: 'schedule', l: 'Lập lịch thanh toán', icon: 'fa-calendar-days', from: ['du_thao', 'tu_choi'], roles: ['ho_so', 'cong_no', 'truong_phong'] },
     { k: 'sign', l: 'Xác nhận đã ký', icon: 'fa-signature', from: ['cho_ky'], roles: ['ho_so', 'truong_phong'], ask: [{ k: 'signed_on', l: 'Ngày ký thực tế', t: 'date', req: 1, def: 'today' }], help: 'Cần tải «Bản hợp đồng đã ký» trước' },
