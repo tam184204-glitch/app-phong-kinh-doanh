@@ -1468,7 +1468,7 @@ V.cust360 = async (main, params) => {
 // lịch tháng các buổi ký: đỏ = quá ngày dự kiến chưa ký, xanh dương = sắp ký, xanh lá = đã ký (hợp đồng đã duyệt tính là đã ký); bấm ngày xem danh sách, bấm thẻ mở hợp đồng
 V.signing = async main => {
   const f = filt(), t = today(), ss = M.ents.contract.fields.find(x => x.k === 'sign_status'), cs = M.ents.contract.fields.find(x => x.k === 'status');
-  let d = { rows: [], recent: [], signed: [] }, ym = t.slice(0, 7), sel = t, lq = '', ls = '', lf = '', lt = '';
+  let d = { rows: [], recent: [], signed: [] }, ym = t.slice(0, 7), sel = t, lq = '', ls = '', lf = '', lt = '', tile = '';   // tile: ô thống kê đang mở biểu đồ
   const opt = (fd, v) => fd.o.find(o => o[0] === v)?.[1] || v || '';
   const evs = () => [...d.rows.filter(r => r.plan_sign).map(r => { const day = r.plan_sign.slice(0, 10); return { ...r, day, cls: r.status === 'cho_ky' ? 'g' : day < t ? 'r' : 'b' }; }), ...d.signed.map(r => ({ ...r, day: String(r.signed_on).slice(0, 10), cls: 'g' }))];
   const late = r => Math.round((Date.parse(t) - Date.parse(r.day)) / 864e5);
@@ -1495,21 +1495,36 @@ V.signing = async main => {
     const iso = i => `${ym}-${String(i).padStart(2, '0')}`;
     const cells = [...Array(lead).fill('<div class="sc-d off"></div>'), ...Array.from({ length: n }, (_, i) => { const k = iso(i + 1), es = by[k] || [];
       return `<div class="sc-d ${k === sel ? 'sel' : ''}" data-day="${k}"><span class="sc-n ${k === t ? 'now' : ''}">${i + 1}</span>${[['r', 'quá hạn'], ['b', k === t ? 'cần ký' : 'sắp ký'], ['g', 'đã ký']].map(([c, l]) => { const q = es.filter(x => x.cls === c).length; return q ? `<div class="sc-ev ${c}">${q} ${l}</div>` : ''; }).join('')}</div>`; })];
-    const noDate = d.rows.filter(r => !r.plan_sign).map(r => ({ ...r, cls: 'b' })), day = by[sel] || [], over = evs().filter(r => r.cls === 'r').sort((a, b) => a.day.localeCompare(b.day));
+    const noDate = d.rows.filter(r => !r.plan_sign).map(r => ({ ...r, cls: 'b' })), day = by[sel] || [], all = tracked(), capN = { I: 0, II: 0, III: 0 }, inM = evs().filter(e => e.day.startsWith(ym)), mAll = inM.length, mSigned = inM.filter(e => e.cls === 'g').length, over = evs().filter(r => r.cls === 'r').sort((a, b) => a.day.localeCompare(b.day));
+    all.forEach(r => capN[r.cap]++);
     main.innerHTML = `<div class="page">${head('05', 'Lịch ký hợp đồng', 'fa-calendar-days', '', '5.5')}${filterBar(f, { period: false, building: false })}
-      ${over.length ? `<div class="warnbar mb">${ico('fa-triangle-exclamation')}<div><b>${over.length} hợp đồng quá ngày dự kiến ký</b> — lâu nhất ${late(over[0])} ngày. Xem danh sách «Quá hạn ký» bên phải.</div></div>` : `<div class="okbar mb">${ico('fa-circle-check')} Không có hợp đồng quá hạn ký</div>`}
       <div class="sc-wrap"><div class="card sc"><div class="sc-h"><select id="scM" aria-label="Tháng">${Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}" ${i + 1 === m ? 'selected' : ''}>Tháng ${i + 1}</option>`).join('')}</select><select id="scY" aria-label="Năm">${Array.from({ length: 7 }, (_, i) => +t.slice(0, 4) - 3 + i).map(v => `<option ${v === y ? 'selected' : ''}>${v}</option>`).join('')}</select><input type="date" id="scDay" aria-label="Chọn ngày" value="${sel}">${over.length ? `<button type="button" class="sc-late" data-late title="Xem ngày quá hạn">${ico('fa-triangle-exclamation')} ${over.length} căn quá hạn</button>` : ''}<span class="grow"></span><button class="btn sm" data-go="now">Hôm nay</button><button class="btn sm" data-go="-1" aria-label="Tháng trước">‹</button><button class="btn sm" data-go="1" aria-label="Tháng sau">›</button></div>
         <div class="sc-g">${['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map(x => `<div class="sc-w">${x}</div>`).join('')}${cells.join('')}</div>
         <div class="sc-leg"><span class="r">Quá ngày dự kiến</span><span class="b">Sắp ký</span><span class="g">Đã ký</span></div></div>
-      <div><div class="card"><div class="hd"><h3>${ico('fa-pen-nib')} ${sel === t ? 'Hôm nay ký' : 'Ngày ' + dmy(sel)} (${day.length})</h3></div><div class="sc-list">${day.length ? byProject(day).map(([pj, es]) => `<div class="sc-pj">${esc(pj)} · ${es.length} căn</div>${es.map(line).join('')}`).join('') : '<div class="empty">Không có lịch ký</div>'}</div></div>
-        <div class="card mt"><div class="hd"><h3>${ico('fa-triangle-exclamation')} Quá hạn ký (${over.length})</h3></div><div class="sc-list">${over.length ? byProject(over).map(([pj, es]) => `<div class="sc-pj">${esc(pj)} · ${es.length} căn</div>${es.map(line).join('')}`).join('') : '<div class="empty">Không có hợp đồng quá hạn</div>'}</div></div>
-        <div class="card mt"><div class="hd"><h3>${ico('fa-clock')} Chưa hẹn lịch (${noDate.length})</h3></div><div class="sc-list">${noDate.length ? noDate.map(line).join('') : '<div class="empty">Không có</div>'}</div></div></div></div>
+      <div><div class="sc-tiles">${[['thang', 'fa-chart-column', `Đã ký / phải ký tháng ${m}`, `${mSigned}<small> / ${mAll}</small>`, mAll ? `${Math.round(mSigned / mAll * 100)}% tháng đang xem` : 'Tháng này chưa có lịch'],
+        ['tinh_trang', 'fa-list-check', 'Tình trạng ký', `<small>III</small> ${capN.III} <small>II</small> ${capN.II} <small>I</small> ${capN.I}`, 'Đã ký · Chưa ký · Chưa liên hệ'],
+        ['qua_han', 'fa-triangle-exclamation', 'Quá hạn ký', over.length, over.length ? `Lâu nhất ${late(over[0])} ngày` : 'Không có căn quá hạn'],
+        ['tong', 'fa-signature', 'Tổng căn đã ký', capN.III, `Trên ${all.length} hợp đồng`]].map(([k, ic, l, v, sub]) => `<div class="card kpi ${tile === k ? 'on' : ''} ${k === 'qua_han' && over.length ? 'late' : ''}" data-tile="${k}" role="button" tabindex="0"><div class="l">${ico(ic)} ${l}</div><div class="v">${v}</div><div class="s">${sub}</div></div>`).join('')}</div>
+        <div class="card mt" id="scP"></div>
+        ${noDate.length ? `<div class="card mt"><div class="hd"><h3>${ico('fa-clock')} Chưa hẹn lịch (${noDate.length})</h3></div><div class="sc-list">${noDate.map(line).join('')}</div></div>` : ''}</div></div>
       <div class="card mt"><div class="hd"><h3>${ico('fa-list-check')} Danh sách theo dõi ký hợp đồng</h3><span class="grow"></span><button class="btn sm" id="scX">${ico('fa-file-excel')} Xuất Excel</button></div>
         <div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="scQ" placeholder="Tìm mã căn, khách hàng, số HĐ… hoặc I, II, III" value="${esc(lq)}"></div>
           <span class="small muted">Từ ngày</span><input type="date" id="scF" class="inp" value="${lf}"><span class="small muted">đến</span><input type="date" id="scTo" class="inp" value="${lt}">
           <select id="scS"><option value="">Mọi tình trạng ký</option><option value="III">III · Đã ký</option><option value="II">II · Chưa ký</option><option value="I">I · Chưa liên hệ được</option><option value="qua_han">Quá hạn</option></select><span class="grow"></span><span class="small muted" id="scN"></span></div>
         <div class="tbl-wrap" id="scT"></div></div></div>`;
     wireFilter(main, f, draw);
+    // khung dưới 4 ô: mặc định danh sách ngày đang chọn, bấm ô thì hiện biểu đồ của ô đó
+    const P = $('#scP', main), hd = (ic, x) => `<div class="hd"><h3>${ico(ic)} ${x}</h3>${tile ? '<span class="grow"></span><button class="btn sm" data-tile="">Về danh sách ngày</button>' : ''}</div>`;
+    const bars = (rows, attr = '') => { const mx = Math.max(1, ...rows.map(r => r[1])); return `<div class="sc-bars">${rows.map(([l, n, key]) => `<div class="sc-bar" ${key ? `${attr}="${key}" role="button" tabindex="0"` : ''} title="${esc(l)}: ${n} căn"><span>${esc(l)}</span><i><b style="width:${n / mx * 100}%"></b></i><em>${n}</em></div>`).join('')}</div>`; };
+    const groupN = es => byProject(es).map(([pj, x]) => [pj || 'Chưa có dự án', x.length]);
+    if (tile === 'thang') {
+      const ser = Array.from({ length: 12 }, (_, i) => { const k = `${y}-${String(i + 1).padStart(2, '0')}`, es = evs().filter(e => e.day.startsWith(k)); return { label: 'T' + (i + 1), phai: es.length, da: es.filter(e => e.cls === 'g').length, ym: k }; });
+      P.innerHTML = `${hd('fa-chart-column', `Đã ký và phải ký theo tháng năm ${y}`)}<div class="sc-chart"></div><div class="small muted sc-note">Bấm cột để xem tháng đó trên lịch. Phải ký gồm cả căn đã ký trong tháng.</div>`;
+      $('.sc-chart', P).append(barChart(ser, [{ k: 'phai', l: 'Phải ký', c: '#2F6DB5' }, { k: 'da', l: 'Đã ký', c: '#2E9E6B' }], { onClick: r => { ym = r.ym; render(); } }));
+    } else if (tile === 'tinh_trang') P.innerHTML = `${hd('fa-list-check', 'Tình trạng ký')}${bars([['III · Đã ký', capN.III, 'III'], ['II · Chưa ký', capN.II, 'II'], ['I · Chưa liên hệ được', capN.I, 'I']], 'data-cap')}<div class="small muted sc-note">Bấm dòng để lọc danh sách theo dõi bên dưới.</div>`;
+    else if (tile === 'qua_han') P.innerHTML = `${hd('fa-triangle-exclamation', `Quá hạn ký (${over.length})`)}${over.length ? `${bars(groupN(over))}<div class="sc-list">${over.map(line).join('')}</div>` : '<div class="empty">Không có căn quá hạn</div>'}`;
+    else if (tile === 'tong') P.innerHTML = `${hd('fa-signature', `Tổng căn đã ký theo dự án (${capN.III})`)}${bars(groupN(all.filter(r => r.cap === 'III')))}`;
+    else P.innerHTML = `${hd('fa-pen-nib', `${sel === t ? 'Hôm nay ký' : 'Ngày ' + dmy(sel)} (${day.length})`)}<div class="sc-list">${day.length ? byProject(day).map(([pj, es]) => `<div class="sc-pj">${esc(pj)} · ${es.length} căn</div>${es.map(line).join('')}`).join('') : '<div class="empty">Không có lịch ký</div>'}</div>`;
     $('#scS', main).value = ls; drawList();
     $('#scQ', main).oninput = debounce(e => { lq = e.target.value; drawList(); }, 200);
     $('#scS', main).onchange = e => { ls = e.target.value; drawList(); };
@@ -1522,11 +1537,13 @@ V.signing = async main => {
   };
   const draw = async () => { d = await api('GET', '/api/signing?' + qsOf({ project: f.project })); render(); };
   main.onclick = e => {
-    if (e.target.closest('[data-late]')) { const o = evs().filter(r => r.cls === 'r').sort((a, b) => a.day.localeCompare(b.day))[0]; if (o) { sel = o.day; ym = sel.slice(0, 7); render(); } return; }   // tới ngày quá hạn lâu nhất
+    const tl = e.target.closest('[data-tile]'); if (tl) { tile = tile === tl.dataset.tile ? '' : tl.dataset.tile; return render(); }
+    const cp = e.target.closest('[data-cap]'); if (cp) { ls = cp.dataset.cap; $('#scS', main).value = ls; drawList(); $('#scT', main).scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+    if (e.target.closest('[data-late]')) { tile = 'qua_han'; return render(); }
     const go = e.target.closest('[data-go]');
     if (go) { if (go.dataset.go === 'now') { ym = t.slice(0, 7); sel = t; } else { const [y, m] = ym.split('-').map(Number), x = new Date(Date.UTC(y, m - 1 + +go.dataset.go, 1)); ym = x.toISOString().slice(0, 7); } return render(); }
     const r = e.target.closest('[data-id]'); if (r) return openDetail(r.dataset.ent, +r.dataset.id, undefined, true);
-    const c = e.target.closest('[data-day]'); if (c) { sel = c.dataset.day; return render(); }
+    const c = e.target.closest('[data-day]'); if (c) { sel = c.dataset.day; tile = ''; return render(); }
   };
   await draw();
 };

@@ -853,3 +853,18 @@ table.prod-t tfoot td { font-weight: 800 !important; color: var(--ink) !importan
 .drawer.plain .dacts { display: none; }
 .sc-ev { text-align: center; font-weight: 600; }
 .sc-late { height: 30px; padding: 0 10px; border: 1px solid #f0c4bf; border-radius: 8px; background: #fbe6e3; color: #b13a2c; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+
+/* lịch ký: 4 ô thống kê, bấm ra biểu đồ */
+.sc-wrap { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
+.sc-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.sc-tiles .kpi { padding: 12px 14px 10px; } .sc-tiles .kpi .v { font-size: 22px; }
+.sc-tiles .kpi.on { border-color: var(--cobalt-d); box-shadow: 0 0 0 2px rgba(30, 78, 140, .22); }
+.sc-tiles .kpi.late .v { color: #b13a2c; -webkit-text-fill-color: #b13a2c; background: none; }
+.sc-chart { padding: 8px 12px 0; } .sc-note { padding: 6px 14px 12px; }
+.sc-bars { padding: 10px 14px; }
+.sc-bar { display: grid; grid-template-columns: 150px 1fr 36px; gap: 8px; align-items: center; padding: 5px 0; font-size: 12.5px; }
+.sc-bar[role=button] { cursor: pointer; border-radius: 6px; } .sc-bar[role=button]:hover { background: #f1f6fb; }
+.sc-bar i { height: 12px; background: #eef3f8; border-radius: 4px; overflow: hidden; display: block; }
+.sc-bar i b { display: block; height: 100%; background: var(--cobalt-d); border-radius: 0 4px 4px 0; }
+.sc-bar em { font-style: normal; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 1100px) { .sc-wrap { grid-template-columns: 1fr; } }
