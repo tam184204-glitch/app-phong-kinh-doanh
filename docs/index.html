@@ -18,13 +18,13 @@
 <div id="boot"><img src="logo.png" alt=""><b>CÁT TƯỜNG GROUP · PHÒNG KINH DOANH</b><span id="bootmsg">Đang tải…</span></div>
 <div id="demobar" data-keep>Bản demo · dữ liệu mẫu lưu trên trình duyệt của bạn<a onclick="window.__ctgReset&&__ctgReset()">Làm mới dữ liệu</a></div>
 <script type="module">
-import './demo.js?v=767abd77f9';
+import './demo.js?v=f328da8cd9';
 const local = new URLSearchParams(location.search).has('localpg');
 const url = local ? new URL('pglite/index.js', location.href).href : 'https://cdn.jsdelivr.net/npm/@electric-sql/pglite@0.5.12/dist/index.js';
 const bar = document.getElementById('demobar');
 try {
   await window.__ctgBoot(url);
-  for (const s of ['front.js?v=3eacd1fd05']) await new Promise((res, rej) => { const el = document.createElement('script'); el.src = s; el.onload = res; el.onerror = rej; document.body.append(el); });
+  for (const s of ['front.js?v=81098e3467']) await new Promise((res, rej) => { const el = document.createElement('script'); el.src = s; el.onload = res; el.onerror = rej; document.body.append(el); });
   document.getElementById('boot').remove();
   setInterval(() => { if (!bar.isConnected) document.body.append(bar); }, 800);
 } catch (e) {

@@ -302,6 +302,14 @@ async function payouts(db, user, f = {}) {
     LEFT JOIN kd_unit u ON u.id = coalesce(c.unit_id, r.unit_id) LEFT JOIN kd_project pj ON pj.id = u.project_id
     LEFT JOIN kd_customer k ON k.id = coalesce(c.customer_id, r.customer_id) WHERE true ${w} ORDER BY t.pay_due NULLS LAST, t.id DESC`, p);
 }
+// theo dõi vay vốn: đọc thẳng từ hợp đồng căn hộ chung cư còn hiệu lực (sửa ở hợp đồng là cập nhật)
+async function loans(db, user, f = {}) {
+  if (!can(user, E.contract, 'r')) deny();
+  const p = []; const w = uf(f, p);
+  return db.q(`SELECT c.id, c.number, c.contract_on, c.value, c.status, c.loan_status, c.loan_bank, u.code unit, pj.code project, k.full_name customer, coalesce(c.b_phone, k.phone) phone
+    FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_project pj ON pj.id = u.project_id JOIN kd_customer k ON k.id = c.customer_id
+    WHERE c.ptype = 'can_ho' AND c.kind <> 'hoan_thien' AND c.status NOT IN ('huy', 'thanh_ly') ${w} ORDER BY c.id DESC`, p);
+}
 async function priceSheet(db, user, id) {
   if (!can(user, E.price_policy, 'r')) deny();
   const pol = C.notFound(await db.one(`SELECT t.*, (SELECT string_agg(p.code, ', ' ORDER BY array_position(t.project_ids, p.id)) FROM kd_project p WHERE p.id = ANY(t.project_ids)) project_code FROM kd_price_policy t WHERE t.id = $1`, [+id]), 'chính sách');
@@ -600,4 +608,4 @@ async function monthly(db, period, projectId) {
   };
 }
 
-module.exports = { payouts, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
+module.exports = { payouts, loans, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };

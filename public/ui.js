@@ -300,8 +300,9 @@ function schedEditor(el, rows, { total, base, first } = {}) {   // first(): ngà
   el.addEventListener('input', e => {
     if (e.target.dataset.k !== 'name' || !first) return;
     const tr = e.target.closest('tr'), i = +tr.dataset.i, n = nDays(e.target.value), d = first();
-    if (!i || !n || !/^\d{4}-\d{2}-\d{2}$/.test(d || '')) return;
-    R[i]._days = n; $('[data-k="due_on"]', tr).value = dmy(addDays(d, n));
+    if (!i || !/^\d{4}-\d{2}-\d{2}$/.test(d || '')) return;
+    if (n) { R[i]._days = n; $('[data-k="due_on"]', tr).value = dmy(addDays(d, n)); }
+    else if (R[i]._days) { delete R[i]._days; R[i].due_on = ''; $('[data-k="due_on"]', tr).value = ''; }   // nội dung không còn theo ngày ký: bỏ hạn đã tự sổ
   });
   el._get = () => { sync(); return R.filter(r => r.name || r.due_on || r.pct || r.amount).map(r => ({ name: r.name, due_on: r.due_on, pct: r.pct, amount: r.amount })); };
   el._redraw = () => { sync(); draw(); };
@@ -319,6 +320,7 @@ const HD_LAYOUT = [
     ['pretax', 'vat_pct', 'vat_amt', 'after_tax'], ['finish_value', 'maint_fee', 'corner_pct', 'corner_amt'], ['value', 'closed', 'cn', 'vbtt_hold']] },
   { t: 'Lần thanh toán', rows: [['new_schedule'], ['pay_method']] },
   { t: 'Lịch ký', cols: 4, rows: [['plan_sign', 'sign_place', 'sign_status', 'signed_on']] },
+  { t: 'Tình trạng vay vốn', cols: 4, rows: [['loan_status', 'loan_bank']] },
 ];
 function bravoLayout(form, layout) {
   const take = k => { const el = $(`:scope > [data-f="${k}"]`, form); el?.classList.remove('wide'); return el; };

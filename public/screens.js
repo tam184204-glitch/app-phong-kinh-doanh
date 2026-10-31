@@ -834,5 +834,42 @@ V.payouts = async (main, params) => {
   await load();
 };
 
+// theo dõi vay vốn: lấy từ Hợp đồng căn hộ chung cư, bấm dòng mở hợp đồng để cập nhật
+const LOAN_COLS = [['number', 'Số hợp đồng'], ['contract_on', 'Ngày ký HĐMB', 'date'], ['unit', 'Mã căn'], ['customer', 'Khách hàng'], ['phone', 'Điện thoại'], ['value', 'Tổng tiền', 'money'], ['loan_l', 'Tình trạng vay vốn'], ['loan_bank', 'Ngân hàng cho vay'], ['status_l', 'Tình trạng hợp đồng']];
+V.loans = async main => {
+  const s = ST.loan ||= { project: '', q: '', st: '' };
+  const L = (k, v) => M.ents.contract.fields.find(f => f.k === k)?.o?.find(o => o[0] === v)?.[1] || v || '';
+  main.innerHTML = `<div class="page">${head('05', 'Theo dõi tình trạng vay vốn', 'fa-building-columns', `<button class="btn" id="lnX">${ico('fa-file-excel')} Xuất Excel</button>`, 'HD-05')}
+    <div class="grid g4 mb" id="lnK"></div>
+    <div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="lnQ" placeholder="Tìm mã căn, khách hàng, SĐT, số HĐ, ngân hàng…" value="${esc(s.q)}"></div>
+      <select id="lnP"><option value="">Tất cả dự án</option>${M.projects.map(p => `<option value="${p.id}" ${+s.project === p.id ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select>
+      <select id="lnS"><option value="">Mọi tình trạng vay</option><option value="co_vay">Có vay</option><option value="khong_vay">Không vay</option><option value="chua">Chưa cập nhật</option></select>
+      <span class="grow"></span><span class="small muted" id="lnN"></span></div><div class="tbl-wrap" id="lnT"><div class="empty">Đang tải…</div></div></div></div>`;
+  $('#lnS', main).value = s.st;
+  let rows = [];
+  const load = async () => {
+    rows = (await api('GET', '/api/loans' + (s.project ? '?project=' + s.project : ''))).map(r => ({ ...r, loan_l: L('loan_status', r.loan_status) || 'Chưa cập nhật', status_l: L('status', r.status) }));
+    draw();
+  };
+  const shown = () => { const q = s.q.trim().toLowerCase();
+    return rows.filter(r => (!s.st || (s.st === 'chua' ? !r.loan_status : r.loan_status === s.st)) && (!q || [r.number, r.unit, r.customer, r.phone, r.loan_bank].some(x => String(x ?? '').toLowerCase().includes(q)))); };
+  const draw = () => {
+    const n = k => rows.filter(r => k ? r.loan_status === k : !r.loan_status).length, tile = (l, icon, v) => `<div class="card kpi"><div class="l">${ico(icon)} ${l}</div><div class="v">${v}</div></div>`;
+    $('#lnK', main).innerHTML = tile('Tổng hợp đồng', 'fa-file-contract', rows.length) + tile('Có vay', 'fa-building-columns', n('co_vay')) + tile('Không vay', 'fa-wallet', n('khong_vay')) + tile('Chưa cập nhật', 'fa-circle-question', n());
+    const rs = shown(); $('#lnN', main).textContent = `${rs.length} hợp đồng`;
+    $('#lnT', main).innerHTML = rs.length ? `<table class="t"><thead><tr><th>STT</th>${LOAN_COLS.map(c => `<th class="${c[2] === 'money' ? 'num' : ''}">${c[1]}</th>`).join('')}</tr></thead><tbody>${rs.map((r, i) => `<tr data-id="${r.id}"><td class="center">${i + 1}</td>${LOAN_COLS.map(c => {
+      const v = r[c[0]];
+      return `<td class="${c[2] === 'money' ? 'num' : ''}">${c[2] === 'money' ? fm(v) : c[2] === 'date' ? dmy(v) : c[0] === 'loan_l' ? pill(v, r.loan_status === 'co_vay' ? 'b' : r.loan_status ? 'g' : 's') : esc(v ?? '')}</td>`; }).join('')}</tr>`).join('')}</tbody></table>`
+      : '<div class="empty">Không có hợp đồng phù hợp</div>';
+    syncTopScroll();
+  };
+  $('#lnQ', main).oninput = debounce(e => { s.q = e.target.value; draw(); }, 200);
+  $('#lnP', main).onchange = run(async e => { s.project = e.target.value; await load(); });
+  $('#lnS', main).onchange = e => { s.st = e.target.value; draw(); };
+  $('#lnX', main).onclick = () => download('/api/export-rows', { title: 'THEO DÕI TÌNH TRẠNG VAY VỐN', cols: LOAN_COLS, rows: shown(), sum: ['value'], file: 'theo_doi_vay_von' });
+  $('#lnT', main).onclick = e => { const tr = e.target.closest('tr[data-id]'); if (tr) openDetail('contract', +tr.dataset.id); };
+  await load();
+};
+
 // ---------- khởi động ----------
 if (location.hash.startsWith('#/login')) loginView(); else boot();
