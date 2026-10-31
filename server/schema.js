@@ -119,6 +119,11 @@ const PRE = [
   `UPDATE kd_cancel_req SET money_note = coalesce(money_note, CASE money_plan WHEN 'giu_lai' THEN 'Giữ lại theo chính sách' ELSE 'Không phát sinh tiền' END), money_plan = 'khac' WHERE money_plan IN ('giu_lai', 'khong_phat_sinh')`,
   // gộp 3 ô chính sách thành Nội dung chính sách bán hàng (31/10/2026): chuyển xong xóa ô cũ để không gộp lại lần sau
   `UPDATE kd_price_policy SET content = concat_ws(E'\\n', nullif(content, ''), 'Ưu đãi / chiết khấu: ' || nullif(discount, ''), 'Phương thức thanh toán: ' || nullif(pay_method, ''), 'Chính sách ngân hàng: ' || nullif(bank_policy, '')), discount = NULL, pay_method = NULL, bank_policy = NULL WHERE coalesce(discount, pay_method, bank_policy) IS NOT NULL`,
+  // dữ liệu khách chạy chung (31/10/2026): tài khoản đã có ở màn nào thì bù vào ô trống của màn khác, không ghi đè
+  `UPDATE kd_customer c SET bank_account = x.acc FROM (SELECT DISTINCT ON (customer_id) customer_id, concat_ws(' - ', b_bank_acc, nullif(b_bank_name, '')) acc FROM kd_contract WHERE nullif(b_bank_acc, '') IS NOT NULL ORDER BY customer_id, id DESC) x WHERE x.customer_id = c.id AND nullif(c.bank_account, '') IS NULL`,
+  `UPDATE kd_noxh_check n SET bank_account = c.bank_account FROM kd_customer c WHERE n.customer_id = c.id AND n.bank_account IS NULL AND nullif(c.bank_account, '') IS NOT NULL`,
+  `UPDATE kd_reservation r SET bank_account = c.bank_account FROM kd_customer c WHERE r.customer_id = c.id AND nullif(r.bank_account, '') IS NULL AND nullif(c.bank_account, '') IS NOT NULL AND r.status NOT IN ('huy', 'het_han')`,
+  `UPDATE kd_contract t SET b_bank_acc = split_part(c.bank_account, ' - ', 1), b_bank_name = coalesce(nullif(t.b_bank_name, ''), nullif(substr(c.bank_account, length(split_part(c.bank_account, ' - ', 1)) + 4), '')) FROM kd_customer c WHERE t.customer_id = c.id AND nullif(t.b_bank_acc, '') IS NULL AND nullif(c.bank_account, '') IS NOT NULL`,
 ];
 // CHECK nghiệp vụ thêm (ngoài money ≥ 0 và giá trị danh sách chọn)
 const CHECKS = {

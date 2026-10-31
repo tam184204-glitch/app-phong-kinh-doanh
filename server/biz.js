@@ -281,7 +281,40 @@ H.customer = {
     if (sim) warn.push(`Đã có khách cùng họ tên: ${sim.code} (ĐT …${String(sim.phone).slice(-3)}) — kiểm tra có phải cùng một người không`);
     if (r.source && ['dai_ly', 'ctv'].includes(r.source) && !r.agent_id) warn.push('Nguồn khách là đại lý / CTV nhưng chưa chọn đối tác giới thiệu');
   },
+  async afterSave(r, old, { db }) { if (old && [...CUST_KEYS, 'phone2', 'birth'].some(k => String(old[k] ?? '') !== String(r[k] ?? ''))) await pushCustomer(db, r); },
 };
+
+// Hồ sơ khách là gốc: thông tin khách sửa ở màn nào cũng về đây rồi lan sang phiếu đăng ký, hồ sơ NOXH, hợp đồng, đề nghị hủy
+const RES_CUST = { full_name: 'cust_name', phone: 'phone', id_no: 'id_no', id_date: 'id_date', id_place: 'id_place', address: 'address', tax_code: 'tax_code', bank_account: 'bank_account' };
+const CT_CUST = { phone: 'b_phone', email: 'b_email', id_no: 'b_id_no', id_date: 'b_id_date', id_place: 'b_id_place', address: 'b_addr' };
+const CUST_KEYS = [...Object.keys(RES_CUST), 'email'];
+const CT_OPEN = ['du_thao', 'cho_duyet', 'cho_ky', 'tu_choi'];   // hợp đồng đã ký chỉ được điền ô trống, không ghi đè
+// khách lưu một ô «Số tài khoản - Ngân hàng», hợp đồng tách 2 ô
+const bankSplit = s => { const [acc, ...n] = String(s || '').trim().split(/\s+-\s+/); return { acc: acc || null, name: n.join(' - ') || null }; };
+const custVals = (r, old, map) => Object.fromEntries(Object.entries(map).filter(([, c]) => !old || String(old[c] ?? '') !== String(r[c] ?? '')).map(([k, c]) => [k, r[c]]));
+async function syncCustomer(db, id, vals, user, note) {
+  const cur = id && await raw(db, 'customer', id); if (!cur) return;
+  const diff = {};
+  for (const [k, v] of Object.entries(vals)) if (v != null && v !== '' && !String(v).startsWith('•') && String(cur[k] ?? '') !== String(v)) diff[k] = v;
+  if (Object.keys(diff).length) await sys(db, 'customer', id, diff, user, 'sua', note);
+}
+async function pushCustomer(db, c) {
+  const upd = (table, map, wrap, where = 'customer_id = $1') => {
+    const ps = [c.id], sets = Object.entries(map).map(([col, v]) => { ps.push(v || null); return `${col} = ${wrap(col, `$${ps.length}::${/_date$/.test(col) ? 'date' : 'text'}`)}`; });
+    return db.q(`UPDATE ${table} SET ${sets.join(', ')}, updated_at = now() WHERE ${where}`, ps);
+  };
+  await upd('kd_reservation', Object.fromEntries(Object.entries(RES_CUST).map(([k, col]) => [col, c[k]])), (col, v) => `coalesce(${v}, ${col})`, "customer_id = $1 AND status NOT IN ('huy', 'het_han')");
+  const bk = bankSplit(c.bank_account), blank = col => /_date$/.test(col) ? col : `nullif(${col}, '')`;
+  await upd('kd_contract', { ...Object.fromEntries(Object.entries(CT_CUST).map(([k, col]) => [col, c[k]])), b_bank_acc: bk.acc, b_bank_name: bk.name },
+    (col, v) => `CASE WHEN status = ANY('{${CT_OPEN}}') THEN coalesce(${v}, ${col}) ELSE coalesce(${blank(col)}, ${v}) END`);
+  await upd('kd_cancel_req', { cust_name: c.full_name, phone: c.phone }, (col, v) => `coalesce(${v}, ${col})`, 'contract_id IN (SELECT id FROM kd_contract WHERE customer_id = $1)');
+  const [y, m, d] = String(c.birth || '').split('-');
+  for (const n of await db.q('SELECT id, head FROM kd_noxh_check WHERE customer_id = $1', [c.id])) {
+    const h = Array.isArray(n.head) && n.head[0] ? { ...n.head[0] } : { relation: 'Chủ hộ' };
+    Object.assign(h, { name: c.full_name || h.name, phone: [c.phone, c.phone2].filter(Boolean).join('/ ') || h.phone, id_no: c.id_no || h.id_no }, d ? { bday: String(+d), bmonth: String(+m), byear: y } : {});
+    await db.q('UPDATE kd_noxh_check SET head = $2::jsonb, bank_account = coalesce($3, bank_account), updated_at = now() WHERE id = $1', [n.id, JSON.stringify([h]), c.bank_account || null]);
+  }
+}
 H.contact_log = {
   async afterSave(r, old, { db, user }) {
     const c = await raw(db, 'customer', r.customer_id);
@@ -345,12 +378,6 @@ H.reservation = {
     if (expired && r.reg_state === 'giu_cho') { r.reg_state = 'qua_han'; if (r.status === 'giu_cho') r.status = 'qua_han'; }
     else if (!expired && (r.reg_state === 'qua_han' || r.status === 'qua_han')) { if (r.reg_state === 'qua_han') r.reg_state = 'giu_cho'; if (r.status === 'qua_han') r.status = +r.deposit > 0 ? 'da_coc' : 'giu_cho'; }
     await linkCustomer(db, r, old, user, opts, demo);
-    // MST / tài khoản ghi ở phiếu mà hồ sơ khách còn trống → bổ sung cho khách
-    if (r.customer_id && !opts.check && (r.tax_code || r.bank_account)) {
-      const c = await raw(db, 'customer', r.customer_id), up = {};
-      for (const f of ['tax_code', 'bank_account']) if (r[f] && !c[f]) up[f] = r[f];
-      if (Object.keys(up).length) await sys(db, 'customer', c.id, up, user, 'cap_nhat_tu_phieu_dang_ky');
-    }
     if (changedUnit && !opts.system) {
       // căn còn trống (Còn bán / Chưa mở bán) mới lập phiếu được — căn chưa mở bán tự mở bán khi lưu phiếu
       if (!FREE_UNIT.includes(u.status)) bad(`Căn ${u.code} đang «${await C.optLabel(C.F.unit.status, u.status)}» — không giữ chỗ được`);
@@ -381,6 +408,7 @@ H.reservation = {
   async onApprove(r, ok) { return ok ? { status: r.deposit > 0 ? 'da_coc' : 'giu_cho' } : null; },
   async afterApprove(r, ok, { db, user }) { await recomputeUnit(db, r.unit_id, user); if (ok) await markCustomer(db, r.customer_id, user); },
   async afterSave(r, old, { db, user }) {
+    await syncCustomer(db, r.customer_id, custVals(r, old, RES_CUST), user, `Theo phiếu đăng ký ${r.code || ''}`);
     if (!old || old.unit_id !== r.unit_id) {
       const u = await raw(db, 'unit', r.unit_id);
       if (u && !u.activated && !u.lock) await sys(db, 'unit', u.id, { activated: true }, user, 'kich_hoat', 'Mở bán khi lập phiếu đăng ký căn hộ');
@@ -452,7 +480,7 @@ async function noxhHead(db, r, old, user, demo) {
   if (t(h.byear) && !(yy >= 1900 && yy <= 2100)) bad('Chủ hộ: năm sinh không hợp lệ');
   const birth = dd && mm && yy ? `${yy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}` : null;
   const [phone, phone2] = t(h.phone).split(/\s*[\/;,]\s*/).map(x => x.replace(/[\s.]/g, '')).filter(Boolean);
-  const patch = { full_name: t(h.name) || undefined, phone, phone2, id_no: t(h.id_no) || undefined, birth: birth || undefined };
+  const patch = { full_name: t(h.name) || undefined, phone, phone2, id_no: t(h.id_no) || undefined, birth: birth || undefined, bank_account: t(r.bank_account) || undefined };
   for (const x of Object.keys(patch)) if (patch[x] === undefined) delete patch[x];
   if (!r.customer_id) {   // chưa chọn khách: khớp theo CCCD rồi SĐT, không có thì tạo khách mới
     const c = (patch.id_no && await db.one('SELECT id FROM kd_customer WHERE upper(id_no) = upper($1) ORDER BY id LIMIT 1', [patch.id_no]))
@@ -466,6 +494,7 @@ async function noxhHead(db, r, old, user, demo) {
     }
   }
   const cur = await raw(db, 'customer', r.customer_id), diff = {};
+  if (!t(r.bank_account)) r.bank_account = cur.bank_account;
   for (const [x, v] of Object.entries(patch)) if (String(cur[x] ?? '') !== String(v)) diff[x] = v;
   if (Object.keys(diff).length) await sys(db, 'customer', cur.id, diff, user, 'sua', `Theo hồ sơ mua NOXH${r.id ? ' #' + r.id : ''}`);
 }
@@ -644,6 +673,13 @@ H.contract = {
       const n = await db.one('SELECT plan_sign, sign_place, sign_status FROM kd_noxh_check WHERE customer_id = $1 AND plan_sign IS NOT NULL ORDER BY (unit_id = $2) DESC NULLS LAST, id DESC LIMIT 1', [r.customer_id, r.unit_id]);
       if (n) Object.assign(r, n);
     }
+    // bên mua: ô trống lấy theo hồ sơ khách; tài khoản dạng «Số - Ngân hàng» tách 2 ô
+    if (!old || old.customer_id !== r.customer_id) {
+      const k = await raw(db, 'customer', r.customer_id), b = bankSplit(k?.bank_account);
+      if (k) for (const [f, c] of Object.entries(CT_CUST)) if (r[c] == null || r[c] === '') r[c] = k[f];
+      r.b_bank_acc ||= b.acc; r.b_bank_name ||= b.name;
+    }
+    if (/\s-\s/.test(r.b_bank_acc || '')) { const b = bankSplit(r.b_bank_acc); r.b_bank_acc = b.acc; r.b_bank_name = b.name || r.b_bank_name; }
     // số bảng giá = tòa của căn (Danh mục sản phẩm); chính sách giá lấy theo phiếu giữ chỗ / chính sách đang phát hành
     r.building_id = (await raw(db, 'unit', r.unit_id))?.building_id ?? null;
     if (!r.price_policy_id) r.price_policy_id = (await contractPrefill(db, r.unit_id, r.contract_on || undefined)).policy_id;
@@ -679,6 +715,9 @@ H.contract = {
     if (n.n && n.s !== r.value) bad(`Tổng lịch thanh toán ${fmtMoney(n.s)} khác giá trị hợp đồng ${fmtMoney(r.value)}`);
   },
   async afterSave(r, old, { db, user, demo, sched }) {
+    const cv = custVals(r, old, CT_CUST);
+    if (['b_bank_acc', 'b_bank_name'].some(c => !old || old[c] !== r[c])) cv.bank_account = [r.b_bank_acc, r.b_bank_name].filter(Boolean).join(' - ');
+    await syncCustomer(db, r.customer_id, cv, user, `Theo hợp đồng ${r.number}`);
     if (sched?.length && ['du_thao', 'tu_choi', 'cho_duyet', 'cho_ky'].includes(r.status)) {   // ghi lịch thu khi khác lịch đang có
       const cur = await db.q('SELECT name, due_on, pct, amount FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [r.id]);
       const key = xs => JSON.stringify(xs.map(x => [x.name, String(x.due_on).slice(0, 10), x.pct == null ? null : +x.pct, +x.amount]));

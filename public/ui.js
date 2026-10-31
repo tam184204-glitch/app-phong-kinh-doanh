@@ -403,6 +403,16 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [] } = {}
     unitCombo.addEventListener('input', () => { seq++; box.innerHTML = ''; });   // đang gõ lại mã căn
     check();
   }
+  // hồ sơ NOXH: chọn khách / phiếu → điền dòng chủ hộ và số tài khoản còn trống
+  const fillHead = async k => {
+    if (typeof k !== 'object') k = k ? (await api('GET', `/api/e/customer/${k}`)).row : null;
+    if (!k) return;
+    if (k._masked && M.piiRoles.includes(M.me.role)) Object.assign(k, await api('GET', `/api/pii/customer/${k.id}`));
+    const [y, m, d] = String(k.birth || '').split('-'), tr = $('.gridin[name="head"] tr[data-gr]', form);
+    const v = { name: k.full_name, phone: [k.phone, k.phone2].filter(Boolean).join('/ '), id_no: k.id_no, bday: d && String(+d), bmonth: m && String(+m), byear: y };
+    for (const [c, x] of Object.entries(v)) { const el = tr && $(`[data-gc="${c}"]`, tr); if (el && !el.value && x && !String(x).startsWith('•')) el.value = x; }
+    const ba = form.elements.bank_account; if (ba && !ba.value && k.bank_account && !String(k.bank_account).startsWith('•')) ba.value = k.bank_account;
+  };
   // chọn căn / khách → tự điền các ô liên quan (giá theo danh mục sản phẩm, thông tin khách)
   for (const f of fields.filter(f => f.fill)) form.addEventListener('change', async e => {
     if (e.target.name !== f.k || !e.target.value) return;
@@ -415,6 +425,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [] } = {}
         if (f.ref === 'customer' && el.value) continue;        // thông tin khách đã gõ thì giữ
         el.value = tf.t === 'money' ? moneyStr(v) : tf.t === 'date' ? dmy(v) : v;
       }
+      if (ent === 'noxh_check') await fillHead(f.ref === 'customer' ? src : src.customer_id);
       if (ent === 'contract' && f.ref === 'unit') {   // như BRAVO: dự án của căn → Đơn vị / Bên A → thông tin bên bán
         const pc = M.projects.find(p => p.id === src.project_id)?.code, s = (M.sellers || []).find(x => x.projects.includes(pc)) || (M.sellers || [])[0];
         if (s && form.elements.s_name) { form.elements.seller_unit.value = s.unit; form.elements.s_name.value = s.name; await fillSeller(); }

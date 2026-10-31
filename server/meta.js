@@ -304,8 +304,9 @@ def('noxh_check', {
     { k: 'plan_sign', l: 'Ngày dự kiến ký', t: 'date', sec: 'Lịch ký', help: 'Tự sang hợp đồng và màn Lịch ký hợp đồng' },
     { k: 'sign_place', l: 'Địa điểm ký', t: 'text' },
     { k: 'sign_status', l: 'Tình trạng lịch ký', t: 'sel', def: 'chua_lien_he', o: SIGN_ST },
-    { k: 'customer_id', l: 'Khách hàng', t: 'ref', ref: 'customer', sec: 'Thông tin tài khoản', help: 'Để trống → tự khớp theo CCCD / SĐT chủ hộ hoặc tạo khách mới' },
-    { k: 'reservation_id', l: 'Phiếu giữ chỗ', t: 'ref', ref: 'reservation' },
+    { k: 'customer_id', l: 'Khách hàng', t: 'ref', ref: 'customer', sec: 'Thông tin tài khoản', help: 'Để trống → tự khớp theo CCCD / SĐT chủ hộ hoặc tạo khách mới', fill: { bank_account: 'bank_account' } },
+    { k: 'reservation_id', l: 'Phiếu giữ chỗ', t: 'ref', ref: 'reservation', fill: { bank_account: 'bank_account' } },
+    { k: 'bank_account', l: 'Số tài khoản ngân hàng', t: 'text', pii: 1, help: 'Số tài khoản - Ngân hàng (VD 0070101168008 - Ngân hàng MB). Chọn khách / phiếu → tự điền; sửa ở đây thì khách, phiếu, hợp đồng cập nhật theo' },
     { k: 'head', l: '2.1 Thông tin chủ hộ', t: 'json', sec: '2. Thông tin khách hàng', fixed: 1, grid: [
       { k: 'name', l: 'Họ và Tên', w: 170 }, { k: 'phone', l: 'Số điện thoại', w: 115 }, { k: 'bday', l: 'Ngày sinh', w: 60, pii: 1 }, { k: 'bmonth', l: 'Tháng sinh', w: 60, pii: 1 }, { k: 'byear', l: 'Năm sinh', w: 70, pii: 1 },
       { k: 'old_id_no', l: 'Số CMND', w: 110, pii: 1 }, { k: 'id_no', l: 'Số CCCD', w: 125, pii: 1 }, { k: 'job', l: 'Nghề nghiệp', sug: M4.nghe, w: 170 },
