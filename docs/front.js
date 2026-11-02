@@ -388,6 +388,26 @@ function bravoLayout(form, layout) {
   });
 }
 
+// bản sao khách hàng: chép toàn bộ thông tin, mã khách tự điền số kế tiếp (không trùng mã đã có)
+async function copyCustomer(id) {
+  const E = M.ents.customer, g = await api('GET', `/api/e/customer/${id}`), r = g.row;
+  if (r._masked && M.piiRoles.includes(M.me.role)) Object.assign(r, await api('GET', `/api/pii/customer/${id}`), { _masked: 0 });
+  const preset = {};
+  for (const f of E.fields) if (f.k !== 'code' && !f.hide && r[f.k] != null && !(f.pii && r._masked)) { preset[f.k] = r[f.k]; if (r[f.k + '__l'] != null) preset[f.k + '__l'] = r[f.k + '__l']; }
+  preset.code = (await api('GET', '/api/customer-code?next=1')).code;
+  return openForm('customer', { preset, title: `Bản sao của ${r.code} · ${r.full_name}`, onSaved: row => { toast(`Đã tạo khách hàng ${row.code}`); openDetail('customer', row.id); } });
+}
+function rowMenu(ent, id, x, y) {   // chuột phải vào dòng danh sách
+  $('.vt-ctx')?.remove();
+  const items = [['open', 'fa-arrow-up-right-from-square', 'Mở hồ sơ'], ...(ent === 'customer' && M.ents.customer.perm.c ? [['copy', 'fa-copy', 'Tạo bản sao mới']] : [])];
+  const c = document.createElement('div'); c.className = 'vt-ctx'; c.setAttribute('role', 'menu');
+  c.innerHTML = items.map(i => `<button role="menuitem" data-a="${i[0]}">${ico(i[1])} ${i[2]}</button>`).join('');
+  document.body.append(c);
+  c.style.left = Math.max(8, Math.min(x, innerWidth - c.offsetWidth - 8)) + 'px'; c.style.top = Math.max(8, Math.min(y, innerHeight - c.offsetHeight - 8)) + 'px';
+  const off = ev => { if (!c.contains(ev.target)) { c.remove(); document.removeEventListener('mousedown', off, true); } };
+  document.addEventListener('mousedown', off, true);
+  c.onclick = run(async e => { const a = e.target.closest('[data-a]')?.dataset.a; if (!a) return; c.remove(); if (a === 'open') return openDetail(ent, id); if (a === 'copy') return copyCustomer(id); });
+}
 async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, htDraft } = {}) {   // skip: trường không hiện trong form (vẫn gửi giá trị preset / mặc định)
   const E = M.ents[ent];
   let rec = { ...preset }, perm = null, trace = null;
@@ -761,6 +781,7 @@ async function openDetail(ent, id, tab, plain) {   // plain: chỉ xem (mở t�
       ${unitId ? `<button class="btn sm ghost" data-do="u360">${ico('fa-building')} Hồ sơ căn 360°</button>` : ''}
       ${ent === 'customer' ? `<button class="btn sm ghost" data-do="c360">${ico('fa-id-card')} Hồ sơ khách 360°</button>` : ''}
       ${ent === 'reservation' ? `<button class="btn sm ghost" data-do="pr_can">${ico('fa-print')} In bản đăng ký căn hộ</button><button class="btn sm ghost" data-do="pr_nt">${ico('fa-couch')} In bản đăng ký nội thất</button>` : ''}
+      ${ent === 'customer' && E.perm.c ? `<button class="btn sm ghost" data-do="copy">${ico('fa-copy')} Tạo bản sao mới</button>` : ''}
       ${ent === 'customer' ? `<button class="btn sm ghost" data-do="log">${ico('fa-comment-medical')} Ghi tư vấn</button>` : ''}
       ${ent === 'contract' && r.status === 'da_ky' ? `<button class="btn sm ghost" data-do="call">${ico('fa-phone')} Ghi nhắc nợ</button><button class="btn sm ghost" data-do="chg">${ico('fa-file-pen')} Đề nghị điều chỉnh</button>` : ''}
       ${p.del ? `<button class="btn sm ghost danger" data-do="del">${ico('fa-trash')} Xóa</button>` : ''}
@@ -815,6 +836,7 @@ async function openDetail(ent, id, tab, plain) {   // plain: chỉ xem (mở t�
     if (d === 'u360') { closeDetail(); location.hash = `#/v/unit360?id=${unitId}`; return; }
     if (d === 'c360') { closeDetail(); location.hash = `#/v/cust360?id=${id}`; return; }
     if (d === 'pr_can' || d === 'pr_nt') return printPick(id, d === 'pr_can' ? 'dang_ky_can' : 'dang_ky_noi_that');
+    if (d === 'copy') return copyCustomer(r.id);
     if (d === 'log') return openForm('contact_log', { preset: { customer_id: r.id, customer_id__l: `${r.code} · ${r.full_name}` }, onSaved: () => toast('Đã ghi nhật ký') });
     if (d === 'call') return openForm('debt_call', { preset: { contract_id: r.id, contract_id__l: r.number }, onSaved: () => reload() });
     if (d === 'chg') return openForm('contract_change', { preset: { contract_id: r.id, contract_id__l: r.number }, onSaved: row => openDetail('contract_change', row.id) });
@@ -896,6 +918,7 @@ async function listView(main, ent, params = {}) {
     b.innerHTML = n ? `<div class="bulk"><b>Đã chọn ${n}</b>${E.flow ? `<button class="btn sm amb" data-b="submit">${ico('fa-paper-plane')} Trình duyệt</button>` : ''}${E.flow && E.perm.a ? `<button class="btn sm ok" data-b="ok">${ico('fa-check')} Duyệt</button><button class="btn sm danger" data-b="no">${ico('fa-xmark')} Từ chối</button>` : ''}${E.perm.d ? `<button class="btn sm danger" data-b="del">${ico('fa-trash')} Xóa</button>` : ''}<button class="btn sm ghost" data-b="clr">Bỏ chọn</button></div>` : '';
   };
   ST.reload = load;
+  main.oncontextmenu = e => { const tr = e.target.closest('tbody tr[data-id]'); if (!tr || ent !== 'customer') return; e.preventDefault(); rowMenu(ent, +tr.dataset.id, e.clientX, e.clientY); };
   main.onclick = run(async e => {
     const t = e.target;
     if ((t.id === 'newBtn' || t.closest('#newBtn')) && ent === 'reservation')   // phiếu đăng ký căn hộ (chuyển từ Bảng hàng sang đây 28/10/2026)

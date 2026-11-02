@@ -291,6 +291,10 @@ R('GET', '/api/price-sheet/:id', async (req, res, u, p) => send(res, 200, await 
 R('GET', '/api/contract-number', async (req, res, u, p, qs) => send(res, 200, { number: await B.nextContractNo({ q, one }, qs.ptype, qs.on) }));
 R('GET', '/api/customer-code', async (req, res, u, p, qs) => {   // nhập mã khách: báo trùng ngay ở form, cùng nội dung khi lưu
   if (!can(u, M.E.customer, 'c') && !can(u, M.E.customer, 'u')) C.deny();
+  if (qs.next) {   // mã kế tiếp (chỉ xem, chưa cấp) — bỏ qua số đã bị mã nhập tay chiếm
+    const f = M.E.customer.fields.find(x => x.k === 'code'), c = await one('SELECT n FROM kd_counter WHERE prefix = $1', [f.prefix]);
+    for (let n = (c?.n || 0) + 1; ; n++) { const code = f.prefix + String(n).padStart(f.pad, '0'); if (!await one('SELECT 1 AS x FROM kd_customer WHERE upper(code) = $1', [code])) return send(res, 200, { code }); }
+  }
   const code = String(qs.code || '').trim().toUpperCase();
   const d = code && await one('SELECT full_name FROM kd_customer WHERE id <> $1 AND upper(code) = $2', [+qs.id || 0, code]);
   send(res, 200, { dup: !!d, msg: d ? `Mã khách hàng ${code} đã có (khách ${d.full_name}) — nhập mã khác hoặc để trống để hệ thống tự cấp` : '' });

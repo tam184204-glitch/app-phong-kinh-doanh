@@ -901,3 +901,9 @@ body.no-xr #dx, body.no-xr #scX, body.no-xr #lx, body.no-xr #rx, body.no-xr #lnX
 .trace { padding: 5px 22px; border-top: 1px solid var(--line2); background: #f8fafc; font-size: 11.5px; color: var(--muted); }
 
 .trace b { color: var(--text); } [data-fk] { cursor: pointer; border-radius: 6px; } [data-fk]:hover { background: var(--cobalt-50); }
+
+/* menu chuột phải (danh sách, kho lưu trữ) */
+.vt-ctx { position: fixed; z-index: 250; min-width: 210px; padding: 6px; border: 1px solid var(--line2); border-radius: 12px; background: var(--card); box-shadow: var(--deep); }
+.vt-ctx button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 12px; border: 0; border-radius: 8px; background: none; font: inherit; font-size: 13.5px; color: var(--text); text-align: left; cursor: pointer; }
+.vt-ctx button i { width: 16px; text-align: center; color: var(--muted); }
+.vt-ctx button:hover { background: var(--cobalt-50); }
