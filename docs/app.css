@@ -870,7 +870,7 @@ table.prod-t tfoot td { font-weight: 800 !important; color: var(--ink) !importan
 @media (max-width: 1100px) { .sc-wrap { grid-template-columns: 1fr; } }
 
 /* Thanh menu trái: gradient xanh navy */
-.side { background: linear-gradient(180deg, #0F2748 0%, #143866 55%, #1E4E8C 100%); border-right-color: rgba(255, 255, 255, .08); backdrop-filter: none; scrollbar-color: rgba(255, 255, 255, .28) transparent; }
+.side { background: linear-gradient(180deg, #17345C 0%, #1C4577 55%, #275C9E 100%); border-right-color: rgba(255, 255, 255, .08); backdrop-filter: none; scrollbar-color: rgba(255, 255, 255, .28) transparent; }
 .side h6 { color: #9db4d0; }
 .side .mod > button, .side .mod > a.solo { color: #e8f0fa; }
 .side .mod > button:hover, .side .mod > a.solo:hover, .side .mod .items a:hover { background: rgba(255, 255, 255, .1); }
