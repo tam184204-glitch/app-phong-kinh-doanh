@@ -266,7 +266,7 @@ H.price_policy = {
       return { open: ['price_policy', n.id], msg: `Đã tạo phiên bản ${n.version} (nháp). Phiên bản đang phát hành giữ nguyên tới khi bản mới được duyệt.` };
     },
   },
-  noDelete: r => r.status !== 'nhap' && 'Chỉ xóa được bản nháp',
+  noDelete: r => !['nhap', 'tu_choi', 'cho_duyet'].includes(r.status) && 'Chỉ xóa được chính sách chưa duyệt',
 };
 
 const digits = s => String(s || '').replace(/\D/g, '');
@@ -583,7 +583,7 @@ async function noticeUnits(db, n) {
   return us.filter(u => g.includes('*') || g.includes(String(u.b).toUpperCase()) || g.includes(u.code.toUpperCase()));
 }
 H.sale_notice = {
-  noDelete: r => r.status !== 'nhap' && 'Chỉ xóa được thông báo đang ở bản nháp',
+  noDelete: r => !['nhap', 'tu_choi', 'cho_duyet'].includes(r.status) && 'Chỉ xóa được thông báo chưa duyệt',
   async beforeSave(r) {
     if (r.close_on && r.open_on && r.close_on < r.open_on) bad('Ngày kết thúc nhận hồ sơ phải sau ngày bắt đầu');
     if (!String(r.unit_group || '').trim()) bad('Tích chọn căn hộ mở bán');
@@ -772,9 +772,12 @@ H.contract = {
     },
     async print(r) { return { url: `/print/contract/${r.id}` }; },
   },
-  noDelete: r => r.status !== 'du_thao' && 'Chỉ xóa được dự thảo chưa gửi trình duyệt',
-  async afterDelete(r, { db, user }) {
+  noDelete: r => !['du_thao', 'tu_choi', 'cho_duyet'].includes(r.status) && 'Chỉ xóa được hợp đồng chưa duyệt (dự thảo / trả lại / đang rà soát)',
+  async beforeDelete(r, { db }) {   // lịch thu + hoa hồng dự kiến tự sinh theo hợp đồng; phiếu thu thật vẫn chặn xóa
+    await db.q("DELETE FROM kd_commission WHERE contract_id = $1 AND status IN ('du_kien', 'nhap', 'tu_choi', 'huy')", [r.id]);
     await db.q('DELETE FROM kd_installment WHERE contract_id = $1', [r.id]);
+  },
+  async afterDelete(r, { db, user }) {
     if (r.reservation_id) { const s = await raw(db, 'reservation', r.reservation_id); if (s?.status === 'chuyen_hd') await sys(db, 'reservation', s.id, { status: s.deposit > 0 ? 'da_coc' : 'giu_cho' }, user, 'hoan_tac'); }
     await recomputeUnit(db, r.unit_id, user);
   },

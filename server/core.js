@@ -64,7 +64,7 @@ const SELF_OK = /^(1|true|yes)$/i.test(process.env.NO_LOGIN || '');
 function can(user, e, op) {
   if (!user) return false;
   if (user.role === 'admin') return op !== 'a' || true;
-  const roles = op === 'r' ? (e.r || []) : op === 'c' ? (e.c || []) : op === 'u' ? (e.u || e.c || []) : op === 'd' ? (e.d || []) : op === 'a' ? (e.a || []) :
+  const roles = op === 'r' ? (e.r || []) : op === 'c' ? (e.c || []) : op === 'u' ? (e.u || e.c || []) : op === 'd' ? (e.d || (e.flow ? e.c || [] : [])) :   /* có quy trình duyệt: người lập xóa được bản chưa duyệt */ op === 'a' ? (e.a || []) :
     op === 'x' ? (e.x || (e.key === 'customer' ? MGR : [...MGR, ...(e.c || [])])) : [];
   if (op === 'r' && user.role === 'lanh_dao') return true;
   return roles.includes(user.role);
@@ -295,6 +295,9 @@ function lockKeepOf(e, status, user) {
   const s = e.softLock;
   return s?.st.includes(status) && !s.boss.includes(user.role) && user.role !== 'admin' ? s.keep : null;
 }
+// chưa duyệt (nháp / bị trả lại / đang chờ duyệt) → xóa được dù đang khóa sửa; đã duyệt / đã chốt thì không
+const undecided = (e, st) => !!e.flow && [...e.flow.submit, 'cho_duyet'].includes(st);
+const lockDel = (e, st) => !undecided(e, st) && (e.lock?.includes(st) || e.softLock?.st.includes(st));
 // quyền trên một bản ghi cụ thể — giao diện dựa vào đây để hiện nút
 async function perms(e, row, user, approvals, db) {
   const keep = lockKeepOf(e, row.status, user), locked = !!keep;
@@ -302,7 +305,7 @@ async function perms(e, row, user, approvals, db) {
   const fl = e.flow;
   const out = {
     edit: can(user, e, 'u') && (!locked || !!keep.length), locked, lockKeep: keep, softOpen: !locked && !!e.softLock?.st.includes(row.status),
-    del: can(user, e, 'd') && !(H[e.key]?.noDelete?.(row)),
+    del: can(user, e, 'd') && !lockDel(e, row.status) && !(H[e.key]?.noDelete?.(row)),
     submit: !!fl && fl.submit.includes(row[fl.field]) && (can(user, e, 'c') || can(user, e, 'u')),
     approve: !!open && canApprove(e, row, user, open), selfApproval: !!open && open.requested_by === user.id && user.role !== 'admin',
     acts: (e.acts || []).filter(a => (a.from === '*' || a.from.includes(row.status)) && (user.role === 'admin' || a.roles.includes(user.role))).map(a => a.k),
@@ -434,9 +437,11 @@ async function remove(entKey, id, user, opts = {}) {
     const old = notFound(await raw(db, entKey, +id, true));
     if (!opts.system) {
       if (!can(user, e, 'd')) deny(`Vai trò của bạn không được xóa ${e.one}`);
-      if (e.lock?.includes(old.status) || e.softLock?.st.includes(old.status)) bad(`Không xóa ${e.one} đã chốt / đang trình duyệt`);
+      await scopeCheck(db, e, old, user);
+      if (lockDel(e, old.status)) bad(`Không xóa ${e.one} đã duyệt / đã chốt`);
     }
     const why = H[entKey]?.noDelete?.(old); if (why) bad(why);
+    if (H[entKey]?.beforeDelete) await H[entKey].beforeDelete(old, ctxOf(db, user));   // dọn dữ liệu con tự sinh
     await db.q(`DELETE FROM ${e.table} WHERE id = $1`, [old.id]);
     await db.q("UPDATE kd_approval SET status = 'huy' WHERE ent = $1 AND rec_id = $2 AND status = 'cho_duyet'", [entKey, old.id]);
     await audit(db, entKey, old.id, 'xoa', old, null, user, opts.reason, old.is_demo);

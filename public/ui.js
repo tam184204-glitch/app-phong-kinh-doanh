@@ -877,7 +877,7 @@ async function listView(main, ent, params = {}) {
     const p = new URLSearchParams(); if (S.q) p.set('q', S.q); if (S.status) p.set('status', S.status); if (S.project) p.set('project', S.project); if (S.mine) p.set('mine', '1'); if (S.sort) p.set('sort', S.sort); p.set('limit', S.limit); if (grp()) p.set('group', grp());
     for (const [k, v] of Object.entries(S)) if (k.startsWith('f_') && v) p.set(k, v);
     const d = await api('GET', `/api/e/${ent}?${p}`);
-    S.rowSt = new Map(d.rows.map(r => [r.id, r.status]));   // trạng thái từng dòng: nút Xóa hàng loạt chỉ cho bản nháp
+    S.rowSt = new Map(d.rows.map(r => [r.id, r.status]));   // trạng thái từng dòng: nút Xóa hàng loạt chỉ cho bản chưa duyệt
     $('#cnt', main).textContent = `${d.rows.length < d.total ? `${d.rows.length} / ` : ''}${d.total} ${E.one}`;
     if (st) { const all = Object.values(d.counts || {}).reduce((a, b) => a + b, 0); $('#stTabs', main).innerHTML = `<button data-s="" class="${!S.status ? 'on' : ''}">Tất cả<span class="c">${all}</span></button>` + st.o.filter(o => d.counts?.[o[0]] || S.status === o[0] || (hdKinds && ['du_thao', 'cho_duyet', 'da_ky'].includes(o[0]))).map(o => `<button data-s="${o[0]}" class="${S.status === o[0] ? 'on' : ''}">${esc(o[1])}<span class="c">${d.counts?.[o[0]] || 0}</span></button>`).join(''); }
     const LV = E.lists?.[grp()], { cols, head } = liqCols(LV?.cols || E.list, LV?.head, S.status), headL = k => LV?.label?.[k] || colLabel(ent, k);
@@ -892,7 +892,7 @@ async function listView(main, ent, params = {}) {
   };
   const drawBulk = () => {
     const n = S.sel.size, b = $('#bulk', main);
-    b.innerHTML = n ? `<div class="bulk"><b>Đã chọn ${n}</b>${E.flow ? `<button class="btn sm amb" data-b="submit">${ico('fa-paper-plane')} Trình duyệt</button>` : ''}${E.flow && E.perm.a ? `<button class="btn sm ok" data-b="ok">${ico('fa-check')} Duyệt</button><button class="btn sm danger" data-b="no">${ico('fa-xmark')} Từ chối</button>` : ''}${E.perm.d && [...S.sel].every(id => (S.rowSt?.get(id) ?? 'nhap') === 'nhap') ? `<button class="btn sm danger" data-b="del">${ico('fa-trash')} Xóa</button>` : ''}<button class="btn sm ghost" data-b="clr">Bỏ chọn</button></div>` : '';
+    b.innerHTML = n ? `<div class="bulk"><b>Đã chọn ${n}</b>${E.flow ? `<button class="btn sm amb" data-b="submit">${ico('fa-paper-plane')} Trình duyệt</button>` : ''}${E.flow && E.perm.a ? `<button class="btn sm ok" data-b="ok">${ico('fa-check')} Duyệt</button><button class="btn sm danger" data-b="no">${ico('fa-xmark')} Từ chối</button>` : ''}${E.perm.d && [...S.sel].every(id => (E.flow ? [...E.flow.submit, 'cho_duyet'] : ['nhap']).includes(S.rowSt?.get(id) ?? 'nhap')) ? `<button class="btn sm danger" data-b="del">${ico('fa-trash')} Xóa</button>` : ''}<button class="btn sm ghost" data-b="clr">Bỏ chọn</button></div>` : '';
   };
   ST.reload = load;
   main.onclick = run(async e => {
@@ -916,7 +916,7 @@ async function listView(main, ent, params = {}) {
     if (bb) {
       if (bb.dataset.b === 'clr') { S.sel.clear(); return load(); }
       if (bb.dataset.b === 'del') {   // xóa bản nháp đã chọn
-        if (!await ask('Xóa bản nháp', `Xóa ${S.sel.size} ${E.one} đang ở bản nháp? Không khôi phục được.`, { danger: 1, okLabel: 'Xóa' })) return;
+        if (!await ask('Xóa bản chưa duyệt', `Xóa ${S.sel.size} ${E.one} chưa duyệt? Không khôi phục được.`, { danger: 1, okLabel: 'Xóa' })) return;
         let ok = 0; const errs = [];
         for (const id of S.sel) { try { await api('DELETE', `/api/e/${ent}/${id}`); ok++; } catch (er) { errs.push(`#${id} ${er.message}`); } }
         toast(`Đã xóa ${ok}${errs.length ? ` · lỗi ${errs.length}: ${errs.slice(0, 2).join('; ')}` : ''}`, !!errs.length);

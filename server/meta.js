@@ -66,7 +66,7 @@ def('unit', {
   purpose: 'Tạo hồ sơ sản phẩm dùng chung', users: 'Nhân viên quản lý giỏ hàng',
   how: 'Nhập dự án → tòa → căn → kiểm tra trùng → lưu → duyệt kích hoạt',
   rules: 'Không trùng mã căn trong dự án; diện tích > 0; trạng thái bán thay đổi theo giao dịch',
-  c: ['truong_phong'], a: MGR, fields: [
+  c: ['truong_phong'], d: [], a: MGR, fields: [
     { k: 'project_id', l: 'Dự án', t: 'ref', ref: 'project', req: 1 },
     { k: 'building_id', l: 'Tòa / khu', t: 'ref', ref: 'building', req: 1, dep: 'project_id' },
     { k: 'code', l: 'Mã căn', t: 'text', req: 1, help: 'CTS-P-0201' },
