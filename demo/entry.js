@@ -124,6 +124,20 @@ async function boot(pgliteUrl) {
     }
     await q("UPDATE kd_contract SET plan_sign = CURRENT_DATE WHERE sign_place = $1 AND status = 'du_thao'", [HD_THU]);
   } catch (e) { console.warn('hợp đồng thử ký hôm nay', e); }
+  // hợp đồng hoàn thiện thử (dữ liệu giả, 1 lần trên mỗi trình duyệt): 2 dự thảo, 2 đang rà soát, 2 đã ký, trên căn đã ký HĐ mua bán
+  try {
+    if (!localStorage.getItem('ctg-kd-demo-hoanthien')) {
+      const C = require('../server/core'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1");
+      const cs = await q("SELECT c.unit_id, c.customer_id, c.owner_id FROM kd_contract c WHERE c.kind = 'hdmb' AND c.ptype = 'can_ho' AND c.status = 'da_ky' AND NOT EXISTS (SELECT 1 FROM kd_contract h WHERE h.unit_id = c.unit_id AND h.kind = 'hoan_thien') ORDER BY c.id LIMIT 6");
+      const gia = [[320e6, 0], [380e6, 20e6], [320e6, 10e6], [280e6, 0], [380e6, 30e6], [320e6, 20e6]];
+      for (const [i, c] of cs.entries()) {
+        const r = await C.create('contract', { kind: 'hoan_thien', ptype: 'can_ho', ...c, finish_value: gia[i][0], discount: gia[i][1] || null, new_schedule: [{ name: 'Đợt 1 – sau khi ký hợp đồng', due_on: new Date(Date.now() + 864e6).toISOString().slice(0, 10), pct: 50 }, { name: 'Đợt 2 – trước khi bàn giao', due_on: new Date(Date.now() + 7776e6).toISOString().slice(0, 10), pct: 50 }] }, u, { demo: true });
+        if (i >= 2) await C.submit('contract', r.row.id, u, {});
+        if (i >= 4) await C.approve('contract', r.row.id, u, { ok: true });
+      }
+      localStorage.setItem('ctg-kd-demo-hoanthien', '1');
+    }
+  } catch (e) { console.warn('hợp đồng hoàn thiện thử', e); }
   const job = async () => { try { await tx(db => biz.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.warn('job', e.message); } };
   await job(); setInterval(job, 2 * 60e3);
 
