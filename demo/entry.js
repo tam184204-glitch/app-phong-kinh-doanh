@@ -138,6 +138,15 @@ async function boot(pgliteUrl) {
       localStorage.setItem('ctg-kd-demo-hoanthien', '1');
     }
   } catch (e) { console.warn('hợp đồng hoàn thiện thử', e); }
+  // phiếu đăng ký thử đã hủy để xem tab Đã hủy (trạng thái / ngày trả hồ sơ, bản scan): dữ liệu chưa có phiếu hủy nào thì hủy 3 phiếu thử chưa lập hợp đồng, 1 phiếu ghi đã trả hồ sơ
+  try {
+    if (!(await one("SELECT 1 AS x FROM kd_reservation WHERE status = 'huy' LIMIT 1"))) {
+      const C = require('../server/core'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1");
+      const rs = await q("SELECT id FROM kd_reservation WHERE is_demo AND status IN ('qua_han', 'da_coc', 'giu_cho') ORDER BY id DESC LIMIT 3");
+      for (const r of rs) await C.update('reservation', r.id, { reg_state: 'huy', note: 'Khách xin hủy đăng ký (dữ liệu thử)' }, u);
+      if (rs[0]) await C.update('reservation', rs[0].id, { docs_return: 'da_tra' }, u);
+    }
+  } catch (e) { console.warn('phiếu hủy thử', e); }
   const job = async () => { try { await tx(db => biz.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.warn('job', e.message); } };
   await job(); setInterval(job, 2 * 60e3);
 
