@@ -389,9 +389,9 @@ function bravoLayout(form, layout) {
 
 async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, htDraft } = {}) {   // skip: trường không hiện trong form (vẫn gửi giá trị preset / mặc định)
   const E = M.ents[ent];
-  let rec = { ...preset }, perm = null;
+  let rec = { ...preset }, perm = null, trace = null;
   if (id) {
-    const g = await api('GET', `/api/e/${ent}/${id}`); rec = g.row; perm = g.perm;
+    const g = await api('GET', `/api/e/${ent}/${id}`); rec = g.row; perm = g.perm; trace = g.trace;
     if (E.fields.some(f => f.pii || f.grid?.some(c => c.pii)) && M.piiRoles.includes(M.me.role) && rec._masked) Object.assign(rec, await api('GET', `/api/pii/${ent}/${id}`));
   } else {
     for (const f of E.fields) if (rec[f.k] === undefined && f.def !== undefined && !f.ro) rec[f.k] = f.def === 'me' ? M.me.id : f.def === 'today' ? today() : f.def === 'now' ? new Date().toISOString() : f.def;
@@ -414,6 +414,8 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   const m = modal({ title: title || (id ? `Sửa ${E.one} ${esc(rec.code || rec.number || '')}` : `${E.code ? `<span class="tag">${E.code}</span> ` : ''}Tạo ${E.one}`), wide: fields.length > 8 || fields.some(wide),
     body, foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="fSave">${ico('fa-floppy-disk')} ${id ? 'Lưu' : E.direct ? `Lưu ${E.one}` : 'Lưu nháp'}</button>${canSubmit ? `<button class="btn amb" id="fSub">${ico('fa-paper-plane')} Lưu và ${esc((E.flow.submitLabel || 'trình duyệt').toLowerCase())}</button>` : ''}` });
   const form = $('form', m.el);
+  $('.mf', m.el).insertAdjacentHTML('afterend', traceLine(trace));
+  for (const ev of ['click', 'focusin']) form.addEventListener(ev, e => { const d = e.target.closest('.fld[data-f]'); if (d) traceField($('.trace', m.el), trace, d.dataset.f, E.fields.find(f => f.k === d.dataset.f)?.l || ''); });
   let htp = null;
   if (ent === 'contract') { bravoLayout(form, HD_LAYOUT); $('.modal', m.el).classList.add('full'); if (rec.kind !== 'hoan_thien') htp = hdPair(form, { ht: htRec, locked: htLocked, tab, draft: htDraft, oldFinish: +rec.finish_value > 0 }); }
   const sch = $('[data-sched]', form);
@@ -724,6 +726,14 @@ async function handoverPick(kind, id) {
 // ---------- ngăn chi tiết ----------
 let DR = null;
 function closeDetail() { DR?.ov.remove(); DR?.el.remove(); DR = null; }
+// như BRAVO: Đã tạo … | Đã sửa … (người sửa)
+const traceLine = t => !t?.created_at ? '' : `<div class="trace">Đã tạo: ${dmyhm(t.created_at)}${t.created_by ? ` (${esc(t.created_by)})` : ''}${t.updated_at ? ` | Đã sửa: ${dmyhm(t.updated_at)}${t.updated_by ? ` (${esc(t.updated_by)})` : ''}` : ''}</div>`;
+// bấm vào một ô: dòng nhỏ đổi sang ai lập, ai sửa đúng ô đó
+function traceField(box, t, k, label) {
+  if (!box || !t) return;
+  const e = t.fields?.[k === 'new_schedule' ? 'lich' : k];
+  box.innerHTML = `<b>${esc(label)}</b>: lập ${dmyhm(t.created_at)}${t.created_by ? ` (${esc(t.created_by)})` : ''} | ${e ? `sửa gần nhất ${dmyhm(e.at)} (${esc(e.who)})` : 'chưa ai sửa'}`;
+}
 async function openDetail(ent, id, tab, plain) {   // plain: chỉ xem (mở từ Lịch ký) — không hàng nút, không dòng báo chốt, ẩn ô trống
   const E = M.ents[ent]; if (!E) return;
   let g; try { g = await api('GET', `/api/e/${ent}/${id}`); } catch (e) { return toast(e.message, true); }
@@ -754,7 +764,8 @@ async function openDetail(ent, id, tab, plain) {   // plain: chỉ xem (mở t�
       ${ent === 'contract' && r.status === 'da_ky' ? `<button class="btn sm ghost" data-do="call">${ico('fa-phone')} Ghi nhắc nợ</button><button class="btn sm ghost" data-do="chg">${ico('fa-file-pen')} Đề nghị điều chỉnh</button>` : ''}
       ${p.del ? `<button class="btn sm ghost danger" data-do="del">${ico('fa-trash')} Xóa</button>` : ''}
     </div>
-    <div class="tabs">${tabs.map(([k, l]) => `<button data-tab="${k}">${l}</button>`).join('')}</div></div><div class="db" id="dBody"></div>`;
+    <div class="tabs">${tabs.map(([k, l]) => `<button data-tab="${k}">${l}</button>`).join('')}</div></div><div class="db" id="dBody"></div>${traceLine(g.trace)}`;
+  el.addEventListener('click', ev => { const d = ev.target.closest('[data-fk]'); if (d) traceField($('.trace', el), g.trace, d.dataset.fk, E.fields.find(f => f.k === d.dataset.fk)?.l || ''); });
   const body = $('#dBody', el);
   const T = {
     info: () => {
@@ -762,7 +773,7 @@ async function openDetail(ent, id, tab, plain) {   // plain: chỉ xem (mở t�
       let h = !plain && p.locked ? `<div class="lockbar">${ico('fa-lock')} ${E.one[0].toUpperCase() + E.one.slice(1)} đã chốt / đang trình duyệt — ${ent === 'contract' && E.softLock?.st.includes(r.status) ? 'nhân viên chỉ sửa được Lần thanh toán, nội dung khác do quản lý sửa.' : `không sửa trực tiếp${ent === 'contract' ? '. Thay đổi qua «Điều chỉnh – phụ lục hợp đồng».' : '.'}`}</div>` : '';
       if (E.note) h += `<div class="warnbar">${ico('fa-circle-info')}<span>${esc(E.note)}</span></div>`;
       if (String(r.sale_check || '').startsWith('⚠')) h += `<div class="warnbar">${ico('fa-triangle-exclamation')} <div><b>Cảnh báo mở bán:</b> ${esc(r.sale_check.slice(2))}</div></div>`;   // căn ngoài thông báo mở bán đã duyệt gần nhất
-      h += `<dl class="kv">${fs.filter(f => f.t !== 'check' && (f.t !== 'json' || f.grid) && isShown(f, r) && (!plain || (r[f.k] != null && r[f.k] !== '' && r[f.k] !== false && !(Array.isArray(r[f.k]) && !r[f.k].length)))).map(f => `<div class="${f.t === 'long' || f.grid || (f.pick && r._units) ? 'wide' : ''}"><dt>${esc(f.l)}</dt><dd>${show(f, r)}${(f.pii || f.grid?.some(c => c.pii)) && r._masked && M.piiRoles.includes(M.me.role) ? ` <button class="btn ghost sm" data-do="pii">${ico('fa-eye')} Hiện</button>` : ''}</dd></div>`).join('')}</dl>`;
+      h += `<dl class="kv">${fs.filter(f => f.t !== 'check' && (f.t !== 'json' || f.grid) && isShown(f, r) && (!plain || (r[f.k] != null && r[f.k] !== '' && r[f.k] !== false && !(Array.isArray(r[f.k]) && !r[f.k].length)))).map(f => `<div data-fk="${f.k}" class="${f.t === 'long' || f.grid || (f.pick && r._units) ? 'wide' : ''}"><dt>${esc(f.l)}</dt><dd>${show(f, r)}${(f.pii || f.grid?.some(c => c.pii)) && r._masked && M.piiRoles.includes(M.me.role) ? ` <button class="btn ghost sm" data-do="pii">${ico('fa-eye')} Hiện</button>` : ''}</dd></div>`).join('')}</dl>`;
       for (const f of fs.filter(f => f.t === 'check')) h += `<div class="sec-title">${esc(f.l)}</div><table class="t compact noclick"><thead><tr><th>Giấy tờ</th><th>Tình trạng</th><th>Ghi chú</th></tr></thead><tbody>${(r[f.k] || []).map(x => `<tr><td>${esc(x.n)}</td><td>${x.st ? pill(CK.find(o => o[0] === x.st)[1], x.st === 'da_nhan' ? 'g' : 'r') : '<span class="muted">chưa</span>'}</td><td>${esc(x.note)}</td></tr>`).join('')}</tbody></table>`;
       if (r.reviews?.length) h += `<div class="sec-title">Các bước xét duyệt nội bộ</div><div class="tl">${r.reviews.map(x => `<div><b>${esc({ kiem_tra_1: 'Kiểm tra lần 1', kiem_tra_cheo: 'Kiểm tra chéo', doi_chieu_goc: 'Đối chiếu bản gốc' }[x.step] || x.step)}</b> — ${x.conclusion === 'dat' ? pill('Đạt', 'g') : pill('Cần bổ sung', 'a')}<br><small>${esc(x.by)} · ${dmyhm(x.at)}${x.note ? ' · ' + esc(x.note) : ''}</small></div>`).join('')}</div>`;
       if (r.new_schedule?.length) h += `<div class="sec-title">Tiến độ thanh toán mới</div>${schedTable(r.new_schedule)}`;

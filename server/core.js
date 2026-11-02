@@ -275,7 +275,19 @@ async function get(entKey, id, user, { db = { q, one }, reveal } = {}) {
   const approvals = await db.q(`SELECT a.*, r.full_name AS requested_by_l, d.full_name AS decided_by_l, p.full_name AS approver_l FROM kd_approval a
     LEFT JOIN kd_user r ON r.id = a.requested_by LEFT JOIN kd_user d ON d.id = a.decided_by LEFT JOIN kd_user p ON p.id = a.approver_id
     WHERE a.ent = $1 AND a.rec_id = $2 ORDER BY a.requested_at`, [entKey, row.id]);
-  return { row, files, notes, approvals, perm: await perms(e, row, user, approvals, db) };
+  // dòng nhỏ cuối hồ sơ: ai tạo, ai sửa, lúc nào — mọi vai trò trừ nhân viên bán hàng
+  let trace = null;
+  if (user.role !== 'ban_hang') {
+    const who = async id => id ? (await db.one('SELECT full_name FROM kd_user WHERE id = $1', [id]))?.full_name || null : null;
+    // người sửa gần nhất theo nhật ký: tính cả sửa lịch thu, tệp, chuyển trạng thái; bỏ thao tác chỉ xem và cập nhật tự động không có người
+    const last = await db.one(`SELECT a.at, u.full_name FROM kd_audit a JOIN kd_user u ON u.id = a.user_id WHERE a.ent = $1 AND a.rec_id = $2 AND a.action NOT IN ('tao', 'xem_dinh_danh', 'xuat_du_lieu') ORDER BY a.at DESC, a.id DESC LIMIT 1`, [entKey, row.id]);
+    // từng ô: nhật ký chỉ ghi các trường thật sự đổi, lấy lần đổi gần nhất của mỗi trường (không gửi giá trị, chỉ ai và lúc nào)
+    const fields = {};
+    for (const x of await db.q(`SELECT a.after, a.at, u.full_name FROM kd_audit a JOIN kd_user u ON u.id = a.user_id WHERE a.ent = $1 AND a.rec_id = $2 AND a.after IS NOT NULL AND a.action NOT IN ('tao', 'xem_dinh_danh', 'xuat_du_lieu') ORDER BY a.at, a.id`, [entKey, row.id]))
+      for (const k of Object.keys(x.after)) fields[k] = { at: x.at, who: x.full_name };
+    trace = { created_at: row.created_at, created_by: await who(row.created_by), updated_at: last?.at || null, updated_by: last?.full_name || null, fields };
+  }
+  return { row, files, notes, approvals, trace, perm: await perms(e, row, user, approvals, db) };
 }
 // trường còn được sửa khi bản ghi bị khóa theo trạng thái; null = không khóa. softLock: quản lý (boss) không bị khóa
 function lockKeepOf(e, status, user) {
