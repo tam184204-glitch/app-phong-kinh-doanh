@@ -303,6 +303,21 @@ async function payouts(db, user, f = {}) {
     LEFT JOIN kd_customer k ON k.id = coalesce(c.customer_id, r.customer_id) WHERE true ${w} ORDER BY t.pay_due NULLS LAST, t.id DESC`, p);
 }
 // theo dõi vay vốn: hợp đồng căn hộ chung cư + nhà liền kề đã ký tự sổ vào đây (sửa ở hợp đồng là cập nhật)
+// tiền hoàn thiện: HĐ hoàn thiện riêng lấy số thu thật; gộp trong HĐMB thì tạm tính theo % đã thu của hợp đồng (thu Bravo không tách khoản hoàn thiện)
+async function finishPay(db, user, f = {}) {
+  if (!can(user, E.installment, 'r')) deny();
+  const cs = await signedContracts(db, f, "AND c.status = 'da_ky'");
+  const own = new Set(cs.filter(c => c.kind === 'hoan_thien').map(c => c.unit_id));
+  const rows = cs.flatMap(c => {
+    const separate = c.kind === 'hoan_thien', value = separate ? +c.d.total : +c.finish_value || 0;
+    if (!value || (!separate && own.has(c.unit_id))) return [];
+    const paid = separate ? +c.d.paid : Math.round(value * Math.min(1, (+c.d.paid || 0) / (+c.d.total || 1))), left = value - paid;
+    return [{ contract_id: c.id, project: c.project, building: c.building, unit: c.unit, customer: c.customer, number: c.number, basis: separate ? 'HĐ hoàn thiện riêng' : 'Gộp HĐMB (tạm tính)',
+      value, paid, left, paid_pct: Math.round(paid / value * 1000) / 10, overdue: separate ? c.d.overdue : null, next_due: separate ? c.d.next?.due_on || null : null, state: !paid ? 'chua' : left > 0 ? 'dang' : 'du' }];
+  });
+  return { rows, bravo_sync: await bravoSync(db) };
+}
+
 async function loans(db, user, f = {}) {
   if (!can(user, E.contract, 'r')) deny();
   const p = []; const w = uf(f, p);
@@ -614,4 +629,4 @@ async function monthly(db, period, projectId) {
   };
 }
 
-module.exports = { payouts, loans, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
+module.exports = { payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
