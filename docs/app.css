@@ -868,3 +868,19 @@ table.prod-t tfoot td { font-weight: 800 !important; color: var(--ink) !importan
 .sc-bar i b { display: block; height: 100%; background: var(--cobalt-d); border-radius: 0 4px 4px 0; }
 .sc-bar em { font-style: normal; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 1100px) { .sc-wrap { grid-template-columns: 1fr; } }
+
+/* Thanh menu trái: gradient xanh navy */
+.side { background: linear-gradient(180deg, #0F2748 0%, #143866 55%, #1E4E8C 100%); border-right-color: rgba(255, 255, 255, .08); backdrop-filter: none; scrollbar-color: rgba(255, 255, 255, .28) transparent; }
+.side h6 { color: #9db4d0; }
+.side .mod > button, .side .mod > a.solo { color: #e8f0fa; }
+.side .mod > button:hover, .side .mod > a.solo:hover, .side .mod .items a:hover { background: rgba(255, 255, 255, .1); }
+.side .mod > button .n, .side .mod > a.solo .n { background: rgba(255, 255, 255, .14); color: #d7e3f2; }
+.side .mod > button .chev { color: #9db4d0; }
+.side .mod.cur > button, .side .mod > a.solo.on { color: #fff; background: rgba(255, 255, 255, .12); }
+.side .mod.cur > button .n, .side .mod > a.solo.on .n { background: var(--amber); color: var(--ink); }
+.side .mod .items a { color: #c9d8ea; border-left-color: rgba(255, 255, 255, .18); }
+.side .mod .items a.on { background: rgba(255, 255, 255, .14); color: #fff; border-left-color: var(--amber); }
+.side .mod .items a small { color: #9db4d0; }
+.side a:focus-visible, .side button:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+.side .foot { background: rgba(255, 255, 255, .08); border-color: rgba(255, 255, 255, .14); box-shadow: none; color: #c9d8ea; }
+.side .foot a, .side .foot b { color: #fff; }
