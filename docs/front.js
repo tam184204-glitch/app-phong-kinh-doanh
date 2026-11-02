@@ -313,8 +313,7 @@ function schedEditor(el, rows, { total, base, first } = {}) {   // first(): ngà
 // ---------- form tạo / sửa ----------
 // form hợp đồng bố cục như BRAVO «Cập nhật hợp đồng căn hộ»: dòng đầu → bên mua | bên bán → thông tin chi tiết → lần thanh toán. Mỗi mảng con = 1 dòng; trường không liệt kê xuống «Thông tin khác»
 const HD_LAYOUT = [
-  { rows: [['unit_id']], cols: 4 },   // dùng chung cho HĐ mua bán và HĐ hoàn thiện
-  { rows: [['seller_unit', 'agreement']], cols: 4 },
+  { rows: [['unit_id', 'seller_unit', 'agreement']], cols: 3 },   // dùng chung cho HĐ mua bán và HĐ hoàn thiện
   { side: [
     { t: 'Bên mua nhà ở', rows: [['customer_id'], ['b_id_no'], ['b_id_date'], ['b_id_place'], ['b_addr'], ['b_perm_addr'], ['b_temp_addr'], ['b_phone', 'b_email'], ['b_bank_acc'], ['b_bank_name'], ['request_on', 'co_owner']] },
     { t: 'Bên bán nhà ở', rows: [['s_name'], ['s_addr'], ['s_phone', 's_tax'], ['s_bank_acc'], ['s_bank_name'], ['s_rep'], ['s_title'], ['s_poa'], ['owner_id'], ['commission_amt', 'commission_pct'], ['common_area_amt', 'all_signed']] }] },

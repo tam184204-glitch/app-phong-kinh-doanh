@@ -46,7 +46,7 @@ def('project', {
   ], list: ['code', 'name', 'investor', 'kind', 'units_total'],
 });
 def('building', {
-  title: 'Tòa / khu', one: 'tòa', mod: '02', icon: 'fa-building', disp: "t.code||coalesce(' · '||t.name,'')",
+  title: 'Tòa / khu', one: 'tòa', mod: '02', icon: 'fa-building', disp: "coalesce(t.name, t.code)",
   c: ['truong_phong'], fields: [
     { k: 'project_id', l: 'Dự án', t: 'ref', ref: 'project', req: 1 },
     { k: 'code', l: 'Mã tòa / khu', t: 'text', req: 1, help: 'P / G / LK' },
