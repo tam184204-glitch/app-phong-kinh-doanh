@@ -13,10 +13,15 @@ const monthsBetween = (a, b) => { const out = []; let [y, m] = a.split('-').map(
 // điều kiện lọc căn theo dự án / tòa (alias u)
 function uf(f, p, alias = 'u') {
   const w = [];
+  for (const k of ['project', 'building']) if (f[k] && !/^\d+$/.test(f[k])) bad('Bộ lọc không hợp lệ');
   if (f.project) { p.push(+f.project); w.push(`${alias}.project_id = $${p.length}`); }
   if (f.building) { p.push(+f.building); w.push(`${alias}.building_id = $${p.length}`); }
   return w.length ? ' AND ' + w.join(' AND ') : '';
 }
+// hồ sơ NOXH chưa gắn căn vẫn thuộc dự án của hồ sơ
+const nxw = w => w.replace('u.project_id =', 'coalesce(u.project_id, n.project_id) =');
+// nhân viên chỉ xem của mình (bán hàng): chỉ danh sách mình phụ trách / tạo
+const mine = (user, a) => C.own(user, E.customer) ? ` AND (${a}.owner_id = ${+user.id} OR ${a}.created_by = ${+user.id})` : '';
 const period = f => {
   const t = today();
   const to = mon(f.to) || t.slice(0, 7), from = mon(f.from) || `${to.slice(0, 4)}-01`;
@@ -72,16 +77,21 @@ async function dashboard(db, user, f) {
     target_sales: tg.find(x => x.m === mm)?.ts || 0, target_collect: tg.find(x => x.m === mm)?.tc || 0, target_units: tg.find(x => x.m === mm)?.tu || 0,
   }));
   const sum = k => series.reduce((s, x) => s + x[k], 0);
-  const cur = series.find(x => x.m === m) || { plan: 0, actual: 0 };
+  // «tháng này» luôn theo tháng hiện tại, không phụ thuộc kỳ đang chọn
+  const pn = [m]; const wn = uf(f, pn);
+  const cur = {
+    plan: +(await db.one(`SELECT coalesce(sum(cp.expected), 0) s FROM kd_collect_plan cp JOIN kd_unit u ON u.id = cp.unit_id WHERE cp.status = 'da_duyet' AND cp.month = $1 ${wn}`, pn)).s,
+    actual: +(await db.one(`SELECT coalesce(sum(r.amount), 0) s FROM kd_receipt r JOIN kd_contract c ON c.id = r.contract_id JOIN kd_unit u ON u.id = c.unit_id WHERE r.status = 'hop_le' AND to_char(r.voucher_date, 'YYYY-MM') = $1 ${wn}`, pn)).s,
+  };
 
   const cnt = async (sql, pp = []) => Object.fromEntries((await db.q(sql, pp)).map(r => [r.status, r.n]));
   const p5 = []; const w5 = uf(f, p5);
-  const nx = await cnt(`SELECT n.status, count(*) n FROM kd_noxh_check n LEFT JOIN kd_unit u ON u.id = n.unit_id WHERE true ${w5} GROUP BY 1`, p5);
+  const nx = await cnt(`SELECT n.status, count(*) n FROM kd_noxh_check n LEFT JOIN kd_unit u ON u.id = n.unit_id WHERE true ${nxw(w5)} GROUP BY 1`, p5);
   const p6 = []; const w6 = uf(f, p6);
   const ct = await cnt(`SELECT c.status, count(*) n FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id WHERE c.kind <> 'hoan_thien' ${w6} GROUP BY 1`, p6);
   const p7 = []; const w7 = uf(f, p7);
   const hv = await cnt(`SELECT h.status, count(*) n FROM kd_handover h JOIN kd_unit u ON u.id = h.unit_id WHERE true ${w7} GROUP BY 1`, p7);
-  const ready = (await readyList(db, f)).filter(r => r.eligible && !r.handover_id).length;
+  const ready = (await readyList(db, f)).filter(noPlan).length;
 
   const al = await alerts(db, user, { all: true, ...f });
   const alertCats = Object.values(al.reduce((a, x) => { (a[x.cat] ||= { cat: x.cat, label: ALERT_CAT[x.cat], n: 0, red: 0 }).n++; if (x.lvl === 'r') a[x.cat].red++; return a; }, {}));
@@ -98,9 +108,9 @@ async function dashboard(db, user, f) {
     },
     units: U, byBuilding: byB, series,
     progress: {
-      noxh_open: (nx.nhap || 0), noxh_review: nx.cho_duyet || 0, noxh_ok: nx.da_duyet || 0,
+      noxh_open: (nx.nhap || 0) + (nx.tu_choi || 0), noxh_review: nx.cho_duyet || 0, noxh_ok: nx.da_duyet || 0,
       ct_draft: (ct.du_thao || 0) + (ct.tu_choi || 0), ct_review: ct.cho_duyet || 0, ct_wait: ct.cho_ky || 0, ct_signed: ct.da_ky || 0,
-      ho_ready: ready + (hv.du_dk || 0), ho_invited: (hv.da_moi || 0) + (hv.da_hen || 0), ho_done: (hv.da_ban_giao || 0) + (hv.hoan_tat || 0), ho_closed: hv.hoan_tat || 0,
+      ho_ready: ready, ho_invited: (hv.da_moi || 0) + (hv.da_hen || 0), ho_done: (hv.da_ban_giao || 0) + (hv.hoan_tat || 0), ho_closed: hv.hoan_tat || 0,
       ho_not: signed.filter(c => c.kind !== 'hoan_thien').length - (hv.da_ban_giao || 0) - (hv.hoan_tat || 0),
     },
     alerts: alertCats,
@@ -112,7 +122,13 @@ const COLS = {
   unit: [['unit', 'Mã căn'], ['building', 'Tòa'], ['kind', 'Loại'], ['area', 'DT (m²)', 'num'], ['price', 'Tổng giá', 'money'], ['status_l', 'Trạng thái'], ['customer', 'Khách hàng']],
   debt: [['project', 'Dự án'], ['building', 'Tòa'], ['unit', 'Mã căn'], ['customer', 'Khách hàng'], ['number', 'Số HĐ'], ['total', 'Phải thu', 'money'], ['paid', 'Đã thu', 'money'], ['left', 'Còn phải thu', 'money'], ['due', 'Đến hạn', 'money'], ['overdue', 'Quá hạn', 'money'], ['overdue_days', 'Số ngày quá hạn', 'int'], ['owner', 'Phụ trách']],
 };
+const shortName = s => { const w = String(s || '').trim().split(/\s+/); return w.map((x, i) => i < w.length - 1 ? x[0] + '.' : x).join(' '); };
 async function drill(db, user, key, f) {
+  const d = await drillRows(db, user, key, f);
+  if (C.own(user, E.customer)) for (const r of d?.rows || []) { if (r.customer) r.customer = shortName(r.customer); delete r.phone; }
+  return d;
+}
+async function drillRows(db, user, key, f) {
   const P = period(f), [k, arg] = key.split(':');
   const unitRows = async (cond, pp = []) => {
     const p = [...pp];
@@ -164,12 +180,12 @@ async function drill(db, user, key, f) {
     }
     case 'noxh': {
       const p = [arg]; const w = uf(f, p);
-      const rows = await db.q(`SELECT n.id, n.unit_id, u.code unit, k.full_name customer, n.result, n.supplement_due, n.status FROM kd_noxh_check n JOIN kd_customer k ON k.id = n.customer_id LEFT JOIN kd_unit u ON u.id = n.unit_id WHERE n.status = ANY(string_to_array($1, ',')) ${w} ORDER BY n.id`, p);
+      const rows = await db.q(`SELECT n.id, n.unit_id, u.code unit, k.full_name customer, n.result, n.supplement_due, n.status FROM kd_noxh_check n JOIN kd_customer k ON k.id = n.customer_id LEFT JOIN kd_unit u ON u.id = n.unit_id WHERE n.status = ANY(string_to_array($1, ',')) ${nxw(w)} ORDER BY n.id`, p);
       rows.forEach(r => { r._ent = ['noxh_check', r.id]; r.result = C.F.noxh_check.result.o.find(o => o[0] === r.result)?.[1]; });
       return { title: 'Hồ sơ NOXH', cols: [['unit', 'Căn'], ['customer', 'Khách hàng'], ['result', 'Kết quả kiểm tra'], ['supplement_due', 'Hạn bổ sung', 'date']], rows };
     }
     case 'handover': {
-      if (arg === 'ready') { const rows = (await readyList(db, f)).filter(r => r.eligible && !r.handover_id); return { title: 'Căn đủ điều kiện, chưa lập lịch bàn giao', cols: [['unit', 'Mã căn'], ['customer', 'Khách hàng'], ['paid_pct', 'Đã thu (%)', 'num'], ['owner', 'Phụ trách']], rows }; }
+      if (arg === 'ready') { const rows = (await readyList(db, f)).filter(noPlan); return { title: 'Căn đủ điều kiện, chưa lập lịch bàn giao', cols: [['unit', 'Mã căn'], ['customer', 'Khách hàng'], ['paid_pct', 'Đã thu (%)', 'num'], ['owner', 'Phụ trách']], rows }; }
       if (arg === 'not') { const cs = await signedContracts(db, f, "AND c.status='da_ky' AND c.kind <> 'hoan_thien' AND NOT EXISTS (SELECT 1 FROM kd_handover h WHERE h.unit_id = c.unit_id AND h.status IN ('da_ban_giao','hoan_tat'))"); return { title: 'Căn đã ký HĐ, chưa bàn giao', cols: [['unit', 'Mã căn'], ['customer', 'Khách hàng'], ['paid_pct', 'Đã thu (%)', 'num'], ['owner', 'Phụ trách']], rows: cs.map(c => ({ unit_id: c.unit_id, unit: c.unit, customer: c.customer, paid_pct: c.d.paid_pct, owner: c.owner })) }; }
       const p = [arg]; const w = uf(f, p);
       const rows = await db.q(`SELECT h.id, h.unit_id, u.code unit, h.plan_at, h.actual_on, h.status FROM kd_handover h JOIN kd_unit u ON u.id = h.unit_id WHERE h.status = ANY(string_to_array($1, ',')) ${w} ORDER BY h.plan_at NULLS LAST`, p);
@@ -233,7 +249,7 @@ async function alerts(db, user, f = {}) {
     push('lien_he', 'b', `${l.code} · ${l.full_name} — hẹn liên hệ lại ${C.dmy(l.next_at)}`, 'contact_log', l.id, l.next_at, l.who, null, l.owner_id);
   for (const r of (await readyList(db, f)).filter(r => r.eligible && !r.handover_id)) push('ban_giao', 'a', `${r.unit} · ${r.customer} — đủ điều kiện, chưa lập kế hoạch bàn giao`, null, null, null, r.owner, r.unit_id, r.owner_id);
   for (const h of await db.q(`SELECT h.id, h.plan_at, h.status, h.owner_id, u.code unit, u.id unit_id, own.full_name who FROM kd_handover h JOIN kd_unit u ON u.id = h.unit_id LEFT JOIN kd_user own ON own.id = h.owner_id
-    WHERE (h.status IN ('da_moi','da_hen') AND h.plan_at < now() + interval '3 days') OR (h.status = 'da_ban_giao' AND h.actual_on < $${p.length + 1}::date - 30) ${w}`, [...p, t])) {
+    WHERE ((h.status IN ('da_moi','da_hen') AND h.plan_at < now() + interval '3 days') OR (h.status = 'da_ban_giao' AND h.actual_on < $${p.length + 1}::date - 30)) ${w}`, [...p, t])) {
     const late = h.status === 'da_ban_giao' || Date.parse(h.plan_at) < Date.now();
     push('ban_giao', late ? 'r' : 'b', `${h.unit} — ${h.status === 'da_ban_giao' ? 'đã bàn giao trên 30 ngày, chưa hoàn tất tồn tại' : late ? 'đã qua lịch hẹn bàn giao, chưa ghi nhận kết quả' : 'lịch bàn giao ' + new Date(h.plan_at).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`, 'handover', h.id, null, h.who, h.unit_id, h.owner_id);
   }
@@ -277,7 +293,7 @@ async function board(db, user, f) {
   const pid = +f.project || projects.find(p => p.n)?.id; if (!pid) return { projects, buildings: [], units: [] };
   const buildings = await db.q('SELECT b.*, (SELECT count(*) FROM kd_unit u WHERE u.building_id = b.id) n FROM kd_building b WHERE b.project_id = $1 ORDER BY b.code', [pid]);
   const bid = +f.building || buildings.find(b => b.n)?.id;
-  const units = bid ? await db.q(`SELECT u.id, u.code, u.floor, u.kind, u.bedrooms, u.area_tt, u.direction, u.position, u.total_price, u.status, u.handover_plan,
+  const units = bid ? await db.q(`SELECT u.id, u.code, u.floor, u.kind, u.bedrooms, u.area_tt, u.direction, u.position, u.total_price, u.price_net, u.maint_fee, u.finish_value, u.status, u.handover_plan,
       coalesce((SELECT k.full_name FROM kd_contract c JOIN kd_customer k ON k.id = c.customer_id WHERE c.unit_id = u.id AND c.status NOT IN ('huy','thanh_ly') AND c.kind <> 'hoan_thien' LIMIT 1),
                (SELECT k.full_name FROM kd_reservation r JOIN kd_customer k ON k.id = r.customer_id WHERE r.unit_id = u.id AND r.status IN ('cho_duyet','giu_cho','qua_han','da_coc','chuyen_hd') LIMIT 1)) customer,
       (SELECT r.hold_until FROM kd_reservation r WHERE r.unit_id = u.id AND r.status IN ('giu_cho','qua_han','da_coc') LIMIT 1) hold_until,
@@ -301,6 +317,29 @@ async function payouts(db, user, f = {}) {
     FROM kd_cancel_req t LEFT JOIN kd_reservation r ON r.id = t.reservation_id LEFT JOIN kd_contract c ON c.id = t.contract_id
     LEFT JOIN kd_unit u ON u.id = coalesce(c.unit_id, r.unit_id) LEFT JOIN kd_project pj ON pj.id = u.project_id
     LEFT JOIN kd_customer k ON k.id = coalesce(c.customer_id, r.customer_id) WHERE true ${w} ORDER BY t.pay_due NULLS LAST, t.id DESC`, p);
+}
+// theo dõi vay vốn: hợp đồng căn hộ chung cư + nhà liền kề đã ký tự sổ vào đây (sửa ở hợp đồng là cập nhật)
+// tiền hoàn thiện: HĐ hoàn thiện riêng lấy số thu thật; gộp trong HĐMB thì tạm tính theo % đã thu của hợp đồng (thu Bravo không tách khoản hoàn thiện)
+async function finishPay(db, user, f = {}) {
+  if (!can(user, E.installment, 'r')) deny();
+  const cs = await signedContracts(db, f, "AND c.status = 'da_ky'" + mine(user, 'c'));
+  const own = new Set(cs.filter(c => c.kind === 'hoan_thien').map(c => c.unit_id));
+  const rows = cs.flatMap(c => {
+    const separate = c.kind === 'hoan_thien', value = separate ? +c.d.total : +c.finish_value || 0;
+    if (!value || (!separate && own.has(c.unit_id))) return [];
+    const paid = separate ? +c.d.paid : Math.round(value * Math.min(1, (+c.d.paid || 0) / (+c.d.total || 1))), left = value - paid;
+    return [{ contract_id: c.id, project: c.project, building: c.building, unit: c.unit, customer: c.customer, number: c.number, basis: separate ? 'HĐ hoàn thiện riêng' : 'Gộp HĐMB (tạm tính)',
+      value, paid, left, paid_pct: Math.round(paid / value * 1000) / 10, overdue: separate ? c.d.overdue : null, next_due: separate ? c.d.next?.due_on || null : null, state: !paid ? 'chua' : left > 0 ? 'dang' : 'du' }];
+  });
+  return { rows, bravo_sync: await bravoSync(db) };
+}
+
+async function loans(db, user, f = {}) {
+  if (!can(user, E.contract, 'r')) deny();
+  const p = []; const w = uf(f, p);
+  return db.q(`SELECT c.id, c.number, c.contract_on, c.value, c.status, c.loan_status, c.loan_bank, c.loan_doc3, c.ptype, u.code unit, pj.code project, k.full_name customer, coalesce(c.b_phone, k.phone) phone
+    FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_project pj ON pj.id = u.project_id JOIN kd_customer k ON k.id = c.customer_id
+    WHERE c.kind <> 'hoan_thien' AND c.status = 'da_ky' ${w} ${mine(user, 'c')} ORDER BY c.id DESC`, p);
 }
 async function priceSheet(db, user, id) {
   if (!can(user, E.price_policy, 'r')) deny();
@@ -402,9 +441,9 @@ async function search(db, user, qtext) {
 // ======================= SỔ CÔNG NỢ CĂN HỘ (CN-01) =======================
 async function ledger(db, user, f) {
   if (!can(user, E.installment, 'r')) deny();
-  let extra = "AND c.status = 'da_ky'";
+  let extra = "AND c.status = 'da_ky'" + mine(user, 'c');
   if (f.q) extra += ` AND (u.code ILIKE ${pgLit('%' + f.q + '%')} OR k.full_name ILIKE ${pgLit('%' + f.q + '%')} OR c.number ILIKE ${pgLit('%' + f.q + '%')})`;
-  if (f.owner) extra += ` AND c.owner_id = ${+f.owner}`;
+  if (f.owner) { if (!/^\d+$/.test(f.owner)) bad('Bộ lọc không hợp lệ'); extra += ` AND c.owner_id = ${+f.owner}`; }
   const cs = await signedContracts(db, f, extra);
   const t = today(), m = t.slice(0, 7);
   const ids = cs.map(c => c.id);
@@ -427,6 +466,7 @@ async function ledger(db, user, f) {
 const pgLit = s => `'${String(s).replace(/'/g, "''")}'`;
 
 // ======================= CĂN ĐỦ ĐIỀU KIỆN BÀN GIAO =======================
+const noPlan = r => (r.eligible && !r.handover_id) || r.ho_st === 'du_dk';   // đủ điều kiện, chưa lập lịch bàn giao
 async function readyList(db, f = {}) {
   const cs = await signedContracts(db, f, "AND c.status = 'da_ky' AND c.kind IN ('hdmb','thue_mua')");
   const pct = (await C.setting('handover_pay_pct', db)) ?? 95;
@@ -436,36 +476,42 @@ async function readyList(db, f = {}) {
     const payOk = c.d.total > 0 && c.d.paid_pct >= pct && c.d.overdue === 0;
     return { unit_id: c.unit_id, unit: c.unit, project: c.project, building: c.building, customer: c.customer, phone: c.phone, contract_id: c.id, number: c.number, owner: c.owner, owner_id: c.owner_id,
       paid_pct: c.d.paid_pct, overdue: c.d.overdue, cond_contract: true, cond_pay: payOk, cond_tech: h?.cond_tech ?? null, eligible: payOk && (h ? h.cond_tech : true),
-      handover_id: h?.id || null, handover_status: h ? C.F.handover.status.o.find(o => o[0] === h.status)?.[1] : null, plan_at: h?.plan_at || null, pct };
+      handover_id: h?.id || null, ho_st: h?.status || null, handover_status: h ? C.F.handover.status.o.find(o => o[0] === h.status)?.[1] : null, plan_at: h?.plan_at || null, pct };
   }).filter(r => !r.handover_id || ['chua_du_dk', 'du_dk'].includes(ho.get(r.unit_id)?.status) || f.all);
 }
 
 // ======================= LỊCH KÝ =======================
 async function signing(db, user, f) {
   const p = []; const w = uf(f, p);
-  const rows = await db.q(`SELECT c.id, c.number, c.kind, c.plan_sign, c.sign_place, c.sign_status, c.status, c.value, u.code unit, u.id unit_id, k.full_name customer, k.phone, own.full_name owner
-    FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id LEFT JOIN kd_user own ON own.id = c.owner_id
-    WHERE c.status IN ('du_thao','cho_duyet','cho_ky','tu_choi') ${w} ORDER BY c.plan_sign NULLS LAST, c.number`, p);
-  const recent = await db.q(`SELECT c.id, c.number, c.signed_on, u.code unit, k.full_name customer FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id WHERE c.status = 'da_ky' AND c.signed_on >= $${p.length + 1}::date - 30 ${w} ORDER BY c.signed_on DESC`, [...p, today()]);
-  return { rows, recent };
+  const rows = await db.q(`SELECT c.id, c.number, c.kind, c.plan_sign, c.sign_place, c.sign_status, c.status, c.value, u.code unit, u.id unit_id, pj.code project, pj.name project_name, k.full_name customer, k.phone, own.full_name owner
+    FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_project pj ON pj.id = u.project_id JOIN kd_customer k ON k.id = c.customer_id LEFT JOIN kd_user own ON own.id = c.owner_id
+    WHERE c.kind <> 'hoan_thien' AND c.status IN ('du_thao','cho_duyet','cho_ky','tu_choi') ${w} ${mine(user, 'c')} ORDER BY c.plan_sign NULLS LAST, c.number`, p);
+  // hồ sơ NOXH đã hẹn ký nhưng chưa lập hợp đồng cũng lên lịch
+  rows.push(...(await db.q(`SELECT n.id, 'noxh_check' ent, '' number, n.plan_sign, n.sign_place, n.sign_status, 'du_thao' status, coalesce(u.code, n.unit_text, '') unit, coalesce(pj.code, '') project, pj.name project_name, k.full_name customer, k.phone, own.full_name owner
+    FROM kd_noxh_check n JOIN kd_customer k ON k.id = n.customer_id LEFT JOIN kd_unit u ON u.id = n.unit_id LEFT JOIN kd_project pj ON pj.id = coalesce(u.project_id, n.project_id) LEFT JOIN kd_user own ON own.id = n.owner_id
+    WHERE n.plan_sign IS NOT NULL AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.customer_id = n.customer_id AND c.status NOT IN ('huy', 'thanh_ly')) ${nxw(w)} ${mine(user, 'n')}`, p)));
+  const recent = await db.q(`SELECT c.id, c.number, c.signed_on, u.code unit, k.full_name customer FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id WHERE c.kind <> 'hoan_thien' AND c.status = 'da_ky' AND c.signed_on >= $${p.length + 1}::date - 30 ${w} ${mine(user, 'c')} ORDER BY c.signed_on DESC`, [...p, today()]);
+  const signed = await db.q(`SELECT c.id, c.number, c.plan_sign, c.signed_on, c.status, u.code unit, pj.code project, pj.name project_name, k.full_name customer, own.full_name owner, c.sign_place FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_project pj ON pj.id = u.project_id JOIN kd_customer k ON k.id = c.customer_id LEFT JOIN kd_user own ON own.id = c.owner_id WHERE c.kind <> 'hoan_thien' AND c.status = 'da_ky' AND c.signed_on IS NOT NULL ${w} ${mine(user, 'c')}`, p);
+  return { rows, recent, signed };
 }
 
 // ======================= KHO HỒ SƠ PHÁP LÝ =======================
 async function vault(db, user, f) {
   const ents = Object.keys(E).filter(k => can(user, E[k], 'r'));
-  const rows = await db.q(`SELECT f.id, f.ent, f.rec_id, f.kind, f.name, f.size, f.version, f.uploaded_at, us.full_name by FROM kd_file f LEFT JOIN kd_user us ON us.id = f.uploaded_by
-    WHERE f.deleted_at IS NULL AND f.ent = ANY($1) ${f.ent ? 'AND f.ent = $2' : ''} ORDER BY f.uploaded_at DESC LIMIT 2000`, f.ent ? [ents, f.ent] : [ents]);
+  const rows = await db.q(`SELECT f.id, f.ent, f.rec_id, f.kind, f.name, f.size, f.version, f.uploaded_at, f.deleted_at, us.full_name by, del.full_name deleted_by_name, st.user_id IS NOT NULL star FROM kd_file f LEFT JOIN kd_user us ON us.id = f.uploaded_by LEFT JOIN kd_user del ON del.id = f.deleted_by LEFT JOIN kd_file_star st ON st.file_id = f.id AND st.user_id = $2
+    WHERE f.deleted_at IS ${f.trash ? 'NOT ' : ''}NULL AND f.ent = ANY($1) ${f.ent ? 'AND f.ent = $3' : ''} ORDER BY ${f.trash ? 'f.deleted_at' : 'f.uploaded_at'} DESC`, f.ent ? [ents, user.id, f.ent] : [ents, user.id]);
   // gắn mã căn / khách hàng
   const unitOf = {};
   for (const k of [...new Set(rows.map(r => r.ent))]) {
-    const ux = C.unitExpr(E[k]); const ids = rows.filter(r => r.ent === k).map(r => r.rec_id);
+    const ux = C.unitExpr(E[k]), px = C.projExpr(E[k]); const ids = rows.filter(r => r.ent === k).map(r => r.rec_id);
     const cx = C.F[k].customer_id ? 't.customer_id' : C.F[k].contract_id ? '(SELECT customer_id FROM kd_contract c WHERE c.id = t.contract_id)' : 'NULL';
-    for (const r of await db.q(`SELECT t.id, ${ux ? `(SELECT code FROM kd_unit u WHERE u.id = ${ux})` : 'NULL'} unit, ${ux || 'NULL'} unit_id, (SELECT full_name FROM kd_customer k WHERE k.id = ${cx}) customer, ${E[k].disp} label FROM ${E[k].table} t WHERE t.id = ANY($1)`, [ids]))
+    for (const r of await db.q(`SELECT t.id, ${ux ? `(SELECT code FROM kd_unit u WHERE u.id = ${ux})` : 'NULL'} unit, ${ux || 'NULL'} unit_id, ${px || 'NULL'} project_id, (SELECT full_name FROM kd_customer k WHERE k.id = ${cx}) customer, ${E[k].disp} label FROM ${E[k].table} t WHERE t.id = ANY($1)`, [ids]))
       unitOf[k + r.id] = r;
   }
   let out = rows.map(r => ({ ...r, ...(unitOf[r.ent + r.rec_id] || {}), ent_l: E[r.ent].title, kind_l: (E[r.ent].files || []).find(x => x[0] === r.kind)?.[1] || r.kind || 'Tài liệu', id: r.id }));
+  if (f.project) out = out.filter(r => r.project_id === +f.project);
   if (f.q) { const s = f.q.toLowerCase(); out = out.filter(r => [r.name, r.unit, r.customer, r.label].some(x => String(x || '').toLowerCase().includes(s))); }
-  return out;
+  return out.slice(0, 2000);
 }
 
 // ======================= BÁO CÁO QUẢN TRỊ (11.1 – 11.7) =======================
@@ -518,7 +564,7 @@ async function report(db, user, kind, f) {
   }
   if (kind === 'docs') {
     const p = [P.d1, P.d2]; const w = uf(f, p);
-    const nx = await db.q(`SELECT n.status, n.result, count(*) n, count(*) FILTER (WHERE n.created_at::date BETWEEN $1 AND $2) n_p FROM kd_noxh_check n LEFT JOIN kd_unit u ON u.id = n.unit_id WHERE true ${w} GROUP BY 1,2`, p);
+    const nx = await db.q(`SELECT n.status, n.result, count(*) n, count(*) FILTER (WHERE n.created_at::date BETWEEN $1 AND $2) n_p FROM kd_noxh_check n LEFT JOIN kd_unit u ON u.id = n.unit_id WHERE true ${nxw(w)} GROUP BY 1,2`, p);
     const p2 = [P.d1, P.d2]; const w2 = uf(f, p2);
     const ct = await db.q(`SELECT c.status, count(*) n, count(*) FILTER (WHERE c.plan_sign < CURRENT_DATE AND c.status IN ('du_thao','cho_duyet','cho_ky','tu_choi')) late, count(*) FILTER (WHERE c.signed_on BETWEEN $1 AND $2) n_p FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id WHERE c.kind <> 'hoan_thien' ${w2} GROUP BY 1`, p2);
     const L = (f, v) => f.o.find(o => o[0] === v)?.[1] || v;
@@ -600,4 +646,4 @@ async function monthly(db, period, projectId) {
   };
 }
 
-module.exports = { payouts, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
+module.exports = { payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };

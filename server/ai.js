@@ -189,7 +189,7 @@ async function ask(user, { conv, text }) {
   if (text.length > 4000) bad('Câu hỏi quá dài (tối đa 4.000 ký tự)');
   let c = conv && CONV.get(conv);
   if (c && c.user_id !== user.id) c = null;
-  if (!c) { conv = crypto.randomBytes(12).toString('base64url'); c = { user_id: user.id, messages: [], turns: 0 }; CONV.set(conv, c); }
+  if (!c) { conv = crypto.randomBytes(12).toString('hex'); c = { user_id: user.id, messages: [], turns: 0 }; CONV.set(conv, c); }
   if (c.turns >= MAX_TURNS) bad('Cuộc trò chuyện đã dài — bấm «Cuộc trò chuyện mới» để hỏi tiếp');
   c.at = Date.now(); c.turns++;
   // hôm nay + người hỏi đi kèm câu hỏi (không đưa vào lời dặn hệ thống để giữ bộ nhớ đệm)

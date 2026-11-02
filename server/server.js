@@ -77,7 +77,7 @@ async function userFromReq(req) {
   return r && { ...r, must_change: false };
 }
 async function newSession(res, uid, body = { ok: true }) {
-  const sid = crypto.randomBytes(32).toString('base64url');
+  const sid = crypto.randomBytes(32).toString('hex');
   await q(`INSERT INTO kd_session (sid, user_id, expires_at) VALUES ($1, $2, now() + interval '${SESSION_H} hours')`, [sid, uid]);
   send(res, 200, body, { 'Set-Cookie': `kd_sid=${sid}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_H * 3600}` });
 }
@@ -100,6 +100,7 @@ async function login(req, res) {
 }
 
 // ---------- meta gửi giao diện ----------
+const EXPORT_ROLES = ['lanh_dao', 'truong_phong', 'admin', 'cong_no', 'ke_toan', 'ho_so', 'cskh'];   // được xuất Excel từ màn tổng hợp
 async function metaFor(user) {
   const strip = e => ({ ...e, fields: e.fields.filter(f => !f.hide).map(f => ({ ...f })), perm: { r: can(user, e, 'r'), c: can(user, e, 'c'), u: can(user, e, 'u'), d: can(user, e, 'd'), a: can(user, e, 'a'), x: can(user, e, 'x') } });
   const ents = Object.fromEntries(Object.values(M.E).map(e => [e.key, strip(e)]));
@@ -107,9 +108,9 @@ async function metaFor(user) {
   for (const e of Object.values(ents)) for (const f of [...e.fields, ...(e.acts || []).flatMap(a => a.ask || [])]) if (f.opt) f.o = (lk[f.opt] || []).filter(x => x[2]).map(x => [x[0], x[1]]);
   const viewOk = v => !M.VIEW_ROLES[v] || user.role === 'admin' || M.VIEW_ROLES[v].includes(user.role);
   const menu = M.MENU.map(([no, t, icon, items]) => [no, t, icon, items.map(([id, l, code]) => { const e = id.startsWith('e:') && ents[id.slice(2).split('?')[0]]; return e ? (e.perm.r ? [id, l || e.title, e.icon, e.code] : null) : viewOk(id) ? [id, l, null, code] : null; }).filter(Boolean)]).filter(m => m[3].length);
-  const settings = Object.fromEntries((await q("SELECT key, value FROM kd_setting WHERE key IN ('checklist_noxh','checklist_so_hong','checklist_ban_giao','schedule_presets','sla_hours','handover_pay_pct','bravo','bsc')")).map(r => [r.key, r.value]));
+  const settings = Object.fromEntries((await q("SELECT key, value FROM kd_setting WHERE key IN ('checklist_noxh','checklist_so_hong','checklist_ban_giao','schedule_presets','schedule_contents','sla_hours','handover_pay_pct','bravo','bsc')")).map(r => [r.key, r.value]));
   return {
-    me: user, roles: M.ROLES, menu, ents, virt: M.VIRT, piiRoles: M.PII_ROLES, settings, alertCat: V.ALERT_CAT, reports: V.REPORTS,
+    me: user, exportRoles: EXPORT_ROLES, roles: M.ROLES, menu, ents, virt: M.VIRT, piiRoles: M.PII_ROLES, sellers: M.SELLERS, settings, alertCat: V.ALERT_CAT, reports: V.REPORTS,
     imports: Object.fromEntries(Object.entries(IO.IMPORTS).filter(([, i]) => user.role === 'admin' || i.roles.includes(user.role)).map(([k, i]) => [k, { title: i.title, note: i.note }])),
     users: await q('SELECT id, full_name, role, title, active FROM kd_user ORDER BY active DESC, full_name'),
     projects: await q('SELECT id, code, name FROM kd_project ORDER BY code'), buildings: await q('SELECT id, project_id, code, name FROM kd_building ORDER BY code'),
@@ -241,7 +242,7 @@ R('GET', '/api/opts/:ent', async (req, res, u, p, qs) => {
 R('GET', '/api/export/:ent', async (req, res, u, p, qs) => { const x = await IO.exportList(p.ent, u, qs); sendFile(res, x.buf, x.name, MIME['.xlsx']); });
 R('POST', '/api/export-rows', async (req, res, u) => {
   const b = await readJson(req);
-  if (!['lanh_dao', 'truong_phong', 'admin', 'cong_no', 'ke_toan', 'ho_so', 'cskh'].includes(u.role)) deny();
+  if (!EXPORT_ROLES.includes(u.role)) deny();
   await C.audit({ q }, 'view', null, 'xuat_du_lieu', null, null, u, b.title);
   sendFile(res, IO.sheet(String(b.title || 'Bao cao').slice(0, 80), b.cols || [], b.rows || [], { sum: b.sum, note: b.note }), `${safeName(b.file || 'bao-cao')}_${C.today()}.xlsx`, MIME['.xlsx']);
 });
@@ -256,9 +257,24 @@ R('GET', '/api/file/:id', async (req, res, u, p, qs) => {
 R('DELETE', '/api/file/:id', async (req, res, u, p) => {
   const { f, g } = await fileAccess(u, p.id);
   if (g.perm.locked) bad('Hồ sơ đã chốt — không xóa tệp (tải phiên bản mới nếu cần)');
+  if (f.ent === 'pinkbook' && g.row.status === 'da_giao_so') bad('Đã giao sổ — không xóa tệp của hồ sơ này');
   if (f.uploaded_by !== u.id && !mgr(u)) deny('Chỉ người tải lên hoặc Trưởng phòng được xóa tệp');
   await q('UPDATE kd_file SET deleted_at = now(), deleted_by = $1 WHERE id = $2', [u.id, f.id]);
   await C.audit({ q }, f.ent, f.rec_id, 'xoa_tep', null, null, u, f.name, f.is_demo);
+  send(res, 200, { ok: true });
+});
+R('POST', '/api/file/:id/restore', async (req, res, u, p) => {
+  const f = notFound(await one('SELECT * FROM kd_file WHERE id = $1 AND deleted_at IS NOT NULL', [+p.id]), 'tệp');
+  await C.get(f.ent, f.rec_id, u);
+  if (f.uploaded_by !== u.id && !mgr(u)) deny('Chỉ người tải lên hoặc Trưởng phòng được khôi phục tệp');
+  await q('UPDATE kd_file SET deleted_at = NULL, deleted_by = NULL WHERE id = $1', [f.id]);
+  await C.audit({ q }, f.ent, f.rec_id, 'khoi_phuc_tep', null, null, u, f.name, f.is_demo);
+  send(res, 200, { ok: true });
+});
+R('POST', '/api/file/:id/star', async (req, res, u, p) => {
+  const { f } = await fileAccess(u, p.id), { on } = await readJson(req);
+  if (on) await q('INSERT INTO kd_file_star (user_id, file_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [u.id, f.id]);
+  else await q('DELETE FROM kd_file_star WHERE user_id = $1 AND file_id = $2', [u.id, f.id]);
   send(res, 200, { ok: true });
 });
 
@@ -269,7 +285,27 @@ R('GET', '/api/alerts', async (req, res, u, p, qs) => send(res, 200, await V.ale
 R('GET', '/api/approvals', async (req, res, u) => send(res, 200, await V.approvals({ q, one }, u)));
 R('GET', '/api/board', async (req, res, u, p, qs) => send(res, 200, await V.board({ q, one }, u, qs)));
 R('GET', '/api/payouts', async (req, res, u, p, qs) => send(res, 200, await V.payouts({ q, one }, u, qs)));
+R('GET', '/api/finish-pay', async (req, res, u, p, qs) => send(res, 200, await V.finishPay({ q, one }, u, qs)));
+R('GET', '/api/loans', async (req, res, u, p, qs) => send(res, 200, await V.loans({ q, one }, u, qs)));
 R('GET', '/api/price-sheet/:id', async (req, res, u, p) => send(res, 200, await V.priceSheet({ q, one }, u, p.id)));
+R('GET', '/api/contract-number', async (req, res, u, p, qs) => send(res, 200, { number: await B.nextContractNo({ q, one }, qs.ptype, qs.on) }));
+R('GET', '/api/customer-code', async (req, res, u, p, qs) => {   // nhập mã khách: báo trùng ngay ở form, cùng nội dung khi lưu
+  if (!can(u, M.E.customer, 'c') && !can(u, M.E.customer, 'u')) C.deny();
+  if (qs.next) {   // mã kế tiếp (chỉ xem, chưa cấp) — bỏ qua số đã bị mã nhập tay chiếm
+    const f = M.E.customer.fields.find(x => x.k === 'code'), c = await one('SELECT n FROM kd_counter WHERE prefix = $1', [f.prefix]);
+    for (let n = (c?.n || 0) + 1; ; n++) { const code = f.prefix + String(n).padStart(f.pad, '0'); if (!await one('SELECT 1 AS x FROM kd_customer WHERE upper(code) = $1', [code])) return send(res, 200, { code }); }
+  }
+  const code = String(qs.code || '').trim().toUpperCase();
+  const d = code && await one('SELECT full_name FROM kd_customer WHERE id <> $1 AND upper(code) = $2', [+qs.id || 0, code]);
+  send(res, 200, { dup: !!d, msg: d ? `Mã khách hàng ${code} đã có (khách ${d.full_name}) — nhập mã khác hoặc để trống để hệ thống tự cấp` : '' });
+});
+R('GET', '/api/contract-pair/:unit', async (req, res, u, p) => {   // hợp đồng mua bán + hợp đồng hoàn thiện đang hiệu lực của căn
+  if (!can(u, M.E.contract, 'r')) C.deny();
+  const rows = await q("SELECT id, kind FROM kd_contract WHERE unit_id = $1 AND status NOT IN ('huy','thanh_ly') ORDER BY id DESC", [+p.unit]);
+  send(res, 200, { main: rows.find(r => ['hdmb', 'thue_mua'].includes(r.kind))?.id || null, finish: rows.find(r => r.kind === 'hoan_thien')?.id || null });
+});
+R('GET', '/api/contract-prefill/:unit', async (req, res, u, p, qs) => { if (!can(u, M.E.contract, 'c') && !can(u, M.E.contract, 'u')) C.deny(); send(res, 200, await B.contractPrefill({ q, one }, p.unit, qs.on)); });
+R('GET', '/api/sale-check/:id', async (req, res, u, p) => send(res, 200, await B.saleCheck({ q, one }, p.id) || {}));
 R('GET', '/api/unit360/:id', async (req, res, u, p) => send(res, 200, await V.unit360({ q, one }, u, p.id)));
 R('GET', '/api/customer360/:id', async (req, res, u, p) => send(res, 200, await V.customer360({ q, one }, u, p.id)));
 R('GET', '/api/search', async (req, res, u, p, qs) => send(res, 200, await V.search({ q, one }, u, qs.q)));
@@ -421,8 +457,30 @@ R('POST', '/api/admin/load-demo', async (req, res, u) => { admin(u); const S = r
 R('GET', '/print/reservation/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printReservation(p.id, u, qs.kind, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 R('GET', '/api/handover-templates', async (req, res, u, p, qs) => send(res, 200, await M4.handoverTemplates(qs)));
 R('GET', '/print/handover/:kind/:id', async (req, res, u, p, qs) => send(res, 200, await M4.printHandover(p.kind, p.id, u, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
+// phiếu đề nghị hủy / đổi: tự điền theo hợp đồng / phiếu giữ chỗ
+R('GET', '/api/cancel_prefill', async (req, res, u, p, qs) => { if (!can(u, M.E.cancel_req, 'c') && !can(u, M.E.cancel_req, 'u')) C.deny(); send(res, 200, await B.cancelPrefill({ q, one }, qs)); });
+// bên bán theo tên (Bên A): thông tin mặc định + ô đã ghi ở hợp đồng gần nhất cùng Bên A
+// thông tin bên bán: ghi nhớ theo từng Bên A ngay khi nhập (kd_setting.seller_info_v2), không phụ thuộc hợp đồng có lưu được hay không; chưa nhập thì lấy giá trị gần nhất trên hợp đồng
+const SELLER_K = ['s_addr', 's_phone', 's_tax', 's_bank_acc', 's_bank_name', 's_rep', 's_title', 's_poa'];
+R('GET', '/api/seller', async (req, res, u, p, qs) => {
+  const name = String(qs.name || '').trim(), base = M.SELLERS.find(s => s.name === name) || {};
+  const last = name ? await one(`SELECT ${[...SELLER_K, 'seller_unit'].map(k => `(array_agg(${k} ORDER BY id DESC) FILTER (WHERE ${k} <> ''))[1] ${k}`).join(', ')} FROM kd_contract WHERE s_name = $1`, [name]) : null;
+  const saved = (await one("SELECT value FROM kd_setting WHERE key = 'seller_info_v2'"))?.value?.[name] || {};   // v2: chỉ tính từ khi có bảng thông tin bên bán 31/10/2026
+  const def = { s_addr: base.addr, s_phone: base.phone, s_bank_acc: base.bank_acc, s_bank_name: base.bank_name, s_rep: base.rep, s_title: base.title, s_poa: base.poa };   // người dùng đã sửa > bảng mặc định > hợp đồng gần nhất
+  send(res, 200, { ...Object.fromEntries(SELLER_K.map(k => [k, saved[k] ?? def[k] ?? last?.[k] ?? ''])), seller_unit: base.unit || last?.seller_unit || '' });
+});
+R('PUT', '/api/seller', async (req, res, u) => {
+  if (!can(u, M.E.contract, 'c') && !can(u, M.E.contract, 'u')) C.deny();
+  const b = await readJson(req), name = String(b.name || '').trim();
+  if (!name || !SELLER_K.includes(b.k)) bad('Thông tin bên bán không hợp lệ');
+  await q(`INSERT INTO kd_setting (key, value, updated_by) VALUES ('seller_info_v2', jsonb_build_object($1::text, jsonb_build_object($2::text, $3::text)), $4)
+    ON CONFLICT (key) DO UPDATE SET value = jsonb_set(kd_setting.value, ARRAY[$1::text], coalesce(kd_setting.value -> $1::text, '{}'::jsonb) || jsonb_build_object($2::text, $3::text)), updated_at = now(), updated_by = $4`, [name, b.k, String(b.v ?? '').trim(), u.id]);
+  send(res, 200, { ok: true });
+});
 R('GET', '/api/mau4', async (req, res, u, p, qs) => send(res, 200, await M4.data(u, qs)));
 R('GET', '/api/mau4/xlsx', async (req, res, u, p, qs) => sendFile(res, await M4.xlsx(u, qs), `Mau4_ho_so_mua_NOXH_${C.today()}.xlsx`, MIME['.xlsx']));
+R('GET', '/print/sale_notice/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printSaleNotice(p.id, u, qs.kind), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
+R('GET', '/print/cancel_req/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printCancelReq(p.id, u), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 R('GET', '/print/contract/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printContract(p.id, u, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 
 // ---------- máy chủ ----------
@@ -451,6 +509,7 @@ async function handle(req, res) {
       }
       // tình trạng khách hàng tự đồng bộ: trước khi đọc danh sách khách, sau mỗi thao tác ghi
       if (req.method === 'GET' && pth.startsWith('/api/e/customer')) await B.syncStages({ q, one });
+      if (m.groups?.id && !/^\d+$/.test(m.groups.id)) bad('Mã bản ghi không hợp lệ');
       await r.fn(req, res, user, m.groups || {}, qs);
       if (req.method !== 'GET' && user) B.syncStages({ q, one }).catch(e => console.error('syncStages', e.message));
     } catch (e) {
@@ -468,6 +527,7 @@ async function start() {
   const n = (await one('SELECT count(*) n FROM kd_user')).n;
   if (!n) { console.log('CSDL trống — nạp dữ liệu gốc…'); await require('./seed').seedBase(); }
   await require('./seed').ensureTemplates();
+  await B.fixLiquidated({ q, one }).catch(e => console.error('fixLiquidated', e.message));
   const srv = http.createServer(handle);
   srv.listen(PORT, HOST, () => console.log(`App Phòng Kinh doanh: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`));
   const job = async () => { try { await tx(db => B.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.error('Việc chạy nền lỗi:', e.message); } };

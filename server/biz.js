@@ -102,6 +102,65 @@ async function writeSchedule(db, contractId, rows, src, user, demo) {
   await C.audit(db, 'contract', contractId, 'lich_thanh_toan', null, { lich: rows }, user, `${rows.length} kỳ · ${src === 'phu_luc' ? 'theo phụ lục' : 'theo hợp đồng'}`, demo);
 }
 
+// tiền hợp đồng chung cư (như BRAVO, cùng công thức Danh mục sản phẩm): F = giá nền × DT thông thủy + giá sàn × DT sàn + tiền hệ số góc − giảm giá;
+// thuế = F × thuế suất; sau thuế = ROUND(F + thuế, -3); bảo trì = ROUND(F × 2%, -3); tổng = sau thuế + bảo trì + giá trị hoàn thiện
+function contractPrice(r) {
+  const r3 = v => Math.round(v / 1000) * 1000, F0 = +r.base_price * +r.area_tt + (+r.floor_price || 0) * (+r.area_floor || 0);
+  const corner_amt = r.corner_pct != null && r.corner_pct !== '' ? Math.round(F0 * +r.corner_pct / 100) : +r.corner_amt || 0;
+  const F = F0 + corner_amt - (+r.discount || 0), vat = r.vat_pct ?? 5, H = F * vat / 100, after_tax = r3(F + H), maint_fee = r3(F * 0.02);
+  return { corner_amt: corner_amt || null, pretax: Math.round(F), vat_pct: vat, vat_amt: Math.round(H), after_tax, maint_fee, value: after_tax + maint_fee + (+r.finish_value || 0) };
+}
+
+// số hợp đồng kế tiếp: HDCH.YYMM-0001 (chung cư) / HDLK.YYMM-0001 (liền kề)
+async function nextContractNo(db, ptype, on) {
+  const d = String(on || today()), pre = `${ptype === 'lien_ke' ? 'HDLK' : 'HDCH'}.${d.slice(2, 4)}${d.slice(5, 7)}-`;
+  const last = await db.one("SELECT max(substring(number from '\\d+$')::int) n FROM kd_contract WHERE number LIKE $1", [pre + '%']);
+  return pre + String((last?.n || 0) + 1).padStart(4, '0');
+}
+// form hợp đồng: chọn căn → lấy theo phiếu giữ chỗ đang hiệu lực (khách, ngày đề nghị mua, chính sách, hoàn thiện, nhân viên); chưa có chính sách thì lấy bảng giá đang phát hành của dự án
+async function contractPrefill(db, unitId, on = today()) {
+  const u = await raw(db, 'unit', unitId); if (!u) return {};
+  const res = await db.one(`SELECT r.customer_id, r.reg_date, r.policy_id, r.finish_value, r.owner_id, k.code || ' · ' || k.full_name customer_label FROM kd_reservation r
+    LEFT JOIN kd_customer k ON k.id = r.customer_id WHERE r.unit_id = $1 AND r.status IN ${ACTIVE_RES} ORDER BY r.id DESC LIMIT 1`, [unitId]);
+  const pol = await db.one(`SELECT id, code || ' v' || version label FROM kd_price_policy WHERE ${res?.policy_id ? 'id = $1' : "status = 'phat_hanh' AND $1 = ANY(project_ids) AND start_on <= $2 AND end_on >= $2 ORDER BY start_on DESC, version DESC LIMIT 1"}`, res?.policy_id ? [res.policy_id] : [u.project_id, on]);
+  return { customer_id: res?.customer_id ?? null, customer_label: res?.customer_label ?? null, request_on: res?.reg_date ?? null, finish_value: res?.finish_value ?? null, owner_id: res?.owner_id ?? null, policy_id: pol?.id ?? null, policy_label: pol?.label ?? null };
+}
+
+// giá trị hợp đồng căn hộ theo Danh mục sản phẩm (sau thuế + bảo trì): cập nhật các ô giá + tính lại từng đợt theo tỷ lệ / ngày đến hạn cũ.
+// Phiếu thu đã có giữ nguyên (công nợ tự tính lại theo lịch mới). Trả về true nếu có đổi.
+async function closeReservations(db, c, user) {
+  for (const s of await db.q(`SELECT id FROM kd_reservation WHERE unit_id = $1 AND status IN ${ACTIVE_RES}`, [c.unit_id]))
+    await C.sys(db, 'reservation', s.id, { status: 'huy', reg_state: 'huy' }, user, 'huy', `Theo thanh lý hợp đồng ${c.number || ''}`);
+}
+// hợp đồng đã thanh lý trước khi có closeReservations: căn còn kẹt «Đã ký hợp đồng» thì giải phóng lúc khởi động
+async function fixLiquidated(db) {
+  const cs = await db.q(`SELECT DISTINCT ON (c.unit_id) c.id, c.unit_id, c.number FROM kd_contract c WHERE c.status = 'thanh_ly' AND c.kind <> 'hoan_thien'
+    AND NOT EXISTS (SELECT 1 FROM kd_contract x WHERE x.unit_id = c.unit_id AND x.kind IN ('hdmb','thue','thue_mua') AND x.status NOT IN ('huy','thanh_ly'))
+    AND EXISTS (SELECT 1 FROM kd_reservation s WHERE s.unit_id = c.unit_id AND s.status IN ${ACTIVE_RES}) ORDER BY c.unit_id, c.id DESC`);
+  for (const c of cs) { await closeReservations(db, c, null); await recomputeUnit(db, c.unit_id, null); }
+  return cs.length;
+}
+async function syncContractValue(db, contractId, user, note = 'Đồng bộ giá trị theo Danh mục sản phẩm') {
+  const c = await raw(db, 'contract', contractId);
+  const u = c && c.kind !== 'hoan_thien' && await raw(db, 'unit', c.unit_id);
+  if (!u || u.price_net == null) return false;
+  const value = +u.price_net + (+u.maint_fee || 0) + (+c.finish_value || 0);
+  if (+c.value === value) return false;
+  if ((await debtOf(db, [c.id])).get(c.id)?.paid > value) bad(`Số đã thu lớn hơn giá trị ${fmtMoney(value)}đ của căn mới — cần xử lý hoàn tiền trước`);
+  const patch = { value, pretax: u.pretax, vat_pct: u.vat_pct, vat_amt: u.tax_amt, after_tax: u.price_net, maint_fee: u.maint_fee, base_price: u.base_price };
+  for (const k of Object.keys(patch)) if (patch[k] == null || !C.F.contract[k]) delete patch[k];
+  const sets = Object.keys(patch);
+  await db.q(`UPDATE kd_contract SET ${sets.map((k, i) => `${k} = $${i + 1}`).join(', ')}, updated_at = now() WHERE id = $${sets.length + 1}`, [...sets.map(k => patch[k]), c.id]);
+  await C.audit(db, 'contract', c.id, 'sua', { value: c.value }, { value }, user, note, c.is_demo);
+  const inst = await db.q('SELECT name, due_on, pct, amount, src FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [c.id]);
+  if (inst.length) {
+    const rows = inst.map(i => ({ name: i.name, due_on: i.due_on, pct: i.pct, amount: i.pct != null ? null : Math.round(+i.amount * value / +c.value) }));
+    await writeSchedule(db, c.id, await normSchedule(db, rows, value), inst[0].src || 'hop_dong', user, c.is_demo);
+  }
+  await refreshCommission(db, c.id, user, c.is_demo);
+  return true;
+}
+
 // ======================= HOA HỒNG =======================
 async function refreshCommission(db, contractId, user, demo) {
   const c = await raw(db, 'contract', contractId); if (!c) return;
@@ -172,7 +231,15 @@ H.unit = {
     const b = r.building_id && await raw(db, 'building', r.building_id);
     if (b && b.project_id !== r.project_id) bad('Tòa không thuộc dự án đã chọn');
     if (r.area_tt != null && r.area_tt <= 0) bad('Diện tích thông thủy phải > 0');
+    // có đơn giá nền → tính lại theo công thức «DM bảng hàng và sản phẩm»: F = đơn giá × DT thông thủy; H = F × %thuế;
+    // I (sau thuế) = ROUND(F+H, -3); J (bảo trì) = ROUND(F×2%, -3); L (tổng cộng) = I + J + K (giá trị hoàn thiện)
+    if (+r.base_price > 0 && +r.area_tt > 0) {
+      const r3 = v => Math.round(v / 1000) * 1000, F = +r.base_price * +r.area_tt, H = F * (r.vat_pct ?? 5) / 100;
+      Object.assign(r, { pretax: Math.round(F), tax_amt: Math.round(H), price_net: r3(F + H), maint_fee: r3(F * 0.02) });
+      r.total_price = r.price_net + r.maint_fee + (+r.finish_value || 0);
+    }
     if (r.total_price == null && r.price_net != null) r.total_price = r.price_net + (r.maint_fee || 0);
+    if (r.total_price != null) r.list_price = r.total_price;   // giá niêm yết = Tổng cộng ở Danh mục sản phẩm
     if (!old) { r.status = 'chua_mo_ban'; r.activated = r.activated ?? false; }
     if (old && r.lock !== old.lock && r.lock) {
       if (!['con_ban', 'chua_mo_ban', 'tam_khoa', 'ngung_kd'].includes(old.status)) bad('Căn đang có giao dịch — không khóa kinh doanh được');
@@ -194,12 +261,12 @@ H.price_policy = {
   async afterApprove(r, ok, { db, user }) { if (ok && r.parent_id) await sys(db, 'price_policy', r.parent_id, { status: 'thay_the' }, user, 'thay_the', `Thay bằng phiên bản ${r.version}`); },
   acts: {
     async new_version(r, d, { db, user, demo }) {
-      const keep = ['code', 'project_ids', 'unit_group', 'mode', 'unit_price', 'maint_pct', 'discount', 'pay_method', 'bank_policy', 'target', 'start_on', 'end_on', 'src_file'];
+      const keep = ['code', 'project_ids', 'unit_group', 'mode', 'unit_price', 'maint_pct', 'vat_pct', 'content', 'target', 'start_on', 'end_on', 'src_file'];
       const n = (await create('price_policy', { ...Object.fromEntries(keep.map(k => [k, r[k]])), version: r.version + 1, parent_id: r.id, status: 'nhap' }, user, { db, system: true, demo })).row;
       return { open: ['price_policy', n.id], msg: `Đã tạo phiên bản ${n.version} (nháp). Phiên bản đang phát hành giữ nguyên tới khi bản mới được duyệt.` };
     },
   },
-  noDelete: r => r.status !== 'nhap' && 'Chỉ xóa được bản nháp',
+  noDelete: r => !['nhap', 'tu_choi'].includes(r.status) && 'Chỉ xóa được bản nháp',
 };
 
 const digits = s => String(s || '').replace(/\D/g, '');
@@ -227,7 +294,40 @@ H.customer = {
     if (sim) warn.push(`Đã có khách cùng họ tên: ${sim.code} (ĐT …${String(sim.phone).slice(-3)}) — kiểm tra có phải cùng một người không`);
     if (r.source && ['dai_ly', 'ctv'].includes(r.source) && !r.agent_id) warn.push('Nguồn khách là đại lý / CTV nhưng chưa chọn đối tác giới thiệu');
   },
+  async afterSave(r, old, { db }) { if (old && [...CUST_KEYS, 'phone2', 'birth'].some(k => String(old[k] ?? '') !== String(r[k] ?? ''))) await pushCustomer(db, r); },
 };
+
+// Hồ sơ khách là gốc: thông tin khách sửa ở màn nào cũng về đây rồi lan sang phiếu đăng ký, hồ sơ NOXH, hợp đồng, đề nghị hủy
+const RES_CUST = { full_name: 'cust_name', phone: 'phone', id_no: 'id_no', id_date: 'id_date', id_place: 'id_place', address: 'address', tax_code: 'tax_code', bank_account: 'bank_account' };
+const CT_CUST = { phone: 'b_phone', email: 'b_email', id_no: 'b_id_no', id_date: 'b_id_date', id_place: 'b_id_place', address: 'b_addr' };
+const CUST_KEYS = [...Object.keys(RES_CUST), 'email'];
+const CT_OPEN = ['du_thao', 'cho_duyet', 'cho_ky', 'tu_choi'];   // hợp đồng đã ký chỉ được điền ô trống, không ghi đè
+// khách lưu một ô «Số tài khoản - Ngân hàng», hợp đồng tách 2 ô
+const bankSplit = s => { const [acc, ...n] = String(s || '').trim().split(/\s+-\s+/); return { acc: acc || null, name: n.join(' - ') || null }; };
+const custVals = (r, old, map) => Object.fromEntries(Object.entries(map).filter(([, c]) => !old || String(old[c] ?? '') !== String(r[c] ?? '')).map(([k, c]) => [k, r[c]]));
+async function syncCustomer(db, id, vals, user, note) {
+  const cur = id && await raw(db, 'customer', id); if (!cur) return;
+  const diff = {};
+  for (const [k, v] of Object.entries(vals)) if (v != null && v !== '' && !String(v).startsWith('•') && String(cur[k] ?? '') !== String(v)) diff[k] = v;
+  if (Object.keys(diff).length) await sys(db, 'customer', id, diff, user, 'sua', note);
+}
+async function pushCustomer(db, c) {
+  const upd = (table, map, wrap, where = 'customer_id = $1') => {
+    const ps = [c.id], sets = Object.entries(map).map(([col, v]) => { ps.push(v || null); return `${col} = ${wrap(col, `$${ps.length}::${/_date$/.test(col) ? 'date' : 'text'}`)}`; });
+    return db.q(`UPDATE ${table} SET ${sets.join(', ')}, updated_at = now() WHERE ${where}`, ps);
+  };
+  await upd('kd_reservation', Object.fromEntries(Object.entries(RES_CUST).map(([k, col]) => [col, c[k]])), (col, v) => `coalesce(${v}, ${col})`, "customer_id = $1 AND status NOT IN ('huy', 'het_han')");
+  const bk = bankSplit(c.bank_account), blank = col => /_date$/.test(col) ? col : `nullif(${col}, '')`;
+  await upd('kd_contract', { ...Object.fromEntries(Object.entries(CT_CUST).map(([k, col]) => [col, c[k]])), b_bank_acc: bk.acc, b_bank_name: bk.name },
+    (col, v) => `CASE WHEN status = ANY('{${CT_OPEN}}') THEN coalesce(${v}, ${col}) ELSE coalesce(${blank(col)}, ${v}) END`);
+  await upd('kd_cancel_req', { cust_name: c.full_name, phone: c.phone }, (col, v) => `coalesce(${v}, ${col})`, 'contract_id IN (SELECT id FROM kd_contract WHERE customer_id = $1)');
+  const [y, m, d] = String(c.birth || '').split('-');
+  for (const n of await db.q('SELECT id, head FROM kd_noxh_check WHERE customer_id = $1', [c.id])) {
+    const h = Array.isArray(n.head) && n.head[0] ? { ...n.head[0] } : { relation: 'Chủ hộ' };
+    Object.assign(h, { name: c.full_name || h.name, phone: [c.phone, c.phone2].filter(Boolean).join('/ ') || h.phone, id_no: c.id_no || h.id_no }, d ? { bday: String(+d), bmonth: String(+m), byear: y } : {});
+    await db.q('UPDATE kd_noxh_check SET head = $2::jsonb, bank_account = coalesce($3, bank_account), updated_at = now() WHERE id = $1', [n.id, JSON.stringify([h]), c.bank_account || null]);
+  }
+}
 H.contact_log = {
   async afterSave(r, old, { db, user }) {
     const c = await raw(db, 'customer', r.customer_id);
@@ -252,10 +352,25 @@ async function intakeLead(db, b, user, { demo } = {}) {
   return { customer_id: k.id, log_id: log.id, new_customer: isNew };
 }
 
+// mã căn phải có trong thông báo mở bán đã duyệt gần nhất của dự án — không có thì cảnh báo, vẫn cho lưu / trình duyệt
+async function saleCheck(db, unitId, cache = new Map()) {   // cache: theo dự án (đợt gần nhất + id căn trong đợt) khi kiểm nhiều dòng
+  const u = unitId && await raw(db, 'unit', unitId); if (!u) return null;
+  if (!cache.has(u.project_id)) {
+    const n = await db.one("SELECT * FROM kd_sale_notice WHERE project_id = $1 AND status = 'da_duyet' ORDER BY notice_on DESC NULLS LAST, id DESC LIMIT 1", [u.project_id]);
+    cache.set(u.project_id, { n, ids: n ? new Set((await noticeUnits(db, n)).map(x => x.id)) : null });
+  }
+  const { n, ids } = cache.get(u.project_id);
+  if (!n) return { ok: false, text: `⚠ Dự án chưa có thông báo mở bán được duyệt (căn ${u.code})` };
+  return ids.has(u.id) ? { ok: true, text: `✓ Có trong ${n.code} · ${n.title}` } : { ok: false, text: `⚠ Căn ${u.code} không có trong thông báo mở bán gần nhất (${n.code} · ${n.title})` };
+}
+const saleWarn = async (db, r, warn) => { const sc = await saleCheck(db, r.unit_id); r.sale_check = sc?.text ?? null; if (sc && !sc.ok) warn.push(sc.text.slice(2)); };
+const saleLive = async (db, rows) => { const c = new Map(); for (const r of rows) if (r.unit_id) r.sale_check = (await saleCheck(db, r.unit_id, c))?.text ?? r.sale_check; };   // danh sách / chi tiết: theo thông báo hiện tại
+
 H.reservation = {
   async beforeSave(r, old, { db, warn, opts, user, demo }) {
     const changedUnit = !old || old.unit_id !== r.unit_id;
     const u = await raw(db, 'unit', r.unit_id);
+    await saleWarn(db, r, warn);
     // ngày giờ đăng ký (reg_at) → ngày đăng ký (reg_date, giờ VN); phiếu hệ thống tạo chỉ có ngày thì suy ra giờ
     const vnDay = iso => new Date(Date.parse(iso) + 7 * 3600e3).toISOString().slice(0, 10);
     if (!old && r.reg_date && (!r.reg_at || vnDay(r.reg_at) !== r.reg_date)) r.reg_at = new Date(r.reg_date === today() ? Date.now() : Date.parse(r.reg_date + 'T09:00:00+07:00')).toISOString();
@@ -265,24 +380,25 @@ H.reservation = {
     if (old && old.status !== r.status && ['huy', 'het_han'].includes(r.status)) r.reg_state = 'huy';     // hủy / giải phóng từ nơi khác
     if (old && !opts.system && old.reg_state !== r.reg_state) {
       if (old.reg_state === 'huy' || ['huy', 'het_han'].includes(old.status)) bad('Phiếu đã hủy đăng ký — lập phiếu mới cho khách');
-      if (r.reg_state === 'huy' && old.status === 'chuyen_hd') bad('Phiếu đã lập hợp đồng — hủy qua «Hủy giao dịch – đổi căn»');
+      if (r.reg_state === 'huy' && old.status === 'chuyen_hd') {   // hợp đồng chưa ký → hủy ngay trên phiếu (hợp đồng tự hủy theo); đã ký → qua Hủy giao dịch
+        const signed = await db.one("SELECT number FROM kd_contract WHERE reservation_id = $1 AND status IN ('da_ky', 'thanh_ly') LIMIT 1", [r.id]);
+        if (signed) bad(`Phiếu đã ký hợp đồng ${signed.number} — hủy qua «Hủy giao dịch – đổi căn»`);
+      }
     }
     if (r.progress === 'da_ky' && r.reg_state === 'giu_cho') r.reg_state = 'ky_hdmb';
     if (r.reg_state === 'ky_hdmb' && (!old || old.reg_state !== 'ky_hdmb')) r.progress = 'da_ky';
     if (r.reg_state === 'huy') { if (!['huy', 'het_han'].includes(r.status)) r.status = 'huy'; }
     else if (!opts.system && (!r.status || ['nhap', 'tu_choi'].includes(r.status))) r.status = r.deposit > 0 ? 'da_coc' : 'giu_cho';
+    // qua «Hạn giữ chỗ» mà chưa đặt cọc → «Quá hạn giữ chỗ»; gia hạn sang ngày sau → về lại «Giữ chỗ»
+    const expired = !!r.hold_until && Date.parse(r.hold_until) < Date.now() && !(+r.deposit > 0);
+    if (expired && r.reg_state === 'giu_cho') { r.reg_state = 'qua_han'; if (r.status === 'giu_cho') r.status = 'qua_han'; }
+    else if (!expired && (r.reg_state === 'qua_han' || r.status === 'qua_han')) { if (r.reg_state === 'qua_han') r.reg_state = 'giu_cho'; if (r.status === 'qua_han') r.status = +r.deposit > 0 ? 'da_coc' : 'giu_cho'; }
     await linkCustomer(db, r, old, user, opts, demo);
-    // MST / tài khoản ghi ở phiếu mà hồ sơ khách còn trống → bổ sung cho khách
-    if (r.customer_id && !opts.check && (r.tax_code || r.bank_account)) {
-      const c = await raw(db, 'customer', r.customer_id), up = {};
-      for (const f of ['tax_code', 'bank_account']) if (r[f] && !c[f]) up[f] = r[f];
-      if (Object.keys(up).length) await sys(db, 'customer', c.id, up, user, 'cap_nhat_tu_phieu_dang_ky');
-    }
     if (changedUnit && !opts.system) {
       // căn còn trống (Còn bán / Chưa mở bán) mới lập phiếu được — căn chưa mở bán tự mở bán khi lưu phiếu
       if (!FREE_UNIT.includes(u.status)) bad(`Căn ${u.code} đang «${await C.optLabel(C.F.unit.status, u.status)}» — không giữ chỗ được`);
     }
-    if (r.hold_until && r.reg_date && new Date(Date.parse(r.hold_until) + 7 * 3600e3).toISOString().slice(0, 10) < r.reg_date) bad('Hạn giữ chỗ phải sau ngày đăng ký');
+    if (r.hold_until && r.reg_date && !opts.system && new Date(Date.parse(r.hold_until) + 7 * 3600e3).toISOString().slice(0, 10) < r.reg_date) bad('Hạn giữ chỗ phải sau ngày đăng ký');
     if (!old && r.hold_until && Date.parse(r.hold_until) < Date.now() && !opts.system) bad('Hạn giữ chỗ đã qua');
     if (['dai_ly', 'ctv'].includes(r.source) && !r.agent_id) {
       const c = await raw(db, 'customer', r.customer_id); if (c?.agent_id) r.agent_id = c.agent_id; else bad('Nguồn bán đại lý / CTV cần chọn đối tác');
@@ -291,10 +407,13 @@ H.reservation = {
     if (changedUnit && old && ['huy', 'het_han'].includes(r.status)) bad('Phiếu đã hủy — không đổi căn được');
     if (changedUnit || r.price == null || !r.policy_id) {
       const p = await pricing(db, u, r.reg_date);
-      if (r.price == null) r.price = u.total_price != null ? +u.total_price : p.price;   // giá theo mã căn ở Danh mục sản phẩm (khớp bản in đơn đăng ký)
+      // giá theo mã căn ở Danh mục sản phẩm: giá trị căn hộ = sau thuế + bảo trì; hoàn thiện = giá trị hoàn thiện căn
+      if (r.unit_value == null || (old && changedUnit)) r.unit_value = u.price_net != null ? +u.price_net + (+u.maint_fee || 0) : u.total_price != null ? +u.total_price - (+u.finish_value || 0) : p.price;
+      if (old ? changedUnit : r.finish_value == null) r.finish_value = u.finish_value;
       if (!r.policy_id) r.policy_id = p.policy?.id ?? null;   // nhân viên chọn chính sách thì giữ, để trống thì tự lấy
       if (!p.policy && !r.policy_id) warn.push('Không có chính sách bán hàng đang phát hành cho căn này — giá lấy theo bảng hàng');
     }
+    if (r.unit_value != null) r.price = +r.unit_value + (+r.finish_value || 0);   // Tổng giá bán = giá trị căn hộ + hoàn thiện nội thất
     if (r.price == null) bad('Chưa có giá bán: nhập giá hoặc phát hành bảng giá cho dự án');
     if (r.deposit > r.price) bad('Tiền đặt cọc lớn hơn giá bán');
   },
@@ -305,15 +424,22 @@ H.reservation = {
   async onApprove(r, ok) { return ok ? { status: r.deposit > 0 ? 'da_coc' : 'giu_cho' } : null; },
   async afterApprove(r, ok, { db, user }) { await recomputeUnit(db, r.unit_id, user); if (ok) await markCustomer(db, r.customer_id, user); },
   async afterSave(r, old, { db, user }) {
+    await syncCustomer(db, r.customer_id, custVals(r, old, RES_CUST), user, `Theo phiếu đăng ký ${r.code || ''}`);
     if (!old || old.unit_id !== r.unit_id) {
       const u = await raw(db, 'unit', r.unit_id);
       if (u && !u.activated && !u.lock) await sys(db, 'unit', u.id, { activated: true }, user, 'kich_hoat', 'Mở bán khi lập phiếu đăng ký căn hộ');
+    }
+    if (r.status === 'huy' && old?.status === 'chuyen_hd') {   // hủy đăng ký khi hợp đồng còn dự thảo / chờ ký → hủy luôn hợp đồng
+      for (const c of await db.q("SELECT id FROM kd_contract WHERE reservation_id = $1 AND status NOT IN ('da_ky', 'thanh_ly', 'huy')", [r.id])) {
+        await sys(db, 'contract', c.id, { status: 'huy' }, user, 'huy', `Hủy theo phiếu đăng ký ${r.code || ''}`);
+        await db.q("UPDATE kd_approval SET status = 'huy' WHERE ent = 'contract' AND rec_id = $1 AND status = 'cho_duyet'", [c.id]);
+      }
     }
     if (!old || old.status !== r.status || old.unit_id !== r.unit_id || old.deposit !== r.deposit || old.reg_state !== r.reg_state) await recomputeUnit(db, r.unit_id, user);
     if (r.customer_id && ['giu_cho', 'da_coc', 'chuyen_hd'].includes(r.status)) await markCustomer(db, r.customer_id, user);
     if (old && old.unit_id !== r.unit_id) await recomputeUnit(db, old.unit_id, user);
   },
-  async decorate(rows, { db }) { await stageOf(db, rows); },
+  async decorate(rows, { db }) { await stageOf(db, rows); await saleLive(db, rows); },
   acts: {
     async deposit(r, d) { if (d.deposit > r.price) bad('Tiền đặt cọc lớn hơn giá bán'); return { patch: { deposit: d.deposit, deposit_on: d.deposit_on, status: 'da_coc' } }; },
     async extend(r, d) { if (Date.parse(d.hold_until) <= Date.now()) bad('Hạn mới phải sau thời điểm hiện tại'); return { patch: { hold_until: d.hold_until, status: r.deposit > 0 ? 'da_coc' : 'giu_cho' } }; },
@@ -322,7 +448,7 @@ H.reservation = {
       const c = (await create('contract', { kind: d.kind, number: d.number, plan_sign: d.plan_sign, unit_id: r.unit_id, customer_id: r.customer_id, value: r.price, owner_id: r.owner_id || user.id, reservation_id: r.id },
         user, { db, system: true, demo })).row;
       await markCustomer(db, r.customer_id, user);
-      return { patch: { status: 'chuyen_hd' }, open: ['contract', c.id], msg: `Đã lập dự thảo hợp đồng ${c.number}. Bước tiếp: lập lịch thanh toán → gửi rà soát.` };
+      return { patch: { status: 'chuyen_hd' }, open: ['contract', c.id], msg: `Đã lập dự thảo hợp đồng ${c.number}. Bước tiếp: lập lịch thanh toán → gửi trình duyệt.` };
     },
   },
 };
@@ -355,8 +481,54 @@ async function markCustomer(db, id, user) { const c = await raw(db, 'customer', 
 // đối tượng chính sách (nguyên văn Mẫu 4) → nhóm đối tượng dùng cho danh mục giấy tờ
 const grpOf = t => { const s = String(t || '').toLowerCase(); if (!s.trim()) return null;
   return /thu nhập thấp|nghèo/.test(s) ? 'cn_thu_nhap_thap' : /sĩ quan|quân nhân|công an|quân đội/.test(s) ? 'luc_luong_vt' : /doanh nghiệp|khu công nghiệp|công nhân/.test(s) ? 'cong_nhan' : /cán bộ|công chức|viên chức/.test(s) ? 'can_bo' : 'khac'; };
+// hồ sơ NOXH: dòng «2.1 Thông tin chủ hộ» (cột như Mẫu 4) ↔ cột Mẫu 4 của hồ sơ + hồ sơ khách hàng (họ tên, SĐT, ngày sinh, CCCD)
+const HEAD_COLS = ['old_id_no', 'job', 'doi_tuong', 'confirm_org', 'housing', 'province', 'district', 'commune', 'income'];
+async function noxhHead(db, r, old, user, demo) {
+  const h = Array.isArray(r.head) ? r.head[0] : null, t = v => String(v ?? '').trim();
+  const k = r.customer_id ? await raw(db, 'customer', r.customer_id) : null;
+  if (!h || !(t(h.name) || t(h.phone) || t(h.id_no))) {   // hồ sơ cũ / nhập file Mẫu 4: dựng dòng chủ hộ từ dữ liệu đang có
+    const [y, m, d] = String(k?.birth || '').split('-');
+    r.head = [{ name: k?.full_name || '', phone: [k?.phone, k?.phone2].filter(Boolean).join('/ '), bday: d ? String(+d) : '', bmonth: m ? String(+m) : '', byear: y || '', id_no: k?.id_no || '',
+      ...Object.fromEntries(HEAD_COLS.map(c => [c, r[c] || ''])), relation: 'Chủ hộ' }];
+    return;
+  }
+  const oh = Array.isArray(old?.head) ? old.head[0] || {} : {};   // ô định danh bị che (•••) với người không có quyền xem → giữ số cũ
+  for (const [c, v] of Object.entries(h)) if (String(v ?? '').startsWith('•')) h[c] = oh[c] ?? (c === 'old_id_no' ? old?.old_id_no : '') ?? '';
+  for (const c of HEAD_COLS) r[c] = t(h[c]) || null;
+  h.relation = 'Chủ hộ';
+  const dd = +h.bday, mm = +h.bmonth, yy = +h.byear;
+  if (t(h.bday) && !(dd >= 1 && dd <= 31)) bad('Chủ hộ: ngày sinh phải từ 1 đến 31');
+  if (t(h.bmonth) && !(mm >= 1 && mm <= 12)) bad('Chủ hộ: tháng sinh phải từ 1 đến 12');
+  if (t(h.byear) && !(yy >= 1900 && yy <= 2100)) bad('Chủ hộ: năm sinh không hợp lệ');
+  const birth = dd && mm && yy ? `${yy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}` : null;
+  const [phone, phone2] = t(h.phone).split(/\s*[\/;,]\s*/).map(x => x.replace(/[\s.]/g, '')).filter(Boolean);
+  const patch = { full_name: t(h.name) || undefined, phone, phone2, id_no: t(h.id_no) || undefined, birth: birth || undefined, bank_account: t(r.bank_account) || undefined };
+  for (const x of Object.keys(patch)) if (patch[x] === undefined) delete patch[x];
+  if (!r.customer_id) {   // chưa chọn khách: khớp theo CCCD rồi SĐT, không có thì tạo khách mới
+    const c = (patch.id_no && await db.one('SELECT id FROM kd_customer WHERE upper(id_no) = upper($1) ORDER BY id LIMIT 1', [patch.id_no]))
+      || (phone && await db.one("SELECT id FROM kd_customer WHERE regexp_replace($1,'[^0-9]','','g') IN (regexp_replace(phone,'[^0-9]','','g'), regexp_replace(coalesce(phone2,''),'[^0-9]','','g')) ORDER BY id LIMIT 1", [phone]));
+    if (c) r.customer_id = c.id;
+    else {
+      if (!patch.full_name || !phone) bad('Chủ hộ: cần họ tên và số điện thoại (hoặc chọn khách hàng)');
+      r.customer_id = (await create('customer', { ...patch, address: [r.commune, r.district, r.province].filter(Boolean).join(', ') || null, kind: 'giao_dich', source: 'truc_tiep', owner_id: r.owner_id || user?.id },
+        user, { db, system: true, demo, note: 'Tự tạo từ hồ sơ mua NOXH' })).row.id;
+      return;
+    }
+  }
+  const cur = await raw(db, 'customer', r.customer_id), diff = {};
+  if (!t(r.bank_account)) r.bank_account = cur.bank_account;
+  for (const [x, v] of Object.entries(patch)) if (String(cur[x] ?? '') !== String(v)) diff[x] = v;
+  if (Object.keys(diff).length) await sys(db, 'customer', cur.id, diff, user, 'sua', `Theo hồ sơ mua NOXH${r.id ? ' #' + r.id : ''}`);
+}
+
 H.noxh_check = {
-  async beforeSave(r, old, { db, warn }) {
+  async decorate(rows, { db, one }) { if (one) await saleLive(db, rows); },
+  async beforeSave(r, old, { db, warn, user, opts, demo }) {
+    if (r.reservation_id && (!old || old.reservation_id !== r.reservation_id)) { const s = await raw(db, 'reservation', r.reservation_id); r.customer_id = s.customer_id; r.unit_id = s.unit_id; }
+    if (!opts?.check) await noxhHead(db, r, old, user, demo);
+    if (!r.customer_id) bad('Nhập thông tin chủ hộ hoặc chọn khách hàng');
+    if (r.unit_id) { const u = await raw(db, 'unit', r.unit_id); r.project_id = u.project_id; r.unit_area = u.area_tt; }   // diện tích theo Danh mục sản phẩm
+    await saleWarn(db, r, warn);
     // hồ sơ lập xong → gắn vào phiếu đăng ký đang hiệu lực của khách (cùng căn nếu đã chọn căn) để in biên bản / cập nhật tiến trình từ phiếu
     if (!r.reservation_id && r.customer_id) r.reservation_id = (await db.one(`SELECT id FROM kd_reservation WHERE customer_id = $1 AND status IN ('cho_duyet','giu_cho','qua_han','da_coc','chuyen_hd')
       AND ($2::int IS NULL OR unit_id = $2) ORDER BY id DESC LIMIT 1`, [r.customer_id, r.unit_id ?? null]))?.id ?? null;
@@ -364,6 +536,12 @@ H.noxh_check = {
     if (!r.reg_kind) r.reg_kind = 'mua';
     if (!r.grp) r.grp = grpOf(r.doi_tuong) || bad('Chọn nhóm đối tượng hoặc ghi đối tượng chính sách');
     const rel = (r.members || []).filter(m => !m.relation); if (rel.length) bad(`Thành viên hộ «${rel[0].name || '(chưa có tên)'}»: chọn quan hệ với chủ hộ`);
+    for (const m of r.members || []) {
+      const who = `Thành viên hộ «${m.name || '(chưa có tên)'}»`, dd = +m.bday, mm = +m.bmonth, yy = +m.byear;   // ô bị che (•••) đã được khôi phục trước khi vào đây
+      if (m.bday && !(dd >= 1 && dd <= 31)) bad(`${who}: ngày sinh phải từ 1 đến 31`);
+      if (m.bmonth && !(mm >= 1 && mm <= 12)) bad(`${who}: tháng sinh phải từ 1 đến 12`);
+      if (m.byear && !(yy >= 1900 && yy <= 2100)) bad(`${who}: năm sinh không hợp lệ`);
+    }
     if ((!r.items || !r.items.length) && r.grp) r.items = await defaultList(db, 'checklist_noxh', r.grp);
     const it = r.items || [];
     r.result = it.length && it.every(x => x.st === 'da_nhan') ? 'du' : it.some(x => ['thieu', 'can_sua'].includes(x.st)) ? 'can_bo_sung' : 'chua_kt';
@@ -375,6 +553,10 @@ H.noxh_check = {
     if (miss.length) bad('Chưa khai đủ thông tin Mẫu 4: ' + miss.join(', '));
   },
   async afterSave(r, old, { db, user }) {
+    // lịch ký nhập ở hồ sơ → sang hợp đồng chưa duyệt của khách (cùng căn nếu hồ sơ đã chọn căn)
+    if (['plan_sign', 'sign_place', 'sign_status'].some(k => String(old?.[k] ?? '') !== String(r[k] ?? '')))
+      await db.q(`UPDATE kd_contract SET plan_sign = $1, sign_place = $2, sign_status = coalesce($3, sign_status), updated_at = now() WHERE customer_id = $4 AND ($5::int IS NULL OR unit_id = $5) AND status IN ('du_thao', 'cho_duyet', 'tu_choi')`,
+        [r.plan_sign ?? null, r.sign_place ?? null, r.sign_status ?? null, r.customer_id, r.unit_id ?? null]);
     if (!r.reservation_id || old?.status === r.status) return;
     const s = await raw(db, 'reservation', r.reservation_id), to = { cho_duyet: 'cho_xet_duyet', da_duyet: 'du_dk' }[r.status];
     if (s && to && REG_ORDER.indexOf(to) > REG_ORDER.indexOf(s.progress)) await sys(db, 'reservation', s.id, { progress: to }, user, 'cap_nhat_tien_trinh', `Theo hồ sơ NOXH #${r.id}`);
@@ -387,11 +569,63 @@ H.noxh_check = {
   },
 };
 
+// phiếu đề nghị hủy / đổi: chọn hợp đồng hoặc phiếu giữ chỗ → khách hàng, SĐT, dự án, mã căn, số tiền khách đã nộp
+async function cancelPrefill(db, { contract_id, reservation_id, unit_id }) {
+  if (unit_id && !contract_id && !reservation_id) {   // chọn căn → hợp đồng / phiếu giữ chỗ đang hiệu lực của căn
+    contract_id = (await db.one("SELECT id FROM kd_contract WHERE unit_id = $1 AND kind <> 'hoan_thien' AND status NOT IN ('huy','thanh_ly') ORDER BY id DESC LIMIT 1", [+unit_id]))?.id;
+    if (!contract_id) reservation_id = (await db.one(`SELECT id FROM kd_reservation WHERE unit_id = $1 AND status IN ${ACTIVE_RES} ORDER BY id DESC LIMIT 1`, [+unit_id]))?.id;
+    if (!contract_id && !reservation_id) { const u = await raw(db, 'unit', +unit_id), p = u && await raw(db, 'project', u.project_id);
+      return { contract_id: null, contract_label: '', reservation_id: null, reservation_label: '', cust_name: '', phone: '', project_id: p?.id ?? null, project_label: p ? `${p.code} · ${p.name}` : '', unit_id: u?.id ?? null, unit_label: u?.code || '', paid: 0 }; }
+  }
+  const c = contract_id && await raw(db, 'contract', +contract_id), res = (c?.reservation_id || reservation_id) && await raw(db, 'reservation', +(c?.reservation_id || reservation_id));
+  const unitId = c?.unit_id || res?.unit_id, custId = c?.customer_id || res?.customer_id;
+  const u = unitId && await raw(db, 'unit', unitId), k = custId && await raw(db, 'customer', custId), p = u && await raw(db, 'project', u.project_id);
+  const paid = c ? (await debtOf(db, [c.id])).get(c.id).paid : +res?.deposit || 0;
+  return { contract_id: c?.id ?? null, contract_label: c?.number || '', reservation_id: res?.id ?? null, reservation_label: res?.code || '', cust_name: k?.full_name || res?.cust_name || '', phone: k?.phone || res?.phone || '',
+    project_id: p?.id ?? null, project_label: p ? `${p.code} · ${p.name}` : '', unit_id: u?.id ?? null, unit_label: u?.code || '', paid };
+}
+
+// thông báo mở bán: căn thuộc đợt theo «Căn hộ mở bán» (* = cả dự án / mã tòa / mã căn)
+async function noticeUnits(db, n) {
+  const g = String(n.unit_group || '').split(/[,;\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean);   // chỉ các căn / tòa đã tích
+  const us = await db.q('SELECT u.id, u.code, u.status, u.activated, u.lock, u.floor, u.area_tt, u.area_xd, b.code b FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = $1 ORDER BY b.code, u.floor, u.code', [n.project_id]);
+  return us.filter(u => g.includes('*') || g.includes(String(u.b).toUpperCase()) || g.includes(u.code.toUpperCase()));
+}
+H.sale_notice = {
+  noDelete: r => !['nhap', 'tu_choi'].includes(r.status) && 'Chỉ xóa được thông báo đang ở bản nháp',
+  async beforeSave(r) {
+    if (r.close_on && r.open_on && r.close_on < r.open_on) bad('Ngày kết thúc nhận hồ sơ phải sau ngày bắt đầu');
+    if (!String(r.unit_group || '').trim()) bad('Tích chọn căn hộ mở bán');
+  },
+  async onSubmit(r, { db }) { if (!(await noticeUnits(db, r)).length) bad('Đợt mở bán chưa có căn nào'); },
+  // duyệt (phát hành): căn trong đợt chưa mở bán → kích hoạt «Còn bán»
+  async afterApprove(r, ok, { db, user }) {
+    if (!ok) return;
+    for (const u of await noticeUnits(db, r)) if (!u.activated && !u.lock) { await sys(db, 'unit', u.id, { activated: true }, user, 'kich_hoat', `Theo thông báo mở bán ${r.code}`); await recomputeUnit(db, u.id, user); }
+  },
+  // theo dõi: số căn trong đợt, đã đăng ký / giữ chỗ (đã có phiếu đăng ký hoặc hợp đồng), còn trống
+  async decorate(rows, { db, one }) {
+    for (const r of rows) {
+      const us = await noticeUnits(db, r);
+      if (one) r._units = us.map(u => ({ code: u.code, area_tt: u.area_tt, area_xd: u.area_xd }));   // màn chi tiết: bảng căn mở bán như «DS mở bán» Excel
+      r.n_units = us.length; r.n_free = us.filter(u => u.status === 'con_ban').length;
+      r.n_reg = us.filter(u => !['con_ban', 'chua_mo_ban', 'tam_khoa', 'ngung_kd'].includes(u.status)).length;
+    }
+  },
+};
+
 H.cancel_req = {
   async beforeSave(r, old, { db }) {
-    // theo dõi chi trả: ngày dự kiến = ngày ký thanh lý + thời gian chờ; ghi ngày thì tự đổi tình trạng
+    // thông tin khách hàng theo hợp đồng / phiếu giữ chỗ (chọn lại thì lấy lại); số tiền đề nghị để trống = số khách đã nộp
+    if (r.contract_id || r.reservation_id) {
+      const src = !old || old.contract_id !== r.contract_id || old.reservation_id !== r.reservation_id;
+      const f = await cancelPrefill(db, r);
+      for (const k of ['cust_name', 'phone', 'project_id', 'unit_id']) if (src || r[k] == null || r[k] === '') r[k] = f[k];
+      if (r.pay_amount == null) r.pay_amount = f.paid || null;
+    }
+    // ngày đề nghị chi trả: để trống / đổi ngày thanh lý hoặc thời gian chờ → ngày ký thanh lý + thời gian chờ; ghi ngày thì tự đổi tình trạng
     if (r.wait_days == null) r.wait_days = 30;
-    r.pay_due = r.liquidate_on ? C.addDays(r.liquidate_on, +r.wait_days || 0) : null;
+    if (r.liquidate_on && (!r.pay_due || (old && (old.liquidate_on !== r.liquidate_on || +old.wait_days !== +r.wait_days) && r.pay_due === old.pay_due))) r.pay_due = C.addDays(r.liquidate_on, +r.wait_days || 0);
     if (r.acct_on && r.acct_status !== 'da') r.acct_status = 'da';
     if (r.paid_on && !['da_chi', 'mot_phan'].includes(r.pay_status)) r.pay_status = 'da_chi';
     if (r.pay_status === 'da_chi' && !r.paid_on) bad('Ghi «Ngày chi tiền thực tế» khi tình trạng là Đã chi');
@@ -420,34 +654,77 @@ H.cancel_req = {
     if (r.kind === 'doi_can') {
       const nu = await raw(db, 'unit', r.new_unit_id); if (nu.status !== 'con_ban') bad(`Căn ${nu.code} không còn trống`);
       if (res) await sys(db, 'reservation', res.id, { unit_id: nu.id }, user, 'doi_can', `Theo đề nghị ${r.code}`);
-      if (con) await sys(db, 'contract', con.id, { unit_id: nu.id }, user, 'doi_can', `Theo đề nghị ${r.code}`);
+      if (con) { await sys(db, 'contract', con.id, { unit_id: nu.id, finish_value: nu.finish_value }, user, 'doi_can', `Theo đề nghị ${r.code}`); await syncContractValue(db, con.id, user, `Đổi căn theo đề nghị ${r.code}`); }
       await recomputeUnit(db, nu.id, user);
     }
     if (r.kind === 'doi_kh') {
-      if (res) await sys(db, 'reservation', res.id, { customer_id: r.new_customer_id }, user, 'doi_kh', `Theo đề nghị ${r.code}`);
-      if (con) await sys(db, 'contract', con.id, { customer_id: r.new_customer_id }, user, 'doi_kh', `Theo đề nghị ${r.code}`);
+      const nk = await raw(db, 'customer', r.new_customer_id), bk = bankSplit(nk.bank_account);   // ô bên mua theo người mới, không giữ thông tin người cũ
+      if (res) await sys(db, 'reservation', res.id, { customer_id: nk.id, cust_name: nk.full_name, id_no: nk.id_no, id_date: nk.id_date, id_place: nk.id_place, address: nk.address, phone: nk.phone, tax_code: nk.tax_code, bank_account: nk.bank_account }, user, 'doi_kh', `Theo đề nghị ${r.code}`);
+      if (con) await sys(db, 'contract', con.id, { customer_id: nk.id, b_name: nk.full_name, ...Object.fromEntries(Object.entries(CT_CUST).map(([f, c]) => [c, nk[f]])), b_bank_acc: bk.acc, b_bank_name: bk.name }, user, 'doi_kh', `Theo đề nghị ${r.code}`);
       await markCustomer(db, r.new_customer_id, user);
     }
     for (const id of new Set([res?.unit_id, con?.unit_id].filter(Boolean))) await recomputeUnit(db, id, user);
   },
 };
 
+// hợp đồng được duyệt là đã ký: ngày ký thực tế = ngày ký HĐMB trên hợp đồng (ghi ngày tương lai thì lấy hôm nay)
+const signedPatch = r => { const d = String(r.contract_on || today()).slice(0, 10); return { status: 'da_ky', signed_on: d > today() ? today() : d, sign_status: 'da_ky' }; };
 H.contract = {
-  // danh sách theo nhóm: ?group=can_ho | lien_ke
-  where(qs) { if (['can_ho', 'lien_ke'].includes(qs.group)) return { sql: 't.ptype = $1', params: [qs.group] }; },
-  async beforeSave(r, old, { db, opts }) {
+  onApprove(r, ok) { if (ok) return { patch: signedPatch(r) }; },
+  // danh sách: hợp đồng cũ chưa có thông tin bên mua / chi tiết giá thì hiện theo khách hàng và căn
+  async listFill(rows, db) {
+    if (!rows.length) return;
+    const ks = await db.q('SELECT id, full_name, id_no, id_date, id_place, address, phone FROM kd_customer WHERE id = ANY($1)', [rows.map(r => r.customer_id)]);
+    const us = await db.q('SELECT id, area_tt, base_price, pretax, vat_pct, tax_amt, price_net, maint_fee FROM kd_unit WHERE id = ANY($1)', [rows.map(r => r.unit_id)]);
+    const K = new Map(ks.map(x => [x.id, x])), U = new Map(us.map(x => [x.id, x]));
+    for (const r of rows) {
+      const k = K.get(r.customer_id) || {}, u = U.get(r.unit_id) || {};
+      r.b_name = k.full_name; r.b_id_no ??= k.id_no; r.b_id_date ??= k.id_date; r.b_id_place ??= k.id_place; r.b_addr ??= k.address; r.b_phone ??= k.phone;
+      r.area_tt ??= u.area_tt; r.base_price ??= u.base_price; r.pretax ??= u.pretax; r.vat_pct ??= u.vat_pct; r.vat_amt ??= u.tax_amt; r.after_tax ??= u.price_net; r.maint_fee ??= u.maint_fee;
+    }
+  },
+  // danh sách theo nhóm: ?group=can_ho (HĐ mua bán) | hoan_thien (HĐ hoàn thiện căn hộ) | lien_ke
+  where(qs) {
+    if (qs.group === 'hoan_thien') return { sql: 't.ptype = $1 AND t.kind = $2', params: ['can_ho', 'hoan_thien'] };
+    if (qs.group === 'can_ho') return { sql: 't.ptype = $1 AND t.kind <> $2', params: ['can_ho', 'hoan_thien'] };
+    if (qs.group === 'lien_ke') return { sql: 't.ptype = $1', params: [qs.group] };
+  },
+  async beforeSave(r, old, ctx) {
+    const { db, opts } = ctx;
     r.number = r.number?.trim().toUpperCase().replace(/\s+/g, '') || null;
     // phân loại theo loại căn
     if (!old || old.unit_id !== r.unit_id || !r.ptype) { const u0 = await raw(db, 'unit', r.unit_id); if (u0) r.ptype = ['lien_ke', 'shophouse'].includes(u0.kind) ? 'lien_ke' : 'can_ho'; }
     // số hợp đồng để trống → HDCH.YYMM-0001 / HDLK.YYMM-0001
-    if (!r.number) {
-      const d = String(r.contract_on || today()), pre = `${r.ptype === 'lien_ke' ? 'HDLK' : 'HDCH'}.${d.slice(2, 4)}${d.slice(5, 7)}-`;
-      const last = await db.one("SELECT max(substring(number from '\\d+$')::int) n FROM kd_contract WHERE number LIKE $1", [pre + '%']);
-      r.number = pre + String((last?.n || 0) + 1).padStart(4, '0');
+    if (!r.number) r.number = await nextContractNo(db, r.ptype, r.contract_on);
+    if (!old && !r.plan_sign) {   // hợp đồng mới: lấy lịch ký đã nhập ở Hồ sơ mua NOXH
+      const n = await db.one('SELECT plan_sign, sign_place, sign_status FROM kd_noxh_check WHERE customer_id = $1 AND plan_sign IS NOT NULL ORDER BY (unit_id = $2) DESC NULLS LAST, id DESC LIMIT 1', [r.customer_id, r.unit_id]);
+      if (n) Object.assign(r, n);
     }
+    // bên mua: ô trống lấy theo hồ sơ khách; tài khoản dạng «Số - Ngân hàng» tách 2 ô
+    if (!old || old.customer_id !== r.customer_id) {
+      const k = await raw(db, 'customer', r.customer_id), b = bankSplit(k?.bank_account);
+      if (k) for (const [f, c] of Object.entries(CT_CUST)) if (r[c] == null || r[c] === '') r[c] = k[f];
+      r.b_bank_acc ||= b.acc; r.b_bank_name ||= b.name;
+    }
+    if (/\s-\s/.test(r.b_bank_acc || '')) { const b = bankSplit(r.b_bank_acc); r.b_bank_acc = b.acc; r.b_bank_name = b.name || r.b_bank_name; }
+    // số bảng giá = tòa của căn (Danh mục sản phẩm); chính sách giá lấy theo phiếu giữ chỗ / chính sách đang phát hành
+    r.building_id = (await raw(db, 'unit', r.unit_id))?.building_id ?? null;
+    if (!r.price_policy_id) r.price_policy_id = (await contractPrefill(db, r.unit_id, r.contract_on || undefined)).policy_id;
+    // chung cư có giá nền: tính như BRAVO / Danh mục sản phẩm — chỉ khi tạo mới hoặc đổi ô giá (hợp đồng cũ giữ nguyên số)
+    const PK = ['base_price', 'area_tt', 'floor_price', 'area_floor', 'discount', 'corner_pct', 'vat_pct', 'finish_value', 'unit_id'];
+    if (r.ptype !== 'lien_ke' && +r.base_price > 0 && +r.area_tt > 0 && (!old || PK.some(k => String(old[k] ?? '') !== String(r[k] ?? '')))) Object.assign(r, contractPrice(r));
     if (r.pretax > 0 && r.vat_pct != null && r.vat_amt == null) r.vat_amt = Math.round(r.pretax * r.vat_pct / 100);
     if (r.pretax > 0 && r.after_tax == null) r.after_tax = r.pretax + (r.vat_amt || 0);
+    if (r.kind === 'hoan_thien' && r.finish_value != null) r.value = +r.finish_value - (+r.discount || 0);
     if (!(r.value > 0)) bad('Giá trị hợp đồng phải > 0');
+    if (r.status === 'thanh_ly') { { const miss = ['liquidated_on', 'liquidate_reason'].filter(k => !r[k]); if (miss.length) bad('Hợp đồng đã thanh lý: chọn ' + miss.map(k => C.F.contract[k].l).join(' và '), { fields: miss }); } if (r.liquidated_on > today()) bad('Ngày thanh lý không được sau hôm nay'); }
+    else { r.liquidated_on = null; r.liquidate_reason = null; r.liquidate_note = null; }
+    if (r.loan_status === 'co_vay' && !String(r.loan_bank || '').trim()) bad('Có vay: ghi ngân hàng cho vay');
+    if (r.loan_status !== 'co_vay') { r.loan_bank = null; r.loan_doc3 = null; }
+    // bảng «Lần thanh toán» trên form: kiểm tra khớp Tổng tiền (ghi thành lịch thu ở afterSave)
+    // không lưu vào cột (lịch thu nằm ở kd_installment) — chuyển sang afterSave qua ctx
+    ctx.sched = Array.isArray(r.new_schedule) && r.new_schedule.length ? await normSchedule(db, r.new_schedule.map(x => x.pct != null ? { ...x, amount: null } : x), r.value, 'Lần thanh toán') : null;
+    r.new_schedule = null;
     if (!old || old.unit_id !== r.unit_id) {
       const u = await raw(db, 'unit', r.unit_id);
       if (!u.activated && !opts.system) bad(`Căn ${u.code} chưa được duyệt mở bán`);
@@ -464,10 +741,18 @@ H.contract = {
   },
   async onSubmit(r, { db }) {
     const n = await db.one('SELECT count(*) n, coalesce(sum(amount),0) s FROM kd_installment WHERE contract_id = $1 AND active', [r.id]);
-    if (r.kind !== 'thue' && !n.n) bad('Chưa lập lịch thanh toán — bấm «Lập lịch thanh toán» trước khi gửi rà soát');
+    if (r.kind !== 'thue' && !n.n) bad('Chưa lập lịch thanh toán — bấm «Lập lịch thanh toán» trước khi gửi trình duyệt');
     if (n.n && n.s !== r.value) bad(`Tổng lịch thanh toán ${fmtMoney(n.s)} khác giá trị hợp đồng ${fmtMoney(r.value)}`);
   },
-  async afterSave(r, old, { db, user }) {
+  async afterSave(r, old, { db, user, demo, sched }) {
+    const cv = custVals(r, old, CT_CUST);
+    if (['b_bank_acc', 'b_bank_name'].some(c => !old || old[c] !== r[c])) cv.bank_account = [r.b_bank_acc, r.b_bank_name].filter(Boolean).join(' - ');
+    await syncCustomer(db, r.customer_id, cv, user, `Theo hợp đồng ${r.number}`);
+    if (sched?.length && ['du_thao', 'tu_choi', 'cho_duyet', 'cho_ky'].includes(r.status)) {   // ghi lịch thu khi khác lịch đang có
+      const cur = await db.q('SELECT name, due_on, pct, amount FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [r.id]);
+      const key = xs => JSON.stringify(xs.map(x => [x.name, String(x.due_on).slice(0, 10), x.pct == null ? null : +x.pct, +x.amount]));
+      if (key(cur) !== key(sched)) await writeSchedule(db, r.id, sched, 'hop_dong', user, demo);
+    }
     if (r.status === 'da_ky' && old?.status !== 'da_ky' && r.reservation_id && r.kind !== 'hoan_thien') {
       const s = await raw(db, 'reservation', r.reservation_id);
       if (s && s.reg_state !== 'ky_hdmb') await sys(db, 'reservation', s.id, { reg_state: 'ky_hdmb', progress: 'da_ky' }, user, 'cap_nhat_tien_trinh', `Đã ký hợp đồng ${r.number}`);
@@ -478,6 +763,9 @@ H.contract = {
   async decorate(rows, { db, one }) {
     const D = await debtOf(db, rows.map(r => r.id));
     for (const r of rows) { const d = D.get(r.id); r.paid = d.paid; r.left = d.left; r.overdue = d.overdue; if (one) r._debt = d; }
+    if (!one) await H.contract.listFill(rows, db);
+    if (one && rows[0]) rows[0].new_schedule = (await db.q('SELECT name, due_on, pct, amount FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [rows[0].id]))
+      .map(x => ({ name: x.name, due_on: x.due_on, pct: x.pct == null ? null : +x.pct, amount: x.pct == null ? +x.amount : null }));   // form sửa: lịch thu đang có
   },
   acts: {
     async schedule(r, d, { db, user, demo }) {
@@ -485,17 +773,20 @@ H.contract = {
       await writeSchedule(db, r.id, rows, 'hop_dong', user, demo);
       return { msg: `Đã lập ${rows.length} kỳ thu, tổng ${fmtMoney(r.value)}đ` };
     },
-    async sign(r, d, { db, user }) {
-      await C.requiredFiles(db, { key: 'contract', files: [['ban_ky', 'Bản hợp đồng đã ký', 1]] }, r);
-      if (d.signed_on > today()) bad('Ngày ký không được sau hôm nay');
-      return { patch: { status: 'da_ky', signed_on: d.signed_on, sign_status: 'da_ky' }, msg: 'Đã chốt hợp đồng. Từ nay mọi thay đổi phải qua phụ lục.' };
+    async liquidate(r, d, { db, user }) {   // đóng phiếu của căn để căn trống lại, bán lại được
+      await closeReservations(db, r, user);
+      if (d.liquidated_on > today()) bad('Ngày thanh lý không được sau hôm nay');
+      const why = C.F.contract.liquidate_reason.o.find(o => o[0] === d.liquidate_reason)?.[1] || d.liquidate_reason;
+      return { patch: { status: 'thanh_ly', liquidated_on: d.liquidated_on, liquidate_reason: d.liquidate_reason, liquidate_note: d.liquidate_note || null }, note: [why, d.liquidate_note].filter(Boolean).join(' — ') };
     },
-    async liquidate() { return { patch: { status: 'thanh_ly' } }; },
     async print(r) { return { url: `/print/contract/${r.id}` }; },
   },
-  noDelete: r => r.status !== 'du_thao' && 'Chỉ xóa được dự thảo chưa gửi rà soát',
-  async afterDelete(r, { db, user }) {
+  noDelete: r => !['du_thao', 'tu_choi'].includes(r.status) && 'Chỉ xóa được hợp đồng đang ở dự thảo',
+  async beforeDelete(r, { db }) {   // lịch thu + hoa hồng dự kiến tự sinh theo hợp đồng; phiếu thu thật vẫn chặn xóa
+    await db.q("DELETE FROM kd_commission WHERE contract_id = $1 AND status IN ('du_kien', 'nhap', 'tu_choi', 'huy')", [r.id]);
     await db.q('DELETE FROM kd_installment WHERE contract_id = $1', [r.id]);
+  },
+  async afterDelete(r, { db, user }) {
     if (r.reservation_id) { const s = await raw(db, 'reservation', r.reservation_id); if (s?.status === 'chuyen_hd') await sys(db, 'reservation', s.id, { status: s.deposit > 0 ? 'da_coc' : 'giu_cho' }, user, 'hoan_tac'); }
     await recomputeUnit(db, r.unit_id, user);
   },
@@ -744,10 +1035,17 @@ H.report = {
 C.hooks(H);
 
 // ---------- việc chạy nền ----------
+// giữ chỗ quá hạn (chưa đặt cọc) → trạng thái căn hộ + tình trạng phiếu «Quá hạn giữ chỗ» (không tự giải phóng, không tự hoàn tiền)
+async function expireHolds(db) {   // chỉ đổi 2 cột trạng thái (không qua kiểm tra phiếu — dữ liệu cũ sai ngày không chặn cả lượt) + ghi nhật ký
+  const rows = await db.q(`UPDATE kd_reservation SET reg_state = 'qua_han', status = CASE WHEN status = 'giu_cho' THEN 'qua_han' ELSE status END, updated_at = now()
+    WHERE hold_until < now() AND coalesce(deposit, 0) = 0 AND (reg_state = 'giu_cho' OR status = 'giu_cho') AND status IN ('nhap','cho_duyet','giu_cho','qua_han') RETURNING id, status, is_demo`);
+  for (const r of rows) await C.audit(db, 'reservation', r.id, 'qua_han_giu_cho', null, { reg_state: 'qua_han', status: r.status }, null, 'Qua hạn giữ chỗ', r.is_demo);
+}
 async function jobs(db) {
   const t0 = Date.now();
-  // giữ chỗ quá hạn → cảnh báo (không tự giải phóng, không tự hoàn tiền)
-  for (const r of await db.q("SELECT id FROM kd_reservation WHERE status = 'giu_cho' AND hold_until < now()")) await sys(db, 'reservation', r.id, { status: 'qua_han' }, null, 'qua_han_giu_cho');
+  await expireHolds(db);
+  // hợp đồng duyệt trước 31/10/2026 đang «Chờ ký» → chuyển Đã ký như quy trình mới
+  for (const c of await db.q("SELECT * FROM kd_contract WHERE status = 'cho_ky'")) await sys(db, 'contract', c.id, signedPatch(c), null, 'tu_dong_da_ky', 'Hợp đồng đã duyệt tự chuyển Đã ký');
   // điều kiện bàn giao cập nhật theo thu tiền
   for (const h of await db.q("SELECT id, unit_id, cond_tech, cond_contract, cond_pay, status FROM kd_handover WHERE status IN ('chua_du_dk','du_dk')")) {
     const k = await handoverCond(db, h.unit_id);
@@ -788,4 +1086,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { ckItem, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, pricing, normSchedule, writeSchedule, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

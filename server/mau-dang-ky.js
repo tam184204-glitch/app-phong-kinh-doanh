@@ -107,13 +107,13 @@ const MAU_DANG_KY = () => [
   { code: 'DK-MUA-CTS', name: 'Đơn đăng ký O – mua căn hộ (Cát Tường Smart City)', kind: 'dang_ky_can', scope: 'CTS',
     content: donMua({ ...CT, dot: [D1, 'Đợt 2: Trong vòng 60 ngày kể từ ngày đóng tiền đợt 1, Bên Mua có trách nhiệm thanh toán cho Bên Bán 40% giá trị Căn Hộ.',
       'Đợt 3: Trong vòng 10 ngày kể từ ngày Bên Bán phát hành thông báo bàn giao gửi Bên Mua, Bên Mua có trách nhiệm thanh toán 25% giá trị căn hộ và 2% phí bảo trì.', D_CUOI(4)] }) },
-  { code: 'DK-NT-TNS-2PN', name: 'Đơn đăng ký G (NT) – hoàn thiện căn hộ 2 phòng ngủ', kind: 'dang_ky_noi_that', scope: 'TNS', bedrooms: 2,
+  // nội thất: một mẫu duy nhất cho mọi căn (28/10/2026 bỏ 2 mẫu tách theo 2 / 3 phòng ngủ — sửa danh mục đồ trực tiếp trên bản in)
+  { code: 'DK-NT', name: 'Đơn đăng ký G (NT) – hoàn thiện căn hộ', kind: 'dang_ky_noi_that',
     content: donNoiThat({ ...TN, phong: PN2 }) },
-  { code: 'DK-NT-TNS-3PN', name: 'Đơn đăng ký G (NT) – hoàn thiện căn hộ 3 phòng ngủ', kind: 'dang_ky_noi_that', scope: 'TNS', bedrooms: 3,
-    content: donNoiThat({ ...TN, phong: PN3 }) },
 ];
 // giá gói hoàn thiện theo file Excel — chỉ dùng khi căn chưa có giá trị hoàn thiện / gói hoàn thiện trong Danh mục sản phẩm
-const NT_GIA = { 'DK-NT-TNS-2PN': 320000000, 'DK-NT-TNS-3PN': 380000000 };
+const NT_GIA = { 'DK-NT': 320000000, 'DK-NT-TNS-2PN': 320000000, 'DK-NT-TNS-3PN': 380000000 };
 const MAU_CU = ['MAU-DKCH-01', 'MAU-DKCH-02', 'MAU-DKNT-01'];   // mẫu khung cũ — tắt khi nạp mẫu chuẩn
+const NT_CU = ['DK-NT-TNS-2PN', 'DK-NT-TNS-3PN'];   // mẫu nội thất tách theo số phòng ngủ — thay bằng DK-NT
 
-module.exports = { MAU_DANG_KY, MAU_CU, NT_GIA };
+module.exports = { MAU_DANG_KY, MAU_CU, NT_CU, NT_GIA };

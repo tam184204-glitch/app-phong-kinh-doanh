@@ -43,11 +43,21 @@ function fakeRes(done) {
 const isApi = u => typeof u === 'string' && (u.startsWith('/api/') || u.startsWith('/print/'));
 
 async function boot(pgliteUrl) {
+  let pg = null;
+  // đặt trước mọi bước khởi động: dữ liệu trên trình duyệt hỏng thì màn hình lỗi vẫn gọi được để nạp lại
+  window.__ctgReset = async () => {
+    if (!confirm('Xóa toàn bộ dữ liệu demo trên trình duyệt này và nạp lại từ đầu?')) return;
+    try { if (pg) await pg.close(); } catch (e) { console.warn('đóng CSDL', e); }
+    const drop = n => new Promise(ok => { const r = indexedDB.deleteDatabase(n); r.onsuccess = r.onerror = ok; r.onblocked = () => { alert('Hãy đóng các tab khác đang mở bản demo rồi bấm OK.'); }; });
+    await drop('/pglite/ctg-kinhdoanh-demo'); await drop('ctg-kd-files');
+    try { localStorage.removeItem(SID_KEY); } catch {}
+    location.reload();
+  };
   say('Đang khởi tạo cơ sở dữ liệu trong trình duyệt…');
   const { PGlite } = await import(pgliteUrl);
   const ts = v => v == null ? null : new Date(v.replace(' ', 'T').replace(/([+-]\d\d)$/, '$1:00')).toISOString();
   const num = v => v == null ? null : +v;
-  const pg = await PGlite.create('idb://ctg-kinhdoanh-demo', { relaxedDurability: true, parsers: { 1082: v => v, 1700: num, 1184: ts, 20: num } });
+  pg = await PGlite.create('idb://ctg-kinhdoanh-demo', { relaxedDurability: true, parsers: { 1082: v => v, 1700: num, 1184: ts, 20: num } });
   await pg.exec("SET TIME ZONE 'Asia/Bangkok'");
   pgShim.setDb(Promise.resolve(pg));
   await fsShim.loadFiles();
@@ -73,6 +83,19 @@ async function boot(pgliteUrl) {
       await IO.importFile('units', { name: 'Nhà K - tòa K CTS.xlsx', buffer: Buffer.from(require('../data/seed/Nhà K - tòa K CTS.xlsx')) }, u);
     } catch (e) { console.warn('nạp tòa O', e); }
   }
+  // giữ chỗ quá hạn → «Quá hạn giữ chỗ» (bản demo tắt việc chạy nền NO_JOBS nên chạy riêng: lúc mở + mỗi 2 phút)
+  try { const B = require('../server/biz'); await tx(db => B.expireHolds(db)); setInterval(() => tx(db => B.expireHolds(db)).catch(e => console.warn('quá hạn giữ chỗ', e)), 2 * 60e3); } catch (e) { console.warn('quá hạn giữ chỗ', e); }
+  // phiếu thử tạo theo giá bảng hàng 10/09 → giá trị căn hộ theo Danh mục sản phẩm (như máy thật 28/10/2026); chạy mỗi lần mở
+  // để cả trình duyệt đã lưu dữ liệu cũ cũng sửa (giá trị hoàn thiện nội thất người dùng nhập vẫn giữ)
+  try {
+    await q(`UPDATE kd_reservation r SET unit_value = u.price_net + coalesce(u.maint_fee, 0), price = u.price_net + coalesce(u.maint_fee, 0) + coalesce(r.finish_value, 0)
+      FROM kd_unit u WHERE u.id = r.unit_id AND u.price_net IS NOT NULL AND r.unit_value IS DISTINCT FROM u.price_net + coalesce(u.maint_fee, 0)`);
+    // hợp đồng căn hộ cũng theo Danh mục sản phẩm: giá trị + lịch thanh toán tính lại theo tỷ lệ cũ (như máy thật 28/10/2026)
+    const B = require('../server/biz'), u = await one("SELECT * FROM kd_user WHERE role = 'admin' ORDER BY id LIMIT 1");
+    const cs = await q(`SELECT c.id FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id WHERE c.kind <> 'hoan_thien' AND c.status NOT IN ('huy', 'thanh_ly')
+      AND u.price_net IS NOT NULL AND c.value IS DISTINCT FROM u.price_net + coalesce(u.maint_fee, 0)`);
+    if (cs.length) await tx(async db => { for (const c of cs) await B.syncContractValue(db, c.id, u); });
+  } catch (e) { console.warn('đồng bộ giá phiếu', e); }
   // mẫu in đơn đăng ký chuẩn (thêm 27/10/2026) — giống máy thật: nạp mẫu còn thiếu, tắt mẫu khung cũ
   try { await require('../server/seed').ensureTemplates(); } catch (e) { console.warn('mẫu in', e); }
   // hồ sơ mua NOXH theo Mẫu 4 (87 hộ — họ tên, SĐT, ngày sinh, CMND, CCCD là dữ liệu giả); nạp như «Nhập file Mẫu 4»
@@ -86,6 +109,35 @@ async function boot(pgliteUrl) {
   // tòa K dự án CTS (thêm 27/10/2026, chưa có căn)
   if (!(await one("SELECT 1 FROM kd_building b JOIN kd_project p ON p.id = b.project_id WHERE p.code = 'CTS' AND b.code = 'K'")))
     await q("INSERT INTO kd_building (project_id, code, name, kind, created_at) SELECT id, 'K', 'Tòa K', 'chung_cu', now() FROM kd_project WHERE code = 'CTS'");
+  // dữ liệu demo đã lưu: thêm 1 hợp đồng thử quá hạn ký để thấy cảnh báo (làm 1 lần trên mỗi trình duyệt)
+  try { if (!localStorage.getItem('ctg-kd-demo-quahan')) { await q("UPDATE kd_contract SET plan_sign = CURRENT_DATE - 3 WHERE id = (SELECT id FROM kd_contract WHERE is_demo AND status = 'cho_duyet' ORDER BY id LIMIT 1)"); localStorage.setItem('ctg-kd-demo-quahan', '1'); } } catch (e) { console.warn('quá hạn ký', e); }
+  // hợp đồng thử cần ký hôm nay để xem màn Lịch ký: 8 dự thảo trên căn còn trống (5 CTS, 3 TNS), tạo 1 lần, mỗi lần mở dời ngày về hôm nay
+  const HD_THU = 'Thử lịch ký hôm nay';
+  try {
+    if (!localStorage.getItem('ctg-kd-demo-kyhomnay')) {
+      const C = require('../server/core'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1");
+      const can = await q(`SELECT x.* FROM (SELECT u.id, u.total_price, p.code, row_number() OVER (PARTITION BY p.code ORDER BY u.code) n FROM kd_unit u JOIN kd_project p ON p.id = u.project_id
+        WHERE p.code IN ('CTS', 'TNS') AND u.status IN ('con_ban', 'chua_mo_ban') AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id)) x WHERE x.n <= CASE x.code WHEN 'CTS' THEN 5 ELSE 3 END`);
+      const kh = await q('SELECT k.id FROM kd_customer k WHERE NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.customer_id = k.id) ORDER BY k.id LIMIT 8');
+      await tx(async db => { for (const [i, x] of can.entries()) if (kh[i]) await C.create('contract', { kind: 'hdmb', unit_id: x.id, customer_id: kh[i].id, value: +x.total_price || 1e9, sign_place: HD_THU, plan_sign: await (await db.one('SELECT CURRENT_DATE::text d')).d }, u, { db, system: true, demo: true }); });
+      localStorage.setItem('ctg-kd-demo-kyhomnay', '1');
+    }
+    await q("UPDATE kd_contract SET plan_sign = CURRENT_DATE WHERE sign_place = $1 AND status = 'du_thao'", [HD_THU]);
+  } catch (e) { console.warn('hợp đồng thử ký hôm nay', e); }
+  // hợp đồng hoàn thiện thử (dữ liệu giả, 1 lần trên mỗi trình duyệt): 2 dự thảo, 2 đang rà soát, 2 đã ký, trên căn đã ký HĐ mua bán
+  try {
+    if (!localStorage.getItem('ctg-kd-demo-hoanthien')) {
+      const C = require('../server/core'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1");
+      const cs = await q("SELECT c.unit_id, c.customer_id, c.owner_id FROM kd_contract c WHERE c.kind = 'hdmb' AND c.ptype = 'can_ho' AND c.status = 'da_ky' AND NOT EXISTS (SELECT 1 FROM kd_contract h WHERE h.unit_id = c.unit_id AND h.kind = 'hoan_thien') ORDER BY c.id LIMIT 6");
+      const gia = [[320e6, 0], [380e6, 20e6], [320e6, 10e6], [280e6, 0], [380e6, 30e6], [320e6, 20e6]];
+      for (const [i, c] of cs.entries()) {
+        const r = await C.create('contract', { kind: 'hoan_thien', ptype: 'can_ho', ...c, finish_value: gia[i][0], discount: gia[i][1] || null, new_schedule: [{ name: 'Đợt 1 – sau khi ký hợp đồng', due_on: new Date(Date.now() + 864e6).toISOString().slice(0, 10), pct: 50 }, { name: 'Đợt 2 – trước khi bàn giao', due_on: new Date(Date.now() + 7776e6).toISOString().slice(0, 10), pct: 50 }] }, u, { demo: true });
+        if (i >= 2) await C.submit('contract', r.row.id, u, {});
+        if (i >= 4) await C.approve('contract', r.row.id, u, { ok: true });
+      }
+      localStorage.setItem('ctg-kd-demo-hoanthien', '1');
+    }
+  } catch (e) { console.warn('hợp đồng hoàn thiện thử', e); }
   const job = async () => { try { await tx(db => biz.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.warn('job', e.message); } };
   await job(); setInterval(job, 2 * 60e3);
 
@@ -117,13 +169,6 @@ async function boot(pgliteUrl) {
     if (a.hasAttribute('download') || /[?&]dl=1/.test(href)) openBlob(href, null, a.getAttribute('download') || 'tep-tai-ve');
     else openBlob(href, a.target === '_blank' || !a.target ? realOpen('about:blank', '_blank') : null);
   }, true);
-  window.__ctgReset = async () => {
-    if (!confirm('Xóa toàn bộ dữ liệu demo trên trình duyệt này và nạp lại từ đầu?')) return;
-    await pg.close();
-    indexedDB.deleteDatabase('/pglite/ctg-kinhdoanh-demo'); indexedDB.deleteDatabase('ctg-kd-files');
-    try { localStorage.removeItem(SID_KEY); } catch {}
-    setTimeout(() => location.reload(), 500);
-  };
   say('Đang mở giao diện…');
 }
 window.__ctgBoot = boot;

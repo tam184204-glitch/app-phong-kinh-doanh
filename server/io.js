@@ -5,7 +5,7 @@
 const crypto = require('crypto');
 const C = require('./core');
 const B = require('./biz');
-const { E, VIRT, ROLES } = require('./meta');
+const M = require('./meta'), { E, VIRT, ROLES } = M;
 const { tx, q, one } = require('./db');
 const { buildXlsx, readXlsx } = require('./xlsx');
 const { bad, deny, can, fmtMoney, dmy } = C;
@@ -22,14 +22,14 @@ async function exportList(entKey, user, qs) {
   const e = E[entKey] || bad('Loại dữ liệu không hợp lệ');
   if (!can(user, e, 'x')) deny('Vai trò của bạn không được xuất dữ liệu này');
   const { rows } = await C.list(entKey, user, qs, { limit: 20000 });
-  const keys = qs.cols ? String(qs.cols).split(',') : e.list;
+  const L = e.lists?.[qs.group], keys = (qs.cols ? String(qs.cols).split(',') : L?.cols || e.list).flatMap(k => qs.status === 'thanh_ly' && k === 'contract_on' && C.F[entKey].liquidated_on ? ['liquidated_on', 'liquidate_reason', 'liquidate_note'] : [k]);   // tab Đã thanh lý
   const cols = [];
   rows.forEach((r, i) => { r.stt = i + 1; });
   for (const k of keys) {
     if (k === 'prints' || k === 'bbgn') continue;
     const f = C.F[entKey][k];
-    if (f) cols.push([f.t === 'ref' || f.t === 'refs' || f.t === 'user' ? k + '__l' : k, f.l, f.t === 'sel' ? null : f.t, f]);
-    else if (VIRT[k]) cols.push([k === 'created_by' ? 'created_by__l' : k, VIRT[k], ['paid', 'actual', 'gap'].includes(k) ? 'money' : null]);
+    if (f) cols.push([f.t === 'ref' || f.t === 'refs' || f.t === 'user' ? k + '__l' : k, L?.label?.[k] || f.l, f.t === 'sel' ? null : f.t, f]);
+    else if (VIRT[k]) cols.push([k === 'created_by' ? 'created_by__l' : k, L?.label?.[k] || VIRT[k], ['paid', 'actual', 'gap'].includes(k) ? 'money' : null]);
   }
   for (const r of rows) for (const c of cols) if (c[3]?.t === 'sel') r[c[0]] = await C.optLabel(c[3], r[c[0]]);
   for (const r of rows) for (const c of cols) if (c[3]?.t === 'check') r[c[0]] = (r[c[0]] || []).filter(x => x.st === 'da_nhan').length + '/' + (r[c[0]] || []).length;
@@ -249,7 +249,7 @@ function importTemplate(kind) {
   const I = IMPORTS[kind] || bad('Loại nhập không hợp lệ');
   if (I.template) return I.template();
   const LBL = {
-    units: ['Mã dự án', 'Mã tòa', 'Mã căn', 'Tầng', 'Loại sản phẩm', 'Số phòng ngủ', 'Diện tích thông thủy', 'Diện tích xây dựng', 'Hướng', 'Vị trí', 'Đơn giá', 'Giá căn hộ sau thuế', 'Phí bảo trì', 'Tổng giá căn hộ', 'Thời gian dự kiến bàn giao', 'Mở bán (x)'],
+    units: ['Mã dự án', 'Mã tòa', 'Mã căn', 'Tầng', 'Loại sản phẩm', 'Số phòng ngủ', 'Diện tích thông thủy', 'Diện tích xây dựng', 'Hướng', 'Vị trí', 'Đơn giá nền', 'Giá căn hộ sau thuế', 'Phí bảo trì', 'Tổng giá căn hộ', 'Thời gian dự kiến bàn giao', 'Mở bán (x)'],
     customers: ['Họ tên', 'Mã khách hàng', 'Mã số thuế', 'Điện thoại', 'Điện thoại khác', 'Email', 'Số CCCD', 'Ngày cấp', 'Nơi cấp', 'Ngày sinh', 'Địa chỉ', 'Nguồn khách', 'Dự án quan tâm', 'Nhân viên phụ trách', 'Ghi chú'],
     leads: ['Họ tên', 'Điện thoại', 'Email', 'Kênh', 'Dự án quan tâm', 'Nội dung trao đổi', 'Ngày liên hệ', 'Ngày nhắc tiếp', 'Nhân viên phụ trách'],
     contracts: ['Số hợp đồng', 'Loại hợp đồng', 'Mã căn', 'Điện thoại khách hàng', 'Đồng sở hữu', 'Giá trị hợp đồng', 'Ngày ký', 'Nhân viên phụ trách', 'Mã đại lý'],
@@ -291,7 +291,8 @@ async function createUser(db, d, by, { trial, pw } = {}) {
 }
 
 // ---------- in hợp đồng theo mẫu ----------
-const DIGITS = ['không', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín'];
+// đọc số tiền thành chữ — giữ dạng mã nguồn (chuỗi) để chèn nguyên văn vào trang in; bản demo nén mã đổi tên hàm nên không dùng fn.toString()
+const MONEY_SRC = String.raw`const DIGITS = ['không', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín'];
 function read3(n, full) {
   const h = Math.floor(n / 100), t = Math.floor(n % 100 / 10), u = n % 10, out = [];
   if (h || full) out.push(DIGITS[h], 'trăm');
@@ -307,8 +308,12 @@ function moneyWords(n) {
   for (let g = groups.length - 1; g >= 0; g--) if (groups[g]) parts.push(read3(groups[g], g < groups.length - 1), scales[g]);
   const s = parts.filter(Boolean).join(' ');
   return s[0].toUpperCase() + s.slice(1) + ' đồng';
-}
+}`;
+const { moneyWords } = new Function(MONEY_SRC + ';return { moneyWords };')();
 const escH = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+// trường trộn tiền có cặp «…_chu» → đánh dấu để bản in sửa số thì dòng bằng chữ tự đổi theo (script trong editDoc)
+const mergeVal = (map, x) => x + '_chu' in map ? `<span data-so="${x}">${escH(map[x] ?? '')}</span>`
+  : x.endsWith('_chu') && x.slice(0, -4) in map ? `<span data-chu="${x.slice(0, -4)}">${escH(map[x] ?? '')}</span>` : escH(map[x] ?? '');
 async function printContract(id, user, tplCode) {
   if (!can(user, E.contract, 'r')) deny();
   const c = C.notFound(await one(`SELECT c.*, u.code unit, u.floor, u.area_tt, u.direction, b.code building, p.name project, p.address p_addr, p.investor,
@@ -322,7 +327,7 @@ async function printContract(id, user, tplCode) {
     ma_can: c.unit, du_an: c.project, dia_diem: c.p_addr, chu_dau_tu: c.investor, toa: c.building, tang: c.floor, dien_tich: String(c.area_tt).replace('.', ','), huong: c.direction,
     gia_tri: fmtMoney(c.value), gia_tri_chu: moneyWords(c.value), ngay: dmy(c.signed_on || C.today()),
     lich_thanh_toan: `<table class="sch"><tr><th>Đợt</th><th>Nội dung</th><th>Hạn thanh toán</th><th>Tỷ lệ</th><th>Số tiền (đồng)</th></tr>${inst.map(i => `<tr><td>${i.seq}</td><td>${escH(i.name)}</td><td>${dmy(i.due_on)}</td><td>${i.pct ?? ''}${i.pct != null ? '%' : ''}</td><td style="text-align:right">${fmtMoney(i.amount)}</td></tr>`).join('')}</table>` };
-  const body = escH(tpl.content).replace(/\n/g, '<br>').replace(/\{(\w+)\}/g, (m, k) => k in map ? (k === 'lich_thanh_toan' ? map[k] : escH(map[k])) : m);
+  const body = escH(tpl.content).replace(/\n/g, '<br>').replace(/\{(\w+)\}/g, (m, k) => k in map ? (k === 'lich_thanh_toan' ? map[k] : mergeVal(map, k)) : m);
   await C.audit({ q }, 'contract', c.id, 'in_hop_dong', null, null, user, tpl.code);
   return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${escH(c.number)}</title><style>
     @page{size:A4;margin:20mm 18mm 20mm 25mm} body{font:13pt/1.5 "Times New Roman",serif;color:#000;max-width:170mm;margin:auto}
@@ -337,7 +342,19 @@ const EDIT_CSS = `.bar{font:13px system-ui;background:#f5f8fc;border:1px solid #
     @media screen and (max-width:640px){body{padding:0 14px} table.kv3 td{display:block;white-space:normal!important} table.b td{padding:3pt 4pt}}
     @media print{.bar{display:none} .doc,.doc:focus{outline:none}}`;
 const editBar = info => `<div class="bar"><span class="tip">${info}<br>✎ Bấm vào chữ để sửa trực tiếp, xong bấm <b>In</b>. Sửa ở đây chỉ áp dụng cho bản in này.</span><button onclick="location.reload()">Hoàn tác</button><button class="pri" onclick="print()">In / Lưu PDF</button></div>`;
-const editDoc = body => `<div class="doc" contenteditable="true" spellcheck="false">${body}</div>`;
+const editDoc = body => `<div class="doc" contenteditable="true" spellcheck="false">${body}</div>
+<script>(() => { ${MONEY_SRC}
+  const d = document.querySelector('.doc');   // sửa số tiền → dòng bằng chữ cùng trường tự đổi
+  // xóa hết số rồi gõ lại thì trình duyệt bỏ thẻ đánh dấu → nhớ ô đang sửa (theo đoạn chứa nó) và gắn lại vào phần số mới gõ
+  const box = [...d.querySelectorAll('[data-so]')].map(s => ({ k: s.dataset.so, s, blk: s.closest('p,td,li,div') }));
+  const at = () => { const n = getSelection().anchorNode; return n?.nodeType === 3 ? n.parentElement : n; };
+  let cur = null;
+  d.addEventListener('beforeinput', () => { const el = at(); cur = box.find(b => b.s.isConnected && b.s.contains(el)) || (cur && !cur.s.isConnected && cur.blk.contains(el) ? cur : null); });
+  d.addEventListener('input', () => { if (!cur) return; const el = at();
+    if (!cur.s.isConnected && el && el !== cur.blk && cur.blk.contains(el) && /^[0-9.,\\s]*$/.test(el.textContent)) { el.dataset.so = cur.k; cur.s = el; }
+    const v = cur.s.isConnected ? +cur.s.textContent.replace(/[^0-9]/g, '') : 0;
+    d.querySelectorAll('[data-chu="' + cur.k + '"]').forEach(w => w.textContent = v ? moneyWords(v) : ''); });
+})()</script>`;
 
 // bản đăng ký căn hộ / nội thất từ phiếu đăng ký (GD-01) — chọn mẫu ở Quản trị › Mẫu biểu
 const DOTS = '..............................';     // ô trống trên bản in → để khách / nhân viên điền tay
@@ -366,7 +383,8 @@ async function printReservation(id, user, kind, tplCode) {
   const k = r.customer_id ? await one('SELECT tax_code FROM kd_customer WHERE id = $1', [r.customer_id]) : null;
   const pol = r.policy_id ? await one('SELECT code, version FROM kd_price_policy WHERE id = $1', [r.policy_id]) : null;
   const lab = (f, v) => E.reservation.fields.find(x => x.k === f).o.find(o => o[0] === v)?.[1] || '';
-  const finish = u.finish_value ?? u.pk_value ?? require('./mau-dang-ky').NT_GIA[tpl.code];
+  // giá trị hoàn thiện: số nhập trên phiếu đăng ký trước, chưa có thì theo căn / gói / mẫu
+  const finish = r.finish_value ?? u.finish_value ?? u.pk_value ?? require('./mau-dang-ky').NT_GIA[tpl.code];
   // bảng giá trên đơn = đúng các cột của căn ở Danh mục sản phẩm (cùng cách tính với prodRow, public/screens.js):
   // căn có số Bravo (đơn giá nền, trước thuế, tiền thuế) thì lấy nguyên; chưa có thì tách từ giá sau thuế theo % thuế (mặc định 5%)
   const vat = u.vat_pct ?? 5;
@@ -374,7 +392,8 @@ async function printReservation(id, user, kind, tplCode) {
   const pretax = u.pretax ?? (after != null ? Math.round(after / (1 + vat / 100)) : null);
   const unitPrice = u.base_price ?? (pretax != null && u.area_tt ? Math.round(pretax / u.area_tt) : null);
   const tax = u.tax_amt ?? (after != null && pretax != null ? after - pretax : null), maint = u.maint_fee;
-  const total = u.total_price ?? (after != null ? after + (maint || 0) : r.price);   // «Tổng cộng» ở Danh mục sản phẩm
+  // tổng giá trị căn hộ in riêng với nội thất: = sau thuế + bảo trì ở Danh mục sản phẩm (không cộng giá trị hoàn thiện)
+  const total = after != null ? after + (maint || 0) : +r.unit_value || r.price;
   const rd = r.reg_at ? new Date(Date.parse(r.reg_at) + 7 * 3600e3) : new Date(r.reg_date || Date.now());
   const map = { ma_phieu: r.code, ngay_dk: r.reg_at ? new Date(Date.parse(r.reg_at) + 7 * 3600e3).toISOString().replace(/^(\d+)-(\d+)-(\d+)T(\d+:\d+).*/, '$4 ngày $3/$2/$1') : dmy(r.reg_date), ten_kh: r.cust_name, dien_thoai: r.phone, cccd: pii ? r.id_no : '(ẩn)', ngay_cap: pii ? dmy(r.id_date) : '', noi_cap: pii ? r.id_place : '', dia_chi: r.address,
     ma_can: u.code, du_an: u.project, dia_diem: u.p_addr, chu_dau_tu: u.investor, toa: u.building, tang: u.floor, dien_tich: String(u.area_tt ?? '').replace('.', ','), huong: u.direction,
@@ -385,7 +404,7 @@ async function printReservation(id, user, kind, tplCode) {
     ma_so_thue: pii ? (k?.tax_code || r.id_no || '') : '(ẩn)', chinh_sach: pol ? `${pol.code} v${pol.version}` : '' };
   // nội dung bắt đầu bằng thẻ HTML → in theo HTML (bỏ script / thuộc tính on…); còn lại in nguyên văn
   const html = /^\s*</.test(tpl.content || '');
-  const merge = t => t.replace(/\{(\w+)\}/g, (m, x) => x in map ? escH(map[x] ?? '') : m);
+  const merge = t => t.replace(/\{(\w+)\}/g, (m, x) => x in map ? mergeVal(map, x) : m);
   const body = html
     ? merge(tpl.content.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, ''))
     : `<div style="white-space:pre-wrap">${merge(escH(tpl.content))}</div>`;
@@ -400,4 +419,74 @@ async function printReservation(id, user, kind, tplCode) {
     ${EDIT_CSS}</style></head><body>${editBar(`Bản in từ mẫu «${escH(tpl.name)}» · phiếu ${escH(r.code)}`)}${editDoc(body)}</body></html>`;
 }
 
-module.exports = { EDIT_CSS, editBar, editDoc, A, strip, mapRows, exportList, sheet, importFile, importTemplate, IMPORTS, createUser, hashPw, checkPw, printContract, printReservation, regTemplates, moneyWords };
+// phiếu đề nghị hủy giao dịch / đổi căn / đổi khách (3 phần + ký: người lập phiếu – bộ phận kiểm tra – người phê duyệt)
+async function printCancelReq(id, user) {
+  const { row: r } = await C.get('cancel_req', id, user, { reveal: true });
+  const x = await one(`SELECT p.name project, u.code unit, c.number contract, s.code res, nu.code new_unit, nk.full_name new_cust, o.full_name maker
+    FROM kd_cancel_req t LEFT JOIN kd_project p ON p.id = t.project_id LEFT JOIN kd_unit u ON u.id = t.unit_id LEFT JOIN kd_contract c ON c.id = t.contract_id LEFT JOIN kd_reservation s ON s.id = t.reservation_id
+      LEFT JOIN kd_unit nu ON nu.id = t.new_unit_id LEFT JOIN kd_customer nk ON nk.id = t.new_customer_id LEFT JOIN kd_user o ON o.id = t.created_by WHERE t.id = $1`, [r.id]);
+  const lab = (k, v) => E.cancel_req.fields.find(f => f.k === k).o.find(o => o[0] === v)?.[1] || '';
+  const D = '..............................', v = s => s ? escH(s) : D, box = on => on ? '☒' : '☐';
+  const plan = ['hoan_tien', 'chuyen_can_moi', 'khac'].map(k => `${box(r.money_plan === k)} ${lab('money_plan', k)}`).join('&nbsp;&nbsp;&nbsp;') + (r.money_plan === 'khac' && r.money_note ? `: ${escH(r.money_note)}` : '');
+  const kind = lab('kind', r.kind) + (r.kind === 'doi_can' && x.new_unit ? ` → căn ${escH(x.new_unit)}` : '') + (r.kind === 'doi_kh' && x.new_cust ? ` → ${escH(x.new_cust)}` : '');
+  const rd = new Date(Date.parse(r.created_at || Date.now()) + 7 * 3600e3);
+  const body = `<div class="qh"><b>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</b><br><b class="tn">Độc lập - Tự do - Hạnh phúc</b></div>
+<h2>PHIẾU ĐỀ NGHỊ ${escH(lab('kind', r.kind).toUpperCase())}</h2><p class="c">Số: ${escH(r.code)}</p>
+<p class="h">1. Thông tin khách hàng</p>
+<p>Họ tên khách hàng: <b>${v(r.cust_name)}</b></p><p>Số điện thoại: ${v(r.phone)}</p>
+<p>Dự án: ${v(x.project)}&nbsp;&nbsp;&nbsp;&nbsp;Mã căn hộ: <b>${v(x.unit)}</b></p><p>Mã hợp đồng: ${v(x.contract)}${x.res ? `&nbsp;&nbsp;&nbsp;&nbsp;Phiếu giữ chỗ: ${escH(x.res)}` : ''}</p>
+<p class="h">2. Nội dung đề nghị</p>
+<p>Loại đề nghị: ${kind}</p><p>Phương án xử lý: ${plan}</p>
+<p>Số tiền đề nghị xử lý: <b>${r.pay_amount ? fmtMoney(r.pay_amount) : D}</b> đồng${r.pay_amount ? ` <i>(${moneyWords(r.pay_amount)})</i>` : ''}</p>
+<p>Ngày ký thanh lý HĐMB (nếu có): ${r.liquidate_on ? dmy(r.liquidate_on) : '....../....../......'}</p><p>Ngày đề nghị chi trả: ${r.pay_due ? dmy(r.pay_due) : '....../....../......'}</p>
+${r.reason ? `<p>Lý do: ${escH(r.reason)}</p>` : ''}
+<p class="h">3. Chuyển xử lý</p>
+<p>Bộ phận tiếp nhận xử lý: ${v(r.handler_dept)}</p><p>Hồ sơ kèm theo: ${v(r.attachments)}</p><p>Ghi chú: ${v(r.note)}</p>
+<p class="r"><i>Bắc Ninh, ngày ${String(rd.getUTCDate()).padStart(2, '0')} tháng ${String(rd.getUTCMonth() + 1).padStart(2, '0')} năm ${rd.getUTCFullYear()}</i></p>
+<table class="sign3"><tr><td><b>NGƯỜI LẬP PHIẾU</b><br><i>(Ký, ghi rõ họ tên)</i></td><td><b>BỘ PHẬN KIỂM TRA</b><br><i>(Ký, ghi rõ họ tên)</i></td><td><b>NGƯỜI PHÊ DUYỆT</b><br><i>(Ký, ghi rõ họ tên)</i></td></tr>
+<tr class="nm"><td>${escH(x.maker || '')}</td><td></td><td></td></tr></table>`;
+  await C.audit({ q }, 'cancel_req', r.id, 'in_phieu', null, null, user);
+  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${escH(r.code)} – Phiếu đề nghị</title><style>
+    @page{size:A4;margin:20mm 15mm 20mm 25mm} body{font:13pt/1.45 "Times New Roman",serif;color:#000;max-width:170mm;margin:auto}
+    .qh{text-align:center;line-height:1.3} .qh .tn{display:inline-block;padding-bottom:2pt;border-bottom:1px solid #000} h2{text-align:center;font-size:14pt;margin:14pt 0 2pt}
+    p{margin:3pt 0} .c{text-align:center} .r{text-align:right;margin-top:10pt} .h{font-weight:bold;margin-top:9pt}
+    table.sign3{width:100%;border-collapse:collapse;margin-top:6pt;page-break-inside:avoid} table.sign3 td{width:33%;text-align:center;vertical-align:top} table.sign3 tr.nm td{padding-top:70pt}
+    ${EDIT_CSS}</style></head><body>${editBar(`Phiếu đề nghị ${escH(r.code)}`)}${editDoc(body)}</body></html>`;
+}
+
+// thông báo mở bán: «thong_bao» theo mẫu Thông báo (Mẫu biểu, mã TB-MOBAN-…, theo dự án) / «danh_sach» = danh sách căn mở bán (như «DS mở bán đợt 5 CTS.xlsx»)
+async function printSaleNotice(id, user, kind) {
+  const { row: n } = await C.get('sale_notice', id, user);
+  const p = await one('SELECT * FROM kd_project WHERE id = $1', [n.project_id]);
+  const seller = M.SELLERS.find(s => s.projects.includes(p.code)) || M.SELLERS[0];
+  const g = String(n.unit_group || '').split(/[,;\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+  const units = (await q(`SELECT u.code, u.floor, u.area_tt, u.area_xd, b.code b FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = $1 ORDER BY b.code, u.floor, u.code`, [p.id]))
+    .filter(u => g.includes('*') || g.includes(String(u.b).toUpperCase()) || g.includes(u.code.toUpperCase()));
+  const d = n.notice_on ? new Date(n.notice_on + 'T00:00:00Z') : new Date(Date.now() + 7 * 3600e3);
+  const dot = String(n.title || '').trim(), DOT = dot ? dot[0].toUpperCase() + dot.slice(1) : '';
+  const num = v => v == null ? '' : String(+v).replace('.', ',');
+  const CSS = `@page{size:A4;margin:15mm 15mm 15mm 25mm} body{font:13pt/1.45 "Times New Roman",serif;color:#000;max-width:170mm;margin:auto}
+    p{margin:3pt 0} .c{text-align:center} .r{text-align:right} .j{text-align:justify} h2{text-align:center;font-size:14pt;margin:10pt 0 2pt}
+    table.hd2{width:100%;border-collapse:collapse} table.hd2 td{vertical-align:top} table.hd2 td:first-child{width:42%;padding-right:10pt} table.hd2:first-child{font-size:12pt} table.hd2:first-child b{white-space:nowrap} .tn{display:inline-block;padding-bottom:2pt;border-bottom:1px solid #000}
+    table.ds{width:100%;border-collapse:collapse;margin-top:8pt} table.ds th,table.ds td{border:1px solid #000;padding:2pt 6pt} table.ds th{text-align:center} table.ds td.n{text-align:right} table.ds td.ct{text-align:center} tr{page-break-inside:avoid}
+    ${EDIT_CSS}`;
+  let body;
+  if (kind === 'danh_sach') {
+    body = `<p class="c"><b>${escH(seller.name.toUpperCase())}</b></p><h2>DANH SÁCH MỞ BÁN ${escH(DOT.toUpperCase())}</h2><p class="c"><b>Dự án nhà ở xã hội ${escH(p.name)}</b></p>
+<table class="ds"><thead><tr><th>STT</th><th>Mã căn hộ</th><th>Diện tích thông thủy (m²)</th><th>Diện tích xây dựng (m²)</th></tr></thead><tbody>
+${units.map((u, i) => `<tr><td class="ct">${i + 1}</td><td>${escH(u.code)}</td><td class="n">${num(u.area_tt)}</td><td class="n">${num(u.area_xd)}</td></tr>`).join('')}
+<tr><td></td><td><b>Tổng cộng: ${units.length} căn</b></td><td class="n"><b>${num(Math.round(units.reduce((s, u) => s + (+u.area_tt || 0), 0) * 10) / 10)}</b></td><td class="n"><b>${num(Math.round(units.reduce((s, u) => s + (+u.area_xd || 0), 0) * 10) / 10)}</b></td></tr></tbody></table>`;
+  } else {
+    const tpl = await one(`SELECT * FROM kd_template WHERE active AND kind = 'thong_bao' AND code LIKE 'TB-MOBAN%' ORDER BY (upper(coalesce(scope,'')) = upper($1)) DESC, id LIMIT 1`, [p.code]);
+    if (!tpl) bad('Chưa có mẫu Thông báo mở bán — tạo ở Quản trị › Mẫu biểu (loại Thông báo, mã bắt đầu TB-MOBAN)');
+    const map = { cong_ty: seller.name, cong_ty_hoa: seller.name.toUpperCase(), so_vb: n.doc_no || `&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/${d.getUTCFullYear()}/TB-${p.code}`,
+      ngay_viet: `ngày ${String(d.getUTCDate()).padStart(2, '0')} tháng ${String(d.getUTCMonth() + 1).padStart(2, '0')} năm ${d.getUTCFullYear()}`, ten_dot: escH(DOT), du_an: escH(p.name),
+      ngay_bat_dau: n.open_on ? dmy(n.open_on) : '....../....../......', ngay_ket_thuc: n.close_on ? dmy(n.close_on) : '....../....../......', so_can: String(units.length) };
+    body = tpl.content.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '').replace(/\{(\w+)\}/g, (m, k) => k in map ? map[k] : m);
+  }
+  await C.audit({ q }, 'sale_notice', n.id, kind === 'danh_sach' ? 'in_danh_sach' : 'in_thong_bao', null, null, user);
+  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${escH(n.code)} – ${kind === 'danh_sach' ? 'Danh sách mở bán' : 'Thông báo mở bán'}</title><style>${CSS}</style></head>
+<body>${editBar(`${kind === 'danh_sach' ? 'Danh sách căn mở bán' : 'Thông báo mở bán'} ${escH(n.code)} · ${units.length} căn`)}${editDoc(body)}</body></html>`;
+}
+
+module.exports = { printSaleNotice, printCancelReq, EDIT_CSS, editBar, editDoc, A, strip, mapRows, exportList, sheet, importFile, importTemplate, IMPORTS, createUser, hashPw, checkPw, printContract, printReservation, regTemplates, moneyWords };

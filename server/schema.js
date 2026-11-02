@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS kd_file (
   deleted_at timestamptz, deleted_by integer, is_demo boolean NOT NULL DEFAULT false
 );
 CREATE INDEX IF NOT EXISTS kd_file_rec ON kd_file (ent, rec_id);
+CREATE TABLE IF NOT EXISTS kd_file_star (user_id integer NOT NULL, file_id integer NOT NULL, at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (user_id, file_id));
 CREATE TABLE IF NOT EXISTS kd_note (
   id serial PRIMARY KEY, ent text NOT NULL, rec_id integer NOT NULL, body text NOT NULL,
   by integer REFERENCES kd_user(id), at timestamptz NOT NULL DEFAULT now(), is_demo boolean NOT NULL DEFAULT false
@@ -82,9 +83,51 @@ const SPECIAL = [
   `CREATE UNIQUE INDEX IF NOT EXISTS kd_customer_phone ON kd_customer (regexp_replace(phone, '\\D', '', 'g'))`,
   // chính sách giá trước đây chỉ 1 dự án → chép sang danh sách dự án
   `UPDATE kd_price_policy SET project_ids = ARRAY[project_id] WHERE project_ids IS NULL AND project_id IS NOT NULL`,
+  // giá niêm yết = Tổng cộng (số cũ từ bảng hàng 10/09/2026 bỏ đi)
+  `UPDATE kd_unit SET list_price = total_price WHERE total_price IS NOT NULL AND list_price IS DISTINCT FROM total_price`,
+  // hồ sơ NOXH trước khi có dòng «2.1 Thông tin chủ hộ»: dựng từ khách hàng + cột Mẫu 4; dự án theo căn
+  `UPDATE kd_noxh_check n SET head = jsonb_build_array(jsonb_build_object('name', coalesce(k.full_name, ''), 'phone', concat_ws('/ ', k.phone, nullif(k.phone2, '')),
+      'bday', coalesce(to_char(k.birth, 'FMDD'), ''), 'bmonth', coalesce(to_char(k.birth, 'FMMM'), ''), 'byear', coalesce(to_char(k.birth, 'YYYY'), ''),
+      'old_id_no', coalesce(n.old_id_no, ''), 'id_no', coalesce(k.id_no, ''), 'job', coalesce(n.job, ''), 'doi_tuong', coalesce(n.doi_tuong, ''), 'confirm_org', coalesce(n.confirm_org, ''),
+      'housing', coalesce(n.housing, ''), 'province', coalesce(n.province, ''), 'district', coalesce(n.district, ''), 'commune', coalesce(n.commune, ''), 'income', coalesce(n.income, ''), 'relation', 'Chủ hộ'))
+    FROM kd_customer k WHERE k.id = n.customer_id AND n.head IS NULL`,
+  `UPDATE kd_noxh_check n SET project_id = u.project_id, unit_area = coalesce(n.unit_area, u.area_tt) FROM kd_unit u WHERE u.id = n.unit_id AND n.project_id IS NULL`,
+  // đề nghị hủy / đổi trước khi có phần «1. Thông tin khách hàng»: lấy theo hợp đồng / phiếu giữ chỗ
+  `UPDATE kd_cancel_req t SET cust_name = k.full_name, phone = k.phone, unit_id = u.id, project_id = u.project_id
+    FROM kd_cancel_req x LEFT JOIN kd_contract c ON c.id = x.contract_id LEFT JOIN kd_reservation r ON r.id = coalesce(x.reservation_id, c.reservation_id)
+      JOIN kd_unit u ON u.id = coalesce(c.unit_id, r.unit_id) JOIN kd_customer k ON k.id = coalesce(c.customer_id, r.customer_id)
+    WHERE t.id = x.id AND t.cust_name IS NULL`,
+  // phiếu đăng ký có giờ đăng ký lệch ngày đăng ký (dữ liệu thử cũ): đưa giờ về đúng ngày (09:00) — không thì lưu phiếu tính lại ngày, vướng «hạn giữ chỗ phải sau ngày đăng ký»
+  `UPDATE kd_reservation SET reg_at = (reg_date + time '09:00') AT TIME ZONE 'Asia/Ho_Chi_Minh' WHERE reg_at IS NOT NULL AND reg_date IS NOT NULL AND (reg_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date <> reg_date`,
+  // thành viên hộ trước khi tách ngày / tháng / năm sinh như dòng chủ hộ: birth 'dd/mm/yyyy' (hoặc chỉ năm) → bday, bmonth, byear
+  `UPDATE kd_noxh_check n SET members = (SELECT jsonb_agg((e - 'birth') || jsonb_build_object(
+      'bday', coalesce(ltrim(substring(e->>'birth' from '^(\\d{1,2})[/.-]\\d{1,2}[/.-]\\d{4}$'), '0'), ''),
+      'bmonth', coalesce(ltrim(substring(e->>'birth' from '^\\d{1,2}[/.-](\\d{1,2})[/.-]\\d{4}$'), '0'), ''),
+      'byear', coalesce(substring(e->>'birth' from '(\\d{4})$'), '')) ORDER BY o) FROM jsonb_array_elements(n.members) WITH ORDINALITY x(e, o))
+    WHERE jsonb_typeof(n.members) = 'array' AND jsonb_path_exists(n.members, '$[*].birth')`,
+  // hợp đồng trước khi có «Số bảng giá» theo tòa
+  `UPDATE kd_contract c SET building_id = u.building_id FROM kd_unit u WHERE u.id = c.unit_id AND c.building_id IS NULL`,
+  // phiếu đăng ký trước khi tách 3 cột giá: Tổng giá bán cũ = Giá trị căn hộ
+  `UPDATE kd_reservation SET unit_value = price - coalesce(finish_value, 0) WHERE unit_value IS NULL AND price IS NOT NULL`,
   `CREATE INDEX IF NOT EXISTS kd_price_policy_pids ON kd_price_policy USING gin (project_ids)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS kd_customer_code ON kd_customer (upper(code)) WHERE code IS NOT NULL`,
   `CREATE UNIQUE INDEX IF NOT EXISTS kd_customer_idno ON kd_customer (upper(id_no)) WHERE id_no IS NOT NULL`,
+];
+// chạy trước khi dựng lại ràng buộc: đổi giá trị danh sách chọn đã bỏ
+const PRE = [
+  // lý do thanh lý thành danh sách chọn (02/11/2026): chữ gõ tự do cũ («Căn cứ thanh lý») chuyển sang Ghi chú, Lý do để trống chờ chọn lại
+  'ALTER TABLE IF EXISTS kd_contract DROP CONSTRAINT IF EXISTS ck_kd_contract_liquidate_reason',
+  `UPDATE kd_contract SET liquidate_note = concat_ws(' — ', 'Căn cứ: ' || liquidate_reason, nullif(liquidate_note, '')), liquidate_reason = NULL WHERE liquidate_reason IS NOT NULL AND liquidate_reason NOT IN ('tra_lai', 'chuyen_ten')`,
+  // phương án xử lý tiền rút gọn (28/10/2026): giữ lại / không phát sinh → Khác
+  'ALTER TABLE IF EXISTS kd_cancel_req DROP CONSTRAINT IF EXISTS ck_kd_cancel_req_money_plan',
+  `UPDATE kd_cancel_req SET money_note = coalesce(money_note, CASE money_plan WHEN 'giu_lai' THEN 'Giữ lại theo chính sách' ELSE 'Không phát sinh tiền' END), money_plan = 'khac' WHERE money_plan IN ('giu_lai', 'khong_phat_sinh')`,
+  // gộp 3 ô chính sách thành Nội dung chính sách bán hàng (31/10/2026): chuyển xong xóa ô cũ để không gộp lại lần sau
+  `UPDATE kd_price_policy SET content = concat_ws(E'\\n', nullif(content, ''), 'Ưu đãi / chiết khấu: ' || nullif(discount, ''), 'Phương thức thanh toán: ' || nullif(pay_method, ''), 'Chính sách ngân hàng: ' || nullif(bank_policy, '')), discount = NULL, pay_method = NULL, bank_policy = NULL WHERE coalesce(discount, pay_method, bank_policy) IS NOT NULL`,
+  // dữ liệu khách chạy chung (31/10/2026): tài khoản đã có ở màn nào thì bù vào ô trống của màn khác, không ghi đè
+  `UPDATE kd_customer c SET bank_account = x.acc FROM (SELECT DISTINCT ON (customer_id) customer_id, concat_ws(' - ', b_bank_acc, nullif(b_bank_name, '')) acc FROM kd_contract WHERE nullif(b_bank_acc, '') IS NOT NULL ORDER BY customer_id, id DESC) x WHERE x.customer_id = c.id AND nullif(c.bank_account, '') IS NULL`,
+  `UPDATE kd_noxh_check n SET bank_account = c.bank_account FROM kd_customer c WHERE n.customer_id = c.id AND n.bank_account IS NULL AND nullif(c.bank_account, '') IS NOT NULL`,
+  `UPDATE kd_reservation r SET bank_account = c.bank_account FROM kd_customer c WHERE r.customer_id = c.id AND nullif(r.bank_account, '') IS NULL AND nullif(c.bank_account, '') IS NOT NULL AND r.status NOT IN ('huy', 'het_han')`,
+  `UPDATE kd_contract t SET b_bank_acc = split_part(c.bank_account, ' - ', 1), b_bank_name = coalesce(nullif(t.b_bank_name, ''), nullif(substr(c.bank_account, length(split_part(c.bank_account, ' - ', 1)) + 4), '')) FROM kd_customer c WHERE t.customer_id = c.id AND nullif(t.b_bank_acc, '') IS NULL AND nullif(c.bank_account, '') IS NOT NULL`,
 ];
 // CHECK nghiệp vụ thêm (ngoài money ≥ 0 và giá trị danh sách chọn)
 const CHECKS = {
@@ -117,6 +160,8 @@ async function migrate(db) {
       for (const f of e.fields) if (!have.has(f.k)) await db.q(`ALTER TABLE ${t} ADD COLUMN ${f.k} ${SQLT[f.t]}${f.t === 'bool' ? ` DEFAULT ${f.def === true}` : ''}`);
     }
   }
+  // đổi giá trị danh sách chọn trước khi dựng lại CHECK (giá trị cũ không còn trong danh sách)
+  for (const s of PRE) await db.q(s);
   // khóa ngoại + CHECK + chỉ mục: dựng lại theo meta (tên cố định → không trùng)
   for (const e of Object.values(E)) {
     const t = e.table;

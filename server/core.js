@@ -19,20 +19,22 @@ const today = () => vnNow().toISOString().slice(0, 10);
 const addDays = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10);
 const dayDiff = (a, b) => Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 864e5);
 const dmy = s => s ? String(s).slice(0, 10).split('-').reverse().join('/') : '';
+const dateOk = iso => iso >= '1900-01-01' && iso <= '2100-12-31';   // chặn năm gõ dở kiểu 0002, số Excel vô lý
 const isoDate = v => {
   if (v instanceof Date) return new Date(v.getTime() + 7 * 3600e3).toISOString().slice(0, 10);
   const s = String(v).trim();
   let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
   if (!m) { m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(s); if (m) m = [0, m[3], m[2].padStart(2, '0'), m[1].padStart(2, '0')]; }
-  if (!m && /^\d{5}$/.test(s)) return new Date(Date.UTC(1899, 11, 30) + +s * 864e5).toISOString().slice(0, 10); // số ngày kiểu Excel
+  if (!m && /^\d{5}$/.test(s)) { const x = new Date(Date.UTC(1899, 11, 30) + +s * 864e5).toISOString().slice(0, 10); return dateOk(x) ? x : null; } // số ngày kiểu Excel
   if (!m) return null;
   const iso = `${m[1]}-${m[2]}-${m[3]}`, d = new Date(iso + 'T00:00:00Z');
-  return isNaN(d) || d.toISOString().slice(0, 10) !== iso ? null : iso;
+  return isNaN(d) || d.toISOString().slice(0, 10) !== iso || !dateOk(iso) ? null : iso;
 };
 const isoDt = v => {
   if (v instanceof Date) return v.toISOString();
   const s = String(v).trim();
   let m = /^(\d{4}-\d{2}-\d{2})[T ](\d{1,2}):(\d{2})/.exec(s);
+  if (m && !dateOk(m[1])) return null;
   if (m) return /[zZ]|[+-]\d{2}:?\d{2}$/.test(s) ? new Date(s).toISOString() : `${m[1]}T${m[2].padStart(2, '0')}:${m[3]}:00+07:00`;
   m = /^(\d{1,2}[/.-]\d{1,2}[/.-]\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/.exec(s);
   if (m) { const d = isoDate(m[1]); return d ? `${d}T${(m[2] || '00').padStart(2, '0')}:${m[3] || '00'}:00+07:00` : null; }
@@ -57,10 +59,12 @@ const fmtMoney = n => n == null ? '' : Math.round(n).toLocaleString('vi-VN');
 
 // ---------- quyền ----------
 const SYS = { id: null, username: 'he_thong', full_name: 'Hệ thống', role: 'admin', sys: true };
+// chạy thử (NO_LOGIN): cho tự duyệt phiếu mình trình để test một mình; vận hành thật (bỏ NO_LOGIN) thì tách nhiệm như cũ
+const SELF_OK = /^(1|true|yes)$/i.test(process.env.NO_LOGIN || '');
 function can(user, e, op) {
   if (!user) return false;
   if (user.role === 'admin') return op !== 'a' || true;
-  const roles = op === 'r' ? (e.r || []) : op === 'c' ? (e.c || []) : op === 'u' ? (e.u || e.c || []) : op === 'd' ? (e.d || []) : op === 'a' ? (e.a || []) :
+  const roles = op === 'r' ? (e.r || []) : op === 'c' ? (e.c || []) : op === 'u' ? (e.u || e.c || []) : op === 'd' ? (e.d || (e.flow ? e.c || [] : [])) :   /* có quy trình duyệt: người lập xóa được bản chưa duyệt */ op === 'a' ? (e.a || []) :
     op === 'x' ? (e.x || (e.key === 'customer' ? MGR : [...MGR, ...(e.c || [])])) : [];
   if (op === 'r' && user.role === 'lanh_dao') return true;
   return roles.includes(user.role);
@@ -236,9 +240,9 @@ async function list(entKey, user, qs = {}, { db = { q, one }, limit } = {}) {
     else if (f.t === 'ref' || f.t === 'user' || f.t === 'int') add(`t.${f.k} = $1`, +v);
     else add(`t.${f.k} = $1`, v);
   }
-  const baseWhere = [...where], baseP = [...p];
-  if (qs.status) add(`t.status = ANY($1)`, String(qs.status).split(','));
   if (H[entKey]?.where) { const w = H[entKey].where(qs, user); if (w) add(w.sql, ...(w.params || [])); }
+  const baseWhere = [...where], baseP = [...p];   // số đếm trên tab trạng thái: theo nhóm đang xem, chưa lọc trạng thái
+  if (qs.status) add(`t.status = ANY($1)`, String(qs.status).split(','));
   const W = where.length ? 'WHERE ' + where.join(' AND ') : '';
   let order = e.order || 't.id DESC';
   if (qs.sort) { const k = qs.sort.replace(/^-/, ''); if (F[entKey][k] || ['id', 'created_at'].includes(k)) order = `t.${k} ${qs.sort[0] === '-' ? 'DESC' : 'ASC'} NULLS LAST, t.id DESC`; }
@@ -271,16 +275,37 @@ async function get(entKey, id, user, { db = { q, one }, reveal } = {}) {
   const approvals = await db.q(`SELECT a.*, r.full_name AS requested_by_l, d.full_name AS decided_by_l, p.full_name AS approver_l FROM kd_approval a
     LEFT JOIN kd_user r ON r.id = a.requested_by LEFT JOIN kd_user d ON d.id = a.decided_by LEFT JOIN kd_user p ON p.id = a.approver_id
     WHERE a.ent = $1 AND a.rec_id = $2 ORDER BY a.requested_at`, [entKey, row.id]);
-  return { row, files, notes, approvals, perm: await perms(e, row, user, approvals, db) };
+  // dòng nhỏ cuối hồ sơ: ai tạo, ai sửa, lúc nào — mọi vai trò trừ nhân viên bán hàng
+  let trace = null;
+  if (user.role !== 'ban_hang') {
+    const who = async id => id ? (await db.one('SELECT full_name FROM kd_user WHERE id = $1', [id]))?.full_name || null : null;
+    // người sửa gần nhất theo nhật ký: tính cả sửa lịch thu, tệp, chuyển trạng thái; bỏ thao tác chỉ xem và cập nhật tự động không có người
+    const last = await db.one(`SELECT a.at, u.full_name FROM kd_audit a JOIN kd_user u ON u.id = a.user_id WHERE a.ent = $1 AND a.rec_id = $2 AND a.action NOT IN ('tao', 'xem_dinh_danh', 'xuat_du_lieu') ORDER BY a.at DESC, a.id DESC LIMIT 1`, [entKey, row.id]);
+    // từng ô: nhật ký chỉ ghi các trường thật sự đổi, lấy lần đổi gần nhất của mỗi trường (không gửi giá trị, chỉ ai và lúc nào)
+    const fields = {};
+    for (const x of await db.q(`SELECT a.after, a.at, u.full_name FROM kd_audit a JOIN kd_user u ON u.id = a.user_id WHERE a.ent = $1 AND a.rec_id = $2 AND a.after IS NOT NULL AND a.action NOT IN ('tao', 'xem_dinh_danh', 'xuat_du_lieu') ORDER BY a.at, a.id`, [entKey, row.id]))
+      for (const k of Object.keys(x.after)) fields[k] = { at: x.at, who: x.full_name };
+    trace = { created_at: row.created_at, created_by: await who(row.created_by), updated_at: last?.at || null, updated_by: last?.full_name || null, fields };
+  }
+  return { row, files, notes, approvals, trace, perm: await perms(e, row, user, approvals, db) };
 }
+// trường còn được sửa khi bản ghi bị khóa theo trạng thái; null = không khóa. softLock: quản lý (boss) không bị khóa
+function lockKeepOf(e, status, user) {
+  if (e.lock?.includes(status)) return e.lockKeep || [];
+  const s = e.softLock;
+  return s?.st.includes(status) && !s.boss.includes(user.role) && user.role !== 'admin' ? s.keep : null;
+}
+// dự thảo (nháp / bị trả lại) → xóa được; đã gửi duyệt / đã duyệt / đã chốt thì không
+const undecided = (e, st) => !!e.flow && e.flow.submit.includes(st);
+const lockDel = (e, st) => !undecided(e, st) && (e.lock?.includes(st) || e.softLock?.st.includes(st));
 // quyền trên một bản ghi cụ thể — giao diện dựa vào đây để hiện nút
 async function perms(e, row, user, approvals, db) {
-  const locked = !!(e.lock && e.lock.includes(row.status));
+  const keep = lockKeepOf(e, row.status, user), locked = !!keep;
   const open = approvals.find(a => a.status === 'cho_duyet');
   const fl = e.flow;
   const out = {
-    edit: can(user, e, 'u') && (!locked || !!(e.lockKeep || []).length), locked, lockKeep: locked ? e.lockKeep || [] : null,
-    del: can(user, e, 'd') && !(H[e.key]?.noDelete?.(row)),
+    edit: can(user, e, 'u') && (!locked || !!keep.length), locked, lockKeep: keep, softOpen: !locked && !!e.softLock?.st.includes(row.status),
+    del: can(user, e, 'd') && !lockDel(e, row.status) && !(H[e.key]?.noDelete?.(row)),
     submit: !!fl && fl.submit.includes(row[fl.field]) && (can(user, e, 'c') || can(user, e, 'u')),
     approve: !!open && canApprove(e, row, user, open), selfApproval: !!open && open.requested_by === user.id && user.role !== 'admin',
     acts: (e.acts || []).filter(a => (a.from === '*' || a.from.includes(row.status)) && (user.role === 'admin' || a.roles.includes(user.role))).map(a => a.k),
@@ -291,7 +316,7 @@ async function perms(e, row, user, approvals, db) {
   return out;
 }
 function canApprove(e, row, user, open) {
-  if (open.requested_by === user.id && user.role !== 'admin') return false;          // tách nhiệm: không tự duyệt
+  if (open.requested_by === user.id && user.role !== 'admin' && !SELF_OK) return false;          // tách nhiệm: không tự duyệt
   if (open.approver_id) return open.approver_id === user.id || user.role === 'admin';
   return user.role === 'admin' || open.roles.includes(user.role);
 }
@@ -383,8 +408,9 @@ async function update(entKey, id, input, user, opts = {}) {
     const ctx = ctxOf(db, user, opts);
     const data = await normalize(e, input, user, db, { old, system: opts.system });
     for (const k of Object.keys(data)) if (JSON.stringify(data[k]) === JSON.stringify(old[k])) delete data[k];
-    if (!opts.system && e.lock && e.lock.includes(old.status)) {
-      const blocked = Object.keys(data).filter(k => !(e.lockKeep || []).includes(k));
+    const keepK = !opts.system && lockKeepOf(e, old.status, user);
+    if (keepK) {
+      const blocked = Object.keys(data).filter(k => !keepK.includes(k));
       if (blocked.length) bad(`${e.one[0].toUpperCase() + e.one.slice(1)} đang ở trạng thái «${await optLabel(F[entKey].status, old.status)}» — không sửa trực tiếp (${blocked.map(k => F[entKey][k].l).join(', ')})${entKey === 'contract' ? '. Mọi thay đổi phải qua «Điều chỉnh – phụ lục hợp đồng».' : ''}`);
     }
     const rec = { ...old, ...data };
@@ -411,9 +437,11 @@ async function remove(entKey, id, user, opts = {}) {
     const old = notFound(await raw(db, entKey, +id, true));
     if (!opts.system) {
       if (!can(user, e, 'd')) deny(`Vai trò của bạn không được xóa ${e.one}`);
-      if (e.lock && e.lock.includes(old.status)) bad(`Không xóa ${e.one} đã chốt / đang trình duyệt`);
+      await scopeCheck(db, e, old, user);
+      if (lockDel(e, old.status)) bad(`Chỉ xóa được ${e.one} đang ở dự thảo`);
     }
     const why = H[entKey]?.noDelete?.(old); if (why) bad(why);
+    if (H[entKey]?.beforeDelete) await H[entKey].beforeDelete(old, ctxOf(db, user));   // dọn dữ liệu con tự sinh
     await db.q(`DELETE FROM ${e.table} WHERE id = $1`, [old.id]);
     await db.q("UPDATE kd_approval SET status = 'huy' WHERE ent = $1 AND rec_id = $2 AND status = 'cho_duyet'", [entKey, old.id]);
     await audit(db, entKey, old.id, 'xoa', old, null, user, opts.reason, old.is_demo);
@@ -456,7 +484,7 @@ async function approve(entKey, id, user, { ok, comment, db: outer } = {}) {
     const rec = notFound(await raw(db, entKey, +id, true));
     const open = await db.one("SELECT * FROM kd_approval WHERE ent = $1 AND rec_id = $2 AND status = 'cho_duyet' FOR UPDATE", [entKey, rec.id]);
     if (!open || rec[fl.field] !== 'cho_duyet') bad('Không có đề nghị nào đang chờ duyệt');
-    if (open.requested_by === user.id && user.role !== 'admin') deny('Không tự phê duyệt đề nghị do mình trình (tách nhiệm)');
+    if (open.requested_by === user.id && user.role !== 'admin' && !SELF_OK) deny('Không tự phê duyệt đề nghị do mình trình (tách nhiệm)');
     if (!canApprove(e, rec, user, open)) deny('Bạn không phải cấp phê duyệt của đề nghị này');
     if (!ok && !comment) bad('Từ chối cần ghi rõ lý do');
     const ctx = ctxOf(db, user, { demo: rec.is_demo });

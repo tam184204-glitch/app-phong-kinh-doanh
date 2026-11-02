@@ -29,7 +29,11 @@ try {
   setInterval(() => { if (!bar.isConnected) document.body.append(bar); }, 800);
 } catch (e) {
   console.error(e);
-  document.getElementById('bootmsg').textContent = 'Không khởi động được bản demo: ' + e.message + ' — hãy thử Chrome/Edge bản mới và tải lại trang.';
+  document.getElementById('bootmsg').textContent = 'Không khởi động được bản demo: ' + e.message + ' — dữ liệu demo lưu trên trình duyệt này có thể đã hỏng.';
+  const btn = document.createElement('button');
+  btn.textContent = 'Xóa dữ liệu demo và nạp lại'; btn.style.cssText = 'padding:8px 16px;font:inherit;cursor:pointer';
+  btn.onclick = () => window.__ctgReset && window.__ctgReset();
+  document.getElementById('boot').append(btn);
 }
 </script>
 </body>

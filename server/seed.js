@@ -152,9 +152,17 @@ async function ensureTemplates() {
     for (const t of REG_TEMPLATES()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });
     // mẫu chuẩn theo file Excel phòng Kinh doanh: lần đầu nạp thì tắt các mẫu khung cũ
     let moi = 0;
+    for (const t of require('./mau-mo-ban').MAU_MO_BAN()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });
     for (const t of require('./mau4').MAU_BIEN_BAN()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });
-    for (const t of MAU_DANG_KY()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) { await C.create('template', { ...t, active: true }, sysU, { db, system: true }); moi++; }
+    for (const [code, cu, moi2] of require('./mau4').BB_CU()) await db.q('UPDATE kd_template SET content = replace(content, $1, $2) WHERE code = $3 AND strpos(content, $1) > 0', [cu, moi2, code]);
+    for (const t of MAU_DANG_KY()) {
+      if (await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) continue;
+      if (t.kind === 'dang_ky_noi_that' && await db.one('SELECT 1 FROM kd_template WHERE kind = $1 AND name = $2', [t.kind, t.name])) continue;   // đã tự tạo mẫu cùng tên
+      await C.create('template', { ...t, active: true }, sysU, { db, system: true }); moi++;
+    }
     if (moi) await db.q('UPDATE kd_template SET active = false WHERE code = ANY($1)', [MAU_CU]);
+    // nội thất chỉ giữ một mẫu «Đơn đăng ký G (NT) – hoàn thiện căn hộ»: tắt 2 mẫu tách theo 2 / 3 phòng ngủ
+    await db.q('UPDATE kd_template SET active = false WHERE active AND code = ANY($1)', [require('./mau-dang-ky').NT_CU]);
     // mẫu đã nạp trước 27/10: đổi quốc hiệu «o0o» sang thể thức NĐ 30 + tách «Nơi cấp» xuống dòng (chỉ thay đúng đoạn cũ, giữ phần đã sửa tay)
     // mẫu G (NT) nạp trước 27/10 ghi cứng giá gói → đổi sang trường trộn (giá theo Danh mục sản phẩm)
     for (const [code, gia] of Object.entries(require('./mau-dang-ky').NT_GIA)) {
@@ -226,8 +234,8 @@ async function seedBase() {
       }
       if (!await db.one('SELECT 1 FROM kd_price_policy WHERE $1 = ANY(project_ids)', [pj.id]))
         await C.create('price_policy', { code: `CSBH-T9-2026-${t.maDuAn}`, version: 1, project_ids: [pj.id], unit_group: '*', mode: 'bang_hang', start_on: BH.capNhat, end_on: '2026-12-31', status: 'phat_hanh',
-          src_file: BH.fileNguon, target: 'Khách hàng mua căn hộ', discount: 'Theo chính sách mua hàng T9/2026', pay_method: 'Theo tiến độ hợp đồng',
-          bank_policy: 'Ngày kết thúc hiệu lực 31/12/2026 là giả định — Trưởng phòng xác nhận lại theo văn bản chính sách' }, sysU, { db, system: true });
+          src_file: BH.fileNguon, target: 'Khách hàng mua căn hộ',
+          content: 'Ưu đãi / chiết khấu: Theo chính sách mua hàng T9/2026\nPhương thức thanh toán: Theo tiến độ hợp đồng\nChính sách ngân hàng: Ngày kết thúc hiệu lực 31/12/2026 là giả định — Trưởng phòng xác nhận lại theo văn bản chính sách' }, sysU, { db, system: true });
       await db.q('UPDATE kd_project SET units_total = (SELECT count(*) FROM kd_unit WHERE project_id = $1) WHERE id = $1', [pj.id]);
     }
     for (const t of TEMPLATES) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });
@@ -313,10 +321,9 @@ async function loadDemo() {
       await C.submit('contract', cid, hs, { db, demo: true });
       if (stopAt === 'cho_duyet') return { cust, res, c };
       await C.approve('contract', cid, tp, { ok: true, db });
-      await C.update('contract', cid, { sign_status: 'da_hen', sign_place: 'Văn phòng bán hàng dự án' }, hs, { db });
+      await db.q("UPDATE kd_contract SET sign_place = 'Văn phòng bán hàng dự án', signed_on = $1 WHERE id = $2", [signDate > T ? T : signDate, cid]);
       if (stopAt === 'cho_ky') return { cust, res, c };
       await demoFile(db, 'contract', cid, 'ban_ky', `${number.replace(/\W+/g, '_')}_ban_ky.pdf`, hs);
-      await C.act('contract', cid, 'sign', hs, { signed_on: signDate }, { db, demo: true });
       inc('Hợp đồng đã ký');
       // thu tiền (Bravo): cọc được trừ vào đợt 1
       const inst = await db.q('SELECT * FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [cid]);
@@ -353,7 +360,7 @@ async function loadDemo() {
     }
     // giao dịch đang chạy ở CTS
     const pipe = [
-      { stopAt: 'cho_ky', sign: D(2) }, { stopAt: 'cho_ky', sign: D(-2) }, { stopAt: 'cho_duyet', sign: D(5) }, { stopAt: 'du_thao', sign: D(7) },
+      { stopAt: 'cho_ky', sign: D(2) }, { stopAt: 'cho_ky', sign: D(-2) }, { stopAt: 'cho_duyet', sign: D(-3) }, { stopAt: 'du_thao', sign: D(7) },
       { stopAt: 'da_coc', sign: D(10) }, { stopAt: 'da_coc', sign: D(12) }, { stopAt: 'giu_cho', sign: D(14) }, { stopAt: 'giu_cho', sign: D(14) },
     ];
     for (const [k, p] of pipe.entries()) {
@@ -366,7 +373,7 @@ async function loadDemo() {
     // phiếu giữ chỗ quá hạn (cần xử lý) + phiếu chờ duyệt + phiếu nháp
     { const c = await mkCustomer(bh1, { stage: 'quan_tam_cao' }); const r = (await C.create('reservation', { customer_id: c.id, unit_id: O[24].id, reg_date: D(-5), hold_until: at(D(-1), 17), source: 'truc_tiep', owner_id: bh1.id }, bh1, o({ system: true }))).row;
       await C.submit('reservation', r.id, bh1, { db, demo: true }); await C.approve('reservation', r.id, tp, { ok: true, db }); await C.sys(db, 'reservation', r.id, { status: 'qua_han' }, null, 'qua_han_giu_cho');
-      await C.create('cancel_req', { kind: 'huy', reservation_id: r.id, reason: 'Khách không thu xếp được tài chính, xin hủy giữ chỗ', money_plan: 'khong_phat_sinh' }, bh1, o());
+      await C.create('cancel_req', { kind: 'huy', reservation_id: r.id, reason: 'Khách không thu xếp được tài chính, xin hủy giữ chỗ', money_plan: 'khac', money_note: 'Không phát sinh tiền' }, bh1, o());
       inc('Giữ chỗ quá hạn'); }
     { const c = await mkCustomer(bh2, { stage: 'quan_tam_cao' }); const r = (await C.create('reservation', { customer_id: c.id, unit_id: O[25].id, reg_date: T, hold_until: at(D(3), 17), source: 'dai_ly', agent_id: ag1.id, owner_id: bh2.id }, bh2, o({ system: true }))).row;
       await C.submit('reservation', r.id, bh2, { db, demo: true }); inc('Giữ chỗ chờ duyệt'); }

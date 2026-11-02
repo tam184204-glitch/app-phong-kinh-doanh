@@ -31,7 +31,7 @@ async function data(user, { project } = {}) {
     WHERE ($1::int IS NULL OR p.id = $1) ORDER BY n.received_on NULLS LAST, n.id`, [project ? +project : null]);
   return rows.map((r, i) => {
     const head = { name: r.full_name, phone: [r.phone, r.phone2].filter(Boolean).join('/ '), birth: dmyParts(r.birth), old_id_no: r.old_id_no, id_no: r.id_no, job: r.job, doi_tuong: r.doi_tuong, confirm_org: r.confirm_org, relation: 'Chủ hộ' };
-    const mem = (r.members || []).map(m => ({ ...m, birth: dmyParts(m.birth) }));
+    const mem = (r.members || []).map(m => ({ ...m, birth: [m.bday ?? '', m.bmonth ?? '', m.byear ?? ''] }));
     return { id: r.id, tt: i + 1, received_on: r.received_on, project: r.project, project_id: r.project_id, unit_code: r.unit_code || r.unit_text, area: r.unit_area ?? r.area_tt, reg_kind: r.reg_kind, status: r.status, result: r.result,
       housing: r.housing, province: r.province, district: r.district, commune: r.commune, income: r.income, people: [head, ...mem] };
   });
@@ -101,7 +101,7 @@ const IMPORT = {
       k = (await C.create('customer', { full_name: s(r.name), phone: phones[0], phone2: phones[1], id_no: id_no || null, birth, address: [r.commune, r.district, r.province].map(s).filter(Boolean).join(', ') || null,
         source: 'truc_tiep', owner_id: ctx.user.id, note: `Nhập từ ${ctx.fileName}` }, ctx.user, { db, demo: ctx.demo })).row;
     } else if (birth && !k.birth) await C.update('customer', k.id, { birth }, ctx.user, { db, system: true, action: 'nhap_excel' });
-    const members = r._members.map(x => ({ name: s(x.name), relation: s(x.relation) || 'Vợ (Chồng)', birth: x.y ? (x.d && x.m ? `${pad(x.d)}/${pad(x.m)}/${x.y}` : String(x.y)) : '',
+    const members = r._members.map(x => ({ name: s(x.name), relation: s(x.relation) || 'Vợ (Chồng)', bday: s(x.d), bmonth: s(x.m), byear: s(x.y),
       old_id_no: s(x.old_id_no), id_no: s(x.id_no), phone: s(x.phone), job: s(x.job), doi_tuong: s(x.doi_tuong), confirm_org: s(x.confirm_org) }));
     const area = s(r.area) ? +s(r.area).replace(',', '.') : null;
     const rec = { customer_id: k.id, unit_id: unit?.id ?? null, unit_text: unit ? null : unitCode || null, unit_area: unit ? null : area, old_id_no: s(r.old_id_no) || null, job: s(r.job) || null, doi_tuong: s(r.doi_tuong) || null, confirm_org: s(r.confirm_org) || null,
@@ -135,14 +135,16 @@ const bbBody = cty => `<table class="hd"><tr><td><b>${cty.name.toUpperCase()}</b
 <p>Chi tiết tài liệu bàn giao:</p>
 {bang_tai_lieu}
 <table class="sign"><tr><td><b>BÊN GIAO</b></td><td><b>BÊN NHẬN</b></td></tr></table>`;
-const DOT = '……………………………';
+const DOT = '……………………………', [BB_CT, BB_TN] = require('./meta').SELLERS;
 const MAU_BIEN_BAN = () => [
   { code: 'BBGN-CT', kind: BB_KIND, name: 'Biên bản giao nhận hồ sơ — Công ty CP Cát Tường', scope: '',
-    content: bbBody({ name: 'Công ty cổ phần Cát Tường', addr: 'Tầng 3 tòa CTN, đường Lý Thái Tổ, Phường Tiền Ninh Vệ, TP Bắc Ninh, Tỉnh Bắc Ninh', place: 'Bắc Ninh' }) },
-  // tên pháp nhân / địa chỉ bên Thống Nhất chưa có trong dữ liệu → để trống cho phòng Kinh doanh điền ở Quản trị › Mẫu biểu
+    content: bbBody({ name: 'Công ty cổ phần Cát Tường', addr: BB_CT.addr, place: 'Bắc Ninh' }) },
   { code: 'BBGN-TN', kind: BB_KIND, name: 'Biên bản giao nhận hồ sơ — Thống Nhất', scope: 'TNS,TN',
-    content: bbBody({ name: `Công ty ${DOT} Thống Nhất`, addr: DOT + DOT, place: 'Bắc Ninh' }) },
+    content: bbBody({ name: BB_TN.name, addr: BB_TN.addr, place: 'Bắc Ninh' }) },
 ];
+// mẫu đã nạp trong CSDL: chỉ thay đúng đoạn cũ, giữ phần đã sửa tay ở Quản trị › Mẫu biểu
+const BB_CU = () => [['BBGN-CT', 'Tầng 3 tòa CTN, đường Lý Thái Tổ, Phường Tiền Ninh Vệ, TP Bắc Ninh, Tỉnh Bắc Ninh', BB_CT.addr],
+  ['BBGN-TN', `Công ty ${DOT} Thống Nhất`, BB_TN.name], ['BBGN-TN', `Công ty ${DOT} Thống Nhất`.toUpperCase(), BB_TN.name.toUpperCase()], ['BBGN-TN', DOT + DOT, BB_TN.addr]];
 async function handoverTemplates(qs) {
   const unitId = qs.reservation ? (await one('SELECT unit_id FROM kd_reservation WHERE id = $1', [+qs.reservation]))?.unit_id
     : qs.noxh ? (await one('SELECT unit_id FROM kd_noxh_check WHERE id = $1', [+qs.noxh]))?.unit_id : null;
@@ -189,4 +191,4 @@ ${items.map((x, i) => `<tr><td class="c">${i + 1}</td><td>${esc(x.n)}</td><td cl
     ${IO.EDIT_CSS}</style></head><body>${IO.editBar(`Bản in từ mẫu «${esc(tpl?.name || 'Biên bản giao nhận hồ sơ')}»${n ? ` · hồ sơ NOXH #${n.id}` : ' · chưa lập hồ sơ NOXH — danh mục mặc định, số lượng điền tay'}`)}${IO.editDoc(body)}</body></html>`;
 }
 
-module.exports = { data, xlsx, printHandover, handoverTemplates, MAU_BIEN_BAN };
+module.exports = { data, xlsx, printHandover, handoverTemplates, MAU_BIEN_BAN, BB_CU };
