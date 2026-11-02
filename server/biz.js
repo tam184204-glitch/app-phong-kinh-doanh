@@ -765,7 +765,8 @@ H.contract = {
     async liquidate(r, d, { db, user }) {   // đóng phiếu của căn để căn trống lại, bán lại được
       await closeReservations(db, r, user);
       if (d.liquidated_on > today()) bad('Ngày thanh lý không được sau hôm nay');
-      return { patch: { status: 'thanh_ly', liquidated_on: d.liquidated_on, liquidate_reason: d.reason, liquidate_note: d.liquidate_note || null } };
+      const why = C.F.contract.liquidate_reason.o.find(o => o[0] === d.liquidate_reason)?.[1] || d.liquidate_reason;
+      return { patch: { status: 'thanh_ly', liquidated_on: d.liquidated_on, liquidate_reason: d.liquidate_reason, liquidate_note: d.liquidate_note || null }, note: [why, d.liquidate_note].filter(Boolean).join(' — ') };
     },
     async print(r) { return { url: `/print/contract/${r.id}` }; },
   },

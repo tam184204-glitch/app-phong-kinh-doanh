@@ -382,6 +382,7 @@ def('cancel_req', {
 // phân loại theo màn Bravo «Cập nhật hợp đồng căn hộ»: tự lấy theo loại căn (liền kề / shophouse = nhà liền kề)
 const HD_PTYPE = [['can_ho', 'Hợp đồng căn hộ chung cư'], ['lien_ke', 'Hợp đồng nhà liền kề']];
 const CT_ONLY = { ptype: ['can_ho'] }, LK_ONLY = { ptype: ['lien_ke'] };
+const LIQ_REASON = [['tra_lai', 'Trả lại hẳn'], ['chuyen_ten', 'Chuyển tên hợp đồng']];   // lý do thanh lý hợp đồng
 const HD_KIND = [['hdmb', 'HĐ mua bán'], ['thue', 'HĐ thuê'], ['thue_mua', 'HĐ thuê mua'], ['hoan_thien', 'HĐ thỏa thuận hoàn thiện']];
 // bên bán (chủ đầu tư) theo BRAVO: chọn Đơn vị / Bên A → tự điền thông tin bên bán (ô trống lấy theo hợp đồng gần nhất cùng Bên A)
 // thông tin mặc định bên bán theo bảng phòng Kinh doanh 31/10/2026
@@ -480,8 +481,8 @@ def('contract', {
     { k: 'signed_on', l: 'Ngày ký thực tế', t: 'date', ro: 1 },
     // ghi khi bấm Thanh lý
     { k: 'liquidated_on', l: 'Ngày thanh lý', t: 'date', ro: 1, show: { status: ['thanh_ly'] } },
-    { k: 'liquidate_reason', l: 'Căn cứ thanh lý', t: 'long', ro: 1, show: { status: ['thanh_ly'] } },
-    { k: 'liquidate_note', l: 'Ghi chú lý do thanh lý', t: 'long', ro: 1, show: { status: ['thanh_ly'] } },
+    { k: 'liquidate_reason', l: 'Lý do thanh lý', t: 'sel', o: LIQ_REASON, ro: 1, show: { status: ['thanh_ly'] } },
+    { k: 'liquidate_note', l: 'Ghi chú thanh lý', t: 'long', ro: 1, show: { status: ['thanh_ly'] } },
     { k: 'loan_status', l: 'Tình trạng vay vốn', t: 'sel', o: [['co_vay', 'Có vay'], ['khong_vay', 'Không vay']] },
     { k: 'loan_doc3', l: 'Chứng từ 3 bên', t: 'sel', show: { loan_status: ['co_vay'] }, o: [['da_co', 'Đã có'], ['chua_co', 'Chưa có']] },
     { k: 'loan_bank', l: 'Ngân hàng cho vay', t: 'text', show: { loan_status: ['co_vay'] }, req: 0, sug: ['BIDV', 'Vietinbank', 'Vietcombank', 'Agribank', 'MB Bank', 'Techcombank', 'VPBank', 'ACB', 'Sacombank', 'TPBank', 'Ngân hàng Chính sách xã hội'] },
@@ -503,7 +504,7 @@ def('contract', {
   flow: { field: 'status', submit: ['du_thao', 'tu_choi'], approve: { ok: 'da_ky' }, submitLabel: 'Gửi trình duyệt' },
   acts: [
     { k: 'schedule', l: 'Lập lịch thanh toán', icon: 'fa-calendar-days', from: ['du_thao', 'tu_choi'], roles: ['ho_so', 'cong_no', 'truong_phong'] },
-    { k: 'liquidate', l: 'Thanh lý', icon: 'fa-box-archive', from: ['da_ky'], roles: MGR, ask: [{ k: 'liquidated_on', l: 'Ngày thanh lý', t: 'date', req: 1, def: 'today' }, { k: 'reason', l: 'Căn cứ thanh lý', t: 'long', req: 1 }, { k: 'liquidate_note', l: 'Ghi chú lý do', t: 'long' }] },
+    { k: 'liquidate', l: 'Thanh lý', icon: 'fa-box-archive', from: ['da_ky'], roles: MGR, ask: [{ k: 'liquidated_on', l: 'Ngày thanh lý', t: 'date', req: 1, def: 'today' }, { k: 'liquidate_reason', l: 'Lý do', t: 'sel', o: LIQ_REASON, req: 1 }, { k: 'liquidate_note', l: 'Ghi chú', t: 'long' }] },
     { k: 'print', l: 'In theo mẫu', icon: 'fa-print', from: '*', roles: ALL },
   ],
 });
