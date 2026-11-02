@@ -893,7 +893,7 @@ async function listView(main, ent, params = {}) {
   };
   const drawBulk = () => {
     const n = S.sel.size, b = $('#bulk', main);
-    b.innerHTML = n ? `<div class="bulk"><b>Đã chọn ${n}</b>${E.flow ? `<button class="btn sm amb" data-b="submit">${ico('fa-paper-plane')} Trình duyệt</button>` : ''}${E.flow && E.perm.a ? `<button class="btn sm ok" data-b="ok">${ico('fa-check')} Duyệt</button><button class="btn sm danger" data-b="no">${ico('fa-xmark')} Từ chối</button>` : ''}${E.perm.d && [...S.sel].every(id => (E.flow ? E.flow.submit : ['nhap']).includes(S.rowSt?.get(id) ?? 'nhap')) ? `<button class="btn sm danger" data-b="del">${ico('fa-trash')} Xóa</button>` : ''}<button class="btn sm ghost" data-b="clr">Bỏ chọn</button></div>` : '';
+    b.innerHTML = n ? `<div class="bulk"><b>Đã chọn ${n}</b>${E.flow ? `<button class="btn sm amb" data-b="submit">${ico('fa-paper-plane')} Trình duyệt</button>` : ''}${E.flow && E.perm.a ? `<button class="btn sm ok" data-b="ok">${ico('fa-check')} Duyệt</button><button class="btn sm danger" data-b="no">${ico('fa-xmark')} Từ chối</button>` : ''}${E.perm.d ? `<button class="btn sm danger" data-b="del">${ico('fa-trash')} Xóa</button>` : ''}<button class="btn sm ghost" data-b="clr">Bỏ chọn</button></div>` : '';
   };
   ST.reload = load;
   main.onclick = run(async e => {
@@ -916,10 +916,12 @@ async function listView(main, ent, params = {}) {
     const bb = t.closest('[data-b]');
     if (bb) {
       if (bb.dataset.b === 'clr') { S.sel.clear(); return load(); }
-      if (bb.dataset.b === 'del') {   // xóa bản nháp đã chọn
-        if (!await ask('Xóa bản dự thảo', `Xóa ${S.sel.size} ${E.one} đang ở dự thảo? Không khôi phục được.`, { danger: 1, okLabel: 'Xóa' })) return;
+      if (bb.dataset.b === 'del') {   // chỉ xóa các dòng còn ở dự thảo (chưa duyệt), dòng khác bỏ qua
+        const draft = new Set(E.flow ? E.flow.submit : ['nhap']), ids = [...S.sel].filter(id => draft.has(S.rowSt?.get(id) ?? 'nhap')), skip = S.sel.size - ids.length;
+        if (!ids.length) return toast(`Không có ${E.one} nào đang ở dự thảo trong ${S.sel.size} dòng đã chọn — chỉ xóa được bản chưa duyệt`, true);
+        if (!await ask('Xóa bản dự thảo', `Xóa ${ids.length} ${E.one} đang ở dự thảo?${skip ? ` (${skip} dòng đã gửi duyệt / đã duyệt sẽ giữ nguyên)` : ''} Không khôi phục được.`, { danger: 1, okLabel: 'Xóa' })) return;
         let ok = 0; const errs = [];
-        for (const id of S.sel) { try { await api('DELETE', `/api/e/${ent}/${id}`); ok++; } catch (er) { errs.push(`#${id} ${er.message}`); } }
+        for (const id of ids) { try { await api('DELETE', `/api/e/${ent}/${id}`); ok++; } catch (er) { errs.push(`#${id} ${er.message}`); } }
         toast(`Đã xóa ${ok}${errs.length ? ` · lỗi ${errs.length}: ${errs.slice(0, 2).join('; ')}` : ''}`, !!errs.length);
         S.sel.clear(); updateBadges(); return load();
       }
