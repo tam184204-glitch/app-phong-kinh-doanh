@@ -380,7 +380,10 @@ H.reservation = {
     if (old && old.status !== r.status && ['huy', 'het_han'].includes(r.status)) r.reg_state = 'huy';     // hủy / giải phóng từ nơi khác
     if (old && !opts.system && old.reg_state !== r.reg_state) {
       if (old.reg_state === 'huy' || ['huy', 'het_han'].includes(old.status)) bad('Phiếu đã hủy đăng ký — lập phiếu mới cho khách');
-      if (r.reg_state === 'huy' && old.status === 'chuyen_hd') bad('Phiếu đã lập hợp đồng — hủy qua «Hủy giao dịch – đổi căn»');
+      if (r.reg_state === 'huy' && old.status === 'chuyen_hd') {   // hợp đồng chưa ký → hủy ngay trên phiếu (hợp đồng tự hủy theo); đã ký → qua Hủy giao dịch
+        const signed = await db.one("SELECT number FROM kd_contract WHERE reservation_id = $1 AND status IN ('da_ky', 'thanh_ly') LIMIT 1", [r.id]);
+        if (signed) bad(`Phiếu đã ký hợp đồng ${signed.number} — hủy qua «Hủy giao dịch – đổi căn»`);
+      }
     }
     if (r.progress === 'da_ky' && r.reg_state === 'giu_cho') r.reg_state = 'ky_hdmb';
     if (r.reg_state === 'ky_hdmb' && (!old || old.reg_state !== 'ky_hdmb')) r.progress = 'da_ky';
@@ -425,6 +428,12 @@ H.reservation = {
     if (!old || old.unit_id !== r.unit_id) {
       const u = await raw(db, 'unit', r.unit_id);
       if (u && !u.activated && !u.lock) await sys(db, 'unit', u.id, { activated: true }, user, 'kich_hoat', 'Mở bán khi lập phiếu đăng ký căn hộ');
+    }
+    if (r.status === 'huy' && old?.status === 'chuyen_hd') {   // hủy đăng ký khi hợp đồng còn dự thảo / chờ ký → hủy luôn hợp đồng
+      for (const c of await db.q("SELECT id FROM kd_contract WHERE reservation_id = $1 AND status NOT IN ('da_ky', 'thanh_ly', 'huy')", [r.id])) {
+        await sys(db, 'contract', c.id, { status: 'huy' }, user, 'huy', `Hủy theo phiếu đăng ký ${r.code || ''}`);
+        await db.q("UPDATE kd_approval SET status = 'huy' WHERE ent = 'contract' AND rec_id = $1 AND status = 'cho_duyet'", [c.id]);
+      }
     }
     if (!old || old.status !== r.status || old.unit_id !== r.unit_id || old.deposit !== r.deposit || old.reg_state !== r.reg_state) await recomputeUnit(db, r.unit_id, user);
     if (r.customer_id && ['giu_cho', 'da_coc', 'chuyen_hd'].includes(r.status)) await markCustomer(db, r.customer_id, user);
