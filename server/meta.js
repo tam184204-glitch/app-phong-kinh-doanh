@@ -480,8 +480,8 @@ def('contract', {
     { k: 'sign_status', l: 'Tình trạng lịch ký', t: 'sel', def: 'chua_lien_he', o: SIGN_ST, show: LK_ONLY },
     { k: 'signed_on', l: 'Ngày ký thực tế', t: 'date', ro: 1 },
     // ghi khi bấm Thanh lý; hợp đồng đã thanh lý vẫn sửa được 3 ô này (lockKeep)
-    { k: 'liquidated_on', l: 'Ngày thanh lý', t: 'date', show: { status: ['thanh_ly'] } },
-    { k: 'liquidate_reason', l: 'Lý do thanh lý', t: 'sel', o: LIQ_REASON, show: { status: ['thanh_ly'] } },
+    { k: 'liquidated_on', l: 'Ngày thanh lý', t: 'date', req: 1, show: { status: ['thanh_ly'] } },
+    { k: 'liquidate_reason', l: 'Lý do thanh lý', t: 'sel', o: LIQ_REASON, req: 1, show: { status: ['thanh_ly'] } },
     { k: 'liquidate_note', l: 'Ghi chú thanh lý', t: 'long', show: { status: ['thanh_ly'] } },
     { k: 'loan_status', l: 'Tình trạng vay vốn', t: 'sel', o: [['co_vay', 'Có vay'], ['khong_vay', 'Không vay']] },
     { k: 'loan_doc3', l: 'Chứng từ 3 bên', t: 'sel', show: { loan_status: ['co_vay'] }, o: [['da_co', 'Đã có'], ['chua_co', 'Chưa có']] },
