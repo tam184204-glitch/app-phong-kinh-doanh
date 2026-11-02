@@ -412,7 +412,7 @@ def('contract', {
     { k: 'contract_on', l: 'Ngày ký hợp đồng mua bán', t: 'date', def: 'today' },
     { k: 'number', l: 'Số hợp đồng', t: 'text', uniq: 1, help: 'Để trống → tự cấp HDCH.YYMM-0001 (chung cư) / HDLK.YYMM-0001 (liền kề)' },
     { k: 'seller_unit', l: 'Đơn vị', t: 'text', def: SELLERS[0].unit, choose: SELLERS.map(s => s.unit), help: 'Chọn căn → tự lấy theo dự án' },
-    { k: 'agreement', l: 'Văn bản thỏa thuận', t: 'text' },
+    { k: 'agreement', l: 'Văn bản thỏa thuận', t: 'text', noForm: 1 },
     { k: 'unit_id', l: 'Mã căn hộ', t: 'ref', ref: 'unit', req: 1, dep: 'building_id',
       fill: { area_tt: 'area_tt', base_price: 'base_price', pretax: 'pretax', vat_pct: 'vat_pct', vat_amt: 'tax_amt', after_tax: 'price_net', maint_fee: 'maint_fee', finish_value: 'finish_value', value: 'total_price', area_land: 'area_dat', area_build: 'area_xd' } },
     { k: 'reservation_id', l: 'Phiếu giữ chỗ', t: 'ref', ref: 'reservation', ro: 1 },
