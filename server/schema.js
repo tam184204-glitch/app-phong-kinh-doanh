@@ -115,6 +115,9 @@ const SPECIAL = [
 ];
 // chạy trước khi dựng lại ràng buộc: đổi giá trị danh sách chọn đã bỏ
 const PRE = [
+  // lý do thanh lý thành danh sách chọn (02/11/2026): chữ gõ tự do cũ («Căn cứ thanh lý») chuyển sang Ghi chú, Lý do để trống chờ chọn lại
+  'ALTER TABLE IF EXISTS kd_contract DROP CONSTRAINT IF EXISTS ck_kd_contract_liquidate_reason',
+  `UPDATE kd_contract SET liquidate_note = concat_ws(' — ', 'Căn cứ: ' || liquidate_reason, nullif(liquidate_note, '')), liquidate_reason = NULL WHERE liquidate_reason IS NOT NULL AND liquidate_reason NOT IN ('tra_lai', 'chuyen_ten')`,
   // phương án xử lý tiền rút gọn (28/10/2026): giữ lại / không phát sinh → Khác
   'ALTER TABLE IF EXISTS kd_cancel_req DROP CONSTRAINT IF EXISTS ck_kd_cancel_req_money_plan',
   `UPDATE kd_cancel_req SET money_note = coalesce(money_note, CASE money_plan WHEN 'giu_lai' THEN 'Giữ lại theo chính sách' ELSE 'Không phát sinh tiền' END), money_plan = 'khac' WHERE money_plan IN ('giu_lai', 'khong_phat_sinh')`,
