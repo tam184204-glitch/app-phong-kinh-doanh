@@ -314,19 +314,19 @@ function schedEditor(el, rows, { total, base, first } = {}) {   // first(): ngà
 // form hợp đồng bố cục như BRAVO «Cập nhật hợp đồng căn hộ»: dòng đầu → bên mua | bên bán → thông tin chi tiết → lần thanh toán. Mỗi mảng con = 1 dòng; trường không liệt kê xuống «Thông tin khác»
 const HD_LAYOUT = [
   { rows: [['unit_id']], cols: 4 },   // dùng chung cho HĐ mua bán và HĐ hoàn thiện
-  { rows: [['contract_on', 'number', 'seller_unit', 'agreement']], cols: 4 },
+  { rows: [['seller_unit', 'agreement']], cols: 4 },
   { side: [
     { t: 'Bên mua nhà ở', rows: [['customer_id'], ['b_id_no'], ['b_id_date'], ['b_id_place'], ['b_addr'], ['b_perm_addr'], ['b_temp_addr'], ['b_phone', 'b_email'], ['b_bank_acc'], ['b_bank_name'], ['request_on', 'co_owner']] },
     { t: 'Bên bán nhà ở', rows: [['s_name'], ['s_addr'], ['s_phone', 's_tax'], ['s_bank_acc'], ['s_bank_name'], ['s_rep'], ['s_title'], ['s_poa'], ['owner_id'], ['commission_amt', 'commission_pct'], ['common_area_amt', 'all_signed']] }] },
-  { t: 'Thông tin chi tiết', cols: 4, rows: [['ptype', 'building_id', 'kind'], ['base_price', 'area_tt', 'area_floor', 'discount'], ['area_land', 'land_price', 'land_amt'], ['area_build', 'build_price', 'build_amt'],
+  { t: 'Thông tin chi tiết', cols: 4, rows: [['number', 'contract_on'], ['ptype', 'building_id', 'kind'], ['base_price', 'area_tt', 'area_floor', 'discount'], ['area_land', 'land_price', 'land_amt'], ['area_build', 'build_price', 'build_amt'],
     ['pretax', 'vat_pct', 'vat_amt', 'after_tax'], ['finish_value', 'maint_fee', 'corner_pct', 'corner_amt'], ['value', 'closed', 'cn', 'vbtt_hold']] },
   { t: 'Lần thanh toán', rows: [['new_schedule'], ['pay_method']] },
   { t: 'Lịch ký', cols: 4, rows: [['plan_sign', 'sign_place', 'sign_status', 'signed_on']] },
   { t: 'Tình trạng vay vốn', cols: 4, rows: [['loan_status', 'loan_bank', 'loan_doc3']] },
 ];
-// mỗi căn 2 hợp đồng riêng: mua bán (tab đầu, đủ ô) và hoàn thiện (kind hoan_thien, tab gọn); chung Mã căn hộ ở đầu form
+// mỗi căn 2 hợp đồng riêng: mua bán (tab đầu) và hoàn thiện (kind hoan_thien, tab gọn); Mã căn hộ, bên mua, bên bán chung ở trên 2 tab
 function hdPair(form, { ht, locked, tab, draft }) {
-  const secs = [...form.children], [top, ...rest] = secs;
+  const secs = [...form.children], rest = secs.slice(secs.findIndex(x => $(':scope > .fsec', x)?.textContent === 'Thông tin chi tiết'));   // phần trên dùng chung, từ Thông tin chi tiết thuộc tab mua bán
   const v = { number: ht?.number, on: ht?.contract_on || today(), finish: ht?.finish_value ?? ht?.value, disc: ht?.discount, sched: ht?.new_schedule || [], ...draft };
   const fld = (k, l, t, val) => `<div class="fld"><label for="f_${k}">${l}</label>${input({ k, t }, val, {}, {})}</div>`;
   const nav = document.createElement('div'); nav.className = 'tabs hd-tabs';
@@ -572,9 +572,12 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
       if (htp) try {   // hợp đồng mua bán đã lưu: hoàn thiện lỗi thì mở lại form đúng bản vừa lưu, giữ số vừa nhập
         const h = htp.snap(), c = r.row;
         let hid = htp.id;
-        if (htp.changed()) {
-          const base = { kind: 'hoan_thien', ptype: c.ptype, unit_id: c.unit_id, customer_id: c.customer_id, reservation_id: c.reservation_id, owner_id: c.owner_id, seller_unit: c.seller_unit, ...Object.fromEntries(Object.entries(c).filter(([k]) => /^s_/.test(k))) };
-          hid = (await (hid ? api('PUT', `/api/e/contract/${hid}`, h) : api('POST', '/api/e/contract', { ...base, ...h }))).row.id;
+        // phần trên 2 tab dùng chung: lưu là cập nhật cả hợp đồng hoàn thiện (trừ tiền hoa hồng, diện tích chung tính riêng từng hợp đồng)
+        const shared = Object.fromEntries(Object.entries(collect()).filter(([k]) => /^(customer_id|owner_id|b_|s_|seller_unit|agreement|request_on|co_owner|all_signed)/.test(k)));
+        const stale = hid && ['du_thao', 'tu_choi'].includes(htp.status) && Object.entries(shared).some(([k, x]) => String(htRec[k] ?? '') !== String(x ?? ''));
+        if (htp.changed() || stale) {
+          const base = { kind: 'hoan_thien', ptype: c.ptype, unit_id: c.unit_id, reservation_id: c.reservation_id };
+          hid = (await (hid ? api('PUT', `/api/e/contract/${hid}`, { ...(stale ? shared : {}), ...h }) : api('POST', '/api/e/contract', { customer_id: c.customer_id, owner_id: c.owner_id, ...base, ...shared, ...h }))).row.id;
         }
         if (andSubmit && hid && ['du_thao', 'tu_choi', undefined].includes(htp.status)) await api('POST', `/api/e/contract/${hid}/submit`, {});
       } catch (e2) {
