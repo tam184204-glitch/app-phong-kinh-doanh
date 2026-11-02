@@ -1287,9 +1287,9 @@ V.approvals = async main => {
 };
 
 // ======================= 02. BẢNG HÀNG =======================
-// Bảng hàng chỉ hiện 3 nhóm màu: Chưa mở bán (trắng, căn còn trống) · Giữ chỗ (cam) · Đã ký HĐMB (xanh)
+// Bảng hàng chỉ hiện 3 nhóm màu: Chưa bán (trắng, căn còn trống — gồm căn trả lại sau thanh lý) · Giữ chỗ (cam) · Đã ký HĐMB (xanh)
 const BGRP = { chua_mo_ban: 'trong', con_ban: 'trong', giu_cho: 'giu', da_coc: 'giu', da_ky_hd: 'ky', da_ban_giao: 'ky', tam_khoa: 'tam_khoa', ngung_kd: 'ngung_kd' };
-const BGRP_L = { trong: 'Chưa mở bán', giu: 'Giữ chỗ', ky: 'Đã ký HĐMB', tam_khoa: 'Tạm khóa', ngung_kd: 'Ngừng KD' };
+const BGRP_L = { trong: 'Chưa bán', giu: 'Giữ chỗ', ky: 'Đã ký HĐMB', tam_khoa: 'Tạm khóa', ngung_kd: 'Ngừng KD' };
 const USTAT = { con_ban: 'Còn bán', giu_cho: 'Giữ chỗ', da_coc: 'Đã cọc', da_ky_hd: 'Đã ký HĐ', da_ban_giao: 'Đã bàn giao', chua_mo_ban: 'Chưa mở bán', tam_khoa: 'Tạm khóa', ngung_kd: 'Ngừng KD' };
 V.board = async (main, params) => {
   const s = ST.board ||= { project: '', building: '', st: '', kind: '' };
