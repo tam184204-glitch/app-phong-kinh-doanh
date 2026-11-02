@@ -702,6 +702,7 @@ H.contract = {
     if (r.ptype !== 'lien_ke' && +r.base_price > 0 && +r.area_tt > 0 && (!old || PK.some(k => String(old[k] ?? '') !== String(r[k] ?? '')))) Object.assign(r, contractPrice(r));
     if (r.pretax > 0 && r.vat_pct != null && r.vat_amt == null) r.vat_amt = Math.round(r.pretax * r.vat_pct / 100);
     if (r.pretax > 0 && r.after_tax == null) r.after_tax = r.pretax + (r.vat_amt || 0);
+    if (r.kind === 'hoan_thien' && r.finish_value != null) r.value = +r.finish_value - (+r.discount || 0);
     if (!(r.value > 0)) bad('Giá trị hợp đồng phải > 0');
     if (r.loan_status === 'co_vay' && !String(r.loan_bank || '').trim()) bad('Có vay: ghi ngân hàng cho vay');
     if (r.loan_status !== 'co_vay') { r.loan_bank = null; r.loan_doc3 = null; }

@@ -313,16 +313,50 @@ function schedEditor(el, rows, { total, base, first } = {}) {   // first(): ngà
 // ---------- form tạo / sửa ----------
 // form hợp đồng bố cục như BRAVO «Cập nhật hợp đồng căn hộ»: dòng đầu → bên mua | bên bán → thông tin chi tiết → lần thanh toán. Mỗi mảng con = 1 dòng; trường không liệt kê xuống «Thông tin khác»
 const HD_LAYOUT = [
+  { rows: [['unit_id']], cols: 4 },   // dùng chung cho HĐ mua bán và HĐ hoàn thiện
   { rows: [['contract_on', 'number', 'seller_unit', 'agreement']], cols: 4 },
   { side: [
     { t: 'Bên mua nhà ở', rows: [['customer_id'], ['b_id_no'], ['b_id_date'], ['b_id_place'], ['b_addr'], ['b_perm_addr'], ['b_temp_addr'], ['b_phone', 'b_email'], ['b_bank_acc'], ['b_bank_name'], ['request_on', 'co_owner']] },
     { t: 'Bên bán nhà ở', rows: [['s_name'], ['s_addr'], ['s_phone', 's_tax'], ['s_bank_acc'], ['s_bank_name'], ['s_rep'], ['s_title'], ['s_poa'], ['owner_id'], ['commission_amt', 'commission_pct'], ['common_area_amt', 'all_signed']] }] },
-  { t: 'Thông tin chi tiết', cols: 4, rows: [['ptype', 'unit_id', 'building_id', 'kind'], ['base_price', 'area_tt', 'area_floor', 'discount'], ['area_land', 'land_price', 'land_amt'], ['area_build', 'build_price', 'build_amt'],
+  { t: 'Thông tin chi tiết', cols: 4, rows: [['ptype', 'building_id', 'kind'], ['base_price', 'area_tt', 'area_floor', 'discount'], ['area_land', 'land_price', 'land_amt'], ['area_build', 'build_price', 'build_amt'],
     ['pretax', 'vat_pct', 'vat_amt', 'after_tax'], ['finish_value', 'maint_fee', 'corner_pct', 'corner_amt'], ['value', 'closed', 'cn', 'vbtt_hold']] },
   { t: 'Lần thanh toán', rows: [['new_schedule'], ['pay_method']] },
   { t: 'Lịch ký', cols: 4, rows: [['plan_sign', 'sign_place', 'sign_status', 'signed_on']] },
   { t: 'Tình trạng vay vốn', cols: 4, rows: [['loan_status', 'loan_bank', 'loan_doc3']] },
 ];
+// mỗi căn 2 hợp đồng riêng: mua bán (tab đầu, đủ ô) và hoàn thiện (kind hoan_thien, tab gọn); chung Mã căn hộ ở đầu form
+function hdPair(form, { ht, locked, tab, draft }) {
+  const secs = [...form.children], [top, ...rest] = secs;
+  const v = { number: ht?.number, on: ht?.contract_on || today(), finish: ht?.finish_value ?? ht?.value, disc: ht?.discount, sched: ht?.new_schedule || [], ...draft };
+  const fld = (k, l, t, val) => `<div class="fld"><label for="f_${k}">${l}</label>${input({ k, t }, val, {}, {})}</div>`;
+  const nav = document.createElement('div'); nav.className = 'tabs hd-tabs';
+  nav.innerHTML = `<button type="button" data-p="mb">${ico('fa-file-contract')} Hợp đồng mua bán</button><button type="button" data-p="ht">${ico('fa-couch')} Hoàn thiện căn hộ</button>`;
+  const mb = document.createElement('div'), hp = document.createElement('fieldset');
+  hp.className = 'hd-ht'; hp.disabled = !!locked; mb.append(...rest);
+  hp.innerHTML = `<section class="bv-sec"><div class="fsec">Hợp đồng hoàn thiện căn hộ</div><div class="bv-row" style="--n:2">${fld('ht_number', 'Số hợp đồng', 'text', v.number)}${fld('ht_on', 'Ngày ký hợp đồng', 'date', v.on)}</div>
+    <div class="bv-row" style="--n:3">${fld('ht_finish', 'Giá trị hoàn thiện căn hộ', 'money', v.finish)}${fld('ht_disc', 'Giảm giá', 'money', v.disc)}${fld('ht_value', 'Giá trị sau giảm giá', 'money', null)}</div></section>
+    <section class="bv-sec"><div class="fsec">Lần thanh toán</div><div class="fld wide"><div data-sched2></div></div></section>`;
+  form.append(nav, mb, hp);
+  $('[name=ht_number]', hp).placeholder = 'Để trống → tự cấp số'; $('[name=ht_value]', hp).readOnly = true;
+  const rd = (k, t) => readField(form, { k, t }), val = () => Math.max(0, (rd('ht_finish', 'money') || 0) - (rd('ht_disc', 'money') || 0));
+  const el = $('[data-sched2]', hp);
+  schedEditor(el, v.sched, { total: val, first: () => rd('ht_on', 'date') });
+  const calc = () => { $('[name=ht_value]', hp).value = val() ? moneyStr(val()) : ''; el._redraw(); };
+  hp.addEventListener('input', e => { if (['ht_finish', 'ht_disc'].includes(e.target.name)) calc(); });
+  hp.addEventListener('change', e => { if (e.target.name === 'ht_on') calc(); });
+  const show = p => { $$('button', nav).forEach(b => b.classList.toggle('on', b.dataset.p === p)); mb.classList.toggle('hidden', p !== 'mb'); hp.classList.toggle('hidden', p !== 'ht'); };
+  nav.onclick = e => { const b = e.target.closest('[data-p]'); if (b) show(b.dataset.p); };
+  show(tab === 'ht' ? 'ht' : 'mb'); calc();
+  const snap = () => ({ number: rd('ht_number', 'text') || null, contract_on: rd('ht_on', 'date'), finish_value: rd('ht_finish', 'money'), discount: rd('ht_disc', 'money'), value: val(), new_schedule: el._get() });
+  const first = JSON.stringify(snap());
+  return {
+    id: ht?.id, status: ht?.status, snap, show,
+    sync(on) { nav.classList.toggle('hidden', !on); if (!on) show('mb'); },
+    finish(n) { if (!rd('ht_finish', 'money')) { $('[name=ht_finish]', hp).value = moneyStr(n); calc(); } },
+    changed: () => !locked && JSON.stringify(snap()) !== first && (ht?.id || val() > 0),
+    filled: () => val() > 0,
+  };
+}
 function bravoLayout(form, layout) {
   const take = k => { const el = $(`:scope > [data-f="${k}"]`, form); el?.classList.remove('wide'); return el; };
   const block = s => {
@@ -355,7 +389,7 @@ function bravoLayout(form, layout) {
   });
 }
 
-async function openForm(ent, { id, preset = {}, onSaved, title, skip = [] } = {}) {   // skip: trường không hiện trong form (vẫn gửi giá trị preset / mặc định)
+async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, htDraft } = {}) {   // skip: trường không hiện trong form (vẫn gửi giá trị preset / mặc định)
   const E = M.ents[ent];
   let rec = { ...preset }, perm = null;
   if (id) {
@@ -363,6 +397,13 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [] } = {}
     if (E.fields.some(f => f.pii || f.grid?.some(c => c.pii)) && M.piiRoles.includes(M.me.role) && rec._masked) Object.assign(rec, await api('GET', `/api/pii/${ent}/${id}`));
   } else {
     for (const f of E.fields) if (rec[f.k] === undefined && f.def !== undefined && !f.ro) rec[f.k] = f.def === 'me' ? M.me.id : f.def === 'today' ? today() : f.def === 'now' ? new Date().toISOString() : f.def;
+  }
+  // hợp đồng: mở bản hoàn thiện cũng vào form của hợp đồng mua bán cùng căn, tab Hoàn thiện
+  let htRec = null, htLocked = false;
+  if (ent === 'contract' && id && rec.unit_id) {
+    const pair = await api('GET', `/api/contract-pair/${rec.unit_id}`);
+    if (rec.kind === 'hoan_thien' && pair.main) return openForm(ent, { id: pair.main, tab: 'ht', onSaved, title });
+    if (rec.kind !== 'hoan_thien' && pair.finish) { const g = await api('GET', `/api/e/contract/${pair.finish}`); htRec = g.row; htLocked = !!g.perm.locked; }
   }
   const lockKeep = perm?.locked ? new Set(perm.lockKeep || []) : null;
   const fields = E.fields.filter(f => !skip.includes(f.k) && !f.noForm && !(f.ro && !id) && !(f.t === 'code' && !id && !f.manual) && !(f.t === 'json' && f.k !== 'new_schedule' && !f.grid));
@@ -375,10 +416,11 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [] } = {}
   const m = modal({ title: title || (id ? `Sửa ${E.one} ${esc(rec.code || rec.number || '')}` : `${E.code ? `<span class="tag">${E.code}</span> ` : ''}Tạo ${E.one}`), wide: fields.length > 8 || fields.some(wide),
     body, foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="fSave">${ico('fa-floppy-disk')} ${id ? 'Lưu' : E.direct ? `Lưu ${E.one}` : 'Lưu nháp'}</button>${canSubmit ? `<button class="btn amb" id="fSub">${ico('fa-paper-plane')} Lưu và ${esc((E.flow.submitLabel || 'trình duyệt').toLowerCase())}</button>` : ''}` });
   const form = $('form', m.el);
-  if (ent === 'contract') { bravoLayout(form, HD_LAYOUT); $('.modal', m.el).classList.add('full'); }
+  let htp = null;
+  if (ent === 'contract') { bravoLayout(form, HD_LAYOUT); $('.modal', m.el).classList.add('full'); if (rec.kind !== 'hoan_thien') htp = hdPair(form, { ht: htRec, locked: htLocked, tab, draft: htDraft }); }
   const sch = $('[data-sched]', form);
   if (sch) schedEditor(sch, rec.new_schedule || [], { total: () => ent === 'contract' ? readField(form, E.fields.find(f => f.k === 'value')) || 0 : readField(form, E.fields.find(f => f.k === 'value_after')) || rec.value_before || 0, first: ent === 'contract' ? () => readField(form, E.fields.find(f => f.k === 'contract_on')) : null });
-  const vis = () => { const cur = collect(true); for (const f of fields) { const box = $(`[data-f="${f.k}"]`, form); if (box) box.classList.toggle('hidden', !isShown(f, cur)); } $$('.bv-row, .bv-sec', form).forEach(x => x.classList.toggle('hidden', !$('.fld:not(.hidden)', x))); };
+  const vis = () => { const cur = collect(true); for (const f of fields) { const box = $(`[data-f="${f.k}"]`, form); if (box) box.classList.toggle('hidden', !isShown(f, cur)); } $$('.bv-row, .bv-sec', form).forEach(x => x.classList.toggle('hidden', !$('.fld:not(.hidden)', x))); htp?.sync(cur.ptype !== 'lien_ke' && ['hdmb', 'thue_mua'].includes(cur.kind)); };
   const collect = (all) => { const out = {}; for (const f of fields) { if (f.ro || (f.t === 'code' && !f.manual)) continue; if (lockKeep && !lockKeep.has(f.k)) continue; const v = readField(form, f); if (v !== undefined) out[f.k] = v; } return all ? { ...rec, ...out } : out; };
   // checklist theo nhóm / mẫu
   const ckF = fields.find(f => f.t === 'check' && f.src);
@@ -433,6 +475,9 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [] } = {}
         form.elements.ptype.value = ['lien_ke', 'shophouse'].includes(src.kind) ? 'lien_ke' : 'can_ho'; vis(); contractNo();
         const bh = form.elements.building_id, bt = bh?.closest('.combo')?.querySelector('[data-combo]'); if (bh) { bh.value = src.building_id ?? ''; if (bt) bt.value = src.building_id__l || ''; }   // số bảng giá = tòa của căn
         await contractPrefill(src.id);
+        // giá trị hoàn thiện theo căn thuộc hợp đồng hoàn thiện, không cộng vào hợp đồng mua bán
+        const fv = readField(form, fields.find(x => x.k === 'finish_value') || {});
+        if (htp && fv > 0 && form.elements.ptype.value !== 'lien_ke') { htp.finish(fv); form.elements.finish_value.value = ''; const tv = readField(form, fields.find(x => x.k === 'value')); if (tv > fv) form.elements.value.value = moneyStr(tv - fv); }
         contractCalc();
       }
       if (ent === 'reservation' && f.ref === 'unit' && form.elements.unit_value) {   // giá trị căn hộ = sau thuế + bảo trì; hoàn thiện theo căn
@@ -520,9 +565,24 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [] } = {}
     return id ? api('PUT', `/api/e/${ent}/${id}${check ? '?check=1' : ''}`, data) : api('POST', `/api/e/${ent}${check ? '?check=1' : ''}`, data);
   };
   const save = async (andSubmit) => {
+    if (htp?.filled() && +readField(form, fields.find(x => x.k === 'finish_value') || {}) > 0) { htp.show('mb'); return showErr(new Error('Giá trị hoàn thiện đã nhập ở tab Hoàn thiện căn hộ — để trống ô này ở hợp đồng mua bán')); }
     const btns = $$('.mf .btn', m.el); btns.forEach(b => b.disabled = true);
     try {
       const r = await send(false);
+      if (htp) try {   // hợp đồng mua bán đã lưu: hoàn thiện lỗi thì mở lại form đúng bản vừa lưu, giữ số vừa nhập
+        const h = htp.snap(), c = r.row;
+        let hid = htp.id;
+        if (htp.changed()) {
+          const base = { kind: 'hoan_thien', ptype: c.ptype, unit_id: c.unit_id, customer_id: c.customer_id, reservation_id: c.reservation_id, owner_id: c.owner_id, seller_unit: c.seller_unit, ...Object.fromEntries(Object.entries(c).filter(([k]) => /^s_/.test(k))) };
+          hid = (await (hid ? api('PUT', `/api/e/contract/${hid}`, h) : api('POST', '/api/e/contract', { ...base, ...h }))).row.id;
+        }
+        if (andSubmit && hid && ['du_thao', 'tu_choi', undefined].includes(htp.status)) await api('POST', `/api/e/contract/${hid}/submit`, {});
+      } catch (e2) {
+        if (andSubmit) await api('POST', `/api/e/${ent}/${r.row.id}/submit`, {}).catch(() => {});
+        m.close(); refresh(); toast('Hợp đồng mua bán đã lưu; hợp đồng hoàn thiện chưa lưu: ' + e2.message, true);
+        openForm(ent, { id: r.row.id, tab: 'ht', onSaved, htDraft: (({ number, contract_on: on, finish_value: finish, discount: disc, new_schedule: sched }) => ({ number, on, finish, disc, sched }))(htp.snap()) });
+        return r.row;
+      }
       // tệp đính kèm chọn ngay trong form (vd. Tệp nguồn PDF) → lưu vào mục Tệp của bản ghi
       for (const f of fields.filter(x => x.upload)) { const file = $(`[name="${f.k}"]`, form)?.files?.[0]; if (!file) continue; const fd = new FormData(); fd.append('kind', 'nguon'); fd.append('file', file, file.name); await api('POST', `/api/files/${ent}/${r.row.id}`, fd); }
       if (andSubmit) await api('POST', `/api/e/${ent}/${r.row.id}/submit`, {});

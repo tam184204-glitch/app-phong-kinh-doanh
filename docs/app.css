@@ -887,3 +887,8 @@ table.prod-t tfoot td { font-weight: 800 !important; color: var(--ink) !importan
 
 /* vai trò không được xuất Excel màn tổng hợp */
 body.no-xr #dx, body.no-xr #scX, body.no-xr #lx, body.no-xr #rx, body.no-xr #lnX, body.no-xr #pyX, body.no-xr #fpX, body.no-xr #shX, body.no-xr #pXls, body.no-xr #kXls { display: none; }
+
+/* form hợp đồng: 2 tab Hợp đồng mua bán / Hoàn thiện căn hộ */
+.hd-tabs { margin: 2px 0 12px; } .hd-tabs.hidden { display: none; }
+.hd-ht { border: 0; margin: 0; padding: 0; min-width: 0; } .hd-ht.hidden { display: none; }
+.bv .hd-ht .fld.wide { display: block; }
