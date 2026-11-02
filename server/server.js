@@ -77,7 +77,7 @@ async function userFromReq(req) {
   return r && { ...r, must_change: false };
 }
 async function newSession(res, uid, body = { ok: true }) {
-  const sid = crypto.randomBytes(32).toString('base64url');
+  const sid = crypto.randomBytes(32).toString('hex');
   await q(`INSERT INTO kd_session (sid, user_id, expires_at) VALUES ($1, $2, now() + interval '${SESSION_H} hours')`, [sid, uid]);
   send(res, 200, body, { 'Set-Cookie': `kd_sid=${sid}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_H * 3600}` });
 }
@@ -100,6 +100,7 @@ async function login(req, res) {
 }
 
 // ---------- meta gửi giao diện ----------
+const EXPORT_ROLES = ['lanh_dao', 'truong_phong', 'admin', 'cong_no', 'ke_toan', 'ho_so', 'cskh'];   // được xuất Excel từ màn tổng hợp
 async function metaFor(user) {
   const strip = e => ({ ...e, fields: e.fields.filter(f => !f.hide).map(f => ({ ...f })), perm: { r: can(user, e, 'r'), c: can(user, e, 'c'), u: can(user, e, 'u'), d: can(user, e, 'd'), a: can(user, e, 'a'), x: can(user, e, 'x') } });
   const ents = Object.fromEntries(Object.values(M.E).map(e => [e.key, strip(e)]));
@@ -109,7 +110,7 @@ async function metaFor(user) {
   const menu = M.MENU.map(([no, t, icon, items]) => [no, t, icon, items.map(([id, l, code]) => { const e = id.startsWith('e:') && ents[id.slice(2).split('?')[0]]; return e ? (e.perm.r ? [id, l || e.title, e.icon, e.code] : null) : viewOk(id) ? [id, l, null, code] : null; }).filter(Boolean)]).filter(m => m[3].length);
   const settings = Object.fromEntries((await q("SELECT key, value FROM kd_setting WHERE key IN ('checklist_noxh','checklist_so_hong','checklist_ban_giao','schedule_presets','schedule_contents','sla_hours','handover_pay_pct','bravo','bsc')")).map(r => [r.key, r.value]));
   return {
-    me: user, roles: M.ROLES, menu, ents, virt: M.VIRT, piiRoles: M.PII_ROLES, sellers: M.SELLERS, settings, alertCat: V.ALERT_CAT, reports: V.REPORTS,
+    me: user, exportRoles: EXPORT_ROLES, roles: M.ROLES, menu, ents, virt: M.VIRT, piiRoles: M.PII_ROLES, sellers: M.SELLERS, settings, alertCat: V.ALERT_CAT, reports: V.REPORTS,
     imports: Object.fromEntries(Object.entries(IO.IMPORTS).filter(([, i]) => user.role === 'admin' || i.roles.includes(user.role)).map(([k, i]) => [k, { title: i.title, note: i.note }])),
     users: await q('SELECT id, full_name, role, title, active FROM kd_user ORDER BY active DESC, full_name'),
     projects: await q('SELECT id, code, name FROM kd_project ORDER BY code'), buildings: await q('SELECT id, project_id, code, name FROM kd_building ORDER BY code'),
@@ -241,7 +242,7 @@ R('GET', '/api/opts/:ent', async (req, res, u, p, qs) => {
 R('GET', '/api/export/:ent', async (req, res, u, p, qs) => { const x = await IO.exportList(p.ent, u, qs); sendFile(res, x.buf, x.name, MIME['.xlsx']); });
 R('POST', '/api/export-rows', async (req, res, u) => {
   const b = await readJson(req);
-  if (!['lanh_dao', 'truong_phong', 'admin', 'cong_no', 'ke_toan', 'ho_so', 'cskh'].includes(u.role)) deny();
+  if (!EXPORT_ROLES.includes(u.role)) deny();
   await C.audit({ q }, 'view', null, 'xuat_du_lieu', null, null, u, b.title);
   sendFile(res, IO.sheet(String(b.title || 'Bao cao').slice(0, 80), b.cols || [], b.rows || [], { sum: b.sum, note: b.note }), `${safeName(b.file || 'bao-cao')}_${C.today()}.xlsx`, MIME['.xlsx']);
 });
@@ -256,6 +257,7 @@ R('GET', '/api/file/:id', async (req, res, u, p, qs) => {
 R('DELETE', '/api/file/:id', async (req, res, u, p) => {
   const { f, g } = await fileAccess(u, p.id);
   if (g.perm.locked) bad('Hồ sơ đã chốt — không xóa tệp (tải phiên bản mới nếu cần)');
+  if (f.ent === 'pinkbook' && g.row.status === 'da_giao_so') bad('Đã giao sổ — không xóa tệp của hồ sơ này');
   if (f.uploaded_by !== u.id && !mgr(u)) deny('Chỉ người tải lên hoặc Trưởng phòng được xóa tệp');
   await q('UPDATE kd_file SET deleted_at = now(), deleted_by = $1 WHERE id = $2', [u.id, f.id]);
   await C.audit({ q }, f.ent, f.rec_id, 'xoa_tep', null, null, u, f.name, f.is_demo);
@@ -492,6 +494,7 @@ async function handle(req, res) {
       }
       // tình trạng khách hàng tự đồng bộ: trước khi đọc danh sách khách, sau mỗi thao tác ghi
       if (req.method === 'GET' && pth.startsWith('/api/e/customer')) await B.syncStages({ q, one });
+      if (m.groups?.id && !/^\d+$/.test(m.groups.id)) bad('Mã bản ghi không hợp lệ');
       await r.fn(req, res, user, m.groups || {}, qs);
       if (req.method !== 'GET' && user) B.syncStages({ q, one }).catch(e => console.error('syncStages', e.message));
     } catch (e) {
@@ -509,6 +512,7 @@ async function start() {
   const n = (await one('SELECT count(*) n FROM kd_user')).n;
   if (!n) { console.log('CSDL trống — nạp dữ liệu gốc…'); await require('./seed').seedBase(); }
   await require('./seed').ensureTemplates();
+  await B.fixLiquidated({ q, one }).catch(e => console.error('fixLiquidated', e.message));
   const srv = http.createServer(handle);
   srv.listen(PORT, HOST, () => console.log(`App Phòng Kinh doanh: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`));
   const job = async () => { try { await tx(db => B.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.error('Việc chạy nền lỗi:', e.message); } };

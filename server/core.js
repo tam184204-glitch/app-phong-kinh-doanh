@@ -19,20 +19,22 @@ const today = () => vnNow().toISOString().slice(0, 10);
 const addDays = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10);
 const dayDiff = (a, b) => Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 864e5);
 const dmy = s => s ? String(s).slice(0, 10).split('-').reverse().join('/') : '';
+const dateOk = iso => iso >= '1900-01-01' && iso <= '2100-12-31';   // chặn năm gõ dở kiểu 0002, số Excel vô lý
 const isoDate = v => {
   if (v instanceof Date) return new Date(v.getTime() + 7 * 3600e3).toISOString().slice(0, 10);
   const s = String(v).trim();
   let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
   if (!m) { m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(s); if (m) m = [0, m[3], m[2].padStart(2, '0'), m[1].padStart(2, '0')]; }
-  if (!m && /^\d{5}$/.test(s)) return new Date(Date.UTC(1899, 11, 30) + +s * 864e5).toISOString().slice(0, 10); // số ngày kiểu Excel
+  if (!m && /^\d{5}$/.test(s)) { const x = new Date(Date.UTC(1899, 11, 30) + +s * 864e5).toISOString().slice(0, 10); return dateOk(x) ? x : null; } // số ngày kiểu Excel
   if (!m) return null;
   const iso = `${m[1]}-${m[2]}-${m[3]}`, d = new Date(iso + 'T00:00:00Z');
-  return isNaN(d) || d.toISOString().slice(0, 10) !== iso ? null : iso;
+  return isNaN(d) || d.toISOString().slice(0, 10) !== iso || !dateOk(iso) ? null : iso;
 };
 const isoDt = v => {
   if (v instanceof Date) return v.toISOString();
   const s = String(v).trim();
   let m = /^(\d{4}-\d{2}-\d{2})[T ](\d{1,2}):(\d{2})/.exec(s);
+  if (m && !dateOk(m[1])) return null;
   if (m) return /[zZ]|[+-]\d{2}:?\d{2}$/.test(s) ? new Date(s).toISOString() : `${m[1]}T${m[2].padStart(2, '0')}:${m[3]}:00+07:00`;
   m = /^(\d{1,2}[/.-]\d{1,2}[/.-]\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/.exec(s);
   if (m) { const d = isoDate(m[1]); return d ? `${d}T${(m[2] || '00').padStart(2, '0')}:${m[3] || '00'}:00+07:00` : null; }

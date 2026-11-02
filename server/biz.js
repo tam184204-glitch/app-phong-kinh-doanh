@@ -128,12 +128,25 @@ async function contractPrefill(db, unitId, on = today()) {
 
 // giá trị hợp đồng căn hộ theo Danh mục sản phẩm (sau thuế + bảo trì): cập nhật các ô giá + tính lại từng đợt theo tỷ lệ / ngày đến hạn cũ.
 // Phiếu thu đã có giữ nguyên (công nợ tự tính lại theo lịch mới). Trả về true nếu có đổi.
+async function closeReservations(db, c, user) {
+  for (const s of await db.q(`SELECT id FROM kd_reservation WHERE unit_id = $1 AND status IN ${ACTIVE_RES}`, [c.unit_id]))
+    await C.sys(db, 'reservation', s.id, { status: 'huy', reg_state: 'huy' }, user, 'huy', `Theo thanh lý hợp đồng ${c.number || ''}`);
+}
+// hợp đồng đã thanh lý trước khi có closeReservations: căn còn kẹt «Đã ký hợp đồng» thì giải phóng lúc khởi động
+async function fixLiquidated(db) {
+  const cs = await db.q(`SELECT DISTINCT ON (c.unit_id) c.id, c.unit_id, c.number FROM kd_contract c WHERE c.status = 'thanh_ly' AND c.kind <> 'hoan_thien'
+    AND NOT EXISTS (SELECT 1 FROM kd_contract x WHERE x.unit_id = c.unit_id AND x.kind IN ('hdmb','thue','thue_mua') AND x.status NOT IN ('huy','thanh_ly'))
+    AND EXISTS (SELECT 1 FROM kd_reservation s WHERE s.unit_id = c.unit_id AND s.status IN ${ACTIVE_RES}) ORDER BY c.unit_id, c.id DESC`);
+  for (const c of cs) { await closeReservations(db, c, null); await recomputeUnit(db, c.unit_id, null); }
+  return cs.length;
+}
 async function syncContractValue(db, contractId, user, note = 'Đồng bộ giá trị theo Danh mục sản phẩm') {
   const c = await raw(db, 'contract', contractId);
   const u = c && c.kind !== 'hoan_thien' && await raw(db, 'unit', c.unit_id);
   if (!u || u.price_net == null) return false;
-  const value = +u.price_net + (+u.maint_fee || 0);
+  const value = +u.price_net + (+u.maint_fee || 0) + (+c.finish_value || 0);
   if (+c.value === value) return false;
+  if ((await debtOf(db, [c.id])).get(c.id)?.paid > value) bad(`Số đã thu lớn hơn giá trị ${fmtMoney(value)}đ của căn mới — cần xử lý hoàn tiền trước`);
   const patch = { value, pretax: u.pretax, vat_pct: u.vat_pct, vat_amt: u.tax_amt, after_tax: u.price_net, maint_fee: u.maint_fee, base_price: u.base_price };
   for (const k of Object.keys(patch)) if (patch[k] == null || !C.F.contract[k]) delete patch[k];
   const sets = Object.keys(patch);
@@ -632,12 +645,13 @@ H.cancel_req = {
     if (r.kind === 'doi_can') {
       const nu = await raw(db, 'unit', r.new_unit_id); if (nu.status !== 'con_ban') bad(`Căn ${nu.code} không còn trống`);
       if (res) await sys(db, 'reservation', res.id, { unit_id: nu.id }, user, 'doi_can', `Theo đề nghị ${r.code}`);
-      if (con) await sys(db, 'contract', con.id, { unit_id: nu.id }, user, 'doi_can', `Theo đề nghị ${r.code}`);
+      if (con) { await sys(db, 'contract', con.id, { unit_id: nu.id, finish_value: nu.finish_value }, user, 'doi_can', `Theo đề nghị ${r.code}`); await syncContractValue(db, con.id, user, `Đổi căn theo đề nghị ${r.code}`); }
       await recomputeUnit(db, nu.id, user);
     }
     if (r.kind === 'doi_kh') {
-      if (res) await sys(db, 'reservation', res.id, { customer_id: r.new_customer_id }, user, 'doi_kh', `Theo đề nghị ${r.code}`);
-      if (con) await sys(db, 'contract', con.id, { customer_id: r.new_customer_id }, user, 'doi_kh', `Theo đề nghị ${r.code}`);
+      const nk = await raw(db, 'customer', r.new_customer_id), bk = bankSplit(nk.bank_account);   // ô bên mua theo người mới, không giữ thông tin người cũ
+      if (res) await sys(db, 'reservation', res.id, { customer_id: nk.id, cust_name: nk.full_name, id_no: nk.id_no, id_date: nk.id_date, id_place: nk.id_place, address: nk.address, phone: nk.phone, tax_code: nk.tax_code, bank_account: nk.bank_account }, user, 'doi_kh', `Theo đề nghị ${r.code}`);
+      if (con) await sys(db, 'contract', con.id, { customer_id: nk.id, b_name: nk.full_name, ...Object.fromEntries(Object.entries(CT_CUST).map(([f, c]) => [c, nk[f]])), b_bank_acc: bk.acc, b_bank_name: bk.name }, user, 'doi_kh', `Theo đề nghị ${r.code}`);
       await markCustomer(db, r.new_customer_id, user);
     }
     for (const id of new Set([res?.unit_id, con?.unit_id].filter(Boolean))) await recomputeUnit(db, id, user);
@@ -743,7 +757,10 @@ H.contract = {
       await writeSchedule(db, r.id, rows, 'hop_dong', user, demo);
       return { msg: `Đã lập ${rows.length} kỳ thu, tổng ${fmtMoney(r.value)}đ` };
     },
-    async liquidate() { return { patch: { status: 'thanh_ly' } }; },
+    async liquidate(r, d, { db, user }) {   // đóng phiếu của căn để căn trống lại, bán lại được
+      await closeReservations(db, r, user);
+      return { patch: { status: 'thanh_ly' } };
+    },
     async print(r) { return { url: `/print/contract/${r.id}` }; },
   },
   noDelete: r => r.status !== 'du_thao' && 'Chỉ xóa được dự thảo chưa gửi trình duyệt',
@@ -1048,4 +1065,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
