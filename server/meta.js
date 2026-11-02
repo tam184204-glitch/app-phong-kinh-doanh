@@ -477,6 +477,10 @@ def('contract', {
     { k: 'sign_place', l: 'Địa điểm ký', t: 'text', show: LK_ONLY },
     { k: 'sign_status', l: 'Tình trạng lịch ký', t: 'sel', def: 'chua_lien_he', o: SIGN_ST, show: LK_ONLY },
     { k: 'signed_on', l: 'Ngày ký thực tế', t: 'date', ro: 1 },
+    // ghi khi bấm Thanh lý
+    { k: 'liquidated_on', l: 'Ngày thanh lý', t: 'date', ro: 1, show: { status: ['thanh_ly'] } },
+    { k: 'liquidate_reason', l: 'Căn cứ thanh lý', t: 'long', ro: 1, show: { status: ['thanh_ly'] } },
+    { k: 'liquidate_note', l: 'Ghi chú lý do thanh lý', t: 'long', ro: 1, show: { status: ['thanh_ly'] } },
     { k: 'loan_status', l: 'Tình trạng vay vốn', t: 'sel', o: [['co_vay', 'Có vay'], ['khong_vay', 'Không vay']] },
     { k: 'loan_doc3', l: 'Chứng từ 3 bên', t: 'sel', show: { loan_status: ['co_vay'] }, o: [['da_co', 'Đã có'], ['chua_co', 'Chưa có']] },
     { k: 'loan_bank', l: 'Ngân hàng cho vay', t: 'text', show: { loan_status: ['co_vay'] }, req: 0, sug: ['BIDV', 'Vietinbank', 'Vietcombank', 'Agribank', 'MB Bank', 'Techcombank', 'VPBank', 'ACB', 'Sacombank', 'TPBank', 'Ngân hàng Chính sách xã hội'] },
@@ -498,7 +502,7 @@ def('contract', {
   flow: { field: 'status', submit: ['du_thao', 'tu_choi'], approve: { ok: 'da_ky' }, submitLabel: 'Gửi trình duyệt' },
   acts: [
     { k: 'schedule', l: 'Lập lịch thanh toán', icon: 'fa-calendar-days', from: ['du_thao', 'tu_choi'], roles: ['ho_so', 'cong_no', 'truong_phong'] },
-    { k: 'liquidate', l: 'Thanh lý', icon: 'fa-box-archive', from: ['da_ky'], roles: MGR, ask: [{ k: 'reason', l: 'Căn cứ thanh lý', t: 'long', req: 1 }] },
+    { k: 'liquidate', l: 'Thanh lý', icon: 'fa-box-archive', from: ['da_ky'], roles: MGR, ask: [{ k: 'liquidated_on', l: 'Ngày thanh lý', t: 'date', req: 1, def: 'today' }, { k: 'reason', l: 'Căn cứ thanh lý', t: 'long', req: 1 }, { k: 'liquidate_note', l: 'Ghi chú lý do', t: 'long' }] },
     { k: 'print', l: 'In theo mẫu', icon: 'fa-print', from: '*', roles: ALL },
   ],
 });

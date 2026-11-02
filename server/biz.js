@@ -764,7 +764,8 @@ H.contract = {
     },
     async liquidate(r, d, { db, user }) {   // đóng phiếu của căn để căn trống lại, bán lại được
       await closeReservations(db, r, user);
-      return { patch: { status: 'thanh_ly' } };
+      if (d.liquidated_on > today()) bad('Ngày thanh lý không được sau hôm nay');
+      return { patch: { status: 'thanh_ly', liquidated_on: d.liquidated_on, liquidate_reason: d.reason, liquidate_note: d.liquidate_note || null } };
     },
     async print(r) { return { url: `/print/contract/${r.id}` }; },
   },
