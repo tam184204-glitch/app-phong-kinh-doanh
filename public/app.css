@@ -892,3 +892,5 @@ body.no-xr #dx, body.no-xr #scX, body.no-xr #lx, body.no-xr #rx, body.no-xr #lnX
 .hd-tabs { margin: 2px 0 12px; } .hd-tabs.hidden { display: none; }
 .hd-ht { border: 0; margin: 0; padding: 0; min-width: 0; } .hd-ht.hidden { display: none; }
 .bv .hd-ht .fld.wide { display: block; }
+
+.hd-kinds { margin: 0; padding-top: 4px; }

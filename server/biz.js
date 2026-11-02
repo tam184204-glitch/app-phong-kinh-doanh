@@ -674,8 +674,12 @@ H.contract = {
       r.area_tt ??= u.area_tt; r.base_price ??= u.base_price; r.pretax ??= u.pretax; r.vat_pct ??= u.vat_pct; r.vat_amt ??= u.tax_amt; r.after_tax ??= u.price_net; r.maint_fee ??= u.maint_fee;
     }
   },
-  // danh sách theo nhóm: ?group=can_ho | lien_ke
-  where(qs) { if (['can_ho', 'lien_ke'].includes(qs.group)) return { sql: 't.ptype = $1', params: [qs.group] }; },
+  // danh sách theo nhóm: ?group=can_ho (HĐ mua bán) | hoan_thien (HĐ hoàn thiện căn hộ) | lien_ke
+  where(qs) {
+    if (qs.group === 'hoan_thien') return { sql: 't.ptype = $1 AND t.kind = $2', params: ['can_ho', 'hoan_thien'] };
+    if (qs.group === 'can_ho') return { sql: 't.ptype = $1 AND t.kind <> $2', params: ['can_ho', 'hoan_thien'] };
+    if (qs.group === 'lien_ke') return { sql: 't.ptype = $1', params: [qs.group] };
+  },
   async beforeSave(r, old, ctx) {
     const { db, opts } = ctx;
     r.number = r.number?.trim().toUpperCase().replace(/\s+/g, '') || null;

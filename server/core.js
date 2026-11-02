@@ -240,9 +240,9 @@ async function list(entKey, user, qs = {}, { db = { q, one }, limit } = {}) {
     else if (f.t === 'ref' || f.t === 'user' || f.t === 'int') add(`t.${f.k} = $1`, +v);
     else add(`t.${f.k} = $1`, v);
   }
-  const baseWhere = [...where], baseP = [...p];
-  if (qs.status) add(`t.status = ANY($1)`, String(qs.status).split(','));
   if (H[entKey]?.where) { const w = H[entKey].where(qs, user); if (w) add(w.sql, ...(w.params || [])); }
+  const baseWhere = [...where], baseP = [...p];   // số đếm trên tab trạng thái: theo nhóm đang xem, chưa lọc trạng thái
+  if (qs.status) add(`t.status = ANY($1)`, String(qs.status).split(','));
   const W = where.length ? 'WHERE ' + where.join(' AND ') : '';
   let order = e.order || 't.id DESC';
   if (qs.sort) { const k = qs.sort.replace(/^-/, ''); if (F[entKey][k] || ['id', 'created_at'].includes(k)) order = `t.${k} ${qs.sort[0] === '-' ? 'DESC' : 'ASC'} NULLS LAST, t.id DESC`; }
