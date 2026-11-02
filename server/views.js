@@ -466,17 +466,18 @@ async function signing(db, user, f) {
 // ======================= KHO HỒ SƠ PHÁP LÝ =======================
 async function vault(db, user, f) {
   const ents = Object.keys(E).filter(k => can(user, E[k], 'r'));
-  const rows = await db.q(`SELECT f.id, f.ent, f.rec_id, f.kind, f.name, f.size, f.version, f.uploaded_at, us.full_name by FROM kd_file f LEFT JOIN kd_user us ON us.id = f.uploaded_by
-    WHERE f.deleted_at IS NULL AND f.ent = ANY($1) ${f.ent ? 'AND f.ent = $2' : ''} ORDER BY f.uploaded_at DESC LIMIT 2000`, f.ent ? [ents, f.ent] : [ents]);
+  const rows = await db.q(`SELECT f.id, f.ent, f.rec_id, f.kind, f.name, f.size, f.version, f.uploaded_at, f.deleted_at, us.full_name by, del.full_name deleted_by_name, st.user_id IS NOT NULL star FROM kd_file f LEFT JOIN kd_user us ON us.id = f.uploaded_by LEFT JOIN kd_user del ON del.id = f.deleted_by LEFT JOIN kd_file_star st ON st.file_id = f.id AND st.user_id = $2
+    WHERE f.deleted_at IS ${f.trash ? 'NOT ' : ''}NULL AND f.ent = ANY($1) ${f.ent ? 'AND f.ent = $3' : ''} ORDER BY ${f.trash ? 'f.deleted_at' : 'f.uploaded_at'} DESC LIMIT 2000`, f.ent ? [ents, user.id, f.ent] : [ents, user.id]);
   // gắn mã căn / khách hàng
   const unitOf = {};
   for (const k of [...new Set(rows.map(r => r.ent))]) {
-    const ux = C.unitExpr(E[k]); const ids = rows.filter(r => r.ent === k).map(r => r.rec_id);
+    const ux = C.unitExpr(E[k]), px = C.projExpr(E[k]); const ids = rows.filter(r => r.ent === k).map(r => r.rec_id);
     const cx = C.F[k].customer_id ? 't.customer_id' : C.F[k].contract_id ? '(SELECT customer_id FROM kd_contract c WHERE c.id = t.contract_id)' : 'NULL';
-    for (const r of await db.q(`SELECT t.id, ${ux ? `(SELECT code FROM kd_unit u WHERE u.id = ${ux})` : 'NULL'} unit, ${ux || 'NULL'} unit_id, (SELECT full_name FROM kd_customer k WHERE k.id = ${cx}) customer, ${E[k].disp} label FROM ${E[k].table} t WHERE t.id = ANY($1)`, [ids]))
+    for (const r of await db.q(`SELECT t.id, ${ux ? `(SELECT code FROM kd_unit u WHERE u.id = ${ux})` : 'NULL'} unit, ${ux || 'NULL'} unit_id, ${px || 'NULL'} project_id, (SELECT full_name FROM kd_customer k WHERE k.id = ${cx}) customer, ${E[k].disp} label FROM ${E[k].table} t WHERE t.id = ANY($1)`, [ids]))
       unitOf[k + r.id] = r;
   }
   let out = rows.map(r => ({ ...r, ...(unitOf[r.ent + r.rec_id] || {}), ent_l: E[r.ent].title, kind_l: (E[r.ent].files || []).find(x => x[0] === r.kind)?.[1] || r.kind || 'Tài liệu', id: r.id }));
+  if (f.project) out = out.filter(r => r.project_id === +f.project);
   if (f.q) { const s = f.q.toLowerCase(); out = out.filter(r => [r.name, r.unit, r.customer, r.label].some(x => String(x || '').toLowerCase().includes(s))); }
   return out;
 }

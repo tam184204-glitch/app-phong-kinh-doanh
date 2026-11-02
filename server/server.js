@@ -261,6 +261,20 @@ R('DELETE', '/api/file/:id', async (req, res, u, p) => {
   await C.audit({ q }, f.ent, f.rec_id, 'xoa_tep', null, null, u, f.name, f.is_demo);
   send(res, 200, { ok: true });
 });
+R('POST', '/api/file/:id/restore', async (req, res, u, p) => {
+  const f = notFound(await one('SELECT * FROM kd_file WHERE id = $1 AND deleted_at IS NOT NULL', [+p.id]), 'tệp');
+  await C.get(f.ent, f.rec_id, u);
+  if (f.uploaded_by !== u.id && !mgr(u)) deny('Chỉ người tải lên hoặc Trưởng phòng được khôi phục tệp');
+  await q('UPDATE kd_file SET deleted_at = NULL, deleted_by = NULL WHERE id = $1', [f.id]);
+  await C.audit({ q }, f.ent, f.rec_id, 'khoi_phuc_tep', null, null, u, f.name, f.is_demo);
+  send(res, 200, { ok: true });
+});
+R('POST', '/api/file/:id/star', async (req, res, u, p) => {
+  const { f } = await fileAccess(u, p.id), { on } = await readJson(req);
+  if (on) await q('INSERT INTO kd_file_star (user_id, file_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [u.id, f.id]);
+  else await q('DELETE FROM kd_file_star WHERE user_id = $1 AND file_id = $2', [u.id, f.id]);
+  send(res, 200, { ok: true });
+});
 
 // --- màn tổng hợp ---
 R('GET', '/api/dashboard', async (req, res, u, p, qs) => send(res, 200, await V.dashboard({ q, one }, u, qs)));

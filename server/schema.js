@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS kd_file (
   deleted_at timestamptz, deleted_by integer, is_demo boolean NOT NULL DEFAULT false
 );
 CREATE INDEX IF NOT EXISTS kd_file_rec ON kd_file (ent, rec_id);
+CREATE TABLE IF NOT EXISTS kd_file_star (user_id integer NOT NULL, file_id integer NOT NULL, at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (user_id, file_id));
 CREATE TABLE IF NOT EXISTS kd_note (
   id serial PRIMARY KEY, ent text NOT NULL, rec_id integer NOT NULL, body text NOT NULL,
   by integer REFERENCES kd_user(id), at timestamptz NOT NULL DEFAULT now(), is_demo boolean NOT NULL DEFAULT false
