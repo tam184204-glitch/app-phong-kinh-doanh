@@ -621,9 +621,10 @@ async function scheduleModal(contractId, after) {
 
 // in bản đăng ký từ phiếu GD-01: chọn mẫu in (Quản trị › Mẫu biểu, loại «Bản đăng ký căn hộ / nội thất»)
 async function printPick(id, kind) {   // bấm In → chọn 1 trong các mẫu đơn đăng ký (mẫu hợp với căn được chọn sẵn)
-  const ts = await api('GET', `/api/templates?all=1&res=${id}`);
+  const nt = kind === 'dang_ky_noi_that';   // nút Nội thất: mẫu có chữ «hoàn thiện căn hộ»; nút Căn hộ: các mẫu còn lại
+  const ts = (await api('GET', `/api/templates?all=1&res=${id}`)).filter(t => /hoàn thiện căn hộ/i.test(t.label) === nt);
   if (!ts.length) return toast('Chưa có mẫu đơn đăng ký — tạo ở Quản trị › Mẫu biểu', true);
-  const pre = ts.find(t => t.fit && t.kind === kind) || ts.find(t => t.fit) || ts[0];
+  const pre = ts.find(t => t.fit) || ts[0];
   const m = modal({ title: `${ico('fa-print')} In đơn đăng ký`, narrow: true, body: `<div class="small muted mb">Chọn mẫu in</div>${ts.map(t => `<label class="chk" style="display:flex;gap:8px;align-items:center;padding:8px 0"><input type="radio" name="tpl" value="${esc(t.code)}" data-kind="${t.kind}" ${t === pre ? 'checked' : ''}> <b>${esc(t.label)}</b>${t.fit ? '' : '<span class="muted small">(khác dự án với căn)</span>'}</label>`).join('')}`,
     foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="pOk">${ico('fa-print')} In</button>` });
   $('#pOk', m.el).onclick = () => { const c = $('input[name=tpl]:checked', m.el); m.close(); window.open(`/print/reservation/${id}?kind=${c.dataset.kind}&tpl=${encodeURIComponent(c.value)}`, '_blank'); };
