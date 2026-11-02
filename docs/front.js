@@ -395,7 +395,7 @@ async function copyCustomer(id) {
   const preset = {};
   for (const f of E.fields) if (f.k !== 'code' && !f.hide && r[f.k] != null && !(f.pii && r._masked)) { preset[f.k] = r[f.k]; if (r[f.k + '__l'] != null) preset[f.k + '__l'] = r[f.k + '__l']; }
   preset.code = (await api('GET', '/api/customer-code?next=1')).code;
-  return openForm('customer', { preset, title: `Bản sao của ${r.code} · ${r.full_name}`, onSaved: row => { toast(`Đã tạo khách hàng ${row.code}`); openDetail('customer', row.id); } });
+  return openForm('customer', { preset, copyOf: id, title: `Bản sao của ${r.code} · ${r.full_name}`, onSaved: row => { toast(`Đã tạo khách hàng ${row.code}`); openDetail('customer', row.id); } });
 }
 function rowMenu(ent, id, x, y) {   // chuột phải vào dòng danh sách
   $('.vt-ctx')?.remove();
@@ -408,7 +408,7 @@ function rowMenu(ent, id, x, y) {   // chuột phải vào dòng danh sách
   document.addEventListener('mousedown', off, true);
   c.onclick = run(async e => { const a = e.target.closest('[data-a]')?.dataset.a; if (!a) return; c.remove(); if (a === 'open') return openDetail(ent, id); if (a === 'copy') return copyCustomer(id); });
 }
-async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, htDraft } = {}) {   // skip: trường không hiện trong form (vẫn gửi giá trị preset / mặc định)
+async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, htDraft, copyOf } = {}) {   // skip: trường không hiện trong form (vẫn gửi giá trị preset / mặc định)
   const E = M.ents[ent];
   let rec = { ...preset }, perm = null, trace = null;
   if (id) {
@@ -601,7 +601,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     const data = collect();
     for (const k of skip) if (rec[k] !== undefined && !(k in data)) data[k] = rec[k];
     for (const f of fields) if (!isShown(f, { ...rec, ...data }) && f.k in data && !f.ro) data[f.k] = null;
-    return id ? api('PUT', `/api/e/${ent}/${id}${check ? '?check=1' : ''}`, data) : api('POST', `/api/e/${ent}${check ? '?check=1' : ''}`, data);
+    return id ? api('PUT', `/api/e/${ent}/${id}${check ? '?check=1' : ''}`, data) : api('POST', `/api/e/${ent}?${check ? 'check=1&' : ''}${copyOf ? 'copy_of=' + copyOf : ''}`, data);
   };
   const save = async (andSubmit) => {
     if (htp?.filled() && +readField(form, fields.find(x => x.k === 'finish_value') || {}) > 0) { htp.show('mb'); return showErr(new Error('Giá trị hoàn thiện đã nhập ở tab Hoàn thiện căn hộ — để trống ô này ở hợp đồng mua bán')); }

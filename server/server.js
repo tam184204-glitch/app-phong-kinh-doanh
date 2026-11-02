@@ -178,7 +178,7 @@ R('GET', '/api/meta', async (req, res, u) => send(res, 200, await metaFor(u)), {
 // --- dữ liệu chung ---
 R('GET', '/api/e/:ent', async (req, res, u, p, qs) => send(res, 200, await C.list(p.ent, u, qs)));
 R('GET', '/api/e/:ent/:id', async (req, res, u, p) => send(res, 200, await C.get(p.ent, p.id, u)));
-R('POST', '/api/e/:ent', async (req, res, u, p, qs) => { const b = await readJson(req); send(res, 200, await C.create(p.ent, b, u, { check: qs.check === '1' })); });
+R('POST', '/api/e/:ent', async (req, res, u, p, qs) => { const b = await readJson(req); send(res, 200, await C.create(p.ent, b, u, { check: qs.check === '1', copyOf: +qs.copy_of || 0 })); });
 R('PUT', '/api/e/:ent/:id', async (req, res, u, p, qs) => { const b = await readJson(req); send(res, 200, await C.update(p.ent, p.id, b, u, { check: qs.check === '1' })); });
 R('DELETE', '/api/e/:ent/:id', async (req, res, u, p) => send(res, 200, await C.remove(p.ent, p.id, u)));
 R('POST', '/api/e/:ent/:id/submit', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await C.submit(p.ent, p.id, u, b)); });

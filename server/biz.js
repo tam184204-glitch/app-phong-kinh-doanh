@@ -273,7 +273,9 @@ const digits = s => String(s || '').replace(/\D/g, '');
 H.customer = {
   // ?group=tiem_nang → chỉ tình trạng tìm khách; ?group=sau_ban → chỉ tình trạng sau mở bán
   where(qs) { if (qs.group === 'tiem_nang') return { sql: 'coalesce(t.stage, $1) = ANY($2)', params: ['moi', PROSPECT_ST] }; if (qs.group === 'sau_ban') return { sql: 'NOT (coalesce(t.stage, $1) = ANY($2))', params: ['moi', PROSPECT_ST] }; },
-  async beforeSave(r, old, { db, warn }) {
+  async beforeSave(r, old, { db, warn, opts }) {
+    const copy = !old && opts?.copyOf, cw = d => `Bản sao dùng chung SĐT / CCCD với khách gốc ${d.code} · ${d.full_name}`;
+    const dup = (d, msg) => { if (!d) return; if (copy && d.id === copy) { if (!warn.includes(cw(d))) warn.push(cw(d)); } else bad(msg); };   // bản sao: trùng với chính khách gốc chỉ cảnh báo
     r.full_name = r.full_name?.replace(/\s+/g, ' ').trim();
     if (r.phone) { const p = digits(r.phone); if (p.length < 9 || p.length > 12) bad('Điện thoại không hợp lệ'); r.phone = p.replace(/^84(?=\d{9}$)/, '0'); }
     if (r.phone2) r.phone2 = digits(r.phone2);
@@ -286,11 +288,11 @@ H.customer = {
       if (d) bad(`Mã khách hàng ${r.code} đã có (khách ${d.full_name}) — nhập mã khác hoặc để trống để hệ thống tự cấp`);
     }
     for (const ph of [r.phone, r.phone2].filter(Boolean)) {
-      const d = await db.one("SELECT code, full_name FROM kd_customer WHERE id <> $1 AND ($2 IN (regexp_replace(phone,'\\D','','g'), regexp_replace(coalesce(phone2,''),'\\D','','g')))", [id, ph]);
-      if (d) bad(`Trùng số điện thoại ${ph} với khách hàng ${d.code} · ${d.full_name}. Hãy mở hồ sơ cũ để liên kết giao dịch, không tạo hồ sơ mới.`);
+      const d = await db.one("SELECT id, code, full_name FROM kd_customer WHERE id <> $1 AND ($2 IN (regexp_replace(phone,'\\D','','g'), regexp_replace(coalesce(phone2,''),'\\D','','g')))", [id, ph]);
+      dup(d, `Trùng số điện thoại ${ph} với khách hàng ${d?.code} · ${d?.full_name}. Hãy mở hồ sơ cũ để liên kết giao dịch, không tạo hồ sơ mới.`);
     }
-    if (r.id_no) { const d = await db.one('SELECT code, full_name FROM kd_customer WHERE id <> $1 AND upper(id_no) = $2', [id, r.id_no]); if (d) bad(`Trùng giấy tờ định danh với khách hàng ${d.code} · ${d.full_name}`); }
-    const sim = !old && r.full_name && await db.one('SELECT code, phone FROM kd_customer WHERE lower(full_name) = lower($1) LIMIT 1', [r.full_name]);
+    if (r.id_no) { const d = await db.one('SELECT id, code, full_name FROM kd_customer WHERE id <> $1 AND upper(id_no) = $2', [id, r.id_no]); dup(d, `Trùng giấy tờ định danh với khách hàng ${d?.code} · ${d?.full_name}`); }
+    const sim = !old && !copy && r.full_name &&await db.one('SELECT code, phone FROM kd_customer WHERE lower(full_name) = lower($1) LIMIT 1', [r.full_name]);
     if (sim) warn.push(`Đã có khách cùng họ tên: ${sim.code} (ĐT …${String(sim.phone).slice(-3)}) — kiểm tra có phải cùng một người không`);
     if (r.source && ['dai_ly', 'ctv'].includes(r.source) && !r.agent_id) warn.push('Nguồn khách là đại lý / CTV nhưng chưa chọn đối tác giới thiệu');
   },
@@ -343,7 +345,7 @@ async function intakeLead(db, b, user, { demo } = {}) {
   const phone = digits(b.phone).replace(/^84(?=\d{9}$)/, '0') || bad('Thiếu số điện thoại khách');
   const pj = b.interest_project ? +b.interest_project : b.project ? (await db.one('SELECT id FROM kd_project WHERE upper(code) = upper($1) OR name ILIKE $1', [String(b.project).trim()]))?.id : null;
   const owner_id = b.owner_id || user.id || null;
-  let k = await db.one("SELECT id, owner_id FROM kd_customer WHERE $1 IN (regexp_replace(phone,'\\D','','g'), regexp_replace(coalesce(phone2,''),'\\D','','g'))", [phone]);
+  let k = await db.one("SELECT id, owner_id FROM kd_customer WHERE $1 IN (regexp_replace(phone,'\\D','','g'), regexp_replace(coalesce(phone2,''),'\\D','','g')) ORDER BY id LIMIT 1", [phone]);
   const isNew = !k;
   if (!k) k = (await create('customer', { full_name: String(b.full_name || '').trim() || `Khách ${LEAD_CH[ch]} …${phone.slice(-3)}`, phone, email: b.email || null, source: ch,
     interest_project: pj, need: b.need || null, owner_id }, user, { db, system: true, demo })).row;
