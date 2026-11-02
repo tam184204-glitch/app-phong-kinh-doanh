@@ -22,7 +22,7 @@ async function exportList(entKey, user, qs) {
   const e = E[entKey] || bad('Loại dữ liệu không hợp lệ');
   if (!can(user, e, 'x')) deny('Vai trò của bạn không được xuất dữ liệu này');
   const { rows } = await C.list(entKey, user, qs, { limit: 20000 });
-  const L = e.lists?.[qs.group], keys = qs.cols ? String(qs.cols).split(',') : L?.cols || e.list;
+  const L = e.lists?.[qs.group], keys = (qs.cols ? String(qs.cols).split(',') : L?.cols || e.list).map(k => qs.status === 'thanh_ly' && k === 'contract_on' && C.F[entKey].liquidated_on ? 'liquidated_on' : k);
   const cols = [];
   rows.forEach((r, i) => { r.stt = i + 1; });
   for (const k of keys) {
