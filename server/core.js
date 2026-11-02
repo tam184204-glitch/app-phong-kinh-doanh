@@ -295,8 +295,8 @@ function lockKeepOf(e, status, user) {
   const s = e.softLock;
   return s?.st.includes(status) && !s.boss.includes(user.role) && user.role !== 'admin' ? s.keep : null;
 }
-// chưa duyệt (nháp / bị trả lại / đang chờ duyệt) → xóa được dù đang khóa sửa; đã duyệt / đã chốt thì không
-const undecided = (e, st) => !!e.flow && [...e.flow.submit, 'cho_duyet'].includes(st);
+// dự thảo (nháp / bị trả lại) → xóa được; đã gửi duyệt / đã duyệt / đã chốt thì không
+const undecided = (e, st) => !!e.flow && e.flow.submit.includes(st);
 const lockDel = (e, st) => !undecided(e, st) && (e.lock?.includes(st) || e.softLock?.st.includes(st));
 // quyền trên một bản ghi cụ thể — giao diện dựa vào đây để hiện nút
 async function perms(e, row, user, approvals, db) {
@@ -438,7 +438,7 @@ async function remove(entKey, id, user, opts = {}) {
     if (!opts.system) {
       if (!can(user, e, 'd')) deny(`Vai trò của bạn không được xóa ${e.one}`);
       await scopeCheck(db, e, old, user);
-      if (lockDel(e, old.status)) bad(`Không xóa ${e.one} đã duyệt / đã chốt`);
+      if (lockDel(e, old.status)) bad(`Chỉ xóa được ${e.one} đang ở dự thảo`);
     }
     const why = H[entKey]?.noDelete?.(old); if (why) bad(why);
     if (H[entKey]?.beforeDelete) await H[entKey].beforeDelete(old, ctxOf(db, user));   // dọn dữ liệu con tự sinh

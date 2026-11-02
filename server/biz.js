@@ -266,7 +266,7 @@ H.price_policy = {
       return { open: ['price_policy', n.id], msg: `Đã tạo phiên bản ${n.version} (nháp). Phiên bản đang phát hành giữ nguyên tới khi bản mới được duyệt.` };
     },
   },
-  noDelete: r => !['nhap', 'tu_choi', 'cho_duyet'].includes(r.status) && 'Chỉ xóa được chính sách chưa duyệt',
+  noDelete: r => !['nhap', 'tu_choi'].includes(r.status) && 'Chỉ xóa được bản nháp',
 };
 
 const digits = s => String(s || '').replace(/\D/g, '');
@@ -583,7 +583,7 @@ async function noticeUnits(db, n) {
   return us.filter(u => g.includes('*') || g.includes(String(u.b).toUpperCase()) || g.includes(u.code.toUpperCase()));
 }
 H.sale_notice = {
-  noDelete: r => !['nhap', 'tu_choi', 'cho_duyet'].includes(r.status) && 'Chỉ xóa được thông báo chưa duyệt',
+  noDelete: r => !['nhap', 'tu_choi'].includes(r.status) && 'Chỉ xóa được thông báo đang ở bản nháp',
   async beforeSave(r) {
     if (r.close_on && r.open_on && r.close_on < r.open_on) bad('Ngày kết thúc nhận hồ sơ phải sau ngày bắt đầu');
     if (!String(r.unit_group || '').trim()) bad('Tích chọn căn hộ mở bán');
@@ -772,7 +772,7 @@ H.contract = {
     },
     async print(r) { return { url: `/print/contract/${r.id}` }; },
   },
-  noDelete: r => !['du_thao', 'tu_choi', 'cho_duyet'].includes(r.status) && 'Chỉ xóa được hợp đồng chưa duyệt (dự thảo / trả lại / đang rà soát)',
+  noDelete: r => !['du_thao', 'tu_choi'].includes(r.status) && 'Chỉ xóa được hợp đồng đang ở dự thảo',
   async beforeDelete(r, { db }) {   // lịch thu + hoa hồng dự kiến tự sinh theo hợp đồng; phiếu thu thật vẫn chặn xóa
     await db.q("DELETE FROM kd_commission WHERE contract_id = $1 AND status IN ('du_kien', 'nhap', 'tu_choi', 'huy')", [r.id]);
     await db.q('DELETE FROM kd_installment WHERE contract_id = $1', [r.id]);
