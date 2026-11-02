@@ -400,8 +400,8 @@ def('contract', {
   c: ['ho_so', 'truong_phong'], a: MGR, search: ['number', 'code'], files: [['ban_ky', 'Bản hợp đồng đã ký'], ['du_thao', 'Dự thảo'], ['giay_to', 'Giấy tờ khách hàng']],
   groups: { can_ho: 'Hợp đồng căn hộ chung cư', lien_ke: 'Hợp đồng nhà liền kề' }, listPii: 1,
   // danh sách chung cư = bảng BRAVO «Hợp đồng căn hộ.xlsx» (head: tầng tiêu đề trên, [tên, số cột])
-  lists: { hoan_thien: { cols: ['number', 'contract_on', 'unit_id', 'customer_id', 'finish_value', 'discount', 'value', 'created_by', 'status'],
-    label: { contract_on: 'Ngày ký hợp đồng', unit_id: 'Mã căn', customer_id: 'Khách hàng', finish_value: 'Giá trị hoàn thiện', discount: 'Giảm giá', value: 'Giá trị sau giảm giá', created_by: 'Người tạo', status: 'Tình trạng' } },
+  lists: { hoan_thien: { cols: ['stt', 'number', 'contract_on', 'unit_id', 'b_name', 'b_addr', 'b_phone', 'finish_value', 'discount', 'value'],
+    label: { stt: 'STT', number: 'Số HĐ', contract_on: 'Ngày ký', unit_id: 'Mã căn', b_name: 'Họ tên khách hàng', b_addr: 'Địa chỉ', b_phone: 'Số điện thoại', finish_value: 'Giá trị trước giảm giá', discount: 'Số giảm giá', value: 'Giá trị sau giảm giá' } },
     can_ho: { cols: ['number', 'contract_on', 'unit_id', 'area_tt', 'area_floor', 'base_price', 'pretax', 'vat_pct', 'vat_amt', 'after_tax', 'maint_fee', 'value', 'b_name', 'b_id_no', 'b_id_date', 'b_id_place', 'b_addr', 'b_phone', 'created_by', 'cn', 'status'],
     head: [['Hợp đồng', 2], ['Thông tin chi tiết', 10], ['Thông tin bên mua nhà', 6], ['', 3]],
     label: { contract_on: 'Ngày ký HĐMB', unit_id: 'Mã căn', area_tt: 'Diện tích nền (T.thủy)', area_floor: 'Diện tích sàn', base_price: 'Giá nền (chưa VAT)', value: 'Tổng tiền cả VAT', b_id_no: 'Số CMND', b_addr: 'Địa chỉ', b_phone: 'Điện thoại', created_by: 'Người tạo', status: 'Tình trạng' } } },
