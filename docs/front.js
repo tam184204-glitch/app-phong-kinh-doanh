@@ -341,7 +341,8 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish }) {   // oldFinish: h
   nav.innerHTML = `<button type="button" data-p="mb">${ico('fa-file-contract')} Hợp đồng mua bán</button><button type="button" data-p="ht">${ico('fa-couch')} Hoàn thiện căn hộ</button>`;
   const mb = document.createElement('div'), hp = document.createElement('fieldset');
   hp.className = 'hd-ht'; hp.disabled = !!locked; mb.append(...rest);
-  hp.innerHTML = `<section class="bv-sec"><div class="fsec">Hợp đồng hoàn thiện căn hộ</div><div class="bv-row" style="--n:2">${fld('ht_number', 'Số hợp đồng', 'text', v.number)}${fld('ht_on', 'Ngày ký hợp đồng', 'date', v.on)}</div>
+  // chỉ lập HĐ hoàn thiện khi người dùng điền tab này (giá trị tự chép từ căn không tính) — ô đánh dấu tự bật khi gõ vào tab
+  hp.innerHTML = `<section class="bv-sec"><div class="fsec">Hợp đồng hoàn thiện căn hộ</div><label class="chk ht-on"><input type="checkbox" name="ht_make" ${ht?.id || draft ? 'checked' : ''} ${ht?.id ? 'disabled' : ''}> Lập hợp đồng hoàn thiện căn hộ <span class="small muted">(số hợp đồng riêng, cùng khách hàng và mã căn)</span></label><div class="bv-row" style="--n:2">${fld('ht_number', 'Số hợp đồng', 'text', v.number)}${fld('ht_on', 'Ngày ký hợp đồng', 'date', v.on)}</div>
     <div class="bv-row" style="--n:3">${fld('ht_finish', 'Giá trị hoàn thiện căn hộ', 'money', v.finish)}${fld('ht_disc', 'Giảm giá', 'money', v.disc)}${fld('ht_value', 'Giá trị sau giảm giá', 'money', null)}</div></section>
     <section class="bv-sec"><div class="fsec">Lần thanh toán</div><div class="fld wide"><div data-sched2></div></div></section>`;
   form.append(nav, mb, hp);
@@ -350,19 +351,23 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish }) {   // oldFinish: h
   const el = $('[data-sched2]', hp);
   schedEditor(el, v.sched, { total: val, first: () => rd('ht_on', 'date') });
   const calc = () => { $('[name=ht_value]', hp).value = val() ? moneyStr(val()) : ''; el._redraw(); };
-  hp.addEventListener('input', e => { if (['ht_finish', 'ht_disc'].includes(e.target.name)) calc(); });
+  const mk = () => $('[name=ht_make]', hp);
+  const touch = e => { if (e.isTrusted && e.target.name !== 'ht_make' && !mk().checked) { mk().checked = true; nav.classList.add('ht-has'); } };
+  hp.addEventListener('input', e => { touch(e); if (['ht_finish', 'ht_disc'].includes(e.target.name)) calc(); });
+  hp.addEventListener('click', e => { if (e.target.closest('[data-sched2] button')) touch(e); });
+  hp.addEventListener('change', e => { if (e.target.name === 'ht_make') nav.classList.toggle('ht-has', e.target.checked); });
   hp.addEventListener('change', e => { if (e.target.name === 'ht_on') calc(); });
   const show = p => { $$('button', nav).forEach(b => b.classList.toggle('on', b.dataset.p === p)); mb.classList.toggle('hidden', p !== 'mb'); hp.classList.toggle('hidden', p !== 'ht'); };
   nav.onclick = e => { const b = e.target.closest('[data-p]'); if (b) show(b.dataset.p); };
-  show(tab === 'ht' ? 'ht' : 'mb'); calc();
+  show(tab === 'ht' ? 'ht' : 'mb'); calc(); nav.classList.toggle('ht-has', mk().checked);
   const snap = () => ({ number: rd('ht_number', 'text') || null, contract_on: rd('ht_on', 'date'), finish_value: rd('ht_finish', 'money'), discount: rd('ht_disc', 'money'), value: val(), new_schedule: el._get() });
   const first = JSON.stringify(snap());
   return {
     id: ht?.id, status: ht?.status, snap, show,
     sync(on) { nav.classList.toggle('hidden', !on); if (!on) show('mb'); $('[data-f=finish_value]', form)?.classList.toggle('hidden', on && !oldFinish); },
     finish(n) { if (!rd('ht_finish', 'money')) { $('[name=ht_finish]', hp).value = moneyStr(n); calc(); } },
-    changed: () => !locked && JSON.stringify(snap()) !== first && (ht?.id || val() > 0),
-    filled: () => val() > 0,
+    changed: () => !locked && (ht?.id ? JSON.stringify(snap()) !== first : mk().checked),
+    filled: () => (ht?.id || mk().checked) && val() > 0,
   };
 }
 function bravoLayout(form, layout) {
