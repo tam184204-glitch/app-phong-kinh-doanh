@@ -403,9 +403,9 @@ def('contract', {
   lists: { hoan_thien: { cols: ['stt', 'number', 'contract_on', 'unit_id', 'b_name', 'b_id_no', 'b_id_date', 'b_id_place', 'b_addr', 'b_phone', 'finish_value', 'discount', 'value'],
     head: [['Hợp đồng', 4], ['Thông tin bên mua nhà', 6], ['Giá trị hoàn thiện', 3]],   // bên mua: dữ liệu chung với HĐ mua bán cùng căn
     label: { stt: 'STT', number: 'Số HĐ', contract_on: 'Ngày ký', unit_id: 'Mã căn', b_name: 'Họ và tên', b_id_no: 'Số CMND', b_id_date: 'Ngày cấp', b_id_place: 'Nơi cấp', b_addr: 'Địa chỉ', b_phone: 'Điện thoại', finish_value: 'Giá trị trước giảm giá', discount: 'Số giảm giá', value: 'Giá trị sau giảm giá' } },
-    can_ho: { cols: ['number', 'contract_on', 'unit_id', 'area_tt', 'area_floor', 'base_price', 'pretax', 'vat_pct', 'vat_amt', 'after_tax', 'maint_fee', 'value', 'b_name', 'b_id_no', 'b_id_date', 'b_id_place', 'b_addr', 'b_phone', 'created_by', 'cn', 'status'],
-    head: [['Hợp đồng', 2], ['Thông tin chi tiết', 10], ['Thông tin bên mua nhà', 6], ['', 3]],
-    label: { contract_on: 'Ngày ký HĐMB', unit_id: 'Mã căn', area_tt: 'Diện tích nền (T.thủy)', area_floor: 'Diện tích sàn', base_price: 'Giá nền (chưa VAT)', value: 'Tổng tiền cả VAT', b_id_no: 'Số CMND', b_addr: 'Địa chỉ', b_phone: 'Điện thoại', created_by: 'Người tạo', status: 'Tình trạng' } } },
+    can_ho: { cols: ['number', 'contract_on', 'unit_id', 'area_tt', 'area_floor', 'base_price', 'pretax', 'vat_pct', 'vat_amt', 'after_tax', 'maint_fee', 'value', 'b_name', 'b_id_no', 'b_id_date', 'b_id_place', 'b_addr', 'b_phone', 'status'],
+    head: [['Hợp đồng', 2], ['Thông tin chi tiết', 10], ['Thông tin bên mua nhà', 6], ['', 1]],
+    label: { contract_on: 'Ngày ký HĐMB', unit_id: 'Mã căn', area_tt: 'Diện tích nền (T.thủy)', area_floor: 'Diện tích sàn', base_price: 'Giá nền (chưa VAT)', value: 'Tổng tiền cả VAT', b_id_no: 'Số CMND', b_addr: 'Địa chỉ', b_phone: 'Điện thoại', status: 'Tình trạng' } } },
   fields: [
     { k: 'code', l: 'Mã hồ sơ', t: 'code', prefix: 'HS-{Y}-', pad: 4 },
     { k: 'ptype', l: 'Phân loại', t: 'sel', o: HD_PTYPE, def: 'can_ho', sec: 'Chi tiết hợp đồng', help: 'Tự lấy theo loại căn khi chọn căn' },
