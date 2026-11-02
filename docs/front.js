@@ -105,8 +105,22 @@ function show(f, row, { plain } = {}) {
   }
 }
 const VIRT_MONEY = new Set(['paid', 'actual', 'gap']), VIRT_NUM = new Set(['n_units', 'n_reg', 'n_free']);
+// phiếu đăng ký đã hủy: trả hồ sơ cho khách — chọn trạng thái / ngày, đính kèm bản scan ngay trên dòng (không được sửa phiếu thì chỉ xem)
+const RET_COLS = ['docs_return', 'docs_return_on', 'scan_files'];
+function retCell(k, row) {
+  const E = M.ents.reservation, ed = E.perm.u, f = E.fields.find(x => x.k === k);
+  if (k === 'scan_files') {
+    const fs = row.scan_files || [];
+    return { html: `<span class="ret" data-ret-cell>${fs.map(x => `<span class="nowrap"><a href="/api/file/${x.id}" target="_blank" rel="noopener" title="${esc(x.name)}">${ico(/\.pdf$/i.test(x.name) ? 'fa-file-pdf' : 'fa-file-image')} ${esc(x.name)}</a>${ed ? `<button type="button" class="ret-x" data-scan-del="${x.id}" title="Xóa tệp này">${ico('fa-xmark')}</button>` : ''}</span>`).join('')}${ed ? `<button type="button" class="btn sm" data-scan-up title="Đính kèm bản scan (PDF / ảnh)">${ico('fa-paperclip')} ${fs.length ? 'Thêm' : 'Đính kèm'}</button>` : fs.length ? '' : '—'}</span>` };
+  }
+  if (!ed) return { html: show(f, row) };
+  if (k === 'docs_return') { const v = row.docs_return || 'chua_tra';
+    return { html: `<span data-ret-cell><select class="ret-inp ${v}" data-ret="docs_return">${f.o.map(o => `<option value="${o[0]}" ${o[0] === v ? 'selected' : ''}>${esc(o[1])}</option>`).join('')}</select></span>` }; }
+  return { html: `<span data-ret-cell><input type="date" class="ret-inp" data-ret="docs_return_on" value="${esc(row.docs_return_on || '')}" title="Ngày trả hồ sơ"></span>` };
+}
 function cell(ent, k, row) {
   const f = M.ents[ent].fields.find(x => x.k === k);
+  if (ent === 'reservation' && row.status === 'huy' && RET_COLS.includes(k)) return retCell(k, row);
   if (k === 'sale_check') { const v = row[k]; if (!v) return { html: '' };   // cảnh báo mở bán: đỏ = ngoài đợt mở bán đã duyệt gần nhất
     return { html: v.startsWith('⚠') ? `<span style="color:var(--r-c);font-weight:600" title="${esc(v)}">${ico('fa-triangle-exclamation')} Ngoài đợt mở bán</span>` : `<span style="color:var(--g)" title="${esc(v)}">${ico('fa-check')} ${esc(v.slice(2).replace(/^Có trong /, ''))}</span>` }; }
   if (f) return { html: show(f, row), num: ['money', 'num', 'int'].includes(f.t) };
@@ -871,6 +885,8 @@ function histHtml(h, ent) {
 // ---------- danh sách thực thể ----------
 function eyebrow(E) { const mod = M.menu.find(m => m[0] === E.mod); return `<div class="eyebrow">Phân hệ ${E.mod}${mod ? ' · ' + esc(mod[1]) : ''}${E.code ? ` <span class="code">${E.code}</span>` : ''}</div>`; }
 function infoBox(E) { const it = [['Người sử dụng', E.users], ['Mục đích', E.purpose], ['Thao tác', E.how], ['Hệ thống tự kiểm tra', E.rules]].filter(x => x[1]); return it.length ? `<div class="info-pop hidden" id="infoBox">${it.map(([k, v]) => `<div><b>${k}</b>${esc(v)}</div>`).join('')}</div>` : ''; }
+// tab Đã hủy (phiếu đăng ký): trạng thái trả hồ sơ, ngày trả, bản scan ngay trước Ghi chú
+const retCols = (ent, cols, status) => ent === 'reservation' && status === 'huy' && cols.includes('note') ? cols.flatMap(k => k === 'note' ? [...RET_COLS, k] : [k]) : cols;
 // tab Đã thanh lý: ngày ký → ngày thanh lý, kèm lý do và ghi chú ngay sau (nhóm tiêu đề chứa cột đó rộng thêm 2)
 function liqCols(cols, head, status) {
   const i = cols.indexOf('contract_on');
@@ -903,7 +919,7 @@ async function listView(main, ent, params = {}) {
     S.rowSt = new Map(d.rows.map(r => [r.id, r.status]));   // trạng thái từng dòng: nút Xóa hàng loạt chỉ cho bản dự thảo
     $('#cnt', main).textContent = `${d.rows.length < d.total ? `${d.rows.length} / ` : ''}${d.total} ${E.one}`;
     if (st) { const all = Object.values(d.counts || {}).reduce((a, b) => a + b, 0); $('#stTabs', main).innerHTML = `<button data-s="" class="${!S.status ? 'on' : ''}">Tất cả<span class="c">${all}</span></button>` + st.o.filter(o => !({ contract: ['cho_duyet'], reservation: ['da_coc'] })[ent]?.includes(o[0]) && (d.counts?.[o[0]] || S.status === o[0] || (hdKinds && ['du_thao', 'da_ky'].includes(o[0])))).map(o => `<button data-s="${o[0]}" class="${S.status === o[0] ? 'on' : ''}">${esc(o[1])}<span class="c">${d.counts?.[o[0]] || 0}</span></button>`).join(''); }
-    const LV = E.lists?.[grp()], { cols, head } = liqCols(LV?.cols || E.list, LV?.head, S.status), headL = k => LV?.label?.[k] || colLabel(ent, k);
+    const LV = E.lists?.[grp()], { cols, head } = liqCols(retCols(ent, LV?.cols || E.list, S.status), LV?.head, S.status), headL = k => LV?.label?.[k] || colLabel(ent, k);
     const bulk = E.bulk || (E.flow && (E.perm.a || E.perm.d));
     $('#tb', main).innerHTML = d.rows.length ? `<table class="t ${LV ? 'grid-bravo hd2' : ''}"><thead>${head ? `<tr class="h1">${bulk ? '<th></th>' : ''}${head.map(([t, n]) => `<th colspan="${n}">${esc(t)}</th>`).join('')}</tr>` : ''}<tr>${bulk ? '<th style="width:30px"><input type="checkbox" id="selAll"></th>' : ''}${cols.map(k => { const f = E.fields.find(x => x.k === k); const s = S.sort.replace('-', '') === k ? (S.sort[0] === '-' ? ' ↓' : ' ↑') : ''; return `<th class="${f ? 'sort' : ''} ${f && ['money', 'num', 'int'].includes(f.t) || VIRT_MONEY.has(k) ? 'num' : ''}" data-k="${f ? k : ''}">${esc(headL(k))}${s}</th>`; }).join('')}</tr></thead>
       <tbody>${d.rows.map((r, i) => `<tr data-id="${r.id}" class="${S.sel.has(r.id) ? 'sel' : ''}">${bulk ? `<td><input type="checkbox" data-sel="${r.id}" ${S.sel.has(r.id) ? 'checked' : ''}></td>` : ''}${cols.map(k => { const c = cell(ent, k, r); const lf = E.fields.find(x => x.k === k); return `<td class="${c.num ? 'num' : ''} ${lf?.t === 'long' ? 'wrap' : ''}">${k === 'id' ? '#' + r.id : k === 'stt' ? i + 1 : c.html}${k === cols[0] && r.is_demo ? ' <span class="tag demo" title="Dữ liệu thử">thử</span>' : ''}</td>`; }).join('')}</tr>`).join('')}</tbody>
@@ -955,10 +971,23 @@ async function listView(main, ent, params = {}) {
       toast(`Thành công ${r.ok}${r.errors.length ? ` · lỗi ${r.errors.length}: ${r.errors.slice(0, 2).map(x => '#' + x.id + ' ' + x.msg).join('; ')}` : ''}`, !!r.errors.length);
       S.sel.clear(); updateBadges(); return load();
     }
+    // tab Đã hủy: đính kèm / xóa bản scan trả hồ sơ; bấm trong các ô trả hồ sơ không mở chi tiết phiếu
+    const su = t.closest('[data-scan-up]');
+    if (su) { const id = +su.closest('tr[data-id]').dataset.id, i = document.createElement('input'); i.type = 'file'; i.multiple = true; i.accept = '.pdf,image/*';
+      i.onchange = run(async () => { const fd = new FormData(); fd.append('kind', 'scan_tra_ho_so'); [...i.files].forEach(f => fd.append('file', f, f.name)); await api('POST', `/api/files/${ent}/${id}`, fd); toast('Đã đính kèm bản scan'); load(); }); return i.click(); }
+    const sd = t.closest('[data-scan-del]');
+    if (sd) { if (!await ask('Xóa tệp', 'Xóa bản scan này? (Lịch sử vẫn ghi lại)', { danger: 1, okLabel: 'Xóa' })) return; await api('DELETE', `/api/file/${sd.dataset.scanDel}`); toast('Đã xóa tệp'); return load(); }
+    if (t.closest('[data-ret-cell]')) return;
     const pb = t.closest('[data-print]');
     const bbg = t.closest('[data-bbgn]'); if (bbg) return handoverPick('noxh', +bbg.closest('tr[data-id]').dataset.id);
     if (pb) return printPick(+pb.closest('tr[data-id]').dataset.id, pb.dataset.print);
     const tr = t.closest('tbody tr[data-id]'); if (tr && !t.matches('input')) return openDetail(ent, +tr.dataset.id);
+  });
+  // tab Đã hủy: chọn trạng thái / ngày trả hồ sơ là lưu luôn (lỗi thì tải lại để ô về giá trị đã lưu)
+  $('#tb', main).onchange = run(async e => {
+    const el = e.target.closest('[data-ret]'); if (!el) return;
+    try { await api('PUT', `/api/e/${ent}/${+el.closest('tr[data-id]').dataset.id}`, { [el.dataset.ret]: el.value || null }); toast('Đã lưu'); }
+    finally { await load(); }
   });
   $('#q', main).oninput = debounce(e => { S.q = e.target.value; load(); }, 300);
   $('#pj', main) && ($('#pj', main).onchange = e => { S.project = e.target.value; load(); });

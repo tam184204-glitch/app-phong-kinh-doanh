@@ -907,3 +907,9 @@ body.no-xr #dx, body.no-xr #scX, body.no-xr #lx, body.no-xr #rx, body.no-xr #lnX
 .vt-ctx button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 12px; border: 0; border-radius: 8px; background: none; font: inherit; font-size: 13.5px; color: var(--text); text-align: left; cursor: pointer; }
 .vt-ctx button i { width: 16px; text-align: center; color: var(--muted); }
 .vt-ctx button:hover { background: var(--cobalt-50); }
+/* tab Đã hủy (phiếu đăng ký): chọn trạng thái / ngày trả hồ sơ, đính kèm bản scan ngay trên dòng */
+.t .ret-inp { height: 30px; border: 1px solid #cfdbe8; border-radius: 8px; padding: 0 8px; background: #fff; font: inherit; font-size: 13px; cursor: pointer; }
+.t select.ret-inp.da_tra { background: var(--g-bg); color: var(--g); font-weight: 600; } .t select.ret-inp.chua_tra { background: var(--a-bg); color: var(--a); font-weight: 600; }
+.t .ret { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; max-width: 280px; }
+.t .ret a { display: inline-block; max-width: 190px; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+.t .ret-x { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 3px; } .t .ret-x:hover { color: var(--r-c); }

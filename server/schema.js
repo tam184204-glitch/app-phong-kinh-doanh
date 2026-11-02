@@ -128,6 +128,8 @@ const PRE = [
   `UPDATE kd_noxh_check n SET bank_account = c.bank_account FROM kd_customer c WHERE n.customer_id = c.id AND n.bank_account IS NULL AND nullif(c.bank_account, '') IS NOT NULL`,
   `UPDATE kd_reservation r SET bank_account = c.bank_account FROM kd_customer c WHERE r.customer_id = c.id AND nullif(r.bank_account, '') IS NULL AND nullif(c.bank_account, '') IS NOT NULL AND r.status NOT IN ('huy', 'het_han')`,
   `UPDATE kd_contract t SET b_bank_acc = split_part(c.bank_account, ' - ', 1), b_bank_name = coalesce(nullif(t.b_bank_name, ''), nullif(substr(c.bank_account, length(split_part(c.bank_account, ' - ', 1)) + 4), '')) FROM kd_customer c WHERE t.customer_id = c.id AND nullif(t.b_bank_acc, '') IS NULL AND nullif(c.bank_account, '') IS NOT NULL`,
+  // theo dõi trả hồ sơ phiếu đã hủy (02/11/2026): phiếu hủy trước đó mặc định «Chưa trả hồ sơ»
+  `UPDATE kd_reservation SET docs_return = 'chua_tra' WHERE status = 'huy' AND docs_return IS NULL`,
 ];
 // CHECK nghiệp vụ thêm (ngoài money ≥ 0 và giá trị danh sách chọn)
 const CHECKS = {

@@ -218,6 +218,14 @@ async function stageOf(db, rows) {
       : noxhUnits.has(r.unit_id) ? 'Chờ hồ sơ NOXH' : 'Đủ điều kiện ký HĐ');
   }
 }
+// phiếu đã hủy: tệp «Bản scan trả hồ sơ» (bản mới nhất mỗi tên) cho cột File scan ở tab Đã hủy
+async function scanOf(db, rows) {
+  const ids = rows.filter(r => r.status === 'huy').map(r => r.id); if (!ids.length) return;
+  const by = new Map();
+  for (const f of await db.q("SELECT DISTINCT ON (rec_id, name) id, rec_id, name FROM kd_file WHERE ent = 'reservation' AND kind = 'scan_tra_ho_so' AND deleted_at IS NULL AND rec_id = ANY($1) ORDER BY rec_id, name, version DESC", [ids]))
+    (by.get(f.rec_id) || by.set(f.rec_id, []).get(f.rec_id)).push({ id: f.id, name: f.name });
+  for (const r of rows) if (r.status === 'huy') r.scan_files = by.get(r.id) || [];
+}
 
 // ======================= HOOKS =======================
 const H = {};
@@ -389,6 +397,14 @@ H.reservation = {
     if (r.reg_state === 'ky_hdmb' && (!old || old.reg_state !== 'ky_hdmb')) r.progress = 'da_ky';
     if (r.reg_state === 'huy') { if (!['huy', 'het_han'].includes(r.status)) r.status = 'huy'; }
     else if (!opts.system && (!r.status || ['nhap', 'tu_choi'].includes(r.status))) r.status = r.deposit > 0 ? 'da_coc' : 'giu_cho';
+    // trả hồ sơ cho khách (phiếu đã hủy): nhập ngày → «Đã trả»; chọn «Đã trả» chưa có ngày → hôm nay; «Chưa trả» thì bỏ ngày
+    if (r.status === 'huy') {
+      if (r.docs_return_on && r.docs_return_on !== old?.docs_return_on) r.docs_return = 'da_tra';
+      r.docs_return ||= 'chua_tra';
+      if (r.docs_return === 'da_tra' && !r.docs_return_on) r.docs_return_on = today();
+      if (r.docs_return === 'chua_tra') r.docs_return_on = null;
+      if (r.docs_return_on > today()) bad('Ngày trả hồ sơ không được sau hôm nay');
+    }
     // qua «Hạn giữ chỗ» mà chưa đặt cọc → «Quá hạn giữ chỗ»; gia hạn sang ngày sau → về lại «Giữ chỗ»
     const expired = !!r.hold_until && Date.parse(r.hold_until) < Date.now() && !(+r.deposit > 0);
     if (expired && r.reg_state === 'giu_cho') { r.reg_state = 'qua_han'; if (r.status === 'giu_cho') r.status = 'qua_han'; }
@@ -439,7 +455,7 @@ H.reservation = {
     if (r.customer_id && ['giu_cho', 'da_coc', 'chuyen_hd'].includes(r.status)) await markCustomer(db, r.customer_id, user);
     if (old && old.unit_id !== r.unit_id) await recomputeUnit(db, old.unit_id, user);
   },
-  async decorate(rows, { db }) { await stageOf(db, rows); await saleLive(db, rows); },
+  async decorate(rows, { db }) { await stageOf(db, rows); await saleLive(db, rows); await scanOf(db, rows); },
   acts: {
     async deposit(r, d) { if (d.deposit > r.price) bad('Tiền đặt cọc lớn hơn giá bán'); return { patch: { deposit: d.deposit, deposit_on: d.deposit_on, status: 'da_coc' } }; },
     async extend(r, d) { if (Date.parse(d.hold_until) <= Date.now()) bad('Hạn mới phải sau thời điểm hiện tại'); return { patch: { hold_until: d.hold_until, status: r.deposit > 0 ? 'da_coc' : 'giu_cho' } }; },
