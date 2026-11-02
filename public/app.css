@@ -907,3 +907,14 @@ body.no-xr #dx, body.no-xr #scX, body.no-xr #lx, body.no-xr #rx, body.no-xr #lnX
 .vt-ctx button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 12px; border: 0; border-radius: 8px; background: none; font: inherit; font-size: 13.5px; color: var(--text); text-align: left; cursor: pointer; }
 .vt-ctx button i { width: 16px; text-align: center; color: var(--muted); }
 .vt-ctx button:hover { background: var(--cobalt-50); }
+
+/* tab Đã hủy phiếu đăng ký: cột trả hồ sơ sửa trên dòng */
+.ret-st { padding: 6px 10px; border: 1px solid; border-radius: 10px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.ret-st.a { background: var(--a-bg); color: var(--a); border-color: #f3d79a; } .ret-st.g { background: var(--g-bg); color: var(--g); border-color: #a9dcbc; }
+.ret-st option { background: #fff; color: var(--ink, #1b2430); }
+.ret-d { padding: 6px 10px; border: 1px solid var(--line2); border-radius: 10px; font: inherit; font-size: 13px; background: var(--card); }
+.ret-f { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 200px; }
+.ret-fi { display: flex; align-items: center; gap: 6px; max-width: 260px; }
+.ret-fi a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--cobalt); font-size: 13px; text-decoration: none; }
+.ret-fi a .fa-file-pdf { color: var(--cobalt); }
+.ret-fi button { flex: none; border: 0; background: none; color: var(--muted); font-size: 16px; line-height: 1; cursor: pointer; } .ret-fi button:hover { color: var(--r-c); }

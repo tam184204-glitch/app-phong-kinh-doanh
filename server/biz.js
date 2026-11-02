@@ -441,7 +441,12 @@ H.reservation = {
     if (r.customer_id && ['giu_cho', 'da_coc', 'chuyen_hd'].includes(r.status)) await markCustomer(db, r.customer_id, user);
     if (old && old.unit_id !== r.unit_id) await recomputeUnit(db, old.unit_id, user);
   },
-  async decorate(rows, { db }) { await stageOf(db, rows); await saleLive(db, rows); },
+  async decorate(rows, { db }) {
+    await stageOf(db, rows); await saleLive(db, rows);
+    const ids = rows.filter(r => r.status === 'huy').map(r => r.id);   // tệp scan trả hồ sơ cho cột ở tab «Đã hủy»
+    const fs = ids.length ? await db.q("SELECT id, rec_id, name FROM kd_file WHERE ent = 'reservation' AND kind = 'tra_ho_so' AND rec_id = ANY($1) AND deleted_at IS NULL ORDER BY uploaded_at", [ids]) : [];
+    for (const r of rows) if (r.status === 'huy') r.ret_files = fs.filter(f => f.rec_id === r.id).map(f => ({ id: f.id, name: f.name }));
+  },
   acts: {
     async deposit(r, d) { if (d.deposit > r.price) bad('Tiền đặt cọc lớn hơn giá bán'); return { patch: { deposit: d.deposit, deposit_on: d.deposit_on, status: 'da_coc' } }; },
     async extend(r, d) { if (Date.parse(d.hold_until) <= Date.now()) bad('Hạn mới phải sau thời điểm hiện tại'); return { patch: { hold_until: d.hold_until, status: r.deposit > 0 ? 'da_coc' : 'giu_cho' } }; },
