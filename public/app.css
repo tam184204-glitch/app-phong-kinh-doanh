@@ -894,3 +894,5 @@ body.no-xr #dx, body.no-xr #scX, body.no-xr #lx, body.no-xr #rx, body.no-xr #lnX
 .bv .hd-ht .fld.wide { display: block; }
 
 .hd-kinds { margin: 0; padding-top: 4px; }
+
+.code-dup { color: var(--r-c); font-size: 12.5px; font-weight: 600; } .code-dup:empty { display: none; } .code-dup i { margin-right: 4px; }

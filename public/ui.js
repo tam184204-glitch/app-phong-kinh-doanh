@@ -430,6 +430,20 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     if (list.length && JSON.stringify(list.map(x => x.n)) !== JSON.stringify(cur.map(x => x.n))) el.innerHTML = checkRows(list.map(x => ({ ...x, st: '', note: '' })), 'qty' in el.dataset);
   };
   wireInputs(form, () => { vis(); });
+  // mã khách hàng: Enter hoặc rời ô → báo trùng ngay dưới ô
+  const codeEl = ent === 'customer' && form.elements.code;
+  if (codeEl) {
+    const box = document.createElement('div'), fld = codeEl.closest('.fld'); box.className = 'code-dup'; box.setAttribute('role', 'alert'); codeEl.after(box);
+    let seq = 0;
+    const check = run(async () => {
+      const n = ++seq, v = codeEl.value.trim(), d = v ? await api('GET', `/api/customer-code?${new URLSearchParams({ code: v, id: id || '' })}`) : { dup: false };
+      if (n !== seq) return;
+      box.innerHTML = d.dup ? `${ico('fa-triangle-exclamation')} ${esc(d.msg)}` : ''; fld.classList.toggle('err', d.dup);
+    });
+    codeEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); check(); } });
+    codeEl.addEventListener('change', check);
+    codeEl.addEventListener('input', () => { seq++; box.innerHTML = ''; fld.classList.remove('err'); });
+  }
   // chọn căn → cảnh báo ngay nếu căn / dự án ngoài thông báo mở bán đã duyệt gần nhất (chưa cần lưu; vẫn cho lưu như cũ)
   const unitCombo = E.fields.some(f => f.k === 'sale_check') && form.elements.unit_id?.closest?.('.combo');
   if (unitCombo) {

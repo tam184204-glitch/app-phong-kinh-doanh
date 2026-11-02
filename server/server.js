@@ -289,6 +289,12 @@ R('GET', '/api/finish-pay', async (req, res, u, p, qs) => send(res, 200, await V
 R('GET', '/api/loans', async (req, res, u, p, qs) => send(res, 200, await V.loans({ q, one }, u, qs)));
 R('GET', '/api/price-sheet/:id', async (req, res, u, p) => send(res, 200, await V.priceSheet({ q, one }, u, p.id)));
 R('GET', '/api/contract-number', async (req, res, u, p, qs) => send(res, 200, { number: await B.nextContractNo({ q, one }, qs.ptype, qs.on) }));
+R('GET', '/api/customer-code', async (req, res, u, p, qs) => {   // nhập mã khách: báo trùng ngay ở form, cùng nội dung khi lưu
+  if (!can(u, M.E.customer, 'c') && !can(u, M.E.customer, 'u')) C.deny();
+  const code = String(qs.code || '').trim().toUpperCase();
+  const d = code && await one('SELECT full_name FROM kd_customer WHERE id <> $1 AND upper(code) = $2', [+qs.id || 0, code]);
+  send(res, 200, { dup: !!d, msg: d ? `Mã khách hàng ${code} đã có (khách ${d.full_name}) — nhập mã khác hoặc để trống để hệ thống tự cấp` : '' });
+});
 R('GET', '/api/contract-pair/:unit', async (req, res, u, p) => {   // hợp đồng mua bán + hợp đồng hoàn thiện đang hiệu lực của căn
   if (!can(u, M.E.contract, 'r')) C.deny();
   const rows = await q("SELECT id, kind FROM kd_contract WHERE unit_id = $1 AND status NOT IN ('huy','thanh_ly') ORDER BY id DESC", [+p.unit]);
