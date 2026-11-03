@@ -415,13 +415,12 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish }) {   // oldFinish: h
   hp.addEventListener('click', e => { if (e.target.closest('[data-sched2] button')) touch(e); });
   hp.addEventListener('change', e => { if (e.target.name === 'ht_make') nav.classList.toggle('ht-has', e.target.checked); });
   hp.addEventListener('change', e => { if (e.target.name === 'ht_on') calc(); });
-  // tab Hợp đồng mua bán / Hợp đồng thuê = cùng 1 hợp đồng, đổi Loại hợp đồng (thuê thì không có HĐ hoàn thiện)
+  // tab Hợp đồng mua bán / Hợp đồng thuê = cùng 1 hợp đồng, đổi Loại hợp đồng; HĐ hoàn thiện đi kèm cả 2
   const kindSel = $('[name=kind]', form), isRent = () => kindSel?.value === 'thue';
   const setKind = k => { if (kindSel && kindSel.value !== k && !kindSel.disabled) { kindSel.value = k; kindSel.dispatchEvent(new Event('change', { bubbles: true })); } };
   const view = p => {   // chỉ đổi khung đang xem
     const at = p === 'ht' ? 'ht' : isRent() ? 'thue' : 'mb';
     $$('button', nav).forEach(b => b.classList.toggle('on', b.dataset.p === at)); mb.classList.toggle('hidden', at === 'ht'); hp.classList.toggle('hidden', at !== 'ht');
-    $('[data-p=ht]', nav).classList.toggle('hidden', isRent());
     const lb = $('[data-f=contract_on] label', form); if (lb) lb.textContent = isRent() ? 'Ngày ký hợp đồng thuê' : 'Ngày ký hợp đồng mua bán';
   };
   // HĐ thuê: số tháng + tổng tiền tự tính khi gõ (máy chủ tính lại khi lưu, cùng công thức)

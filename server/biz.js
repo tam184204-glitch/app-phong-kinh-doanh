@@ -756,8 +756,8 @@ H.contract = {
       }
     }
     if (r.kind === 'hoan_thien') {
-      const main = await db.one("SELECT id FROM kd_contract WHERE unit_id = $1 AND kind IN ('hdmb','thue_mua') AND status NOT IN ('huy','thanh_ly') AND id <> $2", [r.unit_id, old?.id || 0]);
-      if (!main) bad('HĐ hoàn thiện cần căn đã có hợp đồng mua bán / thuê mua');
+      const main = await db.one("SELECT id FROM kd_contract WHERE unit_id = $1 AND kind IN ('hdmb','thue_mua','thue') AND status NOT IN ('huy','thanh_ly') AND id <> $2", [r.unit_id, old?.id || 0]);
+      if (!main) bad('HĐ hoàn thiện cần căn đã có hợp đồng mua bán / thuê / thuê mua');
     }
     if (['thue', 'thue_mua'].includes(r.kind) && r.eff_on && r.exp_on && r.exp_on < r.eff_on) bad('Ngày kết thúc thuê phải sau ngày bắt đầu thuê');
   },

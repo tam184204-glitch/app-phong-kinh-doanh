@@ -307,7 +307,7 @@ R('GET', '/api/customer-code', async (req, res, u, p, qs) => {   // nhập mã k
 R('GET', '/api/contract-pair/:unit', async (req, res, u, p) => {   // hợp đồng mua bán + hợp đồng hoàn thiện đang hiệu lực của căn
   if (!can(u, M.E.contract, 'r')) C.deny();
   const rows = await q("SELECT id, kind FROM kd_contract WHERE unit_id = $1 AND status NOT IN ('huy','thanh_ly') ORDER BY id DESC", [+p.unit]);
-  send(res, 200, { main: rows.find(r => ['hdmb', 'thue_mua'].includes(r.kind))?.id || null, finish: rows.find(r => r.kind === 'hoan_thien')?.id || null });
+  send(res, 200, { main: rows.find(r => ['hdmb', 'thue_mua', 'thue'].includes(r.kind))?.id || null, finish: rows.find(r => r.kind === 'hoan_thien')?.id || null });
 });
 R('GET', '/api/contract-prefill/:unit', async (req, res, u, p, qs) => { if (!can(u, M.E.contract, 'c') && !can(u, M.E.contract, 'u')) C.deny(); send(res, 200, await B.contractPrefill({ q, one }, p.unit, qs.on)); });
 R('GET', '/api/sale-check/:id', async (req, res, u, p) => send(res, 200, await B.saleCheck({ q, one }, p.id) || {}));
