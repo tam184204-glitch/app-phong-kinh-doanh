@@ -957,6 +957,8 @@ V.integr = async main => {
 // ======================= 04. BẢNG TỔNG HỢP HỒ SƠ MUA NHÀ (MẪU 4) =======================
 // mỗi hồ sơ mua NOXH = 1 hộ: dòng chủ hộ + thành viên; ô TT, SĐT, nhà ở, nơi ở, thu nhập, căn hộ gộp theo hộ như file nộp Sở Xây dựng
 const M4_ST = { nhap: ['Dự thảo', 's'], cho_duyet: ['Chờ xét duyệt', 'a'], da_duyet: ['Đã duyệt SXD', 'g'], tu_choi: ['Trả lại', 'r'] };
+// lọc ngày theo tab: [trường, nhãn ô lọc, tham số xuất Excel]
+const M4_DAY = { draft: ['received_on', 'Ngày nộp từ', ''], review: ['sxd_submit_on', 'Ngày nộp SXD từ', 'sxd'], ok: ['sxd_approved_on', 'Ngày xét duyệt từ', 'duyet'] };
 const M4_SXD = { duoc_duyet: ['Đủ điều kiện', 'g'], khong_duyet: ['Không đủ điều kiện', 'r'] };
 // 3 tab theo trạng thái; Dự thảo gồm cả hồ sơ bị trả lại (sửa, xóa được). Tick chọn nhiều hồ sơ → chuyển trạng thái hàng loạt
 const M4_TAB = { draft: ['Dự thảo', ['nhap', 'tu_choi']], review: ['Chờ xét duyệt', ['cho_duyet']], ok: ['Đã duyệt SXD', ['da_duyet']] }, M4_EDIT = ['nhap', 'tu_choi'];
@@ -992,8 +994,8 @@ V.mau4 = async (main, params) => {
   const load = async () => { hs = await api('GET', '/api/mau4' + (s.project ? '?project=' + s.project : '')); draw(); };
   const draw = () => {
     const q = s.q.trim().toLowerCase();
-    const inDay = (h, t = s.tab) => { const d = (t === 'ok' ? h.sxd_submit_on : h.received_on) || ''; return (!s.from || d >= s.from) && (!s.to || (!!d && d <= s.to)); };
-    $('#m4FL', main).textContent = s.tab === 'ok' ? 'Ngày nộp SXD từ' : 'Ngày nộp từ';
+    const inDay = (h, t = s.tab) => { const d = h[M4_DAY[t][0]] || ''; return (!s.from || d >= s.from) && (!s.to || (!!d && d <= s.to)); };
+    $('#m4FL', main).textContent = M4_DAY[s.tab][1];
     const inTab = h => M4_TAB[s.tab][1].includes(h.status), draft = s.tab === 'draft', okTab = s.tab === 'ok', sxdDay = s.tab !== 'draft';
     $('#m4Tab', main).innerHTML = Object.entries(M4_TAB).map(([k, [l, st]]) => `<button data-tab="${k}" class="${s.tab === k ? 'on' : ''}">${l}<span class="c">${hs.filter(h => st.includes(h.status) && inDay(h, k)).length}</span></button>`).join('');
     const rows = hs.filter(h => inTab(h) && inDay(h) && (!q || [h.unit_code, h.sxd_doc_no, ...h.people.flatMap(p => [p.name, p.phone, p.id_no, p.old_id_no])].some(x => String(x ?? '').toLowerCase().includes(q))));
@@ -1046,7 +1048,7 @@ V.mau4 = async (main, params) => {
   $('#m4P', main).onchange = run(async e => { s.project = e.target.value; await load(); });
   $('#m4F', main).onchange = e => { s.from = e.target.value; draw(); };
   $('#m4To', main).onchange = e => { s.to = e.target.value; draw(); };
-  $('#m4X', main).onclick = () => download('/api/mau4/xlsx?' + new URLSearchParams(Object.entries({ project: s.project, from: s.from, to: s.to, by: s.tab === 'ok' && (s.from || s.to) ? 'sxd' : '' }).filter(([, v]) => v)));   // xuất theo dự án + ngày đang lọc (tab Đã duyệt SXD: ngày nộp SXD)
+  $('#m4X', main).onclick = () => download('/api/mau4/xlsx?' + new URLSearchParams(Object.entries({ project: s.project, from: s.from, to: s.to, by: s.from || s.to ? M4_DAY[s.tab][2] : '' }).filter(([, v]) => v)));   // xuất theo dự án + ngày đang lọc của tab
   $('#m4Imp', main) && ($('#m4Imp', main).onclick = () => importModal('mau4', load));
   $('#m4New', main) && ($('#m4New', main).onclick = () => openForm('noxh_check', { onSaved: () => load() }));
   $('#m4Tab', main).onclick = e => { const b = e.target.closest('[data-tab]'); if (b) { s.tab = b.dataset.tab; sel.clear(); draw(); } };
