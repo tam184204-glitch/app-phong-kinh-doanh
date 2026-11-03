@@ -780,10 +780,29 @@ table.prod-t tfoot td { font-weight: 800 !important; color: var(--ink) !importan
 .m4tabs button { font-size: 14px; }
 .toolbar .search input#m4Q { width: 320px; }
 .m4day { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--ink2, #3d4f66); }
-.m4day input[type=date] { height: 36px; border: 1px solid #cfdbe8; border-radius: 10px; padding: 0 10px; background: #fff; font: inherit; font-weight: 500; font-size: 14px; color: inherit; min-width: 150px; }
-.m4ask input[type=date] { width: 100%; height: 38px; border: 1px solid #cfdbe8; border-radius: 10px; padding: 0 11px; background: #fff; font: inherit; }
 .m4ask .fld { margin-bottom: 10px; }
+/* ô ngày 3 phần dd / mm / yyyy */
+.sdate { position: relative; display: inline-flex; align-items: center; height: 36px; padding: 0 36px 0 8px; border: 1px solid #cfdbe8; border-radius: 10px; background: #fff; cursor: text; font-weight: 500; }
+.sdate:focus-within { border-color: var(--cobalt); box-shadow: 0 0 0 3px var(--cobalt-50); }
+.sdate.bad { border-color: #d9534f; }
+.sdate .sd-p { border: 0; outline: none; background: transparent; padding: 0 1px; text-align: center; font: inherit; color: inherit; width: 2.4ch; height: 28px; border-radius: 5px; }
+.sdate .sd-p[data-p=y] { width: 4.6ch; }
+.sdate .sd-p:focus { background: var(--cobalt-50); }
+.sdate .sd-p::placeholder { color: var(--muted2); font-weight: 400; }
+.sdate i { font-style: normal; color: var(--muted2); padding: 0 1px; }
+.sdate button { position: absolute; right: 3px; top: 3px; height: 28px; width: 30px; border: 0; background: transparent; color: var(--cobalt); cursor: pointer; border-radius: 8px; }
+.sdate button:hover { background: var(--cobalt-50); }
+.sdate input[type=date] { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; right: 0; bottom: 0; }
+.m4ask .sdate { display: flex; height: 38px; }
 .m4t td.m4ck, .m4t th input { cursor: pointer; }
+/* cột ô tick + TT đứng yên khi kéo ngang */
+.m4t .m4s1, .m4t .m4s2 { position: sticky; z-index: 2; }
+.main .card .tbl-wrap table.m4t tbody td.m4s1, .main .card .tbl-wrap table.m4t tbody td.m4s2 { background: #fff; }
+.m4t .m4s1 { left: 0; width: 44px; min-width: 44px; max-width: 44px; }
+.m4t .m4s2 { left: 44px; width: 52px; min-width: 52px; max-width: 52px; box-shadow: inset -1px 0 0 #d5e0ec, 6px 0 8px -6px rgba(20, 56, 102, .18); }
+.m4t td.m4s1:only-child { box-shadow: none; }
+.main .card .tbl-wrap table.m4t thead th.m4s1, .main .card .tbl-wrap table.m4t thead th.m4s2 { position: sticky; z-index: 4; background: #f3f7fc; }
+.main .card .tbl-wrap table.m4t tbody tr:hover td.m4s1, .main .card .tbl-wrap table.m4t tbody tr:hover td.m4s2 { background: #f6f9fd; }
 
 /* tiêu đề nhóm trong form (Bên mua / Bên bán / Thông tin chi tiết…) */
 .form .fsec { grid-column: 1 / -1; margin: 10px 0 -2px; padding: 6px 10px; border-radius: 8px; background: #e8f3fb; color: #1e4e8c; font-weight: 700; font-size: 13px; }

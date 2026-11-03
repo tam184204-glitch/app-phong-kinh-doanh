@@ -139,6 +139,50 @@ const colLabel = (ent, k) => M.ents[ent].fields.find(f => f.k === k)?.l || M.vir
 const isShown = (f, rec) => !f.show || Object.entries(f.show).every(([k, vals]) => vals.includes(rec[k]));
 function parseDmy(s) { s = String(s || '').trim(); if (!s) return ''; let m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(s); if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`; if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; return s; }
 function parseDt(s) { s = String(s || '').trim(); if (!s) return ''; const m = /^(\d{1,2}[/.-]\d{1,2}[/.-]\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/.exec(s); if (m) return `${parseDmy(m[1])}T${(m[2] || '00').padStart(2, '0')}:${m[3] || '00'}:00+07:00`; return s; }
+// ---------- ô ngày 3 phần dd / mm / yyyy (máy nào cũng hiện đúng dd/mm/yyyy, sửa riêng từng phần) ----------
+// segDate(id, 'yyyy-mm-dd') → html; wireSegDate(root) gắn xử lý; segVal(el) → 'yyyy-mm-dd' | '' ; el phát sự kiện 'sdchange' khi đủ ngày hoặc xóa trắng
+function segDate(id, v = '') {
+  const [y, m, d] = /^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v.split('-') : ['', '', ''];
+  const box = (k, val, ph, n) => `<input class="sd-p" data-p="${k}" value="${val}" placeholder="${ph}" maxlength="${n}" inputmode="numeric" autocomplete="off" size="${n}">`;
+  return `<span class="sdate" id="${id}">${box('d', d, 'dd', 2)}<i>/</i>${box('m', m, 'mm', 2)}<i>/</i>${box('y', y, 'yyyy', 4)}<button type="button" tabindex="-1" data-sdpick title="Chọn ngày">${ico('fa-calendar-days')}</button><input type="date" tabindex="-1" aria-hidden="true"></span>`;
+}
+function segVal(el) {
+  const g = k => $(`[data-p="${k}"]`, el).value, d = +g('d'), m = +g('m'), y = +g('y');
+  if (!g('d') && !g('m') && !g('y')) return '';
+  if (!(y >= 1900 && y <= 2100 && m >= 1 && m <= 12 && d >= 1 && d <= new Date(y, m, 0).getDate())) return null;   // chưa đủ / sai ngày
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+function segSet(el, v) {
+  const [y, m, d] = /^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v.split('-') : ['', '', ''];
+  $('[data-p="d"]', el).value = d; $('[data-p="m"]', el).value = m; $('[data-p="y"]', el).value = y;
+}
+function wireSegDate(root) {
+  $$('.sdate', root).forEach(el => {
+    if (el._sd) return; el._sd = 1;
+    const ps = $$('.sd-p', el), nat = $('input[type=date]', el);
+    let last = segVal(el);
+    const fire = () => { const v = segVal(el); el.classList.toggle('bad', v === null); if (v !== null && v !== last) { last = v; el.dispatchEvent(new Event('sdchange', { bubbles: true })); } };
+    ps.forEach((p, i) => {
+      p.addEventListener('input', () => {
+        p.value = p.value.replace(/\D/g, '').slice(0, +p.maxLength);
+        if (p.value.length === +p.maxLength && ps[i + 1]) { ps[i + 1].focus(); ps[i + 1].select(); }
+        fire();
+      });
+      p.addEventListener('keydown', e => {
+        if (/^\d$/.test(e.key) && p.value.length >= +p.maxLength && p.selectionStart === p.selectionEnd) p.value = '';   // ô đã đủ số: gõ số mới thì thay cả phần đó
+        if (e.key === 'Backspace' && !p.value && ps[i - 1]) { e.preventDefault(); ps[i - 1].focus(); ps[i - 1].select(); }   // ô trống: lùi về phần trước
+        else if (['/', '.', '-'].includes(e.key) || (e.key === 'ArrowRight' && p.selectionStart === p.value.length)) { e.preventDefault(); if (ps[i + 1]) { ps[i + 1].focus(); ps[i + 1].select(); } }
+        else if (e.key === 'ArrowLeft' && p.selectionStart === 0 && ps[i - 1]) { e.preventDefault(); ps[i - 1].focus(); }
+      });
+      p.addEventListener('focus', () => p.select());
+      p.addEventListener('mouseup', e => { if (p.selectionStart === p.selectionEnd) e.preventDefault(); p.select(); });   // bấm vào phần nào thì chọn cả phần đó
+      p.addEventListener('blur', () => { if (p.value.length === 1 && p.dataset.p !== 'y') { p.value = '0' + p.value; fire(); } });
+    });
+    el.addEventListener('mousedown', e => { if (e.target === el || e.target.tagName === 'I') { e.preventDefault(); (ps.find(p => !p.value) || ps[0]).focus(); } });
+    $('[data-sdpick]', el).onclick = () => { try { nat.value = segVal(el) || ''; } catch { } try { nat.showPicker(); } catch { nat.click(); } };
+    nat.onchange = () => { if (nat.value) { segSet(el, nat.value); fire(); } };
+  });
+}
 function parseMonth(s) { s = String(s || '').trim(); const m = /^(\d{1,2})[/.-](\d{4})$/.exec(s); return m ? `${m[2]}-${m[1].padStart(2, '0')}` : s; }
 const moneyStr = v => v == null || v === '' ? '' : fm(v);
 function input(f, v, rec = {}, { ro, id } = {}) {
