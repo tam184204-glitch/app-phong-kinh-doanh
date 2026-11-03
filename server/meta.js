@@ -292,7 +292,7 @@ const M4 = {
     'Có đất ở tại địa phương nơi đăng ký hộ khẩu thường trú và diện tích khuôn viên đất phù hợp với quy hoạch xây dựng theo quy định của UBND cấp tỉnh', 'Có nhà ở nhưng thuộc diện bị giải tỏa khi Nhà nước thu hồi đất',
     'Có nhà ở gắn liền với đất khi Nhà nước thu hồi phải di chuyển chỗ ở và không còn chỗ ở nào khác trên địa bàn xã, phường, thị trấn nơi có đất thu hồi mà chưa được bồi thường về nhà ở, đất ở tái định cư', 'Khó khăn về nhà ở khác (ghi rõ nội dung)'],
   thu_nhap: ['Có thu nhập bình quân hàng tháng thực nhận không quá 25 triệu đồng', 'Có thu nhập bình quân hàng tháng thực nhận không quá 50 triệu đồng'],
-  quan_he: ['Vợ (Chồng)', 'Con', 'Anh, chị, em', 'Cha (Mẹ)', 'Ông (Bà)', 'Cháu'],
+  quan_he: ['Vợ (Chồng)', 'Chồng (Vợ)', 'Con', 'Anh, chị, em', 'Cha (Mẹ)', 'Ông (Bà)', 'Cháu'],
 };
 // cột khai báo một người trong hộ theo Mẫu 4 — dùng chung cho dòng chủ hộ và thành viên (mỗi lần gọi trả bản mới, không dùng chung đối tượng)
 const M4_PERSON = () => [

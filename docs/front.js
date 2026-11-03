@@ -1387,6 +1387,20 @@ async function boot(mustChange) {
   window.onhashchange = route;
   route();
   updateBadges(); setInterval(updateBadges, 120e3);
+  ST.verT ||= setInterval(checkVer, 60e3);
+}
+// máy chủ có bản giao diện mới trong lúc trang đang mở (giao diện chỉ nạp 1 lần khi mở trang): báo để người dùng tự tải lại, không tự tải kẻo mất phần đang nhập
+let VER0 = null;
+async function checkVer() {
+  try {
+    const { ver } = await api('GET', '/api/ver'); if (!ver) return;   // bản demo: không có
+    if (!VER0) { VER0 = ver; return; }
+    if (ver === VER0 || $('#updBar')) return;
+    const b = document.createElement('div'); b.id = 'updBar'; b.className = 'upd-bar';
+    b.innerHTML = `${ico('fa-rotate')}<span>Có bản cập nhật mới của app — lưu phần đang nhập rồi bấm <b>Tải lại</b> để dùng bản mới.</span><button type="button" class="btn sm">Tải lại</button>`;
+    b.querySelector('button').onclick = () => location.reload();
+    document.body.append(b);
+  } catch { }
 }
 async function updateBadges() {
   try {
@@ -1411,7 +1425,7 @@ function globalSearch() {
   inp.onkeydown = e => { const as = $$('[data-i]', box); if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); cur = Math.max(0, Math.min(as.length - 1, cur + (e.key === 'ArrowDown' ? 1 : -1))); as.forEach((a, i) => a.classList.toggle('on', i === cur)); } if (e.key === 'Enter') { e.preventDefault(); if (res[Math.max(cur, 0)]) open(res[Math.max(cur, 0)]); } if (e.key === 'Escape') box.classList.add('hidden'); };
 }
 async function route() {
-  closeDetail(); document.body.classList.remove('nav-open'); ST.reload = null;
+  closeDetail(); document.body.classList.remove('nav-open'); ST.reload = null; checkVer();
   const tok = ST.nav = (ST.nav || 0) + 1;   // màn cũ còn tải dở mà người dùng đã chuyển màn: bỏ qua lỗi của nó
   const h = location.hash.slice(1) || '/v/dashboard';
   const [p, qs] = h.split('?'); const params = Object.fromEntries(new URLSearchParams(qs || ''));

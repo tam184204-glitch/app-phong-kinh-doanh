@@ -174,6 +174,11 @@ R('POST', '/api/password', async (req, res, u) => {
   send(res, 200, { ok: true });
 }, { allowMustChange: true });
 R('GET', '/api/meta', async (req, res, u) => send(res, 200, await metaFor(u)), { allowMustChange: true });
+// phiên bản giao diện = giờ sửa các tệp public: trang đang mở so với số này, khác thì báo «Có bản cập nhật mới» (giao diện chỉ nạp 1 lần khi mở trang)
+R('GET', '/api/ver', (req, res) => {
+  let v = ''; try { v = ['index.html', 'ui.js', 'screens.js', 'ai.js', 'app.css'].map(f => fs.statSync(path.join(PUBLIC, f)).mtimeMs.toFixed(0)).join('.'); } catch {}   // bản demo không có tệp → bỏ qua
+  send(res, 200, { ver: v });
+}, { open: true });
 
 // --- dữ liệu chung ---
 R('GET', '/api/e/:ent', async (req, res, u, p, qs) => send(res, 200, await C.list(p.ent, u, qs)));

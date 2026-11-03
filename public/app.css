@@ -969,3 +969,8 @@ table.t tr.clk { cursor: pointer; }
 .sched th:nth-child(6) { width: 104px; }   /* cột nút: Bảo trì + xóa */
 .sched-acts { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .sched-acts .btn { white-space: nowrap; }
+
+/* thanh báo có bản cập nhật mới (máy chủ đổi giao diện khi trang đang mở) */
+.upd-bar { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 9000; display: flex; align-items: center; gap: 10px; max-width: calc(100vw - 32px);
+  background: var(--cobalt-d, #163d70); color: #fff; padding: 10px 12px 10px 16px; border-radius: 12px; box-shadow: 0 8px 24px rgba(10, 30, 60, .28); font-size: 14px; }
+.upd-bar .btn { flex: none; background: var(--amber); border-color: var(--amber); color: #1b2430; font-weight: 700; }
