@@ -401,13 +401,13 @@ function bravoLayout(form, layout) {
   });
 }
 
-// bản sao khách hàng: chép toàn bộ thông tin, mã khách tự điền số kế tiếp (không trùng mã đã có)
+// bản sao khách hàng: chép toàn bộ thông tin, mã khách = mã gốc + -01, -02… (vd KH000158-01)
 async function copyCustomer(id) {
   const E = M.ents.customer, g = await api('GET', `/api/e/customer/${id}`), r = g.row;
   if (r._masked && M.piiRoles.includes(M.me.role)) Object.assign(r, await api('GET', `/api/pii/customer/${id}`), { _masked: 0 });
   const preset = {};
   for (const f of E.fields) if (f.k !== 'code' && !f.hide && r[f.k] != null && !(f.pii && r._masked)) { preset[f.k] = r[f.k]; if (r[f.k + '__l'] != null) preset[f.k + '__l'] = r[f.k + '__l']; }
-  preset.code = (await api('GET', '/api/customer-code?next=1')).code;
+  preset.code = (await api('GET', `/api/customer-code?copy_of=${id}`)).code;
   return openForm('customer', { preset, copyOf: id, title: `Bản sao của ${r.code} · ${r.full_name}`, onSaved: row => { toast(`Đã tạo khách hàng ${row.code}`); openDetail('customer', row.id); } });
 }
 function rowMenu(ent, id, x, y) {   // chuột phải vào dòng danh sách

@@ -295,6 +295,11 @@ R('GET', '/api/customer-code', async (req, res, u, p, qs) => {   // nhập mã k
     const f = M.E.customer.fields.find(x => x.k === 'code'), c = await one('SELECT n FROM kd_counter WHERE prefix = $1', [f.prefix]);
     for (let n = (c?.n || 0) + 1; ; n++) { const code = f.prefix + String(n).padStart(f.pad, '0'); if (!await one('SELECT 1 AS x FROM kd_customer WHERE upper(code) = $1', [code])) return send(res, 200, { code }); }
   }
+  if (qs.copy_of) {   // mã bản sao = mã gốc + -01, -02… (bản sao của bản sao vẫn đánh số theo mã gốc)
+    const o = await one('SELECT code FROM kd_customer WHERE id = $1', [+qs.copy_of]); if (!o) C.deny();
+    const base = String(o.code).toUpperCase().replace(/-\d+$/, '');
+    for (let n = 1; ; n++) { const code = `${base}-${String(n).padStart(2, '0')}`; if (!await one('SELECT 1 AS x FROM kd_customer WHERE upper(code) = $1', [code])) return send(res, 200, { code }); }
+  }
   const code = String(qs.code || '').trim().toUpperCase();
   const d = code && await one('SELECT full_name FROM kd_customer WHERE id <> $1 AND upper(code) = $2', [+qs.id || 0, code]);
   send(res, 200, { dup: !!d, msg: d ? `Mã khách hàng ${code} đã có (khách ${d.full_name}) — nhập mã khác hoặc để trống để hệ thống tự cấp` : '' });
