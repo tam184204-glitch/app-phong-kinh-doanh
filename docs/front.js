@@ -2088,7 +2088,7 @@ V.mau4 = async (main, params) => {
   $('#m4P', main).onchange = run(async e => { s.project = e.target.value; await load(); });
   $('#m4F', main).onchange = e => { s.from = e.target.value; draw(); };
   $('#m4To', main).onchange = e => { s.to = e.target.value; draw(); };
-  $('#m4X', main).onclick = () => download('/api/mau4/xlsx' + (s.project ? '?project=' + s.project : ''));
+  $('#m4X', main).onclick = () => download('/api/mau4/xlsx?' + new URLSearchParams(Object.entries({ project: s.project, from: s.from, to: s.to }).filter(([, v]) => v)));   // xuất theo dự án + ngày nộp đang lọc
   $('#m4Imp', main) && ($('#m4Imp', main).onclick = () => importModal('mau4', load));
   $('#m4New', main) && ($('#m4New', main).onclick = () => openForm('noxh_check', { onSaved: () => load() }));
   $('#m4Tab', main).onclick = e => { const b = e.target.closest('[data-tab]'); if (b) { s.tab = b.dataset.tab; sel.clear(); draw(); } };
