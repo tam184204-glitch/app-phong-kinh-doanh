@@ -53,6 +53,22 @@ async function boot(pgliteUrl) {
     try { localStorage.removeItem(SID_KEY); } catch {}
     location.reload();
   };
+  // mỗi lúc chỉ 1 tab dùng CSDL: 2 tab cùng ghi IndexedDB sẽ đè nhau, hỏng chỉ mục hệ thống (lỗi 03/11/2026)
+  if (navigator.locks) {
+    const LOCK = 'ctg-kd-demo-db', hold = lock => lock && new Promise(() => {});   // giữ khóa tới khi đóng tab
+    const lost = () => { try { pg && pg.close(); } catch {} document.body.innerHTML = '<div id="boot"><b>Bản demo đã chuyển sang tab khác</b><span>Tải lại trang này nếu muốn dùng ở đây.</span></div>'; };
+    const got = await new Promise(ok => navigator.locks.request(LOCK, { ifAvailable: true }, lock => { ok(!!lock); return hold(lock); }).catch(lost));
+    if (!got) {
+      say('Bản demo đang mở ở một tab khác — đóng tab đó (dùng chung 1 tab để dữ liệu không bị hỏng), hoặc bấm nút dưới để chuyển sang tab này.');
+      await new Promise(ok => {
+        const btn = document.createElement('button');
+        btn.textContent = 'Dùng ở tab này'; btn.style.cssText = 'padding:8px 16px;font:inherit;cursor:pointer';
+        btn.onclick = () => { btn.remove(); navigator.locks.request(LOCK, { steal: true }, lock => { setTimeout(ok, 1500); return hold(lock); }).catch(lost); };   // chờ tab cũ ghi nốt
+        document.getElementById('boot').append(btn);
+        navigator.locks.request(LOCK, lock => { btn.remove(); ok(); return hold(lock); }).catch(lost);   // tab kia đóng → tự vào
+      });
+    }
+  }
   say('Đang khởi tạo cơ sở dữ liệu trong trình duyệt…');
   const { PGlite } = await import(pgliteUrl);
   const ts = v => v == null ? null : new Date(v.replace(' ', 'T').replace(/([+-]\d\d)$/, '$1:00')).toISOString();
@@ -65,7 +81,17 @@ async function boot(pgliteUrl) {
   const { migrate } = require('../server/schema');
   const biz = require('../server/biz');
   const { handle } = require('../server/server');
-  await tx(db => migrate(db));   // thêm bảng / cột mới cho dữ liệu demo đã lưu từ phiên bản trước
+  // chỉ mục hệ thống hỏng (tìm không thấy cột có thật): tải lại trang, phiên mới dựng lại chỉ mục TRƯỚC khi tra gì (phiên cũ nhớ kết quả tra sai)
+  const FIX = 'ctg-kd-demo-reindex'; let fix = null;
+  try { fix = sessionStorage.getItem(FIX); } catch {}
+  if (fix) { say('Đang sửa dữ liệu demo…'); await pg.exec('REINDEX SYSTEM'); }
+  try { await tx(db => migrate(db)); }   // thêm bảng / cột mới cho dữ liệu demo đã lưu từ phiên bản trước
+  catch (e) {
+    let ok = false; try { if (!fix) { sessionStorage.setItem(FIX, '1'); ok = true; } } catch {}
+    if (!ok) throw e;
+    console.warn('nâng cấp CSDL lỗi → tải lại, dựng lại chỉ mục', e); await pg.close(); location.reload(); return new Promise(() => {});
+  }
+  try { sessionStorage.removeItem(FIX); } catch {}
   await q("UPDATE kd_project SET code = 'CTN' WHERE code = 'NEW'");   // đổi mã dự án Chung cư Cát Tường New (27/10/2026)
   if (!(await one('SELECT count(*) n FROM kd_user')).n) {
     say('Lần đầu mở: đang nạp dữ liệu mẫu (khoảng 20–60 giây)…');
