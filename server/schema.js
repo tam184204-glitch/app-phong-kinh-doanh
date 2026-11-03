@@ -71,7 +71,7 @@ const SPECIAL = [
   // 1 căn không đồng thời có 2 phiếu giữ chỗ / bán còn hiệu lực
   `CREATE UNIQUE INDEX IF NOT EXISTS kd_reservation_one_active ON kd_reservation (unit_id) WHERE status IN ${ACTIVE_RES}`,
   // 1 căn chỉ 1 hợp đồng mua bán / thuê / thuê mua còn hiệu lực (HĐ hoàn thiện đi kèm được phép)
-  `CREATE UNIQUE INDEX IF NOT EXISTS kd_contract_one_active ON kd_contract (unit_id) WHERE kind IN ('hdmb','thue','thue_mua') AND status NOT IN ('huy','thanh_ly')`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS kd_contract_one_sale ON kd_contract (unit_id) WHERE kind IN ('hdmb','thue_mua') AND status NOT IN ('huy','thanh_ly')`,
   // không tính trùng hoa hồng cho 1 hợp đồng
   `CREATE UNIQUE INDEX IF NOT EXISTS kd_commission_one ON kd_commission (contract_id) WHERE status NOT IN ('huy')`,
   // kế hoạch thu: mỗi hợp đồng 1 dòng hiệu lực / tháng
@@ -118,6 +118,8 @@ const SPECIAL = [
 ];
 // chạy trước khi dựng lại ràng buộc: đổi giá trị danh sách chọn đã bỏ
 const PRE = [
+  `UPDATE kd_reservation SET deal = 'mua' WHERE deal IS NULL`,   // phiếu trước 03/11/2026: đăng ký mua
+  'DROP INDEX IF EXISTS kd_contract_one_active',   // thay bằng kd_contract_one_sale (HĐ thuê kiểm trùng ở biz — có hạn thuê, bản chất bán)
   `UPDATE kd_noxh_check SET status = 'cho_duyet' WHERE status = 'da_trinh'`,   // bỏ trạng thái «Đã trình duyệt SXD» (03/11/2026)
   // lý do thanh lý thành danh sách chọn (02/11/2026): chữ gõ tự do cũ («Căn cứ thanh lý») chuyển sang Ghi chú, Lý do để trống chờ chọn lại
   'ALTER TABLE IF EXISTS kd_contract DROP CONSTRAINT IF EXISTS ck_kd_contract_liquidate_reason',

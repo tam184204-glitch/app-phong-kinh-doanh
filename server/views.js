@@ -294,12 +294,12 @@ async function board(db, user, f) {
   const buildings = await db.q('SELECT b.*, (SELECT count(*) FROM kd_unit u WHERE u.building_id = b.id) n FROM kd_building b WHERE b.project_id = $1 ORDER BY b.code', [pid]);
   const bid = +f.building || buildings.find(b => b.n)?.id;
   const units = bid ? await db.q(`SELECT u.id, u.code, u.floor, u.kind, u.bedrooms, u.area_tt, u.direction, u.position, u.total_price, u.price_net, u.maint_fee, u.finish_value, u.status, u.handover_plan,
-      coalesce((SELECT k.full_name FROM kd_contract c JOIN kd_customer k ON k.id = c.customer_id WHERE c.unit_id = u.id AND c.status NOT IN ('huy','thanh_ly') AND c.kind <> 'hoan_thien' LIMIT 1),
+      coalesce((SELECT k.full_name FROM kd_contract c JOIN kd_customer k ON k.id = c.customer_id WHERE c.unit_id = u.id AND c.status NOT IN ('huy','thanh_ly') AND c.kind <> 'hoan_thien' AND NOT (c.kind = 'thue' AND coalesce(c.nature, 'thue') <> 'ban' AND coalesce(c.exp_on, 'infinity'::date) < $2) ORDER BY c.id DESC LIMIT 1),   -- HĐ thuê hết hạn: không hiện tên người thuê cũ
                (SELECT k.full_name FROM kd_reservation r JOIN kd_customer k ON k.id = r.customer_id WHERE r.unit_id = u.id AND r.status IN ('cho_duyet','giu_cho','qua_han','da_coc','chuyen_hd') LIMIT 1)) customer,
       (SELECT r.hold_until FROM kd_reservation r WHERE r.unit_id = u.id AND r.status IN ('giu_cho','qua_han','da_coc') LIMIT 1) hold_until,
-      EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND coalesce(c.nature, 'thue') <> 'ban' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on >= $2) rent,   -- căn đang cho thuê (còn thời hạn)
-      (SELECT c.exp_on FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND coalesce(c.nature, 'thue') <> 'ban' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on >= $2 ORDER BY c.id DESC LIMIT 1) rent_to,
-      (SELECT c.rent FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND coalesce(c.nature, 'thue') <> 'ban' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on >= $2 ORDER BY c.id DESC LIMIT 1) rent_amt,
+      EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND coalesce(c.nature, 'thue') <> 'ban' AND c.status NOT IN ('huy','thanh_ly') AND coalesce(c.exp_on, 'infinity'::date) >= $2) rent,   -- căn đang cho thuê (còn thời hạn)
+      (SELECT c.exp_on FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND coalesce(c.nature, 'thue') <> 'ban' AND c.status NOT IN ('huy','thanh_ly') AND coalesce(c.exp_on, 'infinity'::date) >= $2 ORDER BY c.id DESC LIMIT 1) rent_to,
+      (SELECT c.rent FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND coalesce(c.nature, 'thue') <> 'ban' AND c.status NOT IN ('huy','thanh_ly') AND coalesce(c.exp_on, 'infinity'::date) >= $2 ORDER BY c.id DESC LIMIT 1) rent_amt,
       (SELECT max(c.exp_on) FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND coalesce(c.nature, 'thue') <> 'ban' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on < $2) rent_ended,
       (SELECT c.kind FROM kd_contract c WHERE c.unit_id = u.id AND c.kind IN ('vay','thue') AND c.nature = 'ban' AND c.next_id IS NULL AND c.status NOT IN ('huy','thanh_ly') ORDER BY c.id DESC LIMIT 1) sale_doc,   -- bán qua HĐ vay / HĐ thuê, chưa có HĐMB   -- đã hết hạn thuê: căn trống lại
       (SELECT r.rent FROM kd_reservation r WHERE r.unit_id = u.id AND r.deal = 'thue' AND r.status IN ('cho_duyet','giu_cho','qua_han','da_coc') LIMIT 1) res_rent,   -- căn giữ chỗ theo phiếu đăng ký thuê: tiền thuê/tháng dự kiến
@@ -320,9 +320,10 @@ async function unitStatus(db, user, f = {}) {
   const p = [], t = today();
   const units = await db.q(`SELECT u.id, u.code, u.status, u.activated, pr.code project, b.code building FROM kd_unit u JOIN kd_project pr ON pr.id = u.project_id JOIN kd_building b ON b.id = u.building_id WHERE true ${uf(f, p)} ORDER BY pr.code, b.code, u.floor DESC, u.code`, p);
   const ids = units.map(u => u.id);
-  const cs = await db.q(`SELECT c.id, c.unit_id, c.kind, c.nature, c.number, c.status, c.value, c.sale_price, c.plan_hdmb, c.prev_id, c.next_id, c.rent, c.exp_on, k.full_name customer
+  const cs = await db.q(`SELECT c.id, c.unit_id, c.kind, c.nature, c.number, c.status, c.value, c.sale_price, c.plan_hdmb, c.prev_id, c.next_id, c.rent, c.exp_on, c.owner_id, c.created_by, k.full_name customer
     FROM kd_contract c JOIN kd_customer k ON k.id = c.customer_id WHERE c.unit_id = ANY($1) AND c.status NOT IN ('huy','thanh_ly') ORDER BY c.id`, [ids]);
-  const res = new Map((await db.q("SELECT DISTINCT ON (r.unit_id) r.unit_id, r.cust_name, r.deal FROM kd_reservation r WHERE r.unit_id = ANY($1) AND r.status IN ('cho_duyet','giu_cho','qua_han','da_coc') ORDER BY r.unit_id, r.id DESC", [ids])).map(r => [r.unit_id, r]));
+  const res = new Map((await db.q("SELECT DISTINCT ON (r.unit_id) r.unit_id, r.cust_name, r.deal, r.owner_id, r.created_by FROM kd_reservation r WHERE r.unit_id = ANY($1) AND r.status IN ('cho_duyet','giu_cho','qua_han','da_coc') ORDER BY r.unit_id, r.id DESC", [ids])).map(r => [r.unit_id, r]));
+  if (C.own(user, E.customer)) { const me = +user.id; for (const c of cs) if (c.owner_id !== me && c.created_by !== me) c.customer = '•••'; for (const x of res.values()) if (x.owner_id !== me && x.created_by !== me) x.cust_name = '•••'; }   // bán hàng: tên khách người khác che
   const D = await B.debtOf(db, cs.map(c => c.id)), byU = new Map();
   const LI = new Map((await db.q("SELECT contract_id, sum(greatest(amount - coalesce(paid_amt, 0), 0)) s FROM kd_loan_pay WHERE kind = 'lai' AND contract_id = ANY($1) GROUP BY 1", [cs.map(c => c.id)])).map(x => [x.contract_id, +x.s]));
   for (const c of cs) { c.d = D.get(c.id); (byU.get(c.unit_id) || byU.set(c.unit_id, []).get(c.unit_id)).push(c); }
@@ -330,7 +331,7 @@ async function unitStatus(db, user, f = {}) {
   const rows = units.map(u => {
     const all = byU.get(u.id) || [];
     const sale = all.filter(c => c.kind !== 'hoan_thien' && (c.nature === 'ban' || ['hdmb', 'thue_mua'].includes(c.kind)) && !c.next_id).pop();
-    const rent = all.filter(c => c.kind === 'thue' && c.nature !== 'ban' && c.exp_on >= t).pop(), fin = all.filter(c => c.kind === 'hoan_thien').pop();
+    const rent = all.filter(c => c.kind === 'thue' && c.nature !== 'ban' && (!c.exp_on || c.exp_on >= t)).pop(), fin = all.filter(c => c.kind === 'hoan_thien').pop();
     const chain = []; for (let c = sale; c; c = c.prev_id && all.find(x => x.id === c.prev_id)) chain.unshift(c);
     const hdmb = sale && ['hdmb', 'thue_mua'].includes(sale.kind) ? sale : null, pre = chain.filter(c => ['vay', 'thue'].includes(c.kind));
     const st = sale ? (sale.status === 'da_ky' ? (hdmb ? 'da_ban' : 'cho_hdmb') : chain.some(c => c.status === 'da_ky') ? 'cho_hdmb' : 'dang_lap') : rent ? (rent.status === 'da_ky' ? 'cho_thue' : 'dang_lap') : res.get(u.id) ? 'giu_cho' : u.activated ? 'trong' : 'chua_mo_ban';
@@ -377,6 +378,7 @@ async function loanItems(db, user, id) {
   if (!can(user, E.installment, 'r')) deny();
   const c = await db.one("SELECT c.id, c.number, c.value, c.int_mode, c.rent, c.loan_rate, u.code unit, k.full_name customer FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id WHERE c.id = $1 AND c.kind = 'vay'", [+id]);
   if (!c) bad('Không tìm thấy HĐ vay');
+  if (C.own(user, E.customer) && !(await db.one('SELECT 1 FROM kd_contract WHERE id = $1 AND (owner_id = $2 OR created_by = $2)', [c.id, user.id]))) deny();
   return { contract: c, items: await db.q('SELECT * FROM kd_loan_pay WHERE contract_id = $1 ORDER BY due_on, kind DESC, seq', [c.id]), can_pay: can(user, E.loan_pay, 'u') };
 }
 

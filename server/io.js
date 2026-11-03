@@ -168,7 +168,7 @@ const IMPORTS = {
       const ck = String(r.customer || '').trim(), dg = ck.replace(/\D/g, '');
       const k = await ctx.db.one("SELECT id FROM kd_customer WHERE upper(code) = upper($1) OR ($2 <> '' AND regexp_replace(phone,'\\D','','g') = $2) ORDER BY upper(code) = upper($1) DESC, id LIMIT 1", [ck, dg]) || bad(`Không tìm thấy khách hàng «${ck}» — nhập danh sách khách hàng trước`);
       const owner = r.owner ? await ctx.db.one('SELECT id FROM kd_user WHERE lower(username) = lower($1) OR lower(full_name) = lower($1)', [String(r.owner).trim()]) : null;
-      const kindS = strip(r.kind || 'hdmb'); const kind = /hoan thien/.test(kindS) ? 'hoan_thien' : /thue mua/.test(kindS) ? 'thue_mua' : /thue/.test(kindS) ? 'thue' : 'hdmb';
+      const kindS = strip(r.kind || 'hdmb'); const kind = /hoan thien/.test(kindS) ? 'hoan_thien' : /thue mua/.test(kindS) ? 'thue_mua' : /thue/.test(kindS) ? 'thue' : /vay/.test(kindS) ? 'vay' : 'hdmb';
       if (!u.activated) await C.sys(ctx.db, 'unit', u.id, { activated: true }, ctx.user, 'kich_hoat', 'Nhập hợp đồng lịch sử');
       const sched = (ctx.extra.get(String(r.number).trim().toUpperCase().replace(/\s+/g, '')) || []).sort((a, b) => a.seq - b.seq);
       const c = (await C.create('contract', { number: r.number, kind, unit_id: u.id, customer_id: k.id, co_owner: r.co_owner, value: r.value, owner_id: owner?.id || ctx.user.id }, ctx.user, { db: ctx.db, demo: ctx.demo, system: true })).row;

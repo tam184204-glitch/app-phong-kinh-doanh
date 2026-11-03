@@ -971,7 +971,7 @@ async function scheduleModal(contractId, after) {
   const rows = (c._debt?.inst || []).map(i => ({ name: i.name, due_on: i.due_on, pct: i.pct, amount: i.amount }));
   const m = modal({ title: `${ico('fa-calendar-days')} Lịch thanh toán — ${esc(c.number)}`, wide: true, body: `<div id="serr"></div><div class="small muted mb">Giá trị hợp đồng <b>${fm(c.value)}</b> đ · căn ${esc(c.unit_id__l)} · ${esc(c.customer_id__l)}</div><div id="sch"></div>`,
     foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="sOk">${ico('fa-floppy-disk')} Lưu lịch thanh toán</button>` });
-  const el = $('#sch', m.el); schedEditor(el, rows, { total: c.value, base: c.plan_sign || today() });
+  const el = $('#sch', m.el), sale = ['hdmb', 'thue_mua'].includes(c.kind); schedEditor(el, rows, { total: c.value, base: c.plan_sign || today(), maint: () => sale ? +c.maint_fee || 0 : 0, mdot: () => c.maint_dot ?? 3 });
   $('#sOk', m.el).onclick = async () => { try { const r = await api('POST', `/api/e/contract/${contractId}/act/schedule`, { rows: el._get() }); m.close(); toast(r.msg); after && after(); } catch (e) { $('#serr', m.el).innerHTML = `<div class="errbar">${esc(e.message)}</div>`; } };
 }
 

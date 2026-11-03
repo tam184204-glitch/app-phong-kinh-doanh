@@ -15,7 +15,7 @@ async function tx(fn) {
   const c = await pool.connect();
   try {
     await c.query('BEGIN');
-    const out = await fn(wrap(c));
+    const out = await fn({ ...wrap(c), inTx: true });   // inTx: biz.safely dùng savepoint
     await c.query('COMMIT');
     return out;
   } catch (e) { await c.query('ROLLBACK'); throw e; } finally { c.release(); }
