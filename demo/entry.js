@@ -283,11 +283,11 @@ async function boot(pgliteUrl) {
       if (can.length === 3 && kh.length === 3) {
         await q('UPDATE kd_unit SET activated = true WHERE id = ANY($1)', [can.map(x => x.id)]);   // căn đã giao dịch = đã mở bán
         // (1) HĐ vay bán căn, chưa ký HĐMB
-        const v1 = (await C.create('contract', { kind: 'vay', nature: 'ban', ptype: 'can_ho', unit_id: can[0].id, customer_id: kh[0].id, contract_on: day(-60), value: 300e6, plan_hdmb: day(45),
+        const v1 = (await C.create('contract', { kind: 'vay', nature: 'ban', ptype: 'can_ho', unit_id: can[0].id, customer_id: kh[0].id, contract_on: day(-60), value: 300e6, plan_hdmb: day(45), rent: 5e6,
           new_schedule: [{ name: 'Đợt 1 – khi ký HĐ vay', due_on: day(-60), amount: 150e6 }, { name: 'Đợt 2', due_on: day(-10), amount: 150e6 }] }, u, { system: true, demo: true })).row;
         await sign(v1.id); await pay(v1.id, day(-30));
         // (2) HĐ vay → HĐMB (tự nối vì cùng căn) — tiền vay không trừ vào giá mua
-        const v2 = (await C.create('contract', { kind: 'vay', nature: 'ban', ptype: 'can_ho', unit_id: can[1].id, customer_id: kh[1].id, contract_on: day(-150), value: 200e6,
+        const v2 = (await C.create('contract', { kind: 'vay', nature: 'ban', ptype: 'can_ho', unit_id: can[1].id, customer_id: kh[1].id, contract_on: day(-150), value: 200e6, rent: 5e6,
           new_schedule: [{ name: 'Đợt 1 – khi ký HĐ vay', due_on: day(-150), amount: 200e6 }] }, u, { system: true, demo: true })).row;
         await sign(v2.id); await pay(v2.id, day(0));
         const price = +can[1].total_price || 1.2e9;
@@ -302,6 +302,30 @@ async function boot(pgliteUrl) {
       localStorage.setItem('ctg-kd-demo-ban-chat', '1');
     }
   } catch (e) { console.warn('bản chất giao dịch thử', e); }
+  // HĐ vay thử — lãi & gốc (dữ liệu giả, 1 lần): HĐ vay K-0913 trả lãi bằng tiền thuê 1 tháng / tháng, tick chọn HĐ thuê đi kèm; HĐ vay K-0801 lãi suất 8%/năm trả theo quý
+  try {
+    if (!localStorage.getItem('ctg-kd-demo-vay-lai')) {
+      const C = require('../server/core'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1");
+      const vs = await q("SELECT * FROM kd_contract WHERE kind = 'vay' AND is_demo ORDER BY id LIMIT 2");
+      const day = n => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+      if (vs.length === 2) {
+        const [v1, v2] = vs, kh = await one('SELECT k.id FROM kd_customer k WHERE NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.customer_id = k.id) AND NOT EXISTS (SELECT 1 FROM kd_reservation r WHERE r.customer_id = k.id) ORDER BY k.id LIMIT 1');
+        // HĐ thuê đi kèm HĐ vay 1 (cùng căn): tiền thuê 5,5 tr/tháng = tiền lãi trả khách mỗi tháng
+        const a1 = v1.contract_on;
+        const t = (await C.create('contract', { kind: 'thue', nature: 'thue', ptype: 'can_ho', unit_id: v1.unit_id, customer_id: kh?.id || v1.customer_id, contract_on: a1, eff_on: a1, exp_on: new Date(Date.parse(a1 + 'T00:00:00Z') + 364 * 864e5).toISOString().slice(0, 10), term_months: 12, pay_times: 12, rent: 5.5e6, value: 66e6, link_ids: [v1.id],
+          new_schedule: Array.from({ length: 12 }, (_, k) => ({ name: `Tiền thuê kỳ ${k + 1}/12 (tháng ${k + 1})`, due_on: new Date(Date.parse(a1 + 'T00:00:00Z') + k * 30.4 * 864e5).toISOString().slice(0, 10), amount: 5.5e6 })) }, u, { system: true, demo: true })).row;
+        await C.submit('contract', t.id, u, {}); await C.approve('contract', t.id, u, { ok: true });
+        await C.update('contract', v1.id, { loan_recv_on: a1, loan_tranches: 2, eff_on: a1, term_months: 12, exp_on: null, int_mode: 'tien_thue', int_period: '1', principal_method: 'dao_han', rent: null, link_ids: [t.id], int_note: 'Lãi trả cuối mỗi tháng = 1 tháng tiền thuê căn hộ theo HĐ thuê đi kèm' }, u, { system: true, demo: true });
+        await C.update('contract', v2.id, { loan_recv_on: v2.contract_on, loan_tranches: 1, eff_on: v2.contract_on, term_months: 12, exp_on: null, int_mode: 'lai_suat', loan_rate: 8, int_period: '3', principal_method: 'dao_han', int_note: 'Lãi 8%/năm trên số tiền vay, trả cuối mỗi quý' }, u, { system: true, demo: true });
+        // đã trả lãi các kỳ đã đến hạn — HĐ vay 1 chừa kỳ gần nhất (quá hạn chưa trả)
+        for (const v of [v1, v2]) {
+          const ls = await q("SELECT id, due_on::text d, amount FROM kd_loan_pay WHERE contract_id = $1 AND kind = 'lai' AND due_on < $2 ORDER BY seq", [v.id, day(0)]);
+          for (const [k, x] of ls.entries()) if (!(v === v1 && k === ls.length - 1)) await q('UPDATE kd_loan_pay SET paid_on = $2, paid_amt = $3, note = $4 WHERE id = $1', [x.id, x.d, x.amount, 'Chuyển khoản']);
+        }
+      }
+      localStorage.setItem('ctg-kd-demo-vay-lai', '1');
+    }
+  } catch (e) { console.warn('HĐ vay lãi & gốc thử', e); }
   const job = async () => { try { await tx(db => biz.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.warn('job', e.message); } };
   await job(); setInterval(job, 2 * 60e3);
 

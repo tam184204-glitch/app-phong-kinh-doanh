@@ -324,6 +324,7 @@ async function unitStatus(db, user, f = {}) {
     FROM kd_contract c JOIN kd_customer k ON k.id = c.customer_id WHERE c.unit_id = ANY($1) AND c.status NOT IN ('huy','thanh_ly') ORDER BY c.id`, [ids]);
   const res = new Map((await db.q("SELECT DISTINCT ON (r.unit_id) r.unit_id, r.cust_name, r.deal FROM kd_reservation r WHERE r.unit_id = ANY($1) AND r.status IN ('cho_duyet','giu_cho','qua_han','da_coc') ORDER BY r.unit_id, r.id DESC", [ids])).map(r => [r.unit_id, r]));
   const D = await B.debtOf(db, cs.map(c => c.id)), byU = new Map();
+  const LI = new Map((await db.q("SELECT contract_id, sum(greatest(amount - coalesce(paid_amt, 0), 0)) s FROM kd_loan_pay WHERE kind = 'lai' AND contract_id = ANY($1) GROUP BY 1", [cs.map(c => c.id)])).map(x => [x.contract_id, +x.s]));
   for (const c of cs) { c.d = D.get(c.id); (byU.get(c.unit_id) || byU.set(c.unit_id, []).get(c.unit_id)).push(c); }
   const KL = { hdmb: 'HĐMB', vay: 'HĐ vay', thue: 'HĐ thuê', thue_mua: 'HĐ thuê mua', hoan_thien: 'HĐ hoàn thiện' };
   const rows = units.map(u => {
@@ -339,11 +340,44 @@ async function unitStatus(db, user, f = {}) {
       customer: (sale || rent || fin)?.customer || res.get(u.id)?.cust_name || '', docs: [...chain, ...(rent ? [rent] : []), ...(fin ? [fin] : [])].map(c => `${KL[c.kind]} ${c.number || ''}`.trim()).join(' → '),
       sale_price: hdmb ? +hdmb.value : sale ? +(sale.sale_price || 0) : null, plan_hdmb: !hdmb && sale ? sale.plan_hdmb : null,
       sale_paid: hdmb ? hdmb.d.paid : null, sale_left: hdmb ? hdmb.d.left : null, sale_overdue: hdmb ? hdmb.d.overdue : null,
-      vay_left: vay.length ? sumOf(vay, 'left') : null, rent_amt: rent ? +rent.rent : thueBan.length ? +thueBan[thueBan.length - 1].rent : null, rent_to: rent?.exp_on || null,
+      vay_left: vay.length ? sumOf(vay, 'left') : null, vay_int: vay.length ? vay.reduce((s, c) => s + (LI.get(c.id) || 0), 0) : null, rent_amt: rent ? +rent.rent : thueBan.length ? +thueBan[thueBan.length - 1].rent : null, rent_to: rent?.exp_on || null,
       rent_left: rent || thueBan.length ? sumOf([...(rent ? [rent] : []), ...thueBan], 'left') : null, fin_left: fin ? fin.d.left : null,
       overdue: sumOf([...(hdmb ? [hdmb] : []), ...pre, ...(rent ? [rent] : []), ...(fin ? [fin] : [])], 'overdue') };
   });
   return { rows, states: US_ST, bravo_sync: await bravoSync(db) };
+}
+
+// ======================= THEO DÕI HĐ VAY — LÃI & GỐC (CN-07) =======================
+// gốc: khách chuyển theo các đợt giải ngân (lịch thu + phiếu thu của HĐ vay); lãi / gốc công ty phải trả khách: kd_loan_pay
+const LP_ST = { qua_han: 'Quá hạn trả lãi', sap_toi: 'Đến hạn trong 7 ngày', dao_han: 'Đáo hạn trong 30 ngày', dang: 'Đang vay', xong: 'Đã trả hết' };
+async function loanTrack(db, user, f = {}) {
+  if (!can(user, E.installment, 'r')) deny();
+  const p = [], t = today(), t7 = addDays(t, 7), t30 = addDays(t, 30);
+  const cs = await db.q(`SELECT c.id, c.number, c.status, c.value, c.contract_on, c.loan_recv_on, c.eff_on, c.exp_on, c.term_months, c.int_mode, c.loan_rate, c.rent, c.int_period, c.principal_method, c.nature, c.next_id, c.link_ids,
+      u.code unit, pr.code project, b.code building, k.full_name customer, coalesce(c.b_phone, k.phone) phone,
+      (SELECT string_agg(x.number, ', ') FROM kd_contract x WHERE x.id = ANY(c.link_ids)) links
+    FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_project pr ON pr.id = u.project_id JOIN kd_building b ON b.id = u.building_id JOIN kd_customer k ON k.id = c.customer_id
+    WHERE c.kind = 'vay' AND c.status <> 'huy' ${uf(f, p)}${mine(user, 'c')} ORDER BY c.exp_on NULLS LAST, u.code`, p);
+  const ids = cs.map(c => c.id), D = await B.debtOf(db, ids);
+  const L = await db.q('SELECT * FROM kd_loan_pay WHERE contract_id = ANY($1) ORDER BY due_on, kind DESC, seq', [ids]);
+  const rem = x => Math.max(0, +x.amount - (+x.paid_amt || 0)), sum = (xs, fn) => xs.reduce((a, x) => a + fn(x), 0);
+  const ML = { tien_thue: 'Tiền thuê 1 tháng / tháng', lai_suat: 'Lãi suất' }, PL = { 1: 'Hàng tháng', 3: 'Hàng quý', 6: '6 tháng', 12: 'Hàng năm', 0: 'Khi đáo hạn' };
+  const rows = cs.map(c => {
+    const ls = L.filter(x => x.contract_id === c.id), lai = ls.filter(x => x.kind === 'lai'), goc = ls.filter(x => x.kind === 'goc'), next = ls.find(x => rem(x) > 0), d = D.get(c.id);
+    const laiQH = sum(lai.filter(x => x.due_on < t), rem), left = sum(ls, rem);
+    const state = !ls.length ? 'dang' : !left ? 'xong' : laiQH > 0 ? 'qua_han' : next && next.due_on <= t7 ? 'sap_toi' : c.exp_on && c.exp_on <= t30 ? 'dao_han' : 'dang';
+    return { contract_id: c.id, project: c.project, building: c.building, unit: c.unit, customer: c.customer, phone: c.phone, number: c.number, links: c.links || '', nature_l: c.nature === 'ban' ? 'Bán căn hộ' : 'Cho thuê',
+      goc_hd: +c.value, goc_nhan: d.paid, goc_cho: d.left, eff_on: c.eff_on, exp_on: c.exp_on, term_months: c.term_months, mode_l: c.int_mode === 'lai_suat' ? `${ML.lai_suat} ${c.loan_rate ?? ''}%/năm` : ML.tien_thue, rent: c.int_mode === 'tien_thue' ? +c.rent : null, period_l: PL[c.int_period] || '',
+      lai_tong: sum(lai, x => +x.amount), lai_tra: sum(lai, x => +x.paid_amt || 0), lai_con: sum(lai, rem), lai_qua_han: laiQH, goc_tra_con: sum(goc, rem),
+      next_on: next?.due_on || null, next_amt: next ? rem(next) : null, next_l: next ? (next.kind === 'lai' ? `Lãi kỳ ${next.seq}` : 'Trả gốc') : '', state, state_l: LP_ST[state] };
+  });
+  return { rows, states: LP_ST };
+}
+async function loanItems(db, user, id) {
+  if (!can(user, E.installment, 'r')) deny();
+  const c = await db.one("SELECT c.id, c.number, c.value, c.int_mode, c.rent, c.loan_rate, u.code unit, k.full_name customer FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id WHERE c.id = $1 AND c.kind = 'vay'", [+id]);
+  if (!c) bad('Không tìm thấy HĐ vay');
+  return { contract: c, items: await db.q('SELECT * FROM kd_loan_pay WHERE contract_id = $1 ORDER BY due_on, kind DESC, seq', [c.id]), can_pay: can(user, E.loan_pay, 'u') };
 }
 
 // ======================= CHI TIẾT BẢNG GIÁ THEO CĂN =======================
@@ -687,4 +721,4 @@ async function monthly(db, period, projectId) {
   };
 }
 
-module.exports = { unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
+module.exports = { loanTrack, loanItems, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };

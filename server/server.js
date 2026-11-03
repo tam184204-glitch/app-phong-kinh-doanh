@@ -285,6 +285,15 @@ R('GET', '/api/alerts', async (req, res, u, p, qs) => send(res, 200, await V.ale
 R('GET', '/api/approvals', async (req, res, u) => send(res, 200, await V.approvals({ q, one }, u)));
 R('GET', '/api/board', async (req, res, u, p, qs) => send(res, 200, await V.board({ q, one }, u, qs)));
 R('GET', '/api/payouts', async (req, res, u, p, qs) => send(res, 200, await V.payouts({ q, one }, u, qs)));
+R('GET', '/api/loan-track', async (req, res, u, p, qs) => send(res, 200, await V.loanTrack({ q, one }, u, qs)));
+R('GET', '/api/loan-track/:id', async (req, res, u, p) => send(res, 200, await V.loanItems({ q, one }, u, p.id)));
+// HĐ vay ↔ HĐ thuê: danh sách để tick chọn (cùng căn hoặc cùng khách, kèm các hợp đồng đang chọn)
+R('GET', '/api/contract-links', async (req, res, u, p, qs) => {
+  if (!can(u, M.E.contract, 'r')) C.deny();
+  const kind = ['thue', 'vay'].includes(qs.kind) ? qs.kind : C.bad('Loại hợp đồng không hợp lệ'), ids = String(qs.ids || '').split(',').map(Number).filter(Boolean);
+  send(res, 200, await q(`SELECT c.id, c.number, c.status, c.rent, c.value, c.eff_on, c.exp_on, u.code unit, k.full_name customer FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id
+    WHERE c.kind = $1 AND c.id <> $2 AND (c.id = ANY($5) OR (c.status NOT IN ('huy','thanh_ly') AND (c.unit_id = $3 OR c.customer_id = $4))) ORDER BY c.id DESC LIMIT 30`, [kind, +qs.self || 0, +qs.unit || 0, +qs.customer || 0, ids]));
+});
 R('GET', '/api/unit-status', async (req, res, u, p, qs) => send(res, 200, await V.unitStatus({ q, one }, u, qs)));
 R('GET', '/api/finish-pay', async (req, res, u, p, qs) => send(res, 200, await V.finishPay({ q, one }, u, qs)));
 R('GET', '/api/loans', async (req, res, u, p, qs) => send(res, 200, await V.loans({ q, one }, u, qs)));

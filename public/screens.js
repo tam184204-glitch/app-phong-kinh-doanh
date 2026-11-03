@@ -1135,7 +1135,7 @@ const LOAN_COLS = [['unit', 'Mã căn hộ'], ['customer', 'Tên khách hàng'],
 V.unitstatus = async main => {
   const f = filt(), s = ST.unitstatus ||= { state: '', q: '' };
   const cols = [['project', 'Dự án'], ['building', 'Tòa'], ['unit', 'Mã căn'], ['state_l', 'Tình trạng'], ['customer', 'Khách hàng'], ['docs', 'Văn bản'], ['sale_price', 'Giá bán', 'money'], ['plan_hdmb', 'Dự kiến ký HĐMB', 'date'],
-    ['sale_paid', 'Đã thu HĐMB', 'money'], ['sale_left', 'Còn phải thu HĐMB', 'money'], ['vay_left', 'Còn phải thu HĐ vay', 'money'], ['rent_amt', 'Tiền thuê/tháng', 'money'], ['rent_to', 'Thuê đến', 'date'],
+    ['sale_paid', 'Đã thu HĐMB', 'money'], ['sale_left', 'Còn phải thu HĐMB', 'money'], ['vay_left', 'Gốc vay khách chưa chuyển', 'money'], ['vay_int', 'Lãi vay còn phải trả khách', 'money'], ['rent_amt', 'Tiền thuê/tháng', 'money'], ['rent_to', 'Thuê đến', 'date'],
     ['rent_left', 'Còn phải thu tiền thuê', 'money'], ['fin_left', 'Còn phải thu hoàn thiện', 'money'], ['overdue', 'Quá hạn', 'money']];
   const SUM = ['sale_price', 'sale_paid', 'sale_left', 'vay_left', 'rent_left', 'fin_left', 'overdue'];
   const TABS = [['', 'Tất cả'], ['ban', 'Đã bán'], ['cho_hdmb', 'Chờ ký HĐMB'], ['cho_thue', 'Đang cho thuê'], ['dang_lap', 'Đang lập HĐ'], ['giu_cho', 'Giữ chỗ'], ['trong', 'Còn trống / chưa mở bán']];
@@ -1157,6 +1157,53 @@ V.unitstatus = async main => {
   $('#usX', main).onclick = () => download('/api/export-rows', { title: 'CN-06 Tình trạng căn hộ & công nợ', cols, rows: shown(), sum: SUM, note: 'Tình trạng theo bản chất giao dịch; tiền vay / tiền thuê không trừ vào giá mua', file: 'Tinh_trang_can_ho_cong_no' });
   main.onclick = e => { const t = e.target.closest('[data-st]'); if (t) { s.state = t.dataset.st; return draw(); } const tr = e.target.closest('tr[data-i]'); if (tr) { const r = shown()[+tr.dataset.i]; if (r?.contract_id) openDetail('contract', r.contract_id, 'debt'); else if (r) location.hash = `#/v/unit360?id=${r.unit_id}`; } };
   ST.reload = async () => { if ($('#usT', main)) await load(); };
+  await load();
+};
+// CN-07 theo dõi HĐ vay: gốc khách đã chuyển, lãi / gốc công ty phải trả khách, ghi nhận đã trả từng kỳ
+V.loantrack = async main => {
+  const f = filt(), s = ST.loantrack ||= { state: '', q: '' };
+  const cols = [['project', 'Dự án'], ['unit', 'Mã căn'], ['customer', 'Bên cho vay (khách)'], ['number', 'Số HĐ vay'], ['links', 'HĐ thuê đi kèm'], ['nature_l', 'Bản chất'], ['goc_hd', 'Số tiền vay', 'money'], ['goc_nhan', 'Gốc đã nhận', 'money'],
+    ['mode_l', 'Lãi trả bằng'], ['rent', 'Tiền thuê/tháng', 'money'], ['period_l', 'Kỳ trả lãi'], ['eff_on', 'Bắt đầu tính lãi', 'date'], ['exp_on', 'Ngày đáo hạn', 'date'], ['lai_tong', 'Lãi cả kỳ', 'money'], ['lai_tra', 'Đã trả lãi', 'money'],
+    ['lai_con', 'Lãi còn phải trả', 'money'], ['lai_qua_han', 'Lãi quá hạn', 'money'], ['goc_tra_con', 'Gốc còn phải trả', 'money'], ['next_l', 'Kỳ tới'], ['next_on', 'Hạn kỳ tới', 'date'], ['next_amt', 'Số tiền kỳ tới', 'money'], ['state_l', 'Tình trạng']];
+  const SUM = ['goc_hd', 'goc_nhan', 'lai_tong', 'lai_tra', 'lai_con', 'lai_qua_han', 'goc_tra_con', 'next_amt'];
+  const TABS = [['', 'Tất cả'], ['qua_han', 'Quá hạn trả lãi'], ['sap_toi', 'Đến hạn trong 7 ngày'], ['dao_han', 'Đáo hạn trong 30 ngày'], ['dang', 'Đang vay'], ['xong', 'Đã trả hết']];
+  let d = { rows: [] };
+  const shown = () => { const q = s.q.trim().toLowerCase(); return d.rows.filter(r => (!s.state || r.state === s.state) && (!q || [r.unit, r.customer, r.number, r.links, r.phone].some(x => String(x || '').toLowerCase().includes(q)))); };
+  const draw = () => {
+    const sum = k => d.rows.reduce((t, r) => t + (+r[k] || 0), 0), n = k => d.rows.filter(r => !k || r.state === k).length, tile = (l, v, sub, red) => `<div class="card kpi ${red ? 'red' : ''}" style="cursor:default"><div class="l">${l}</div><div class="v" style="font-size:18px">${v}</div><div class="s">${sub || '&nbsp;'}</div></div>`;
+    $('#ltK', main).innerHTML = tile('Gốc vay đã nhận', fm(sum('goc_nhan')), `${d.rows.length} HĐ vay · theo hợp đồng ${fm(sum('goc_hd'))}`) + tile('Lãi còn phải trả khách', fm(sum('lai_con')), `đã trả ${fm(sum('lai_tra'))}`)
+      + tile('Lãi quá hạn chưa trả', fm(sum('lai_qua_han')), `${n('qua_han')} hợp đồng`, sum('lai_qua_han') > 0) + tile('Gốc còn phải trả khách', fm(sum('goc_tra_con')), `${n('dao_han')} HĐ đáo hạn trong 30 ngày`);
+    $('#ltTabs', main).innerHTML = TABS.map(([k, l]) => `<button data-st="${k}" class="${s.state === k ? 'on' : ''}">${l} <span class="n">${n(k)}</span></button>`).join('');
+    $('#ltN', main).textContent = `${shown().length} hợp đồng`;
+    $('#ltT', main).innerHTML = rowsTable(cols, shown(), SUM);
+  };
+  const load = async () => { d = await api('GET', '/api/loan-track?' + qsOf({ project: f.project })); draw(); };
+  // bấm 1 HĐ vay: các kỳ trả lãi / gốc, ghi nhận đã trả
+  const items = async id => {
+    const g = await api('GET', `/api/loan-track/${id}`), T = today(), rem = x => Math.max(0, +x.amount - (+x.paid_amt || 0));
+    const st = x => !rem(x) && +x.amount > 0 ? pill('Đã trả', 'g') : x.due_on < T ? pill('Quá hạn trả', 'r') : +x.paid_amt > 0 ? pill('Trả một phần', 'b') : pill('Chưa đến hạn', 's');
+    const m = modal({ title: `${ico('fa-hand-holding-dollar')} Lịch trả lãi & gốc — HĐ vay ${esc(g.contract.number || '')}`, wide: true,
+      body: `<div class="small muted mb">Căn ${esc(g.contract.unit)} · bên cho vay ${esc(g.contract.customer)} · số tiền vay ${fm(g.contract.value)} đ · lãi ${g.contract.int_mode === 'lai_suat' ? `${fnum(g.contract.loan_rate)}%/năm` : `bằng tiền thuê ${fm(g.contract.rent)} đ/tháng`}</div>
+        ${g.items.length ? `<table class="t compact noclick"><thead><tr><th>Kỳ</th><th>Khoản</th><th>Thời gian tính lãi</th><th>Hạn trả</th><th class="num">Phải trả</th><th>Ngày đã trả</th><th class="num">Đã trả</th><th>Ghi chú</th><th>Tình trạng</th><th></th></tr></thead><tbody>${g.items.map(x => `<tr><td>${x.seq}</td><td>${x.kind === 'lai' ? 'Tiền lãi' : '<b>Trả gốc</b>'}</td><td>${dmy(x.period_from)} – ${dmy(x.period_to)}</td><td>${dmy(x.due_on)}</td><td class="num">${fm(x.amount)}</td><td>${x.paid_on ? dmy(x.paid_on) : ''}</td><td class="num">${+x.paid_amt ? fm(x.paid_amt) : ''}</td><td>${esc(x.note || '')}</td><td>${st(x)}</td><td>${g.can_pay ? `<button class="btn sm ${rem(x) ? 'pri' : ''}" data-pay="${x.id}">${ico(rem(x) ? 'fa-check' : 'fa-pen')} ${rem(x) ? 'Ghi nhận đã trả' : 'Sửa'}</button>` : ''}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Chưa có lịch — mở HĐ vay, nhập ngày bắt đầu tính lãi, thời hạn, kỳ trả lãi rồi lưu</div>'}`,
+      foot: `<button class="btn" data-x>Đóng</button><button class="btn" id="ltO">${ico('fa-file-contract')} Mở hợp đồng vay</button>` });
+    $('#ltO', m.el).onclick = () => { m.close(); openDetail('contract', id); };
+    m.el.addEventListener('click', run(async e => {
+      const b = e.target.closest('[data-pay]'); if (!b) return; const x = g.items.find(i => i.id === +b.dataset.pay);
+      const a = modal({ title: `${ico('fa-check')} Ghi nhận đã trả — ${x.kind === 'lai' ? 'tiền lãi kỳ ' + x.seq : 'trả gốc'}`, narrow: true, body: `<div id="lpE"></div><form class="form"><div class="fld wide"><label>Ngày đã trả</label>${segDate('lpD', x.paid_on || T)}</div><div class="fld wide"><label>Số tiền đã trả</label><input name="lpA" class="inp" value="${moneyStr(+x.paid_amt || +x.amount)}"></div><div class="fld wide"><label>Ghi chú</label><input name="lpN" class="inp" value="${esc(x.note || '')}" placeholder="VD: chuyển khoản, cấn trừ…"></div></form>`,
+        foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="lpOk">${ico('fa-floppy-disk')} Lưu</button>` });
+      wireSegDate(a.el);
+      $('#lpOk', a.el).onclick = run(async () => {
+        try { await api('PUT', `/api/e/loan_pay/${x.id}`, { paid_on: segVal($('#lpD', a.el)) || null, paid_amt: num($('[name=lpA]', a.el).value, true), note: $('[name=lpN]', a.el).value || null }); a.close(); m.close(); toast('Đã ghi nhận'); await load(); items(id); }
+        catch (er) { $('#lpE', a.el).innerHTML = `<div class="errbar">${esc(er.message)}</div>`; }
+      });
+    }));
+  };
+  main.innerHTML = `<div class="page">${head('06', 'Theo dõi HĐ vay — lãi & gốc', 'fa-hand-holding-dollar', `<button class="btn" id="ltX">${ico('fa-file-excel')} Xuất Excel</button>`, 'CN-07')}${filterBar(f, { period: false })}<div class="grid g4 mb" id="ltK"></div><div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="ltQ" placeholder="Tìm mã căn, khách hàng, số HĐ vay / thuê…" value="${esc(s.q)}"></div><span class="grow"></span><span class="small muted" id="ltN"></span></div><div class="tabs" id="ltTabs"></div><div id="ltT"><div class="empty">Đang tải…</div></div><div class="small muted mt">Gốc: khách chuyển theo các đợt giải ngân (phiếu thu của HĐ vay). Lãi: công ty trả khách cuối mỗi kỳ — mỗi tháng = 1 tháng tiền thuê căn (hoặc theo lãi suất). Tiền vay không trừ vào giá mua căn hộ. Bấm 1 dòng để ghi nhận đã trả.</div></div></div>`;
+  wireFilter(main, f, load);
+  $('#ltQ', main).oninput = debounce(e => { s.q = e.target.value; draw(); }, 200);
+  $('#ltX', main).onclick = () => download('/api/export-rows', { title: 'CN-07 Theo dõi HĐ vay — lãi & gốc', cols, rows: shown(), sum: SUM, note: 'Lãi trả khách bằng tiền thuê 1 tháng / tháng hoặc theo lãi suất; tiền vay không trừ vào giá mua', file: 'Theo_doi_HD_vay' });
+  main.onclick = run(async e => { const t = e.target.closest('[data-st]'); if (t) { s.state = t.dataset.st; return draw(); } const tr = e.target.closest('#ltT tr[data-i]'); if (tr) { const r = shown()[+tr.dataset.i]; if (r) await items(r.contract_id); } });
+  ST.reload = async () => { if ($('#ltT', main)) await load(); };
   await load();
 };
 V.finishpay = async main => {

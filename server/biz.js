@@ -145,6 +145,27 @@ async function fixLiquidated(db) {
 // giấy tờ / tiêu đề viết cho hồ sơ mua → bản hồ sơ thuê («Đơn đăng ký mua nhà» → «Đơn đăng ký thuê nhà»; «thuê mua» giữ nguyên)
 const rentWord = t => String(t ?? '').replace(/(?<!thuê )\bmua\b/g, 'thuê').replace(/(?<!THUÊ )\bMUA\b/g, 'THUÊ');
 function addMonths(iso, n) { const d = new Date(iso + 'T00:00:00Z'), day = d.getUTCDate(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + n); d.setUTCDate(Math.min(day, new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate())); return d.toISOString().slice(0, 10); }
+// HĐ vay: lịch trả lãi & gốc cho khách — mỗi kỳ (theo «Kỳ trả lãi») lãi = tiền thuê/tháng × số tháng của kỳ, hoặc gốc × lãi suất × số tháng / 12; trả cuối kỳ
+function loanPlan(r) {
+  const n = +r.term_months || 0, a = r.eff_on, P = +r.int_period || n, V = +r.value || 0;
+  if (!a || !(n > 0) || !(P > 0)) return [];
+  const cnt = Math.ceil(n / P), out = [], each = Math.floor(V / cnt / 1000) * 1000; let left = V;
+  for (let k = 0; k < cnt; k++) {
+    const m = Math.min(P, n - k * P), from = addMonths(a, k * P), to = k === cnt - 1 && r.exp_on ? r.exp_on : addDays(addMonths(a, k * P + m), -1);
+    out.push({ kind: 'lai', seq: k + 1, period_from: from, period_to: to, due_on: to, amount: r.int_mode === 'lai_suat' ? Math.round(left * (+r.loan_rate || 0) / 100 * m / 12) : Math.round((+r.rent || 0) * m) });
+    if (r.principal_method === 'theo_ky' && V > 0) { const g = k === cnt - 1 ? left : each; out.push({ kind: 'goc', seq: k + 1, period_from: from, period_to: to, due_on: to, amount: g }); left -= g; }
+  }
+  if (r.principal_method === 'dao_han' && V > 0) out.push({ kind: 'goc', seq: cnt, period_from: a, period_to: out.at(-1).period_to, due_on: out.at(-1).due_on, amount: V });
+  return out;
+}
+// lập lại lịch khi lưu HĐ vay — kỳ đã ghi nhận trả giữ nguyên
+async function loanSchedule(db, r, user, demo) {
+  const plan = r.kind === 'vay' && r.status !== 'huy' ? loanPlan(r) : [];
+  const keep = new Set((await db.q('SELECT kind, seq FROM kd_loan_pay WHERE contract_id = $1 AND (coalesce(paid_amt, 0) > 0 OR paid_on IS NOT NULL)', [r.id])).map(x => x.kind + x.seq));
+  await db.q('DELETE FROM kd_loan_pay WHERE contract_id = $1 AND coalesce(paid_amt, 0) = 0 AND paid_on IS NULL', [r.id]);
+  for (const x of plan) if (!keep.has(x.kind + x.seq))
+    await db.q('INSERT INTO kd_loan_pay (contract_id, seq, kind, period_from, period_to, due_on, amount, created_by, is_demo) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [r.id, x.seq, x.kind, x.period_from, x.period_to, x.due_on, x.amount, user?.id ?? null, !!(demo || r.is_demo)]);
+}
 async function fixRentValue(db, user) {
   const cs = await db.q("SELECT * FROM kd_contract WHERE kind = 'thue' AND rent > 0 AND term_months > 0 AND value IS DISTINCT FROM rent * term_months");
   for (const c of cs) {
@@ -730,7 +751,8 @@ H.contract = {
   // danh sách theo nhóm: ?group=can_ho (HĐ mua bán) | hoan_thien (HĐ hoàn thiện căn hộ) | lien_ke
   where(qs) {
     if (qs.group === 'hoan_thien') return { sql: 't.ptype = $1 AND t.kind = $2', params: ['can_ho', 'hoan_thien'] };
-    if (qs.group === 'can_ho') return { sql: "t.ptype = $1 AND t.kind NOT IN ('hoan_thien', 'thue')", params: ['can_ho'] };
+    if (qs.group === 'can_ho') return { sql: "t.ptype = $1 AND t.kind NOT IN ('hoan_thien', 'thue', 'vay')", params: ['can_ho'] };
+    if (qs.group === 'vay') return { sql: 't.ptype = $1 AND t.kind = $2', params: ['can_ho', 'vay'] };
     if (qs.group === 'thue') return { sql: 't.ptype = $1 AND t.kind = $2', params: ['can_ho', 'thue'] };
     if (qs.group === 'lien_ke') return { sql: 't.ptype = $1', params: [qs.group] };
   },
@@ -791,6 +813,26 @@ H.contract = {
       if (!main) bad('HĐ hoàn thiện cần căn đã có hợp đồng mua bán / thuê / thuê mua');
     }
     if (['thue', 'thue_mua'].includes(r.kind) && r.eff_on && r.exp_on && r.exp_on < r.eff_on) bad('Ngày kết thúc thuê phải sau ngày bắt đầu thuê');
+    if (r.kind === 'thue') { const miss = [['eff_on', 'Ngày bắt đầu thuê'], ['exp_on', 'Ngày kết thúc thuê']].filter(([k]) => !r[k]); if (miss.length) bad('Thiếu thông tin bắt buộc: ' + miss.map(x => x[1]).join(', '), { fields: miss.map(x => x[0]) }); }
+    if (r.kind === 'thue' && !(+r.rent > 0)) bad('Nhập tiền thuê/tháng', { fields: ['rent'] });
+    // HĐ vay: ngày bắt đầu tính lãi, đáo hạn, thời hạn tự suy ra nhau; lãi = tiền thuê 1 tháng / tháng (lấy theo HĐ thuê đi kèm nếu để trống) hoặc theo lãi suất
+    if (r.kind === 'vay') {
+      r.int_mode ||= 'tien_thue'; r.int_period ??= '1'; r.principal_method ||= 'dao_han'; r.eff_on ||= r.loan_recv_on || r.contract_on;
+      if (r.eff_on && +r.term_months > 0 && (!r.exp_on || (old && +old.term_months !== +r.term_months && old.exp_on === r.exp_on))) r.exp_on = addDays(addMonths(r.eff_on, +r.term_months), -1);
+      if (r.eff_on && r.exp_on && r.exp_on < r.eff_on) bad('Ngày đáo hạn phải sau ngày bắt đầu tính lãi', { fields: ['exp_on'] });
+      if (r.eff_on && r.exp_on && !(+r.term_months > 0)) r.term_months = rentMonths(r.eff_on, r.exp_on);
+      if (r.int_mode === 'tien_thue' && !(+r.rent > 0) && r.link_ids?.length) r.rent = (await db.one("SELECT rent FROM kd_contract WHERE id = ANY($1) AND kind = 'thue' AND rent > 0 ORDER BY id LIMIT 1", [r.link_ids]))?.rent ?? null;
+      if (r.int_mode === 'tien_thue' && !(+r.rent > 0)) bad('Lãi trả bằng tiền thuê: nhập Tiền thuê/tháng hoặc tick chọn HĐ thuê đi kèm', { fields: ['rent'] });
+      if (r.int_mode === 'lai_suat' && !(+r.loan_rate > 0)) bad('Nhập lãi suất %/năm', { fields: ['loan_rate'] });
+      if (r.int_mode !== 'lai_suat') r.loan_rate = null;
+      if (!(+r.term_months > 0) && !r.exp_on) ctx.warn?.push('HĐ vay chưa có Thời hạn vay / Ngày đáo hạn — chưa lập lịch trả lãi');
+    } else for (const k of ['loan_recv_on', 'loan_tranches', 'int_mode', 'loan_rate', 'int_period', 'principal_method', 'int_note']) r[k] = null;
+    // HĐ vay ↔ HĐ thuê đi kèm (tick chọn 2 chiều)
+    if (!['thue', 'vay'].includes(r.kind)) r.link_ids = null;
+    else if (r.link_ids?.length) {
+      const other = r.kind === 'vay' ? 'thue' : 'vay';
+      if ((await db.one('SELECT count(*) n FROM kd_contract WHERE id = ANY($1) AND (kind <> $2 OR id = $3)', [r.link_ids, other, old?.id || 0])).n) bad(`Chỉ tick chọn ${other === 'thue' ? 'HĐ thuê' : 'HĐ vay'}`, { fields: ['link_ids'] });
+    }
     // bản chất giao dịch: HĐMB / thuê mua = bán; HĐ vay mặc định bán, HĐ thuê mặc định cho thuê (sửa được)
     if (r.kind === 'hoan_thien') r.nature = null;
     else if (!['thue', 'vay'].includes(r.kind)) r.nature = 'ban';
@@ -821,6 +863,11 @@ H.contract = {
     const live = !['huy', 'thanh_ly'].includes(r.status);
     if (old?.prev_id && (old.prev_id !== r.prev_id || !live)) await db.q('UPDATE kd_contract SET next_id = NULL, updated_at = now() WHERE id = $1 AND next_id = $2', [old.prev_id, r.id]);
     if (r.prev_id && live && (await raw(db, 'contract', r.prev_id))?.next_id !== r.id) await sys(db, 'contract', r.prev_id, { next_id: r.id }, user, 'chuyen_hdmb', `Chuyển tiếp sang hợp đồng ${r.number || ''}`);
+    // HĐ vay ↔ HĐ thuê: bên kia tự thêm / bỏ liên kết
+    { const nw = r.link_ids || [], od = old?.link_ids || [], add = nw.filter(x => !od.includes(x)), rem = od.filter(x => !nw.includes(x));
+      if (add.length) await db.q("UPDATE kd_contract SET link_ids = array_append(coalesce(link_ids, '{}'::int[]), $1::int) WHERE id = ANY($2) AND NOT ($1::int = ANY(coalesce(link_ids, '{}'::int[])))", [r.id, add]);
+      if (rem.length) await db.q("UPDATE kd_contract SET link_ids = nullif(array_remove(link_ids, $1::int), '{}'::int[]) WHERE id = ANY($2)", [r.id, rem]); }
+    if (r.kind === 'vay' || old?.kind === 'vay') await loanSchedule(db, r, user, demo);
     const cv = custVals(r, old, CT_CUST);
     if (['b_bank_acc', 'b_bank_name'].some(c => !old || old[c] !== r[c])) cv.bank_account = [r.b_bank_acc, r.b_bank_name].filter(Boolean).join(' - ');
     await syncCustomer(db, r.customer_id, cv, user, `Theo hợp đồng ${r.number}`);
@@ -843,6 +890,7 @@ H.contract = {
   async decorate(rows, { db, one }) {
     const D = await debtOf(db, rows.map(r => r.id));
     for (const r of rows) { const d = D.get(r.id); r.paid = d.paid; r.left = d.left; r.overdue = d.overdue; if (one) r._debt = d; }
+    if (one) for (const r of rows) if (r.kind === 'vay') r._loan = await db.q('SELECT * FROM kd_loan_pay WHERE contract_id = $1 ORDER BY due_on, kind DESC, seq', [r.id]);
     if (!one) await H.contract.listFill(rows, db);
     if (one && rows[0]) rows[0].new_schedule = (await db.q('SELECT name, due_on, pct, amount FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [rows[0].id]))
       .map(x => ({ name: x.name, due_on: x.due_on, pct: x.pct == null ? null : +x.pct, amount: x.pct == null ? +x.amount : null }));   // form sửa: lịch thu đang có
@@ -864,6 +912,8 @@ H.contract = {
   noDelete: r => !['du_thao', 'tu_choi'].includes(r.status) && 'Chỉ xóa được hợp đồng đang ở dự thảo',
   async beforeDelete(r, { db }) {   // lịch thu + hoa hồng dự kiến tự sinh theo hợp đồng; phiếu thu thật vẫn chặn xóa
     await db.q('UPDATE kd_contract SET next_id = NULL WHERE next_id = $1', [r.id]);   // gỡ nối giao dịch (HĐ vay / thuê → HĐMB này)
+    await db.q("UPDATE kd_contract SET link_ids = nullif(array_remove(link_ids, $1::int), '{}'::int[]) WHERE $1::int = ANY(link_ids)", [r.id]);   // gỡ tick HĐ vay ↔ thuê
+    await db.q('DELETE FROM kd_loan_pay WHERE contract_id = $1', [r.id]);
     await db.q("DELETE FROM kd_commission WHERE contract_id = $1 AND status IN ('du_kien', 'nhap', 'tu_choi', 'huy')", [r.id]);
     await db.q('DELETE FROM kd_installment WHERE contract_id = $1', [r.id]);
   },
@@ -1169,4 +1219,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { LIVE_CT, rentWord, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { LIVE_CT, rentWord, loanPlan, loanSchedule, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

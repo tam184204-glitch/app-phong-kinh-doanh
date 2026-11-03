@@ -398,7 +398,7 @@ def('cancel_req', {
 const HD_PTYPE = [['can_ho', 'Hợp đồng căn hộ chung cư'], ['lien_ke', 'Hợp đồng nhà liền kề']];
 const CT_ONLY = { ptype: ['can_ho'] }, LK_ONLY = { ptype: ['lien_ke'] };
 // HĐ thuê: ô giá bán ẩn, hiện ô thuê theo BRAVO (ngày bắt đầu / kết thúc, số tháng, đơn giá thuê, số lần thanh toán)
-const SALE_K = ['hdmb', 'thue_mua', 'hoan_thien'], CT_SALE = { ptype: ['can_ho'], kind: SALE_K }, LK_SALE = { ptype: ['lien_ke'], kind: SALE_K }, SALE_ONLY = { kind: SALE_K }, RENT_ONLY = { kind: ['thue'] };
+const SALE_K = ['hdmb', 'thue_mua', 'hoan_thien'], CT_SALE = { ptype: ['can_ho'], kind: SALE_K }, LK_SALE = { ptype: ['lien_ke'], kind: SALE_K }, SALE_ONLY = { kind: SALE_K }, RENT_ONLY = { kind: ['thue'] }, RENT_VAY = { kind: ['thue', 'vay'] }, VAY_ONLY = { kind: ['vay'] };
 const LIQ_REASON = [['tra_lai', 'Trả lại hẳn'], ['chuyen_ten', 'Chuyển tên hợp đồng']];   // lý do thanh lý hợp đồng
 const HD_KIND = [['hdmb', 'HĐ mua bán'], ['vay', 'HĐ vay'], ['thue', 'HĐ thuê'], ['thue_mua', 'HĐ thuê mua'], ['hoan_thien', 'HĐ thỏa thuận hoàn thiện']];
 // bên bán (chủ đầu tư) theo BRAVO: chọn Đơn vị / Bên A → tự điền thông tin bên bán (ô trống lấy theo hợp đồng gần nhất cùng Bên A)
@@ -424,6 +424,9 @@ def('contract', {
     thue: { cols: ['number', 'contract_on', 'unit_id', 'b_name', 'b_id_no', 'b_id_date', 'b_id_place', 'b_addr', 'b_phone', 'b_email', 'area_floor', 'area_tt', 'eff_on', 'exp_on', 'term_months', 'rent', 'value', 'pay_times', 'nature', 'closed', 'status'],
       head: [['Hợp đồng', 2], ['Bên thuê nhà', 8], ['Thông tin căn hộ', 10], ['', 1]],
       label: { contract_on: 'Ngày ký', unit_id: 'Mã căn hộ', b_name: 'Họ và tên', b_id_no: 'Số CMND / CCCD', b_id_date: 'Ngày cấp', b_id_place: 'Nơi cấp', b_addr: 'Địa chỉ', b_phone: 'Điện thoại', b_email: 'Email', area_floor: 'Diện tích sàn', area_tt: 'Diện tích nền (T.thủy)', value: 'Tổng tiền' } },
+    vay: { cols: ['number', 'contract_on', 'unit_id', 'b_name', 'b_id_no', 'b_phone', 'value', 'paid', 'loan_recv_on', 'eff_on', 'exp_on', 'term_months', 'int_mode', 'loan_rate', 'rent', 'int_period', 'principal_method', 'nature', 'link_ids', 'status'],
+      head: [['Hợp đồng', 2], ['Bên cho vay (khách hàng)', 4], ['Khoản vay', 3], ['Lãi & gốc', 8], ['Liên kết', 2], ['', 1]],
+      label: { contract_on: 'Ngày ký', unit_id: 'Mã căn hộ', b_name: 'Họ và tên', b_id_no: 'Số CMND / CCCD', b_phone: 'Điện thoại', value: 'Số tiền vay', paid: 'Gốc đã nhận', eff_on: 'Bắt đầu tính lãi', exp_on: 'Ngày đáo hạn', term_months: 'Thời hạn vay (tháng)', rent: 'Tiền thuê/tháng (trả lãi)' } },
     hoan_thien: { cols: ['stt', 'number', 'contract_on', 'unit_id', 'b_name', 'b_id_no', 'b_id_date', 'b_id_place', 'b_addr', 'b_phone', 'finish_value', 'discount', 'value'],
     head: [['Hợp đồng', 4], ['Thông tin bên mua nhà', 6], ['Giá trị hoàn thiện', 3]],   // bên mua: dữ liệu chung với HĐ mua bán cùng căn
     label: { stt: 'STT', number: 'Số HĐ', contract_on: 'Ngày ký', unit_id: 'Mã căn', b_name: 'Họ và tên', b_id_no: 'Số CMND', b_id_date: 'Ngày cấp', b_id_place: 'Nơi cấp', b_addr: 'Địa chỉ', b_phone: 'Điện thoại', finish_value: 'Giá trị trước giảm giá', discount: 'Số giảm giá', value: 'Giá trị sau giảm giá' } },
@@ -494,11 +497,20 @@ def('contract', {
     money('maint_fee', 'Phí bảo trì', { show: SALE_ONLY }),
     { k: 'corner_pct', l: 'Hệ số góc %', t: 'num', show: SALE_ONLY },
     money('corner_amt', 'Tiền hệ số góc', { show: SALE_ONLY }),
-    { k: 'eff_on', l: 'Ngày bắt đầu thuê', t: 'date', show: RENT_ONLY, req: 1 },
-    { k: 'exp_on', l: 'Ngày kết thúc thuê', t: 'date', show: RENT_ONLY, req: 1 },
-    { k: 'term_months', l: 'Thời hạn thuê (tháng)', t: 'int', show: RENT_ONLY, help: 'Tự tính theo ngày bắt đầu – kết thúc' },
+    { k: 'eff_on', l: 'Ngày bắt đầu thuê', t: 'date', show: RENT_VAY },   // HĐ vay: ngày bắt đầu tính lãi (bắt buộc với HĐ thuê — kiểm ở biz)
+    { k: 'exp_on', l: 'Ngày kết thúc thuê', t: 'date', show: RENT_VAY },   // HĐ vay: ngày đáo hạn
+    { k: 'term_months', l: 'Thời hạn thuê (tháng)', t: 'int', show: RENT_VAY, help: 'Tự tính theo ngày bắt đầu – kết thúc' },
     { k: 'pay_times', l: 'Số kỳ thanh toán', t: 'int', show: RENT_ONLY, help: 'Mỗi kỳ thu = số tháng của kỳ × tiền thuê/tháng, hạn thanh toán là ngày đầu mỗi kỳ' },
-    money('rent', 'Tiền thuê/tháng', { show: RENT_ONLY, req: 1, help: 'Tổng tiền thuê = tiền thuê/tháng × thời hạn thuê' }),
+    money('rent', 'Tiền thuê/tháng', { show: RENT_VAY, help: 'HĐ thuê: tổng tiền thuê = tiền thuê/tháng × thời hạn thuê. HĐ vay: tiền lãi mỗi tháng = 1 tháng tiền thuê (để trống: lấy theo HĐ thuê đi kèm)' }),
+    // HĐ vay (công ty vay tiền của khách, bản chất thường là bán căn): giải ngân gốc = các đợt ở bảng Lần thanh toán; lãi trả cho khách theo lịch kd_loan_pay
+    { k: 'loan_recv_on', l: 'Ngày nhận tiền vay', t: 'date', show: VAY_ONLY },
+    { k: 'loan_tranches', l: 'Số đợt giải ngân gốc', t: 'int', show: VAY_ONLY, help: 'Các đợt khách chuyển tiền gốc nhập ở bảng «Các đợt giải ngân gốc» bên dưới' },
+    { k: 'int_mode', l: 'Lãi trả bằng', t: 'sel', o: [['tien_thue', 'Tiền thuê căn hộ (mỗi tháng = 1 tháng tiền thuê)'], ['lai_suat', 'Theo lãi suất %/năm']], show: VAY_ONLY },
+    { k: 'loan_rate', l: 'Lãi suất (%/năm)', t: 'num', show: { kind: ['vay'], int_mode: ['lai_suat'] } },
+    { k: 'int_period', l: 'Kỳ trả lãi', t: 'sel', o: [['1', 'Hàng tháng'], ['3', 'Hàng quý (3 tháng)'], ['6', '6 tháng'], ['12', 'Hàng năm'], ['0', 'Một lần khi đáo hạn']], show: VAY_ONLY },
+    { k: 'principal_method', l: 'Phương thức trả gốc', t: 'sel', o: [['dao_han', 'Trả một lần khi đáo hạn'], ['theo_ky', 'Trả dần theo kỳ trả lãi'], ['thoa_thuan', 'Theo thỏa thuận (không lập lịch)']], show: VAY_ONLY },
+    { k: 'int_note', l: 'Cách tính lãi theo hợp đồng', t: 'text', show: VAY_ONLY, help: 'Cơ sở tính lãi, số ngày tính lãi, các điều chỉnh theo phụ lục…' },
+    { k: 'link_ids', l: 'Hợp đồng thuê / vay đi kèm', t: 'refs', ref: 'contract', show: RENT_VAY, help: 'HĐ vay tick chọn HĐ thuê đi kèm và ngược lại — chọn ở bên nào bên kia tự cập nhật' },
     money('value', 'Tổng tiền (giá trị hợp đồng)', { req: 1, help: 'Chung cư có giá nền: tự tính = tiền sau thuế + phí bảo trì + giá trị hoàn thiện' }),
     { k: 'closed', l: 'Hợp đồng đóng', t: 'bool' },
     money('sale_price', 'Giá bán căn hộ', { show: { kind: ['thue', 'vay'], nature: ['ban'] }, help: 'Giá bán của giao dịch (chưa có HĐMB) — để trống: lấy theo Danh mục sản phẩm' }),
@@ -553,6 +565,24 @@ def('installment', {
     { k: 'src', l: 'Căn cứ', t: 'sel', ro: 1, def: 'hop_dong', o: [['hop_dong', 'Hợp đồng', 'b'], ['phu_luc', 'Phụ lục', 'v']] },
     { k: 'active', l: 'Hiệu lực', t: 'bool', ro: 1, def: true },
   ], list: ['contract_id', 'seq', 'name', 'due_on', 'pct', 'amount', 'paid', 'pay_status', 'src'],
+});
+def('loan_pay', {
+  title: 'Lịch trả lãi & gốc HĐ vay', one: 'kỳ trả', code: 'CN-07', mod: '06', icon: 'fa-hand-holding-dollar', disp: "'Kỳ '||t.seq",
+  purpose: 'Theo dõi tiền lãi, tiền gốc công ty phải trả khách theo HĐ vay', users: 'Kế toán / trưởng phòng',
+  how: 'Lưu HĐ vay → máy lập lịch theo kỳ trả lãi → đến hạn trả thì ghi nhận ngày trả, số tiền đã trả',
+  rules: 'Lãi = 1 tháng tiền thuê / tháng (hoặc theo lãi suất); kỳ đã ghi nhận trả không bị lập lại',
+  c: [], u: ['ke_toan', 'truong_phong', 'ho_so'], d: [], order: 't.contract_id, t.due_on, t.kind DESC, t.seq', fields: [
+    { k: 'contract_id', l: 'Hợp đồng vay', t: 'ref', ref: 'contract', req: 1, ro: 1 },
+    { k: 'seq', l: 'Kỳ', t: 'int', ro: 1 },
+    { k: 'kind', l: 'Khoản trả', t: 'sel', ro: 1, o: [['lai', 'Tiền lãi', 'b'], ['goc', 'Trả gốc', 'v']] },
+    { k: 'period_from', l: 'Tính từ', t: 'date', ro: 1 },
+    { k: 'period_to', l: 'Đến', t: 'date', ro: 1 },
+    { k: 'due_on', l: 'Hạn trả', t: 'date', ro: 1 },
+    money('amount', 'Phải trả', { ro: 1 }),
+    { k: 'paid_on', l: 'Ngày đã trả', t: 'date' },
+    money('paid_amt', 'Số tiền đã trả'),
+    { k: 'note', l: 'Ghi chú', t: 'text' },
+  ], list: ['contract_id', 'seq', 'kind', 'period_from', 'period_to', 'due_on', 'amount', 'paid_on', 'paid_amt', 'note'],
 });
 def('contract_change', {
   title: 'Điều chỉnh – phụ lục hợp đồng', one: 'đề nghị', code: 'HD-02', mod: '05', icon: 'fa-file-pen', disp: 't.code',
@@ -915,7 +945,7 @@ const MENU = [
   ['03', 'Khách hàng tiềm năng', 'fa-users', [['e:contact_log']]],   // hồ sơ khách tự sinh từ kênh liên hệ (Website, Messenger, Zalo, Hotline, trực tiếp)
   ['04', 'Giao dịch bán hàng', 'fa-handshake-angle', [['e:sale_notice'], ['e:reservation'], ['e:noxh_check'], ['signing', 'Lịch ký hợp đồng'], ['payouts', 'Theo dõi thanh lý & chi trả', 'GD-04']]],
   ['05', 'Hồ sơ & hợp đồng', 'fa-file-contract', [['e:contract?group=can_ho', 'Hợp đồng căn hộ chung cư'], ['e:contract?group=lien_ke', 'Hợp đồng nhà liền kề'], ['loans', 'Theo dõi tình trạng vay vốn', 'HD-05'], ['e:contract_change'], ['vault', 'Lưu trữ hồ sơ pháp lý']]],
-  ['06', 'Công nợ & kế hoạch thu', 'fa-sack-dollar', [['unitstatus', 'Tình trạng căn hộ & công nợ', 'CN-06'], ['ledger', 'Sổ công nợ căn hộ'], ['finishpay', 'Tiến độ thu tiền hoàn thiện', 'CN-05'], ['e:installment'], ['e:receipt'], ['e:collect_plan'], ['e:debt_call'], ['e:refund']]],
+  ['06', 'Công nợ & kế hoạch thu', 'fa-sack-dollar', [['unitstatus', 'Tình trạng căn hộ & công nợ', 'CN-06'], ['loantrack', 'Theo dõi HĐ vay — lãi & gốc', 'CN-07'], ['ledger', 'Sổ công nợ căn hộ'], ['finishpay', 'Tiến độ thu tiền hoàn thiện', 'CN-05'], ['e:installment'], ['e:receipt'], ['e:collect_plan'], ['e:debt_call'], ['e:refund']]],
   ['07', 'Bàn giao căn hộ', 'fa-key', [['ready', 'Căn đủ điều kiện'], ['e:handover'], ['e:defect']]],
   ['08', 'Cấp sổ hồng', 'fa-book', [['e:pinkbook']]],
   ['09', 'Chăm sóc khách hàng', 'fa-headset', [['e:ticket'], ['e:notice']]],
