@@ -22,14 +22,14 @@ function dmyParts(v) {
 }
 
 // ---------- dữ liệu bảng tổng hợp ----------
-async function data(user, { project, from, to } = {}) {   // from / to: lọc theo ngày nộp hồ sơ (yyyy-mm-dd)
+async function data(user, { project, from, to, by } = {}) {   // from / to: lọc theo ngày nộp hồ sơ (yyyy-mm-dd); by=sxd → theo ngày nộp hồ sơ SXD
   const day = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v : null;
   if (!canSee(user)) deny('Bảng tổng hợp Mẫu 4 có dữ liệu định danh — chỉ trưởng phòng, lãnh đạo, nhân viên hồ sơ được xem');
   const rows = await q(`SELECT n.id, n.received_on, n.reg_kind, n.old_id_no, n.job, n.doi_tuong, n.confirm_org, n.housing, n.income, n.province, n.district, n.commune, n.members, n.status, n.result, n.sxd_result, n.sxd_note, n.sxd_submit_on, n.sxd_approved_on, n.sxd_doc_no, n.unit_text, n.unit_area,
       k.full_name, k.phone, k.phone2, k.birth, k.id_no, u.code unit_code, u.area_tt, p.id project_id, p.code project_code, p.name project
     FROM kd_noxh_check n JOIN kd_customer k ON k.id = n.customer_id LEFT JOIN kd_unit u ON u.id = n.unit_id
       LEFT JOIN kd_project p ON p.id = coalesce(u.project_id, (SELECT x.id FROM kd_project x WHERE upper(x.code) = upper(split_part(n.unit_text, '-', 1)) LIMIT 1))   -- căn ngoài danh mục: dự án theo tiền tố mã căn
-    WHERE ($1::int IS NULL OR p.id = $1) AND ($2::date IS NULL OR n.received_on >= $2) AND ($3::date IS NULL OR n.received_on <= $3)
+    WHERE ($1::int IS NULL OR p.id = $1) AND ($2::date IS NULL OR n.${by === 'sxd' ? 'sxd_submit_on' : 'received_on'} >= $2) AND ($3::date IS NULL OR n.${by === 'sxd' ? 'sxd_submit_on' : 'received_on'} <= $3)
     ORDER BY n.received_on NULLS LAST, n.id`, [project ? +project : null, day(from), day(to)]);
   return rows.map((r, i) => {
     const head = { name: r.full_name, phone: [r.phone, r.phone2].filter(Boolean).join('/ '), birth: dmyParts(r.birth), old_id_no: r.old_id_no, id_no: r.id_no, job: r.job, doi_tuong: r.doi_tuong, confirm_org: r.confirm_org, relation: 'Chủ hộ' };
@@ -95,7 +95,7 @@ const HH_MERGE = [0, 1, 2, 4, 13, 14, 15, 16, 17, 19, 20];
 async function xlsx(user, qs) {
   const hs = await data(user, qs);
   const pj = qs.project ? hs[0]?.project || (await one('SELECT name FROM kd_project WHERE id = $1', [+qs.project]))?.name : null;
-  const per = qs.from || qs.to ? ` (ngày nộp hồ sơ${qs.from ? ' từ ' + dmy(qs.from) : ''}${qs.to ? ' đến ' + dmy(qs.to) : ''})` : '';
+  const per = qs.from || qs.to ? ` (ngày nộp hồ sơ${qs.by === 'sxd' ? ' SXD' : ''}${qs.from ? ' từ ' + dmy(qs.from) : ''}${qs.to ? ' đến ' + dmy(qs.to) : ''})` : '';
   const out = [[(pj ? `DỰ ÁN: ${pj.toUpperCase()}` : 'DANH SÁCH ĐỐI TƯỢNG ĐĂNG KÝ MUA NHÀ Ở XÃ HỘI') + per], HEAD, HEAD2];
   const merges = ['A1:U1', 'I2:J2', 'O2:Q2', 'T2:U2', ...HEAD2.map((h, i) => !h && ![8, 9, 14, 15, 16, 19, 20].includes(i) ? `${L(i)}2:${L(i)}3` : null).filter(Boolean)];
   for (const h of hs) {
