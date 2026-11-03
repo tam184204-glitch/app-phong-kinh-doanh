@@ -77,14 +77,16 @@ async function pricing(db, unit, on = today()) {
 }
 
 // ======================= LỊCH THANH TOÁN =======================
-async function normSchedule(db, rows, value, label = 'Lịch thanh toán') {
+// HĐMB: % các đợt × tiền sau thuế (= giá trị HĐ − phí bảo trì); phí bảo trì thu riêng, cộng trọn vào đợt «Đợt thu phí bảo trì» (mặc định 3)
+async function normSchedule(db, rows, value, label = 'Lịch thanh toán', maint = 0, dot = 3) {
+  const hasM = maint > 0 && Array.isArray(rows) && rows.length > 0, mi = hasM ? Math.min(Math.max(1, +dot || 3), rows.length) - 1 : -1, base = hasM ? value - maint : value;
   if (!Array.isArray(rows) || !rows.length) bad(`${label}: chưa có kỳ thu nào`);
   const F = C.F.installment, out = [];
   for (const [i, r] of rows.entries()) {
     const due_on = await C.normField(F.due_on, r.due_on, db, `${label} kỳ ${i + 1} — ngày đến hạn`);
     let amount = await C.normField(F.amount, r.amount, db, `${label} kỳ ${i + 1} — số tiền`);
     const pct = r.pct === '' || r.pct == null ? null : await C.normField(F.pct, r.pct, db, `${label} kỳ ${i + 1} — tỷ lệ`);
-    if (amount == null && pct != null) amount = Math.round(value * pct / 100);
+    if (amount == null && pct != null) amount = Math.round(base * pct / 100) + (i === mi ? maint : 0);
     if (!due_on || !amount) bad(`${label} kỳ ${i + 1}: cần ngày đến hạn và số tiền (hoặc tỷ lệ)`);
     out.push({ seq: i + 1, name: String(r.name || `Đợt ${i + 1}`).trim(), due_on, pct, amount });
   }
@@ -808,9 +810,10 @@ H.contract = {
     else { r.liquidated_on = null; r.liquidate_reason = null; r.liquidate_note = null; }
     if (r.loan_status === 'co_vay' && !String(r.loan_bank || '').trim()) bad('Có vay: ghi ngân hàng cho vay');
     if (r.loan_status !== 'co_vay') { r.loan_bank = null; r.loan_doc3 = null; }
+    if (['hdmb', 'thue_mua'].includes(r.kind)) { if (+r.maint_fee > 0 && r.maint_dot == null) r.maint_dot = 3; if (r.maint_dot != null && !(+r.maint_dot >= 1)) bad('Đợt thu phí bảo trì phải từ 1 trở lên', { fields: ['maint_dot'] }); } else r.maint_dot = null;
     // bảng «Lần thanh toán» trên form: kiểm tra khớp Tổng tiền (ghi thành lịch thu ở afterSave)
     // không lưu vào cột (lịch thu nằm ở kd_installment) — chuyển sang afterSave qua ctx
-    ctx.sched = Array.isArray(r.new_schedule) && r.new_schedule.length ? await normSchedule(db, r.new_schedule.map(x => x.pct != null ? { ...x, amount: null } : x), r.value, 'Lần thanh toán') : null;
+    ctx.sched = Array.isArray(r.new_schedule) && r.new_schedule.length ? await normSchedule(db, r.new_schedule.map(x => x.pct != null ? { ...x, amount: null } : x), r.value, 'Lần thanh toán', ['hdmb', 'thue_mua'].includes(r.kind) ? +r.maint_fee || 0 : 0, r.maint_dot) : null;
     r.new_schedule = null;
     if (!old || old.unit_id !== r.unit_id) {
       const u = r.unit_id ? await raw(db, 'unit', r.unit_id) : null;
@@ -910,7 +913,7 @@ H.contract = {
   },
   acts: {
     async schedule(r, d, { db, user, demo }) {
-      const rows = await normSchedule(db, d.rows, r.value);
+      const rows = await normSchedule(db, d.rows, r.value, 'Lịch thanh toán', ['hdmb', 'thue_mua'].includes(r.kind) ? +r.maint_fee || 0 : 0, r.maint_dot);
       await writeSchedule(db, r.id, rows, 'hop_dong', user, demo);
       return { msg: `Đã lập ${rows.length} kỳ thu, tổng ${fmtMoney(r.value)}đ` };
     },
