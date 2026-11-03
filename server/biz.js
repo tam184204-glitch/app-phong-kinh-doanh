@@ -79,30 +79,41 @@ async function pricing(db, unit, on = today()) {
 
 // ======================= LỊCH THANH TOÁN =======================
 // HĐMB: % các đợt × tiền sau thuế (= giá trị HĐ − phí bảo trì); phí bảo trì thu riêng, cộng trọn vào đợt «Đợt thu phí bảo trì» (mặc định 3)
+// maint > 0 (HĐMB): tỷ lệ % các đợt × tiền sau thuế (= giá trị − phí bảo trì); phí bảo trì thu ở DÒNG RIÊNG cố định (dòng maint: true, số tiền = phí bảo trì,
+// tự xếp theo ngày đến hạn). Lịch cũ / nhập file không có dòng riêng: cộng trọn phí bảo trì vào «Đợt thu phí bảo trì» (dot) như trước
 async function normSchedule(db, rows, value, label = 'Lịch thanh toán', maint = 0, dot = 3) {
-  const hasM = maint > 0 && Array.isArray(rows) && rows.length > 0, mi = hasM ? Math.min(Math.max(1, +dot || 3), rows.length) - 1 : -1, base = hasM ? value - maint : value;
+  if (Array.isArray(rows) && !(maint > 0)) rows = rows.filter(r => !r.maint || +r.amount > 0);   // không có phí bảo trì: bỏ dòng bảo trì trống
   if (!Array.isArray(rows) || !rows.length) bad(`${label}: chưa có kỳ thu nào`);
-  const F = C.F.installment, out = [];
+  const own = maint > 0 && rows.some(r => r.maint), mi = maint > 0 && !own ? Math.min(Math.max(1, +dot || 3), rows.length) - 1 : -1, base = maint > 0 ? value - maint : value;
+  const F = C.F.installment;
+  let out = [];
   for (const [i, r] of rows.entries()) {
-    const due_on = await C.normField(F.due_on, r.due_on, db, `${label} kỳ ${i + 1} — ngày đến hạn`);
-    let amount = await C.normField(F.amount, r.amount, db, `${label} kỳ ${i + 1} — số tiền`);
-    const pct = r.pct === '' || r.pct == null ? null : await C.normField(F.pct, r.pct, db, `${label} kỳ ${i + 1} — tỷ lệ`);
+    const m = own && r.maint, at = m ? `${label} — dòng phí bảo trì` : `${label} kỳ ${i + 1}`;
+    const due_on = await C.normField(F.due_on, r.due_on, db, `${at} — ngày đến hạn`);
+    let amount = m ? maint : await C.normField(F.amount, r.amount, db, `${at} — số tiền`);
+    const pct = m || r.pct === '' || r.pct == null ? null : await C.normField(F.pct, r.pct, db, `${at} — tỷ lệ`);
     if (amount == null && pct != null) amount = Math.round(base * pct / 100) + (i === mi ? maint : 0);
-    if (!due_on || !amount) bad(`${label} kỳ ${i + 1}: cần ngày đến hạn và số tiền (hoặc tỷ lệ)`);
-    out.push({ seq: i + 1, name: String(r.name || `Đợt ${i + 1}`).trim(), due_on, pct, amount });
+    if (!due_on || !amount) bad(`${at}: cần ngày đến hạn và số tiền (hoặc tỷ lệ)`);
+    out.push({ name: String(r.name || (m ? 'Phí bảo trì' : `Đợt ${i + 1}`)).trim(), due_on, pct, amount, is_maint: !!r.maint });
   }
+  if (own) {   // dòng phí bảo trì: đặt sau các đợt có hạn không muộn hơn hạn của nó
+    const mr = out.find(r => r.is_maint), rest = out.filter(r => r !== mr), at = rest.filter(r => r.due_on <= mr.due_on).length;
+    out = [...rest.slice(0, at), mr, ...rest.slice(at)];
+  }
+  out.forEach((r, i) => { r.seq = i + 1; });
   for (let i = 1; i < out.length; i++) if (out[i].due_on < out[i - 1].due_on) bad(`${label}: ngày đến hạn kỳ ${i + 1} sớm hơn kỳ ${i}`);
   const sum = out.reduce((s, r) => s + r.amount, 0);
-  // làm tròn: dồn chênh lệch nhỏ (≤ 1.000đ / kỳ) vào kỳ cuối
-  if (Math.abs(sum - value) <= 1000 * out.length && sum !== value) { out[out.length - 1].amount += value - sum; }
+  // làm tròn: dồn chênh lệch nhỏ (≤ 1.000đ / kỳ) vào kỳ cuối (không dồn vào dòng phí bảo trì)
+  const li = Math.max(out.map(r => r.is_maint).lastIndexOf(false), 0);
+  if (Math.abs(sum - value) <= 1000 * out.length && sum !== value) { out[li].amount += value - sum; }
   else if (sum !== value) bad(`${label}: tổng các kỳ ${fmtMoney(sum)} không khớp nghĩa vụ phải thu ${fmtMoney(value)} (lệch ${fmtMoney(sum - value)})`);
   return out;
 }
 async function writeSchedule(db, contractId, rows, src, user, demo) {
   await db.q('UPDATE kd_installment SET active = false, updated_at = now(), updated_by = $2 WHERE contract_id = $1 AND active', [contractId, user?.id ?? null]);
   for (const r of rows)
-    await db.q('INSERT INTO kd_installment (contract_id, seq, name, due_on, pct, amount, src, active, created_by, is_demo) VALUES ($1,$2,$3,$4,$5,$6,$7,true,$8,$9)',
-      [contractId, r.seq, r.name, r.due_on, r.pct, r.amount, src, user?.id ?? null, !!demo]);
+    await db.q('INSERT INTO kd_installment (contract_id, seq, name, due_on, pct, amount, is_maint, src, active, created_by, is_demo) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$10)',
+      [contractId, r.seq, r.name, r.due_on, r.pct, r.amount, !!r.is_maint, src, user?.id ?? null, !!demo]);
   await C.audit(db, 'contract', contractId, 'lich_thanh_toan', null, { lich: rows }, user, `${rows.length} kỳ · ${src === 'phu_luc' ? 'theo phụ lục' : 'theo hợp đồng'}`, demo);
 }
 
@@ -234,10 +245,11 @@ async function syncContractValue(db, contractId, user, note = 'Đồng bộ giá
   const sets = Object.keys(patch);
   await db.q(`UPDATE kd_contract SET ${sets.map((k, i) => `${k} = $${i + 1}`).join(', ')}, updated_at = now() WHERE id = $${sets.length + 1}`, [...sets.map(k => patch[k]), c.id]);
   await C.audit(db, 'contract', c.id, 'sua', { value: c.value }, { value }, user, note, c.is_demo);
-  const inst = await db.q('SELECT name, due_on, pct, amount, src FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [c.id]);
-  if (inst.length) {
-    const rows = inst.map(i => ({ name: i.name, due_on: i.due_on, pct: i.pct, amount: i.pct != null ? null : Math.round(+i.amount * value / +c.value) }));
-    await writeSchedule(db, c.id, await normSchedule(db, rows, value), inst[0].src || 'hop_dong', user, c.is_demo);
+  const inst = await db.q('SELECT name, due_on, pct, amount, is_maint, src FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [c.id]);
+  if (inst.length) {   // các đợt theo tỷ lệ cũ; dòng phí bảo trì = phí bảo trì mới
+    const sale = ['hdmb', 'thue_mua'].includes(c.kind), mt = sale ? +(patch.maint_fee ?? c.maint_fee) || 0 : 0;
+    const rows = inst.map(i => i.is_maint ? { name: i.name, due_on: i.due_on, maint: true, amount: mt ? null : +i.amount } : { name: i.name, due_on: i.due_on, pct: i.pct, amount: i.pct != null ? null : Math.round(+i.amount * value / +c.value) });
+    await writeSchedule(db, c.id, await normSchedule(db, rows, value, 'Lịch thanh toán', mt, c.maint_dot), inst[0].src || 'hop_dong', user, c.is_demo);
   }
   await refreshCommission(db, c.id, user, c.is_demo);
   return true;
@@ -940,8 +952,8 @@ H.contract = {
       await db.q(`UPDATE kd_noxh_check SET plan_sign = $1, sign_place = $2, sign_status = coalesce($3, sign_status), updated_at = now() WHERE customer_id = $4 AND (unit_id IS NULL OR unit_id = $5)`,
         [r.plan_sign ?? null, r.sign_place ?? null, r.sign_status ?? null, r.customer_id, r.unit_id]);
     if (sched?.length && ['du_thao', 'tu_choi', 'cho_duyet', 'cho_ky'].includes(r.status)) {   // ghi lịch thu khi khác lịch đang có
-      const cur = await db.q('SELECT name, due_on, pct, amount FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [r.id]);
-      const key = xs => JSON.stringify(xs.map(x => [x.name, String(x.due_on).slice(0, 10), x.pct == null ? null : +x.pct, +x.amount]));
+      const cur = await db.q('SELECT name, due_on, pct, amount, is_maint FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [r.id]);
+      const key = xs => JSON.stringify(xs.map(x => [x.name, String(x.due_on).slice(0, 10), x.pct == null ? null : +x.pct, +x.amount, !!x.is_maint]));
       if (key(cur) !== key(sched)) await writeSchedule(db, r.id, sched, 'hop_dong', user, demo);
     }
     await resFromContract(db, r, user);
@@ -953,8 +965,8 @@ H.contract = {
     for (const r of rows) { const d = D.get(r.id); r.paid = d.paid; r.left = d.left; r.overdue = d.overdue; if (one) r._debt = d; }
     if (one) for (const r of rows) if (r.kind === 'vay') r._loan = await db.q('SELECT * FROM kd_loan_pay WHERE contract_id = $1 ORDER BY due_on, kind DESC, seq', [r.id]);
     if (!one) await H.contract.listFill(rows, db);
-    if (one && rows[0]) rows[0].new_schedule = (await db.q('SELECT name, due_on, pct, amount FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [rows[0].id]))
-      .map(x => ({ name: x.name, due_on: x.due_on, pct: x.pct == null ? null : +x.pct, amount: x.pct == null ? +x.amount : null }));   // form sửa: lịch thu đang có
+    if (one && rows[0]) rows[0].new_schedule = (await db.q('SELECT name, due_on, pct, amount, is_maint FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [rows[0].id]))
+      .map(x => ({ name: x.name, due_on: x.due_on, pct: x.pct == null ? null : +x.pct, amount: x.pct == null ? +x.amount : null, ...(x.is_maint ? { maint: true } : {}) }));   // form sửa: lịch thu đang có (dòng phí bảo trì riêng có maint)
   },
   acts: {
     async schedule(r, d, { db, user, demo }) {

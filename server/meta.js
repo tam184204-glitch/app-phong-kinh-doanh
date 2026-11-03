@@ -496,7 +496,8 @@ def('contract', {
     money('after_tax', 'Tiền sau thuế', { help: 'Để trống → trước thuế + tiền thuế', show: SALE_ONLY }),
     money('finish_value', 'Giá trị hoàn thiện', { show: SALE_ONLY }),
     money('maint_fee', 'Phí bảo trì', { show: SALE_ONLY }),
-    { k: 'maint_dot', l: 'Đợt thu phí bảo trì', t: 'int', def: 3, show: { kind: ['hdmb', 'thue_mua'] }, help: 'Phí bảo trì thu riêng, cộng trọn vào đợt này (mặc định đợt 3) — hoặc bấm nút «Phí bảo trì» ở đợt muốn thu; % các đợt tính trên tiền sau thuế' },
+    // bỏ khỏi form 03/11/2026: phí bảo trì thu ở dòng riêng cố định trong Lần thanh toán (có hạn riêng); chỉ còn dùng cho lịch cũ cộng phí bảo trì vào đợt (mặc định đợt 3)
+    { k: 'maint_dot', l: 'Đợt thu phí bảo trì', t: 'int', def: 3, hide: 1, show: { kind: ['hdmb', 'thue_mua'] } },
     { k: 'corner_pct', l: 'Hệ số góc %', t: 'num', show: SALE_ONLY },
     money('corner_amt', 'Tiền hệ số góc', { show: SALE_ONLY }),
     { k: 'eff_on', l: 'Ngày bắt đầu thuê', t: 'date', show: RENT_VAY },   // HĐ vay: ngày bắt đầu tính lãi (bắt buộc với HĐ thuê — kiểm ở biz)
@@ -565,6 +566,7 @@ def('installment', {
     { k: 'due_on', l: 'Ngày đến hạn', t: 'date', req: 1 },
     { k: 'pct', l: 'Tỷ lệ (%)', t: 'num' },
     money('amount', 'Số tiền', { req: 1 }),
+    { k: 'is_maint', l: 'Dòng phí bảo trì', t: 'bool', ro: 1, hide: 1, def: false },   // HĐMB: phí bảo trì thu ở dòng riêng cố định (không cộng vào đợt nào)
     { k: 'src', l: 'Căn cứ', t: 'sel', ro: 1, def: 'hop_dong', o: [['hop_dong', 'Hợp đồng', 'b'], ['phu_luc', 'Phụ lục', 'v']] },
     { k: 'active', l: 'Hiệu lực', t: 'bool', ro: 1, def: true },
   ], list: ['contract_id', 'seq', 'name', 'due_on', 'pct', 'amount', 'paid', 'pay_status', 'src'],
