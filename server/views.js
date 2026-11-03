@@ -428,7 +428,7 @@ async function priceSheet(db, user, id) {
     const after = dg ? (pol.unit_price && u.area_tt ? Math.round(pol.unit_price * u.area_tt) : null) : u.price_net || (u.total_price && u.maint_fee ? u.total_price - u.maint_fee : null);
     const v = !dg && u.vat_pct != null ? u.vat_pct : vat;   // bảng giá Bravo đã có tiền trước thuế / thuế / đơn giá nền thì dùng luôn
     const before = !dg && u.pretax != null ? Math.round(u.pretax) : after != null ? Math.round(after / (1 + v / 100)) : null;
-    const maint = dg ? (after != null ? Math.round(after * mp / 100) : null) : u.maint_fee ?? (before != null ? Math.round(before * mp / 100) : null);
+    const maint = dg ? (before != null ? Math.round(before * mp / 100 / 1000) * 1000 : null) : u.maint_fee ?? (before != null ? Math.round(before * mp / 100 / 1000) * 1000 : null);   // phí bảo trì = 2% × tiền trước thuế (làm tròn nghìn)
     const total = (dg || !u.total_price ? (after != null ? after + (maint || 0) : null) : u.total_price);
     return { unit_id: u.id, building: u.building, code: u.code, floor: u.floor, kind: u.kind, status: u.status, area_xd: u.area_xd, area_tt: u.area_tt,
       base: !dg && u.base_price != null ? u.base_price : before != null && u.area_tt ? Math.round(before / u.area_tt) : null, before, vat: v,

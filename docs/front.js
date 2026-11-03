@@ -801,6 +801,15 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
       if (a > 0) form.elements.base_price.value = moneyStr(Math.round(b0 - (+rdn('discount') || 0) / a));
     });
     form.addEventListener('input', e => { if (['base_price', 'area_tt', 'floor_price', 'area_floor', 'discount', 'corner_pct', 'vat_pct', 'finish_value', 'commission_pct', 'value'].includes(e.target.name)) contractCalc(); });
+    // không có giá nền: gõ Tiền trước thuế → tiền thuế, sau thuế, phí bảo trì (= 2% × tiền trước thuế, làm tròn nghìn), tổng tiền
+    form.addEventListener('input', e => {
+      if (!['pretax', 'vat_pct'].includes(e.target.name) || +rdn('base_price') > 0 || ['thue', 'vay', 'hoan_thien'].includes(form.elements.kind?.value ?? rec.kind)) return;
+      const F = +rdn('pretax') || 0; if (!(F > 0)) return;
+      const r3 = v => Math.round(v / 1000) * 1000, H = F * (rdn('vat_pct') ?? 5) / 100, out = { vat_amt: Math.round(H), after_tax: r3(F + H), maint_fee: r3(F * 0.02) };
+      out.value = out.after_tax + out.maint_fee + (+rdn('finish_value') || 0);
+      for (const [k, v] of Object.entries(out)) if (form.elements[k]) form.elements[k].value = moneyStr(v);
+      sch?._redraw?.();
+    });
     form.addEventListener('input', e => { if (e.target.name === 'contract_on') sch?._redraw?.(); if (e.target.name === 's_name' && (M.sellers || []).some(x => x.name === e.target.value)) fillSeller().catch(er => toast(er.message, true)); });
     // nhập xong ô bên bán là ghi nhớ luôn cho Bên A đó (kể cả khi hợp đồng chưa lưu được)
     form.addEventListener('change', e => { if (/^s_/.test(e.target.name) && e.target.name !== 's_name' && form.elements.s_name.value.trim()) api('PUT', '/api/seller', { name: form.elements.s_name.value, k: e.target.name, v: e.target.value }).catch(() => {}); });
