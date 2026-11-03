@@ -25,7 +25,7 @@ function dmyParts(v) {
 async function data(user, { project, from, to } = {}) {   // from / to: lọc theo ngày nộp hồ sơ (yyyy-mm-dd)
   const day = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v : null;
   if (!canSee(user)) deny('Bảng tổng hợp Mẫu 4 có dữ liệu định danh — chỉ trưởng phòng, lãnh đạo, nhân viên hồ sơ được xem');
-  const rows = await q(`SELECT n.id, n.received_on, n.reg_kind, n.old_id_no, n.job, n.doi_tuong, n.confirm_org, n.housing, n.income, n.province, n.district, n.commune, n.members, n.status, n.result, n.sxd_result, n.sxd_note, n.unit_text, n.unit_area,
+  const rows = await q(`SELECT n.id, n.received_on, n.reg_kind, n.old_id_no, n.job, n.doi_tuong, n.confirm_org, n.housing, n.income, n.province, n.district, n.commune, n.members, n.status, n.result, n.sxd_result, n.sxd_note, n.sxd_submit_on, n.unit_text, n.unit_area,
       k.full_name, k.phone, k.phone2, k.birth, k.id_no, u.code unit_code, u.area_tt, p.id project_id, p.code project_code, p.name project
     FROM kd_noxh_check n JOIN kd_customer k ON k.id = n.customer_id LEFT JOIN kd_unit u ON u.id = n.unit_id
       LEFT JOIN kd_project p ON p.id = coalesce(u.project_id, (SELECT x.id FROM kd_project x WHERE upper(x.code) = upper(split_part(n.unit_text, '-', 1)) LIMIT 1))   -- căn ngoài danh mục: dự án theo tiền tố mã căn
@@ -34,21 +34,28 @@ async function data(user, { project, from, to } = {}) {   // from / to: lọc th
   return rows.map((r, i) => {
     const head = { name: r.full_name, phone: [r.phone, r.phone2].filter(Boolean).join('/ '), birth: dmyParts(r.birth), old_id_no: r.old_id_no, id_no: r.id_no, job: r.job, doi_tuong: r.doi_tuong, confirm_org: r.confirm_org, relation: 'Chủ hộ' };
     const mem = (r.members || []).map(m => ({ ...m, birth: [m.bday ?? '', m.bmonth ?? '', m.byear ?? ''] }));
-    return { id: r.id, tt: i + 1, received_on: r.received_on, project: r.project, project_id: r.project_id, unit_code: r.unit_code || r.unit_text, area: r.unit_area ?? r.area_tt, reg_kind: r.reg_kind, status: r.status, result: r.result, sxd_result: r.sxd_result, sxd_note: r.sxd_note,
+    return { id: r.id, tt: i + 1, received_on: r.received_on, project: r.project, project_id: r.project_id, unit_code: r.unit_code || r.unit_text, area: r.unit_area ?? r.area_tt, reg_kind: r.reg_kind, status: r.status, result: r.result, sxd_result: r.sxd_result, sxd_note: r.sxd_note, sxd_submit_on: r.sxd_submit_on,
       housing: r.housing, province: r.province, district: r.district, commune: r.commune, income: r.income, people: [head, ...mem] };
   });
 }
 
 // ---------- chuyển trạng thái hàng loạt (Dự thảo → Chờ xét duyệt → Đã duyệt SXD) ----------
 const BULK_ST = ['nhap', 'cho_duyet', 'da_duyet'];
-async function bulkStatus(user, { ids, status, sxd_result, sxd_note } = {}) {
+// không gửi status = chỉ ghi Ngày nộp hồ sơ SXD cho các hồ sơ đã chọn
+async function bulkStatus(user, { ids, status, sxd_result, sxd_note, sxd_submit_on } = {}) {
   const e = E.noxh_check;
   if (!canSee(user) || !(C.can(user, e, 'u') || C.can(user, e, 'a'))) deny('Chỉ trưởng phòng, lãnh đạo, nhân viên hồ sơ được chuyển trạng thái hồ sơ');
   ids = [...new Set((ids || []).map(Number).filter(Boolean))];
   if (!ids.length) bad('Chưa chọn hồ sơ nào');
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(sxd_submit_on || '') ? sxd_submit_on : null;
+  if (!status) {
+    if (!day) bad('Chọn ngày nộp hồ sơ SXD');
+    await tx(async db => { for (const id of ids) await C.sys(db, 'noxh_check', id, { sxd_submit_on: day }, user, 'sua', `Ghi ngày nộp hồ sơ SXD ${dmy(day)}`); });
+    return { ok: true, n: ids.length };
+  }
   if (!BULK_ST.includes(status)) bad('Trạng thái không hợp lệ');
   if (status === 'da_duyet' && !['duoc_duyet', 'khong_duyet'].includes(sxd_result)) bad('Chọn kết quả SXD: được duyệt hay không được duyệt');
-  const patch = { status, sxd_result: status === 'da_duyet' ? sxd_result : null, sxd_note: status === 'da_duyet' ? s(sxd_note) || null : null };
+  const patch = { status, sxd_result: status === 'da_duyet' ? sxd_result : null, sxd_note: status === 'da_duyet' ? s(sxd_note) || null : null, ...(day ? { sxd_submit_on: day } : {}) };
   const st = L => e.fields.find(f => f.k === 'status').o.find(o => o[0] === L)?.[1];
   let n = 0;
   await tx(async db => { for (const id of ids) { await C.sys(db, 'noxh_check', id, patch, user, 'chuyen_tt', `Chuyển hàng loạt sang «${st(status)}»`); n++; } });

@@ -340,6 +340,7 @@ def('noxh_check', {
     { k: 'reviews', l: 'Các bước xét duyệt nội bộ', t: 'json', ro: 1 },
     // 3 bước: Dự thảo → Chờ xét duyệt → Đã duyệt SXD (ghi kết quả được / không được duyệt); chuyển hàng loạt ở màn Hồ sơ mua NOXH
     { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'nhap', o: [['nhap', 'Dự thảo', 's'], ['cho_duyet', 'Chờ xét duyệt', 'a'], ['da_duyet', 'Đã duyệt SXD', 'g'], ['tu_choi', 'Trả lại', 'r']] },
+    { k: 'sxd_submit_on', l: 'Ngày nộp hồ sơ SXD', t: 'date', ro: 1 },
     { k: 'sxd_result', l: 'Kết quả SXD', t: 'sel', ro: 1, o: [['duoc_duyet', 'Được duyệt', 'g'], ['khong_duyet', 'Không được duyệt', 'r']] },
     { k: 'sxd_note', l: 'Ghi chú duyệt SXD', t: 'long', ro: 1 },
     owner('Người tiếp nhận'),

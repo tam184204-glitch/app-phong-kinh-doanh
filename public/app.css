@@ -774,6 +774,7 @@ table.prod-t tfoot td { font-weight: 800 !important; color: var(--ink) !importan
 .m4t tbody tr:hover td { background: #f6f9fd; }
 .m4bulk { background: #fff8e6; border-bottom: 1px solid #f1dfb0; }
 .m4bulk[hidden], .m4bulk [hidden] { display: none; }
+.m4bd { display: inline-flex; gap: 8px; align-items: center; margin-left: 12px; padding-left: 12px; border-left: 1px solid #f1dfb0; }
 .m4t td.m4ck, .m4t th input { cursor: pointer; }
 
 /* tiêu đề nhóm trong form (Bên mua / Bên bán / Thông tin chi tiết…) */
