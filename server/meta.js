@@ -294,6 +294,14 @@ const M4 = {
   thu_nhap: ['Có thu nhập bình quân hàng tháng thực nhận không quá 25 triệu đồng', 'Có thu nhập bình quân hàng tháng thực nhận không quá 50 triệu đồng'],
   quan_he: ['Vợ (Chồng)', 'Con', 'Anh, chị, em', 'Cha (Mẹ)', 'Ông (Bà)', 'Cháu'],
 };
+// cột khai báo một người trong hộ theo Mẫu 4 — dùng chung cho dòng chủ hộ và thành viên (mỗi lần gọi trả bản mới, không dùng chung đối tượng)
+const M4_PERSON = () => [
+  { k: 'name', l: 'Họ và Tên', w: 170 }, { k: 'phone', l: 'Số điện thoại', w: 115 }, { k: 'bday', l: 'Ngày sinh', w: 60, pii: 1 }, { k: 'bmonth', l: 'Tháng sinh', w: 60, pii: 1 }, { k: 'byear', l: 'Năm sinh', w: 70, pii: 1 },
+  { k: 'old_id_no', l: 'Số CMND', w: 110, pii: 1 }, { k: 'id_no', l: 'Số CCCD', w: 125, pii: 1 }, { k: 'job', l: 'Nghề nghiệp', sug: M4.nghe, w: 170 },
+  { k: 'doi_tuong', l: 'Đối tượng chính sách được hưởng nhà ở xã hội', sug: M4.doi_tuong, w: 240 }, { k: 'confirm_org', l: 'Cơ quan xác nhận về đối tượng', w: 180 },
+  { k: 'housing', l: 'Điều kiện nhà ở (mô tả đúng hiện trạng nhà ở được VPĐKĐĐ xác nhận)', sug: M4.nha_o, w: 240 },
+  { k: 'province', l: 'Tỉnh', w: 100 }, { k: 'district', l: 'Huyện/ Thành phố', w: 120 }, { k: 'commune', l: 'Thị trấn/xã', w: 120 },
+  { k: 'income', l: 'Điều kiện thu nhập (mô tả theo đúng nội dung Giấy xác nhận)', sug: M4.thu_nhap, w: 240 }];
 const SIGN_ST = [['chua_lien_he', 'Chưa liên hệ', 's'], ['da_lien_he', 'Đã liên hệ', 'b'], ['da_hen', 'Đã hẹn', 'v'], ['can_bo_sung', 'Cần bổ sung hồ sơ', 'a'], ['da_ky', 'Đã ký', 'g']];
 def('noxh_check', {
   title: 'Hồ sơ mua / thuê NOXH', one: 'hồ sơ', code: 'GD-02', mod: '04', icon: 'fa-list-check', disp: "'NOXH #'||t.id",
@@ -316,17 +324,9 @@ def('noxh_check', {
     { k: 'customer_id', l: 'Khách hàng', t: 'ref', ref: 'customer', sec: 'Thông tin tài khoản', help: 'Để trống → tự khớp theo CCCD / SĐT chủ hộ hoặc tạo khách mới', fill: { bank_account: 'bank_account' } },
     { k: 'reservation_id', l: 'Phiếu giữ chỗ', t: 'ref', ref: 'reservation', fill: { bank_account: 'bank_account' } },
     { k: 'bank_account', l: 'Số tài khoản ngân hàng', t: 'text', pii: 1, help: 'Số tài khoản - Ngân hàng (VD 0070101168008 - Ngân hàng MB). Chọn khách / phiếu → tự điền; sửa ở đây thì khách, phiếu, hợp đồng cập nhật theo' },
-    { k: 'head', l: '2.1 Thông tin chủ hộ', t: 'json', sec: '2. Thông tin khách hàng', fixed: 1, grid: [
-      { k: 'name', l: 'Họ và Tên', w: 170 }, { k: 'phone', l: 'Số điện thoại', w: 115 }, { k: 'bday', l: 'Ngày sinh', w: 60, pii: 1 }, { k: 'bmonth', l: 'Tháng sinh', w: 60, pii: 1 }, { k: 'byear', l: 'Năm sinh', w: 70, pii: 1 },
-      { k: 'old_id_no', l: 'Số CMND', w: 110, pii: 1 }, { k: 'id_no', l: 'Số CCCD', w: 125, pii: 1 }, { k: 'job', l: 'Nghề nghiệp', sug: M4.nghe, w: 170 },
-      { k: 'doi_tuong', l: 'Đối tượng chính sách được hưởng nhà ở xã hội', sug: M4.doi_tuong, w: 240 }, { k: 'confirm_org', l: 'Cơ quan xác nhận về đối tượng', w: 180 },
-      { k: 'housing', l: 'Điều kiện nhà ở (mô tả đúng hiện trạng nhà ở được VPĐKĐĐ xác nhận)', sug: M4.nha_o, w: 240 },
-      { k: 'province', l: 'Tỉnh', w: 100 }, { k: 'district', l: 'Huyện/ Thành phố', w: 120 }, { k: 'commune', l: 'Thị trấn/xã', w: 120 },
-      { k: 'income', l: 'Điều kiện thu nhập (mô tả theo đúng nội dung Giấy xác nhận)', sug: M4.thu_nhap, w: 240 }, { k: 'relation', l: 'Quan hệ với chủ hộ', w: 90, ro: 1, def: 'Chủ hộ' }] },
-    { k: 'members', l: '2.2 Thành viên hộ gia đình (ngoài chủ hộ)', t: 'json', grid: [
-      { k: 'name', l: 'Họ và Tên', w: 170 }, { k: 'phone', l: 'Số điện thoại', w: 115 }, { k: 'bday', l: 'Ngày sinh', w: 60, pii: 1 }, { k: 'bmonth', l: 'Tháng sinh', w: 60, pii: 1 }, { k: 'byear', l: 'Năm sinh', w: 70, pii: 1 },
-      { k: 'old_id_no', l: 'Số CMND', w: 110, pii: 1 }, { k: 'id_no', l: 'Số CCCD', w: 125, pii: 1 }, { k: 'job', l: 'Nghề nghiệp', sug: M4.nghe, w: 170 },
-      { k: 'doi_tuong', l: 'Đối tượng chính sách', sug: M4.doi_tuong, w: 220 }, { k: 'confirm_org', l: 'Cơ quan xác nhận', w: 170 }, { k: 'relation', l: 'Quan hệ với chủ hộ', o: M4.quan_he, w: 120 }] },
+    // chủ hộ và thành viên khai cùng các cột Mẫu 4 (03/11/2026: thành viên thêm điều kiện nhà ở, nơi ở, thu nhập); chỉ khác cột Quan hệ với chủ hộ
+    { k: 'head', l: '2.1 Thông tin chủ hộ', t: 'json', sec: '2. Thông tin khách hàng', fixed: 1, grid: [...M4_PERSON(), { k: 'relation', l: 'Quan hệ với chủ hộ', w: 90, ro: 1, def: 'Chủ hộ' }] },
+    { k: 'members', l: '2.2 Thành viên hộ gia đình (ngoài chủ hộ)', t: 'json', grid: [...M4_PERSON(), { k: 'relation', l: 'Quan hệ với chủ hộ', o: M4.quan_he, w: 120 }] },
     // cột Mẫu 4 của chủ hộ: tự chép từ dòng «2.1 Thông tin chủ hộ» khi lưu (giữ cho bảng tổng hợp / xuất Excel / nhập file Mẫu 4)
     { k: 'old_id_no', l: 'Số CMND cũ (chủ hộ)', t: 'text', pii: 1, noForm: 1 },
     { k: 'job', l: 'Nghề nghiệp (chủ hộ)', t: 'text', noForm: 1 },

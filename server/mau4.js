@@ -34,7 +34,8 @@ async function data(user, { project, from, to, by, kind } = {}) {   // kind=thue
     WHERE ($1::int IS NULL OR p.id = $1) AND ${kind === 'thue' ? "n.reg_kind = 'thue' AND" : kind === 'mua' ? "coalesce(n.reg_kind, 'mua') <> 'thue' AND" : ''} ($2::date IS NULL OR ${DAY_BY[by]?.[0] || 'n.received_on'} >= $2) AND ($3::date IS NULL OR ${DAY_BY[by]?.[0] || 'n.received_on'} <= $3)
     ORDER BY n.received_on NULLS LAST, n.id`, [project ? +project : null, day(from), day(to)]);
   return rows.map((r, i) => {
-    const head = { name: r.full_name, phone: [r.phone, r.phone2].filter(Boolean).join('/ '), birth: dmyParts(r.birth), old_id_no: r.old_id_no, id_no: r.id_no, job: r.job, doi_tuong: r.doi_tuong, confirm_org: r.confirm_org, relation: 'Chủ hộ' };
+    const head = { name: r.full_name, phone: [r.phone, r.phone2].filter(Boolean).join('/ '), birth: dmyParts(r.birth), old_id_no: r.old_id_no, id_no: r.id_no, job: r.job, doi_tuong: r.doi_tuong, confirm_org: r.confirm_org,
+      housing: r.housing, province: r.province, district: r.district, commune: r.commune, income: r.income, relation: 'Chủ hộ' };
     const mem = (r.members || []).map(m => ({ ...m, birth: [m.bday ?? '', m.bmonth ?? '', m.byear ?? ''] }));
     return { id: r.id, tt: i + 1, received_on: r.received_on, project: r.project, project_id: r.project_id, unit_code: r.unit_code || r.unit_text, area: r.unit_area ?? r.area_tt, reg_kind: r.reg_kind, status: r.status, result: r.result, sxd_result: r.sxd_result, sxd_note: r.sxd_note, sxd_submit_on: r.sxd_submit_on, sxd_approved_on: r.sxd_approved_on, sxd_doc_no: r.sxd_doc_no,
       housing: r.housing, province: r.province, district: r.district, commune: r.commune, income: r.income, people: [head, ...mem] };
@@ -95,6 +96,9 @@ const WIDTHS = [5, 13, 20, 26, 16, 8, 8, 9, 13, 15, 24, 42, 24, 22, 12, 14, 14, 
 const L = i => String.fromCharCode(65 + i);
 // cột gộp theo hộ (giống file gốc): TT, ngày nộp, dự án, SĐT, nhà ở, nơi ở, thu nhập, căn hộ
 const HH_MERGE = [0, 1, 2, 4, 13, 14, 15, 16, 17, 19, 20];
+// cột thành viên được khai riêng (SĐT, nhà ở, nơi ở, thu nhập): hộ có thành viên ghi riêng thì mỗi người một ô, không thì gộp theo hộ
+const OWN = { 4: 'phone', 13: 'housing', 14: 'province', 15: 'district', 16: 'commune', 17: 'income' };
+const ownCol = (h, c) => !!OWN[c] && h.people.slice(1).some(p => String(p[OWN[c]] ?? '').trim());
 async function xlsx(user, qs) {
   const hs = await data(user, qs);
   const pj = qs.project ? hs[0]?.project || (await one('SELECT name FROM kd_project WHERE id = $1', [+qs.project]))?.name : null;
@@ -104,9 +108,9 @@ async function xlsx(user, qs) {
   for (const h of hs) {
     const r0 = out.length;
     h.people.forEach((p, j) => out.push([j ? '' : h.tt, j ? '' : dmy(h.received_on), j ? '' : h.project || '', p.name, j ? (p.phone || '') : p.phone, ...p.birth, s(p.old_id_no), s(p.id_no), p.job || '', p.doi_tuong || '', p.confirm_org || '',
-      j ? '' : h.housing || '', j ? '' : h.province || '', j ? '' : h.district || '', j ? '' : h.commune || '', j ? '' : h.income || '', p.relation || '', j ? '' : h.unit_code || '', j ? '' : h.area != null ? (+h.area).toFixed(2) : '']));
-    // SĐT chỉ gộp khi thành viên không ghi số riêng
-    if (h.people.length > 1) for (const c of HH_MERGE) if (c !== 4 || h.people.slice(1).every(p => !p.phone)) merges.push(`${L(c)}${r0 + 1}:${L(c)}${r0 + h.people.length}`);
+      ...['housing', 'province', 'district', 'commune', 'income'].map(k => p[k] || ''), p.relation || '', j ? '' : h.unit_code || '', j ? '' : h.area != null ? (+h.area).toFixed(2) : '']));
+    // SĐT, nhà ở, nơi ở, thu nhập chỉ gộp khi không thành viên nào ghi riêng
+    if (h.people.length > 1) for (const c of HH_MERGE) if (!ownCol(h, c)) merges.push(`${L(c)}${r0 + 1}:${L(c)}${r0 + h.people.length}`);
   }
   await C.audit({ q }, 'noxh_check', null, 'xuat_mau4', null, null, user, `${hs.length} hộ${pj ? ' · ' + pj : ''}${per}`);
   return buildXlsx({ sheet: 'Mau 4', rows: out, widths: WIDTHS, merges, heights: { 0: 28, 1: 32, 2: 48 }, styleOf: ri => ri === 0 ? 5 : ri < 3 ? 4 : 3 });
@@ -155,7 +159,8 @@ const IMPORT = {
         source: 'truc_tiep', owner_id: ctx.user.id, note: `Nhập từ ${ctx.fileName}` }, ctx.user, { db, demo: ctx.demo })).row;
     } else if (birth && !k.birth) await C.update('customer', k.id, { birth }, ctx.user, { db, system: true, action: 'nhap_excel' });
     const members = r._members.map(x => ({ name: s(x.name), relation: s(x.relation) || 'Vợ (Chồng)', bday: s(x.d), bmonth: s(x.m), byear: s(x.y),
-      old_id_no: s(x.old_id_no), id_no: s(x.id_no), phone: s(x.phone), job: s(x.job), doi_tuong: s(x.doi_tuong), confirm_org: s(x.confirm_org) }));
+      old_id_no: s(x.old_id_no), id_no: s(x.id_no), phone: s(x.phone), job: s(x.job), doi_tuong: s(x.doi_tuong), confirm_org: s(x.confirm_org),
+      housing: s(x.housing), province: s(x.province), district: s(x.district), commune: s(x.commune), income: s(x.income) }));   // ô gộp theo hộ đọc ra trống ở dòng thành viên
     const area = s(r.area) ? +s(r.area).replace(',', '.') : null;
     const rec = { customer_id: k.id, unit_id: unit?.id ?? null, unit_text: unit ? null : unitCode || null, unit_area: unit ? null : area, old_id_no: s(r.old_id_no) || null, job: s(r.job) || null, doi_tuong: s(r.doi_tuong) || null, confirm_org: s(r.confirm_org) || null,
       housing: s(r.housing) || null, province: s(r.province) || null, district: s(r.district) || null, commune: s(r.commune) || null, income: s(r.income) || null, members };
