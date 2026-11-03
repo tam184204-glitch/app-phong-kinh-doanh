@@ -105,10 +105,11 @@ async function writeSchedule(db, contractId, rows, src, user, demo) {
 
 // tiền hợp đồng chung cư (như BRAVO, cùng công thức Danh mục sản phẩm): F = giá nền × DT thông thủy + giá sàn × DT sàn + tiền hệ số góc − giảm giá;
 // thuế = F × thuế suất; sau thuế = ROUND(F + thuế, -3); bảo trì = ROUND(F × 2%, -3); tổng = sau thuế + bảo trì + giá trị hoàn thiện
+// giá nền lưu = giá nền ĐÃ CHIA LẠI sau giảm giá (giá nền × DT = tiền nhà, như BRAVO); hệ số góc vẫn tính trên giá trước giảm
 function contractPrice(r) {
-  const r3 = v => Math.round(v / 1000) * 1000, F0 = +r.base_price * +r.area_tt + (+r.floor_price || 0) * (+r.area_floor || 0);
-  const corner_amt = r.corner_pct != null && r.corner_pct !== '' ? Math.round(F0 * +r.corner_pct / 100) : +r.corner_amt || 0;
-  const F = F0 + corner_amt - (+r.discount || 0), vat = r.vat_pct ?? 5, H = F * vat / 100, after_tax = r3(F + H), maint_fee = r3(F * 0.02);
+  const r3 = v => Math.round(v / 1000) * 1000, F0 = +r.base_price * +r.area_tt + (+r.floor_price || 0) * (+r.area_floor || 0), Fg = F0 + (+r.discount || 0);
+  const corner_amt = r.corner_pct != null && r.corner_pct !== '' ? Math.round(Fg * +r.corner_pct / 100) : +r.corner_amt || 0;
+  const F = F0 + corner_amt, vat = r.vat_pct ?? 5, H = F * vat / 100, after_tax = r3(F + H), maint_fee = r3(F * 0.02);
   return { corner_amt: corner_amt || null, pretax: Math.round(F), vat_pct: vat, vat_amt: Math.round(H), after_tax, maint_fee, value: after_tax + maint_fee + (+r.finish_value || 0) };
 }
 
@@ -165,6 +166,13 @@ async function loanSchedule(db, r, user, demo) {
   await db.q('DELETE FROM kd_loan_pay WHERE contract_id = $1 AND coalesce(paid_amt, 0) = 0 AND paid_on IS NULL', [r.id]);
   for (const x of plan) if (!keep.has(x.kind + x.seq))
     await db.q('INSERT INTO kd_loan_pay (contract_id, seq, kind, period_from, period_to, due_on, amount, created_by, is_demo) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [r.id, x.seq, x.kind, x.period_from, x.period_to, x.due_on, x.amount, user?.id ?? null, !!(demo || r.is_demo)]);
+}
+// 1 lần: HĐ căn hộ cũ có tiền giảm giá (giá nền gốc, giảm trừ riêng) → giá nền chia lại = giá nền − giảm giá / DT thông thủy (tổng tiền không đổi)
+async function fixBaseDiscount(db) {
+  if ((await db.one("SELECT 1 FROM kd_setting WHERE key = 'base_price_net'"))) return 0;
+  const n = (await db.q("UPDATE kd_contract SET base_price = round(base_price - discount / area_tt) WHERE kind NOT IN ('hoan_thien','thue','vay') AND coalesce(ptype, 'can_ho') = 'can_ho' AND discount > 0 AND area_tt > 0 AND base_price > 0 RETURNING id")).length;
+  await db.q("INSERT INTO kd_setting (key, value) VALUES ('base_price_net', $1) ON CONFLICT (key) DO NOTHING", [JSON.stringify({ at: new Date().toISOString(), n })]);
+  return n;
 }
 async function fixRentValue(db, user) {
   const cs = await db.q("SELECT * FROM kd_contract WHERE kind = 'thue' AND rent > 0 AND term_months > 0 AND value IS DISTINCT FROM rent * term_months");
@@ -1223,4 +1231,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { LIVE_CT, rentWord, loanPlan, loanSchedule, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { fixBaseDiscount, LIVE_CT, rentWord, loanPlan, loanSchedule, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

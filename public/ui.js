@@ -740,7 +740,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
         if (s && form.elements.s_name) { form.elements.seller_unit.value = s.unit; form.elements.s_name.value = s.name; await fillSeller(); }
         form.elements.ptype.value = ['lien_ke', 'shophouse'].includes(src.kind) ? 'lien_ke' : 'can_ho'; vis(); contractNo();
         const bh = form.elements.building_id, bt = bh?.closest('.combo')?.querySelector('[data-combo]'); if (bh) { bh.value = src.building_id ?? ''; if (bt) bt.value = src.building_id__l || ''; }   // số bảng giá = tòa của căn
-        await contractPrefill(src.id);
+        await contractPrefill(src.id); form._setB0?.();   // giá nền gốc theo căn
         // giá trị hoàn thiện theo căn thuộc hợp đồng hoàn thiện, không cộng vào hợp đồng mua bán
         const fv = readField(form, fields.find(x => x.k === 'finish_value') || {});
         if (htp && fv > 0 && form.elements.ptype.value !== 'lien_ke') { htp.finish(fv); form.elements.finish_value.value = ''; const tv = readField(form, fields.find(x => x.k === 'value')); if (tv > fv) form.elements.value.value = moneyStr(tv - fv); }
@@ -764,8 +764,8 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     if (ent !== 'contract' || !form.elements.base_price) return;
     const rd = k => readField(form, fields.find(f => f.k === k) || {}), base = +rd('base_price'), area = +rd('area_tt');
     if (base > 0 && area > 0 && readField(form, fields.find(f => f.k === 'ptype')) !== 'lien_ke' && !['thue', 'vay'].includes(form.elements.kind?.value ?? rec.kind)) {   // HĐ thuê: tổng tiền = tiền thuê × số tháng, không tính theo giá nền
-      const r3 = v => Math.round(v / 1000) * 1000, F0 = base * area + (+rd('floor_price') || 0) * (+rd('area_floor') || 0), cp = rd('corner_pct');
-      const corner = cp != null ? Math.round(F0 * cp / 100) : +rd('corner_amt') || 0, F = F0 + corner - (+rd('discount') || 0), vat = rd('vat_pct') ?? 5, H = F * vat / 100;
+      const r3 = v => Math.round(v / 1000) * 1000, F0 = base * area + (+rd('floor_price') || 0) * (+rd('area_floor') || 0), Fg = F0 + (+rd('discount') || 0), cp = rd('corner_pct');   // giá nền đã chia lại sau giảm giá
+      const corner = cp != null ? Math.round(Fg * cp / 100) : +rd('corner_amt') || 0, F = F0 + corner, vat = rd('vat_pct') ?? 5, H = F * vat / 100;
       const out = { corner_amt: corner || null, pretax: Math.round(F), vat_amt: Math.round(H), after_tax: r3(F + H), maint_fee: r3(F * 0.02) };
       out.value = out.after_tax + out.maint_fee + (+rd('finish_value') || 0);
       for (const [k, v] of Object.entries(out)) if (form.elements[k]) form.elements[k].value = moneyStr(v);
@@ -789,6 +789,16 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   if (ent === 'contract') {
     contractNo();
     if (!id) fillSeller().catch(() => {});   // form mới: sổ sẵn bên bán đã lưu
+    // giảm giá → chia lại giá nền: giá nền = giá nền gốc − tiền giảm / DT thông thủy (gõ giá nền = giá đã giảm; xóa tiền giảm → về giá gốc)
+    let b0 = null; const rdn = k => readField(form, fields.find(f => f.k === k) || {});
+    const setB0 = () => { const b = +rdn('base_price'), a = +rdn('area_tt'); b0 = b > 0 && a > 0 ? b + (+rdn('discount') || 0) / a : null; };
+    setB0(); form._setB0 = setB0;
+    form.addEventListener('input', e => {
+      const k = e.target.name; if (!['base_price', 'area_tt', 'discount'].includes(k) || !form.elements.base_price) return;
+      if (k === 'base_price') return setB0();
+      const a = +rdn('area_tt'); if (b0 == null) return setB0();
+      if (a > 0) form.elements.base_price.value = moneyStr(Math.round(b0 - (+rdn('discount') || 0) / a));
+    });
     form.addEventListener('input', e => { if (['base_price', 'area_tt', 'floor_price', 'area_floor', 'discount', 'corner_pct', 'vat_pct', 'finish_value', 'commission_pct', 'value'].includes(e.target.name)) contractCalc(); });
     form.addEventListener('input', e => { if (e.target.name === 'contract_on') sch?._redraw?.(); if (e.target.name === 's_name' && (M.sellers || []).some(x => x.name === e.target.value)) fillSeller().catch(er => toast(er.message, true)); });
     // nhập xong ô bên bán là ghi nhớ luôn cho Bên A đó (kể cả khi hợp đồng chưa lưu được)
