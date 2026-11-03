@@ -53,6 +53,8 @@ async function boot(pgliteUrl) {
     try { localStorage.removeItem(SID_KEY); } catch {}
     location.reload();
   };
+  // demo: trước khi app tự tải lại trang (đổi vai trò, đăng xuất) đóng CSDL để ghi hết xuống IndexedDB — không mất phiên vừa tạo
+  window.__ctgBeforeReload = async () => { try { await pg?.syncToFs(false); } catch (e) { console.warn('ghi CSDL', e); } await new Promise(r => setTimeout(r, 1500)); };   // chờ IndexedDB ghi xong (tải lại ngay thì trình duyệt hủy lệnh ghi đang dở)
   // mỗi lúc chỉ 1 tab dùng CSDL: 2 tab cùng ghi IndexedDB sẽ đè nhau, hỏng chỉ mục hệ thống (lỗi 03/11/2026)
   if (navigator.locks) {
     const LOCK = 'ctg-kd-demo-db', hold = lock => lock && new Promise(() => {});   // giữ khóa tới khi đóng tab
@@ -336,7 +338,9 @@ async function boot(pgliteUrl) {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     if (!isApi(url)) return realFetch(input, init);
     const hd = {}; new Headers(init.headers || {}).forEach((v, k) => { hd[k] = v; });
-    return call((init.method || 'GET').toUpperCase(), url, hd, init.body);
+    const method = (init.method || 'GET').toUpperCase(), res = await call(method, url, hd, init.body);
+    if (method !== 'GET') await pg.syncToFs?.(false).catch(() => {});   // false = đợi ghi thật (không theo relaxedDurability)   // ghi xong xuống IndexedDB ngay (relaxedDurability) — tải lại trang không mất dữ liệu / phiên đổi vai trò
+    return res;
   };
   // mở / tải tệp từ /api/… (in, tải tệp đính kèm, xuất Excel qua link)
   const openBlob = async (url, win, dlName) => {
