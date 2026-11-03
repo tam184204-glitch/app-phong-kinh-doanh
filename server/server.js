@@ -285,6 +285,7 @@ R('GET', '/api/alerts', async (req, res, u, p, qs) => send(res, 200, await V.ale
 R('GET', '/api/approvals', async (req, res, u) => send(res, 200, await V.approvals({ q, one }, u)));
 R('GET', '/api/board', async (req, res, u, p, qs) => send(res, 200, await V.board({ q, one }, u, qs)));
 R('GET', '/api/payouts', async (req, res, u, p, qs) => send(res, 200, await V.payouts({ q, one }, u, qs)));
+R('GET', '/api/unit-status', async (req, res, u, p, qs) => send(res, 200, await V.unitStatus({ q, one }, u, qs)));
 R('GET', '/api/finish-pay', async (req, res, u, p, qs) => send(res, 200, await V.finishPay({ q, one }, u, qs)));
 R('GET', '/api/loans', async (req, res, u, p, qs) => send(res, 200, await V.loans({ q, one }, u, qs)));
 R('GET', '/api/price-sheet/:id', async (req, res, u, p) => send(res, 200, await V.priceSheet({ q, one }, u, p.id)));
@@ -307,7 +308,7 @@ R('GET', '/api/customer-code', async (req, res, u, p, qs) => {   // nhập mã k
 R('GET', '/api/contract-pair/:unit', async (req, res, u, p) => {   // hợp đồng mua bán + hợp đồng hoàn thiện đang hiệu lực của căn
   if (!can(u, M.E.contract, 'r')) C.deny();
   const rows = await q("SELECT id, kind FROM kd_contract WHERE unit_id = $1 AND status NOT IN ('huy','thanh_ly') ORDER BY id DESC", [+p.unit]);
-  send(res, 200, { main: rows.find(r => ['hdmb', 'thue_mua', 'thue'].includes(r.kind))?.id || null, finish: rows.find(r => r.kind === 'hoan_thien')?.id || null });
+  send(res, 200, { main: rows.find(r => ['hdmb', 'thue_mua', 'vay', 'thue'].includes(r.kind))?.id || null, finish: rows.find(r => r.kind === 'hoan_thien')?.id || null });
 });
 R('GET', '/api/contract-prefill/:unit', async (req, res, u, p, qs) => { if (!can(u, M.E.contract, 'c') && !can(u, M.E.contract, 'u')) C.deny(); send(res, 200, await B.contractPrefill({ q, one }, p.unit, qs.on)); });
 R('GET', '/api/sale-check/:id', async (req, res, u, p) => send(res, 200, await B.saleCheck({ q, one }, p.id) || {}));

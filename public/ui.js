@@ -382,10 +382,10 @@ const HD_LAYOUT = [
   { side: [
     { t: 'Bên mua nhà ở', rows: [['customer_id'], ['b_id_no'], ['b_id_date'], ['b_id_place'], ['b_addr'], ['b_perm_addr'], ['b_temp_addr'], ['b_phone', 'b_email'], ['b_bank_acc'], ['b_bank_name'], ['request_on', 'co_owner']] },
     { t: 'Bên bán nhà ở', rows: [['s_name'], ['s_addr'], ['s_phone', 's_tax'], ['s_bank_acc'], ['s_bank_name'], ['s_rep'], ['s_title'], ['s_poa'], ['owner_id'], ['commission_amt', 'commission_pct'], ['common_area_amt', 'all_signed']] }] },
-  { t: 'Thông tin chi tiết', cols: 4, rows: [['number', 'contract_on'], ['ptype', 'building_id', 'kind'], ['base_price', 'area_tt', 'area_floor', 'discount'], ['area_land', 'land_price', 'land_amt'], ['area_build', 'build_price', 'build_amt'],
+  { t: 'Thông tin chi tiết', cols: 4, rows: [['number', 'contract_on'], ['ptype', 'building_id', 'kind', 'nature'], ['base_price', 'area_tt', 'area_floor', 'discount'], ['area_land', 'land_price', 'land_amt'], ['area_build', 'build_price', 'build_amt'],
     ['pretax', 'vat_pct', 'vat_amt', 'after_tax'], ['finish_value', 'maint_fee', 'corner_pct', 'corner_amt'],
     ['eff_on', 'exp_on', 'term_months', 'pay_times'],   // HĐ thuê (BRAVO)
-    ['rent', 'value', 'closed', 'cn', 'vbtt_hold']] },   // HĐ thuê: tiền thuê/tháng cạnh tổng tiền thuê; mua bán không có ô tiền thuê
+    ['rent', 'value', 'closed', 'cn', 'vbtt_hold'], ['sale_price', 'plan_hdmb', 'prev_id', 'next_id']] },   // bán qua HĐ vay / HĐ thuê; HĐMB nối tiếp   // HĐ thuê: tiền thuê/tháng cạnh tổng tiền thuê; mua bán không có ô tiền thuê
   { t: 'Lần thanh toán', rows: [['new_schedule'], ['pay_method']] },
   { t: 'Lịch ký', cols: 4, rows: [['plan_sign', 'sign_place', 'sign_status', 'signed_on']] },
   { t: 'Tình trạng vay vốn', cols: 4, rows: [['loan_status', 'loan_bank', 'loan_doc3']] },
@@ -454,10 +454,11 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish, kind, debt, rec0 }) {
   const view = p => {   // chỉ đổi khung đang xem
     const at = p === 'ht' ? 'ht' : isRent() ? 'thue' : 'mb';
     $$('button', nav).forEach(b => b.classList.toggle('on', b.dataset.p === at)); mb.classList.toggle('hidden', at === 'ht'); hp.classList.toggle('hidden', at !== 'ht');
-    const lb = $('[data-f=contract_on] label', form); if (lb) lb.textContent = isRent() ? 'Ngày ký hợp đồng thuê' : 'Ngày ký hợp đồng mua bán';
+    const isVay = (kindSel ? kindSel.value : kind) === 'vay';
+    const lb = $('[data-f=contract_on] label', form); if (lb) lb.textContent = isRent() ? 'Ngày ký hợp đồng thuê' : isVay ? 'Ngày ký hợp đồng vay' : 'Ngày ký hợp đồng mua bán';
     $$('.bv-side .fsec', form).forEach(x => { x.dataset.t ??= x.textContent; x.textContent = isRent() ? x.dataset.t.replace('Bên mua nhà ở', 'Bên thuê nhà ở').replace('Bên bán nhà ở', 'Bên cho thuê nhà ở') : x.dataset.t; });
     for (const x of [$('[data-f=request_on] label', form), ...$$('.bv-side .fld > label', form)].map(l => l?.firstChild)) if (x?.nodeType === 3) { x._t ??= x.textContent; x.textContent = isRent() ? x._t.replace('Ngày đề nghị mua', 'Ngày đề nghị thuê').replace('(bên bán)', '(bên cho thuê)') : x._t; }
-    const vl = $('[data-f=value] label', form)?.firstChild; if (vl?.nodeType === 3) vl.textContent = isRent() ? 'Tổng tiền thuê' : valLabel;
+    const vl = $('[data-f=value] label', form)?.firstChild; if (vl?.nodeType === 3) vl.textContent = isRent() ? 'Tổng tiền thuê' : isVay ? 'Số tiền vay' : valLabel;
     rentDraw();
   };
   // HĐ thuê: số tháng + tổng tiền tự tính khi gõ (máy chủ tính lại khi lưu, cùng công thức)
@@ -503,7 +504,9 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish, kind, debt, rec0 }) {
     if (isRent()) rentCalc(); else if (u) api('GET', `/api/e/unit/${u}`).then(({ row: x }) => { const t = +x.total_price || 0, f = +x.finish_value || 0; if (!v.value && t) { v.value = moneyStr(f > 0 && t > f ? t - f : t); v.dispatchEvent(new Event('input', { bubbles: true })); } }).catch(() => {});
   };
   const show = p => { if (p === 'thue') setKind('thue'); else if (p === 'mb' && isRent()) setKind('hdmb'); view(p); };   // người dùng bấm tab
-  kindSel?.addEventListener('change', () => { swap(); view(isRent() ? 'thue' : 'mb'); });
+  const natSel = $('[name=nature]', form), natDef = () => { if (natSel && kindSel) natSel.value = kindSel.value === 'thue' ? 'thue' : 'ban'; };   // HĐ thuê = cho thuê, HĐ vay = bán (sửa được)
+  if (natSel && !natSel.value) natDef();
+  kindSel?.addEventListener('change', () => { natDef(); swap(); view(isRent() ? 'thue' : 'mb'); });
   nav.onclick = e => { const b = e.target.closest('[data-p]'); if (b) show(b.dataset.p); };
   show(tab === 'ht' ? 'ht' : tab === 'thue' || isRent() ? 'thue' : 'mb'); calc(); nav.classList.toggle('ht-has', mk().checked);
   const snap = () => ({ number: rd('ht_number', 'text') || null, contract_on: rd('ht_on', 'date'), finish_value: rd('ht_finish', 'money'), discount: rd('ht_disc', 'money'), value: val(), new_schedule: el._get() });
@@ -679,7 +682,9 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
         // giá trị hoàn thiện theo căn thuộc hợp đồng hoàn thiện, không cộng vào hợp đồng mua bán
         const fv = readField(form, fields.find(x => x.k === 'finish_value') || {});
         if (htp && fv > 0 && form.elements.ptype.value !== 'lien_ke') { htp.finish(fv); form.elements.finish_value.value = ''; const tv = readField(form, fields.find(x => x.k === 'value')); if (tv > fv) form.elements.value.value = moneyStr(tv - fv); }
-        contractCalc(); htp?.rentValue();
+        contractCalc();
+        const kd = form.elements.kind?.value; if (['vay', 'thue'].includes(kd) && form.elements.sale_price) { form.elements.sale_price.value = form.elements.value.value; if (kd === 'vay') form.elements.value.value = ''; }
+        htp?.rentValue();
       }
       if (ent === 'reservation' && f.ref === 'unit' && form.elements.unit_value) {   // giá trị căn hộ = sau thuế + bảo trì; hoàn thiện theo căn
         const uv = src.price_net != null ? +src.price_net + (+src.maint_fee || 0) : src.total_price != null ? +src.total_price - (+src.finish_value || 0) : null;
@@ -696,7 +701,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   const contractCalc = () => {
     if (ent !== 'contract' || !form.elements.base_price) return;
     const rd = k => readField(form, fields.find(f => f.k === k) || {}), base = +rd('base_price'), area = +rd('area_tt');
-    if (base > 0 && area > 0 && readField(form, fields.find(f => f.k === 'ptype')) !== 'lien_ke' && (form.elements.kind?.value ?? rec.kind) !== 'thue') {   // HĐ thuê: tổng tiền = tiền thuê × số tháng, không tính theo giá nền
+    if (base > 0 && area > 0 && readField(form, fields.find(f => f.k === 'ptype')) !== 'lien_ke' && !['thue', 'vay'].includes(form.elements.kind?.value ?? rec.kind)) {   // HĐ thuê: tổng tiền = tiền thuê × số tháng, không tính theo giá nền
       const r3 = v => Math.round(v / 1000) * 1000, F0 = base * area + (+rd('floor_price') || 0) * (+rd('area_floor') || 0), cp = rd('corner_pct');
       const corner = cp != null ? Math.round(F0 * cp / 100) : +rd('corner_amt') || 0, F = F0 + corner - (+rd('discount') || 0), vat = rd('vat_pct') ?? 5, H = F * vat / 100;
       const out = { corner_amt: corner || null, pretax: Math.round(F), vat_amt: Math.round(H), after_tax: r3(F + H), maint_fee: r3(F * 0.02) };
@@ -1016,7 +1021,7 @@ const PAYST = { da_thu: ['Đã thu đủ', 'g'], qua_han: ['Quá hạn', 'r'], d
 function schedTable(rows, withPaid) {
   return `<table class="t compact noclick"><thead><tr><th>Đợt</th><th>Nội dung</th><th>Hạn</th><th class="num">Tỷ lệ</th><th class="num">Số tiền</th>${withPaid ? '<th class="num">Đã thu</th><th>Tình trạng</th>' : ''}</tr></thead><tbody>${rows.map((i, k) => `<tr><td>${i.seq || k + 1}</td><td>${esc(i.name)}${i.src === 'phu_luc' ? ' <span class="tag">phụ lục</span>' : ''}</td><td>${dmy(i.due_on)}</td><td class="num">${i.pct != null ? fnum(i.pct) + '%' : ''}</td><td class="num">${fm(i.amount)}</td>${withPaid ? `<td class="num">${fm(i.paid)}</td><td>${pill(...(PAYST[i.st] || ['', 's']))}</td>` : ''}</tr>`).join('')}</tbody></table>`;
 }
-const ACT_L = { tao: 'Tạo mới', sua: 'Sửa', xoa: 'Xóa', khoi_phuc: 'Khôi phục', trinh_duyet: 'Trình duyệt', phe_duyet: 'Phê duyệt', tu_choi: 'Từ chối', tai_tep: 'Tải tệp', xoa_tep: 'Xóa tệp', khoi_phuc_tep: 'Khôi phục tệp', cap_nhat_trang_thai: 'Hệ thống cập nhật trạng thái', cap_nhat_dieu_kien: 'Hệ thống cập nhật điều kiện', lich_thanh_toan: 'Lập lịch thanh toán', xem_dinh_danh: 'Xem dữ liệu định danh', in_hop_dong: 'In hợp đồng', qua_han_giu_cho: 'Hệ thống: quá hạn giữ chỗ', kich_hoat: 'Kích hoạt mở bán', phu_luc: 'Cập nhật theo phụ lục', nhap_lich_su: 'Nhập dữ liệu lịch sử', nhap_excel: 'Cập nhật từ tệp Excel', thay_the: 'Bị thay thế', huy: 'Hủy', doi_can: 'Đổi căn', doi_kh: 'Đổi khách hàng', hoan_tac: 'Hoàn tác', xuat_du_lieu: 'Xuất dữ liệu', dang_nhap: 'Đăng nhập', dang_nhap_sai: 'Đăng nhập sai', doi_mat_khau: 'Đổi mật khẩu', chuyen_tt: 'Chuyển trạng thái' };
+const ACT_L = { chuyen_hdmb: 'Chuyển tiếp sang HĐMB', tao: 'Tạo mới', sua: 'Sửa', xoa: 'Xóa', khoi_phuc: 'Khôi phục', trinh_duyet: 'Trình duyệt', phe_duyet: 'Phê duyệt', tu_choi: 'Từ chối', tai_tep: 'Tải tệp', xoa_tep: 'Xóa tệp', khoi_phuc_tep: 'Khôi phục tệp', cap_nhat_trang_thai: 'Hệ thống cập nhật trạng thái', cap_nhat_dieu_kien: 'Hệ thống cập nhật điều kiện', lich_thanh_toan: 'Lập lịch thanh toán', xem_dinh_danh: 'Xem dữ liệu định danh', in_hop_dong: 'In hợp đồng', qua_han_giu_cho: 'Hệ thống: quá hạn giữ chỗ', kich_hoat: 'Kích hoạt mở bán', phu_luc: 'Cập nhật theo phụ lục', nhap_lich_su: 'Nhập dữ liệu lịch sử', nhap_excel: 'Cập nhật từ tệp Excel', thay_the: 'Bị thay thế', huy: 'Hủy', doi_can: 'Đổi căn', doi_kh: 'Đổi khách hàng', hoan_tac: 'Hoàn tác', xuat_du_lieu: 'Xuất dữ liệu', dang_nhap: 'Đăng nhập', dang_nhap_sai: 'Đăng nhập sai', doi_mat_khau: 'Đổi mật khẩu', chuyen_tt: 'Chuyển trạng thái' };
 function actLabel(a, ent) { if (a.startsWith('tt:')) { const k = a.slice(3); return M.ents[ent]?.acts?.find(x => x.k === k)?.l || k; } return ACT_L[a] || a; }
 function fmtVal(ent, k, v) {
   const f = M.ents[ent]?.fields.find(x => x.k === k); if (v == null || v === '') return '∅';

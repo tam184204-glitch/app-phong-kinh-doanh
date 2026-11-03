@@ -269,6 +269,39 @@ async function boot(pgliteUrl) {
       localStorage.setItem('ctg-kd-demo-thue-cts', '1');
     }
   } catch (e) { console.warn('HĐ thuê thử CTS', e); }
+  // bản chất giao dịch thử (dữ liệu giả, 1 lần) — CTS tòa K: (1) HĐ vay bán căn chưa ký HĐMB, (2) HĐ vay → HĐMB đã ký (nối giao dịch), (3) HĐ thuê bản chất bán
+  try {
+    if (!localStorage.getItem('ctg-kd-demo-ban-chat')) {
+      const C = require('../server/core'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1");
+      const can = await q(`SELECT u.id, u.total_price FROM kd_unit u JOIN kd_building b ON b.id = u.building_id JOIN kd_project p ON p.id = u.project_id WHERE p.code = 'CTS' AND b.code = 'K' AND u.status IN ('con_ban', 'chua_mo_ban')
+        AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id) AND NOT EXISTS (SELECT 1 FROM kd_reservation r WHERE r.unit_id = u.id) ORDER BY u.floor DESC, u.code LIMIT 3 OFFSET 8`);
+      const kh = await q('SELECT k.id FROM kd_customer k WHERE NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.customer_id = k.id) AND NOT EXISTS (SELECT 1 FROM kd_reservation r WHERE r.customer_id = k.id) ORDER BY k.id DESC LIMIT 3');
+      const day = n => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+      const sign = async id => { await C.submit('contract', id, u, {}); await C.approve('contract', id, u, { ok: true }); };
+      const pay = async (id, upto) => { for (const [k, it] of (await q('SELECT id, due_on::text d, amount FROM kd_installment WHERE contract_id = $1 AND active AND due_on <= $2 ORDER BY seq', [id, upto])).entries())
+        await C.create('receipt', { voucher_no: `PT-${id}-${k + 1}`, voucher_date: it.d, contract_id: id, installment_id: it.id, amount: +it.amount, content: `Thu theo hợp đồng — kỳ ${k + 1}` }, u, { system: true, demo: true }); };
+      if (can.length === 3 && kh.length === 3) {
+        await q('UPDATE kd_unit SET activated = true WHERE id = ANY($1)', [can.map(x => x.id)]);   // căn đã giao dịch = đã mở bán
+        // (1) HĐ vay bán căn, chưa ký HĐMB
+        const v1 = (await C.create('contract', { kind: 'vay', nature: 'ban', ptype: 'can_ho', unit_id: can[0].id, customer_id: kh[0].id, contract_on: day(-60), value: 300e6, plan_hdmb: day(45),
+          new_schedule: [{ name: 'Đợt 1 – khi ký HĐ vay', due_on: day(-60), amount: 150e6 }, { name: 'Đợt 2', due_on: day(-10), amount: 150e6 }] }, u, { system: true, demo: true })).row;
+        await sign(v1.id); await pay(v1.id, day(-30));
+        // (2) HĐ vay → HĐMB (tự nối vì cùng căn) — tiền vay không trừ vào giá mua
+        const v2 = (await C.create('contract', { kind: 'vay', nature: 'ban', ptype: 'can_ho', unit_id: can[1].id, customer_id: kh[1].id, contract_on: day(-150), value: 200e6,
+          new_schedule: [{ name: 'Đợt 1 – khi ký HĐ vay', due_on: day(-150), amount: 200e6 }] }, u, { system: true, demo: true })).row;
+        await sign(v2.id); await pay(v2.id, day(0));
+        const price = +can[1].total_price || 1.2e9;
+        const m2 = (await C.create('contract', { kind: 'hdmb', ptype: 'can_ho', unit_id: can[1].id, customer_id: kh[1].id, contract_on: day(-20), value: price,
+          new_schedule: [{ name: 'Đợt 1 – khi ký HĐMB', due_on: day(-20), pct: 30 }, { name: 'Đợt 2 – khi bàn giao', due_on: day(120), pct: 70 }] }, u, { system: true, demo: true })).row;
+        await sign(m2.id); await pay(m2.id, day(0));
+        // (3) HĐ thuê bản chất bán: thuê trước, ký HĐMB sau
+        const t3 = (await C.create('contract', { kind: 'thue', nature: 'ban', ptype: 'can_ho', unit_id: can[2].id, customer_id: kh[2].id, contract_on: day(-90), eff_on: day(-90), exp_on: day(275), term_months: 12, pay_times: 4, rent: 5e6, value: 60e6, plan_hdmb: day(90),
+          new_schedule: [0, 3, 6, 9].map((m, k) => ({ name: `Tiền thuê kỳ ${k + 1}/4 (tháng ${m + 1}–${m + 3})`, due_on: day(-90 + m * 30), amount: 15e6 })) }, u, { system: true, demo: true })).row;
+        await sign(t3.id); await pay(t3.id, day(0));
+      }
+      localStorage.setItem('ctg-kd-demo-ban-chat', '1');
+    }
+  } catch (e) { console.warn('bản chất giao dịch thử', e); }
   const job = async () => { try { await tx(db => biz.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.warn('job', e.message); } };
   await job(); setInterval(job, 2 * 60e3);
 

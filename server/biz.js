@@ -48,21 +48,20 @@ const PAY_ST = { da_thu: 'Đã thu đủ', qua_han: 'Quá hạn', den_han: 'Đ�
 // ======================= TRẠNG THÁI CĂN =======================
 const FREE_UNIT = ['con_ban', 'chua_mo_ban'];   // căn còn trống — lập phiếu đăng ký được
 // hợp đồng đang giữ căn: chưa hủy / thanh lý; HĐ thuê đã quá ngày kết thúc thì không giữ căn nữa (hết kỳ thuê căn bán / cho thuê tiếp được) — $T = hôm nay
-const LIVE_CT = (a, T) => `${a}.status NOT IN ('huy','thanh_ly') AND NOT (${a}.kind = 'thue' AND ${a}.exp_on < ${T})`;
+const LIVE_CT = (a, T) => `${a}.status NOT IN ('huy','thanh_ly') AND NOT (${a}.kind = 'thue' AND coalesce(${a}.nature, 'thue') <> 'ban' AND ${a}.exp_on < ${T})`;
 async function recomputeUnit(db, unitId, user) {
   const u = unitId && await raw(db, 'unit', unitId); if (!u) return;
   let st;
   if (u.lock) st = u.lock;
-  else if (!u.activated) st = 'chua_mo_ban';
-  else {
-    const c = await db.one(`SELECT c.id, c.status FROM kd_contract c WHERE c.unit_id = $1 AND c.kind IN ('hdmb','thue','thue_mua') AND ${LIVE_CT('c', '$2::date')} ORDER BY c.id DESC LIMIT 1`, [unitId, today()]);
+  else {   // căn đã có hợp đồng thì theo hợp đồng (kể cả căn chưa mở bán bán qua HĐ vay / HĐ thuê)
+    const c = await db.one(`SELECT c.id, c.status FROM kd_contract c WHERE c.unit_id = $1 AND c.kind IN ('hdmb','vay','thue','thue_mua') AND ${LIVE_CT('c', '$2::date')} ORDER BY (c.status = 'da_ky') DESC, c.id DESC LIMIT 1`, [unitId, today()]);   // có HĐ đã ký thì theo HĐ đó
     const r = await db.one(`SELECT status, deposit, reg_state FROM kd_reservation WHERE unit_id = $1 AND status IN ${ACTIVE_RES}`, [unitId]);
     const h = await db.one('SELECT status FROM kd_handover WHERE unit_id = $1', [unitId]);
     if (c && h && ['da_ban_giao', 'hoan_tat'].includes(h.status)) st = 'da_ban_giao';
     else if (c?.status === 'da_ky' || r?.reg_state === 'ky_hdmb') st = 'da_ky_hd';
     else if (c) st = r?.deposit > 0 || r?.status === 'da_coc' ? 'da_coc' : 'giu_cho';
     else if (r) st = r.status === 'da_coc' || r.deposit > 0 ? 'da_coc' : 'giu_cho';
-    else st = 'con_ban';
+    else st = u.activated ? 'con_ban' : 'chua_mo_ban';
   }
   if (st !== u.status) await sys(db, 'unit', u.id, { status: st }, user, 'cap_nhat_trang_thai');
 }
@@ -137,7 +136,7 @@ async function closeReservations(db, c, user) {
 // hợp đồng đã thanh lý trước khi có closeReservations: căn còn kẹt «Đã ký hợp đồng» thì giải phóng lúc khởi động
 async function fixLiquidated(db) {
   const cs = await db.q(`SELECT DISTINCT ON (c.unit_id) c.id, c.unit_id, c.number FROM kd_contract c WHERE c.status = 'thanh_ly' AND c.kind <> 'hoan_thien'
-    AND NOT EXISTS (SELECT 1 FROM kd_contract x WHERE x.unit_id = c.unit_id AND x.kind IN ('hdmb','thue','thue_mua') AND x.status NOT IN ('huy','thanh_ly'))
+    AND NOT EXISTS (SELECT 1 FROM kd_contract x WHERE x.unit_id = c.unit_id AND x.kind IN ('hdmb','vay','thue','thue_mua') AND x.status NOT IN ('huy','thanh_ly'))
     AND EXISTS (SELECT 1 FROM kd_reservation s WHERE s.unit_id = c.unit_id AND s.status IN ${ACTIVE_RES}) ORDER BY c.unit_id, c.id DESC`);
   for (const c of cs) { await closeReservations(db, c, null); await recomputeUnit(db, c.unit_id, null); }
   return cs.length;
@@ -159,7 +158,7 @@ async function fixRentValue(db, user) {
 }
 async function syncContractValue(db, contractId, user, note = 'Đồng bộ giá trị theo Danh mục sản phẩm') {
   const c = await raw(db, 'contract', contractId);
-  const u = c && !['hoan_thien', 'thue'].includes(c.kind) && await raw(db, 'unit', c.unit_id);   // HĐ thuê: tổng tiền = tiền thuê × số tháng, không theo giá bán
+  const u = c && !['hoan_thien', 'thue', 'vay'].includes(c.kind) && await raw(db, 'unit', c.unit_id);   // HĐ thuê: tổng tiền = tiền thuê × số tháng, không theo giá bán
   if (!u || u.price_net == null) return false;
   const value = +u.price_net + (+u.maint_fee || 0) + (+c.finish_value || 0);
   if (+c.value === value) return false;
@@ -765,7 +764,7 @@ H.contract = {
       if (+r.rent > 0 && +r.term_months > 0) r.value = Math.round(+r.rent * +r.term_months);
       if (+r.pay_times > 0 && +r.term_months > 0 && +r.pay_times > +r.term_months) bad(`Số kỳ thanh toán (${r.pay_times}) không được nhiều hơn thời hạn thuê (${r.term_months} tháng)`, { fields: ['pay_times'] });
     }
-    if (r.kind !== 'thue' && r.ptype !== 'lien_ke' && +r.base_price > 0 && +r.area_tt > 0 && (!old || PK.some(k => String(old[k] ?? '') !== String(r[k] ?? '')))) Object.assign(r, contractPrice(r));
+    if (!['thue', 'vay'].includes(r.kind) && r.ptype !== 'lien_ke' && +r.base_price > 0 && +r.area_tt > 0 && (!old || PK.some(k => String(old[k] ?? '') !== String(r[k] ?? '')))) Object.assign(r, contractPrice(r));
     if (r.pretax > 0 && r.vat_pct != null && r.vat_amt == null) r.vat_amt = Math.round(r.pretax * r.vat_pct / 100);
     if (r.pretax > 0 && r.after_tax == null) r.after_tax = r.pretax + (r.vat_amt || 0);
     if (r.kind === 'hoan_thien' && r.finish_value != null) r.value = +r.finish_value - (+r.discount || 0);
@@ -788,10 +787,29 @@ H.contract = {
       }
     }
     if (r.kind === 'hoan_thien') {
-      const main = await db.one("SELECT id FROM kd_contract WHERE unit_id = $1 AND kind IN ('hdmb','thue_mua','thue') AND status NOT IN ('huy','thanh_ly') AND id <> $2", [r.unit_id, old?.id || 0]);
+      const main = await db.one("SELECT id FROM kd_contract WHERE unit_id = $1 AND kind IN ('hdmb','vay','thue_mua','thue') AND status NOT IN ('huy','thanh_ly') AND id <> $2", [r.unit_id, old?.id || 0]);
       if (!main) bad('HĐ hoàn thiện cần căn đã có hợp đồng mua bán / thuê / thuê mua');
     }
     if (['thue', 'thue_mua'].includes(r.kind) && r.eff_on && r.exp_on && r.exp_on < r.eff_on) bad('Ngày kết thúc thuê phải sau ngày bắt đầu thuê');
+    // bản chất giao dịch: HĐMB / thuê mua = bán; HĐ vay mặc định bán, HĐ thuê mặc định cho thuê (sửa được)
+    if (r.kind === 'hoan_thien') r.nature = null;
+    else if (!['thue', 'vay'].includes(r.kind)) r.nature = 'ban';
+    else if (!r.nature) r.nature = r.kind === 'thue' ? 'thue' : 'ban';
+    if (r.nature === 'ban' && ['thue', 'vay'].includes(r.kind)) { if (r.sale_price == null) { const u = await raw(db, 'unit', r.unit_id); r.sale_price = u?.price_net != null ? +u.price_net + (+u.maint_fee || 0) : u?.total_price ?? null; } }
+    else { r.sale_price = null; r.plan_hdmb = null; }
+    // HĐMB nối tiếp HĐ vay / HĐ thuê bản chất bán của căn (chỉ để gom giao dịch — tiền đã thu không trừ vào giá mua)
+    if (['hdmb', 'thue_mua'].includes(r.kind)) {
+      if (!old && !r.prev_id) {
+        const p = await db.one("SELECT id, number, kind FROM kd_contract WHERE unit_id = $1 AND kind IN ('vay','thue') AND nature = 'ban' AND next_id IS NULL AND status NOT IN ('huy','thanh_ly') ORDER BY id DESC LIMIT 1", [r.unit_id]);
+        if (p) { r.prev_id = p.id; ctx.warn?.push(`Đã nối với ${p.kind === 'vay' ? 'HĐ vay' : 'HĐ thuê'} số ${p.number} của căn (cùng giao dịch bán) — tiền đã thu theo hợp đồng đó không trừ vào giá mua`); }
+      }
+      if (r.prev_id) {
+        const p = await raw(db, 'contract', r.prev_id);
+        if (!p || p.unit_id !== r.unit_id) bad('Hợp đồng chuyển tiếp phải cùng mã căn', { fields: ['prev_id'] });
+        if (!['vay', 'thue'].includes(p.kind) || p.nature !== 'ban') bad('Chỉ nối được với HĐ vay / HĐ thuê có bản chất «Bán căn hộ»', { fields: ['prev_id'] });
+        if (p.next_id && p.next_id !== old?.id) bad(`Hợp đồng ${p.number} đã chuyển sang hợp đồng khác`, { fields: ['prev_id'] });
+      }
+    } else r.prev_id = null;
   },
   async onSubmit(r, { db }) {
     const n = await db.one('SELECT count(*) n, coalesce(sum(amount),0) s FROM kd_installment WHERE contract_id = $1 AND active', [r.id]);
@@ -799,6 +817,10 @@ H.contract = {
     if (n.n && n.s !== r.value) bad(`Tổng lịch thanh toán ${fmtMoney(n.s)} khác giá trị hợp đồng ${fmtMoney(r.value)}`);
   },
   async afterSave(r, old, { db, user, demo, sched }) {
+    // nối giao dịch: hợp đồng trước ghi «Đã chuyển sang hợp đồng»; hủy / thanh lý / bỏ nối thì gỡ
+    const live = !['huy', 'thanh_ly'].includes(r.status);
+    if (old?.prev_id && (old.prev_id !== r.prev_id || !live)) await db.q('UPDATE kd_contract SET next_id = NULL, updated_at = now() WHERE id = $1 AND next_id = $2', [old.prev_id, r.id]);
+    if (r.prev_id && live && (await raw(db, 'contract', r.prev_id))?.next_id !== r.id) await sys(db, 'contract', r.prev_id, { next_id: r.id }, user, 'chuyen_hdmb', `Chuyển tiếp sang hợp đồng ${r.number || ''}`);
     const cv = custVals(r, old, CT_CUST);
     if (['b_bank_acc', 'b_bank_name'].some(c => !old || old[c] !== r[c])) cv.bank_account = [r.b_bank_acc, r.b_bank_name].filter(Boolean).join(' - ');
     await syncCustomer(db, r.customer_id, cv, user, `Theo hợp đồng ${r.number}`);
@@ -841,6 +863,7 @@ H.contract = {
   },
   noDelete: r => !['du_thao', 'tu_choi'].includes(r.status) && 'Chỉ xóa được hợp đồng đang ở dự thảo',
   async beforeDelete(r, { db }) {   // lịch thu + hoa hồng dự kiến tự sinh theo hợp đồng; phiếu thu thật vẫn chặn xóa
+    await db.q('UPDATE kd_contract SET next_id = NULL WHERE next_id = $1', [r.id]);   // gỡ nối giao dịch (HĐ vay / thuê → HĐMB này)
     await db.q("DELETE FROM kd_commission WHERE contract_id = $1 AND status IN ('du_kien', 'nhap', 'tu_choi', 'huy')", [r.id]);
     await db.q('DELETE FROM kd_installment WHERE contract_id = $1', [r.id]);
   },
@@ -1103,7 +1126,7 @@ async function jobs(db) {
   const t0 = Date.now();
   await expireHolds(db);
   // HĐ thuê hết hạn: căn trở lại trống (Còn bán / Chưa mở bán) — HĐ thuê vẫn giữ để theo dõi thu tiền / thanh lý
-  for (const x of await db.q(`SELECT DISTINCT c.unit_id FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id WHERE c.kind = 'thue' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on < $1 AND u.status NOT IN ('con_ban','chua_mo_ban')`, [today()])) await recomputeUnit(db, x.unit_id, null);
+  for (const x of await db.q(`SELECT DISTINCT c.unit_id FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id WHERE c.kind = 'thue' AND coalesce(c.nature, 'thue') <> 'ban' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on < $1 AND u.status NOT IN ('con_ban','chua_mo_ban')`, [today()])) await recomputeUnit(db, x.unit_id, null);
   // hợp đồng duyệt trước 31/10/2026 đang «Chờ ký» → chuyển Đã ký như quy trình mới
   for (const c of await db.q("SELECT * FROM kd_contract WHERE status = 'cho_ky'")) await sys(db, 'contract', c.id, signedPatch(c), null, 'tu_dong_da_ky', 'Hợp đồng đã duyệt tự chuyển Đã ký');
   // điều kiện bàn giao cập nhật theo thu tiền

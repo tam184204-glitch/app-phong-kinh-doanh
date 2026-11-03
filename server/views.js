@@ -37,7 +37,7 @@ async function signedContracts(db, f, extra = '') {
   const rows = await db.q(`SELECT c.*, u.code unit, u.project_id, u.building_id, k.full_name customer, k.phone, pr.code project, b.code building, own.full_name owner
     FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id JOIN kd_project pr ON pr.id = u.project_id JOIN kd_building b ON b.id = u.building_id
     LEFT JOIN kd_user own ON own.id = c.owner_id
-    WHERE c.kind IN ('hdmb','thue','thue_mua','hoan_thien') AND c.status NOT IN ('huy','thanh_ly') ${extra} ${uf(f, p)} ORDER BY u.code`, p);
+    WHERE c.kind IN ('hdmb','vay','thue','thue_mua','hoan_thien') AND c.status NOT IN ('huy','thanh_ly') ${extra} ${uf(f, p)} ORDER BY u.code`, p);
   const D = await B.debtOf(db, rows.map(r => r.id));
   for (const r of rows) r.d = D.get(r.id);
   return rows;
@@ -297,10 +297,11 @@ async function board(db, user, f) {
       coalesce((SELECT k.full_name FROM kd_contract c JOIN kd_customer k ON k.id = c.customer_id WHERE c.unit_id = u.id AND c.status NOT IN ('huy','thanh_ly') AND c.kind <> 'hoan_thien' LIMIT 1),
                (SELECT k.full_name FROM kd_reservation r JOIN kd_customer k ON k.id = r.customer_id WHERE r.unit_id = u.id AND r.status IN ('cho_duyet','giu_cho','qua_han','da_coc','chuyen_hd') LIMIT 1)) customer,
       (SELECT r.hold_until FROM kd_reservation r WHERE r.unit_id = u.id AND r.status IN ('giu_cho','qua_han','da_coc') LIMIT 1) hold_until,
-      EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on >= $2) rent,   -- căn đang cho thuê (còn thời hạn)
-      (SELECT c.exp_on FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on >= $2 ORDER BY c.id DESC LIMIT 1) rent_to,
-      (SELECT c.rent FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on >= $2 ORDER BY c.id DESC LIMIT 1) rent_amt,
-      (SELECT max(c.exp_on) FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on < $2) rent_ended,   -- đã hết hạn thuê: căn trống lại
+      EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND coalesce(c.nature, 'thue') <> 'ban' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on >= $2) rent,   -- căn đang cho thuê (còn thời hạn)
+      (SELECT c.exp_on FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND coalesce(c.nature, 'thue') <> 'ban' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on >= $2 ORDER BY c.id DESC LIMIT 1) rent_to,
+      (SELECT c.rent FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND coalesce(c.nature, 'thue') <> 'ban' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on >= $2 ORDER BY c.id DESC LIMIT 1) rent_amt,
+      (SELECT max(c.exp_on) FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND coalesce(c.nature, 'thue') <> 'ban' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on < $2) rent_ended,
+      (SELECT c.kind FROM kd_contract c WHERE c.unit_id = u.id AND c.kind IN ('vay','thue') AND c.nature = 'ban' AND c.next_id IS NULL AND c.status NOT IN ('huy','thanh_ly') ORDER BY c.id DESC LIMIT 1) sale_doc,   -- bán qua HĐ vay / HĐ thuê, chưa có HĐMB   -- đã hết hạn thuê: căn trống lại
       (SELECT r.rent FROM kd_reservation r WHERE r.unit_id = u.id AND r.deal = 'thue' AND r.status IN ('cho_duyet','giu_cho','qua_han','da_coc') LIMIT 1) res_rent,   -- căn giữ chỗ theo phiếu đăng ký thuê: tiền thuê/tháng dự kiến
       u.status = 'con_ban' AND EXISTS (SELECT 1 FROM kd_reservation r WHERE r.unit_id = u.id AND r.status IN ('huy','het_han')) cancelled   -- căn trả lại sau khi hủy đăng ký
     FROM kd_unit u WHERE u.building_id = $1 ORDER BY u.floor DESC, u.code`, [bid, today()]) : [];
@@ -308,6 +309,41 @@ async function board(db, user, f) {
   if (!can(user, E.customer, 'r')) units.forEach(u => { u.customer = u.customer ? '•••' : null; });
   const policy = await db.one("SELECT code, version, start_on, end_on, src_file FROM kd_price_policy WHERE $1 = ANY(project_ids) AND status = 'phat_hanh' AND start_on <= $2 AND end_on >= $2 ORDER BY start_on DESC LIMIT 1", [pid, today()]);
   return { projects, project: pid, buildings, building: bid, units, policy };
+}
+
+// ======================= TÌNH TRẠNG CĂN HỘ & CÔNG NỢ (CN-06) =======================
+// tình trạng theo BẢN CHẤT giao dịch, không theo loại văn bản: căn bán qua HĐ vay / HĐ thuê (bản chất bán) vẫn là «đã bán»;
+// công nợ tách theo từng hợp đồng — tiền vay / tiền thuê không trừ vào giá mua
+const US_ST = { da_ban: 'Đã bán (HĐMB)', cho_hdmb: 'Đã bán — chờ ký HĐMB', dang_lap: 'Đang lập hợp đồng', cho_thue: 'Đang cho thuê', giu_cho: 'Giữ chỗ', trong: 'Còn trống', chua_mo_ban: 'Chưa mở bán' };
+async function unitStatus(db, user, f = {}) {
+  if (!can(user, E.installment, 'r')) deny();
+  const p = [], t = today();
+  const units = await db.q(`SELECT u.id, u.code, u.status, u.activated, pr.code project, b.code building FROM kd_unit u JOIN kd_project pr ON pr.id = u.project_id JOIN kd_building b ON b.id = u.building_id WHERE true ${uf(f, p)} ORDER BY pr.code, b.code, u.floor DESC, u.code`, p);
+  const ids = units.map(u => u.id);
+  const cs = await db.q(`SELECT c.id, c.unit_id, c.kind, c.nature, c.number, c.status, c.value, c.sale_price, c.plan_hdmb, c.prev_id, c.next_id, c.rent, c.exp_on, k.full_name customer
+    FROM kd_contract c JOIN kd_customer k ON k.id = c.customer_id WHERE c.unit_id = ANY($1) AND c.status NOT IN ('huy','thanh_ly') ORDER BY c.id`, [ids]);
+  const res = new Map((await db.q("SELECT DISTINCT ON (r.unit_id) r.unit_id, r.cust_name, r.deal FROM kd_reservation r WHERE r.unit_id = ANY($1) AND r.status IN ('cho_duyet','giu_cho','qua_han','da_coc') ORDER BY r.unit_id, r.id DESC", [ids])).map(r => [r.unit_id, r]));
+  const D = await B.debtOf(db, cs.map(c => c.id)), byU = new Map();
+  for (const c of cs) { c.d = D.get(c.id); (byU.get(c.unit_id) || byU.set(c.unit_id, []).get(c.unit_id)).push(c); }
+  const KL = { hdmb: 'HĐMB', vay: 'HĐ vay', thue: 'HĐ thuê', thue_mua: 'HĐ thuê mua', hoan_thien: 'HĐ hoàn thiện' };
+  const rows = units.map(u => {
+    const all = byU.get(u.id) || [];
+    const sale = all.filter(c => c.kind !== 'hoan_thien' && (c.nature === 'ban' || ['hdmb', 'thue_mua'].includes(c.kind)) && !c.next_id).pop();
+    const rent = all.filter(c => c.kind === 'thue' && c.nature !== 'ban' && c.exp_on >= t).pop(), fin = all.filter(c => c.kind === 'hoan_thien').pop();
+    const chain = []; for (let c = sale; c; c = c.prev_id && all.find(x => x.id === c.prev_id)) chain.unshift(c);
+    const hdmb = sale && ['hdmb', 'thue_mua'].includes(sale.kind) ? sale : null, pre = chain.filter(c => ['vay', 'thue'].includes(c.kind));
+    const st = sale ? (sale.status === 'da_ky' ? (hdmb ? 'da_ban' : 'cho_hdmb') : chain.some(c => c.status === 'da_ky') ? 'cho_hdmb' : 'dang_lap') : rent ? (rent.status === 'da_ky' ? 'cho_thue' : 'dang_lap') : res.get(u.id) ? 'giu_cho' : u.activated ? 'trong' : 'chua_mo_ban';
+    const sumOf = (xs, k) => xs.reduce((s, c) => s + (+c.d?.[k] || 0), 0);
+    const vay = pre.filter(c => c.kind === 'vay'), thueBan = pre.filter(c => c.kind === 'thue');
+    return { unit_id: u.id, contract_id: (sale || rent || fin)?.id || null, project: u.project, building: u.building, unit: u.code, state: st, state_l: US_ST[st],
+      customer: (sale || rent || fin)?.customer || res.get(u.id)?.cust_name || '', docs: [...chain, ...(rent ? [rent] : []), ...(fin ? [fin] : [])].map(c => `${KL[c.kind]} ${c.number || ''}`.trim()).join(' → '),
+      sale_price: hdmb ? +hdmb.value : sale ? +(sale.sale_price || 0) : null, plan_hdmb: !hdmb && sale ? sale.plan_hdmb : null,
+      sale_paid: hdmb ? hdmb.d.paid : null, sale_left: hdmb ? hdmb.d.left : null, sale_overdue: hdmb ? hdmb.d.overdue : null,
+      vay_left: vay.length ? sumOf(vay, 'left') : null, rent_amt: rent ? +rent.rent : thueBan.length ? +thueBan[thueBan.length - 1].rent : null, rent_to: rent?.exp_on || null,
+      rent_left: rent || thueBan.length ? sumOf([...(rent ? [rent] : []), ...thueBan], 'left') : null, fin_left: fin ? fin.d.left : null,
+      overdue: sumOf([...(hdmb ? [hdmb] : []), ...pre, ...(rent ? [rent] : []), ...(fin ? [fin] : [])], 'overdue') };
+  });
+  return { rows, states: US_ST, bravo_sync: await bravoSync(db) };
 }
 
 // ======================= CHI TIẾT BẢNG GIÁ THEO CĂN =======================
@@ -651,4 +687,4 @@ async function monthly(db, period, projectId) {
   };
 }
 
-module.exports = { payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
+module.exports = { unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
