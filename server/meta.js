@@ -341,7 +341,9 @@ def('noxh_check', {
     // 3 bước: Dự thảo → Chờ xét duyệt → Đã duyệt SXD (ghi kết quả được / không được duyệt); chuyển hàng loạt ở màn Hồ sơ mua NOXH
     { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'nhap', o: [['nhap', 'Dự thảo', 's'], ['cho_duyet', 'Chờ xét duyệt', 'a'], ['da_duyet', 'Đã duyệt SXD', 'g'], ['tu_choi', 'Trả lại', 'r']] },
     { k: 'sxd_submit_on', l: 'Ngày nộp hồ sơ SXD', t: 'date', ro: 1 },
-    { k: 'sxd_result', l: 'Kết quả SXD', t: 'sel', ro: 1, o: [['duoc_duyet', 'Được duyệt', 'g'], ['khong_duyet', 'Không được duyệt', 'r']] },
+    { k: 'sxd_result', l: 'Kết quả xét duyệt', t: 'sel', ro: 1, o: [['duoc_duyet', 'Đủ điều kiện', 'g'], ['khong_duyet', 'Không đủ điều kiện', 'r']] },
+    { k: 'sxd_approved_on', l: 'Ngày được xét duyệt', t: 'date', ro: 1 },
+    { k: 'sxd_doc_no', l: 'Số công văn', t: 'text', ro: 1 },
     { k: 'sxd_note', l: 'Ghi chú duyệt SXD', t: 'long', ro: 1 },
     owner('Người tiếp nhận'),
   ], list: ['id', 'received_on', 'customer_id', 'unit_id', 'doi_tuong', 'items', 'result', 'supplement_due', 'status', 'bbgn'],
