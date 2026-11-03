@@ -141,6 +141,7 @@ async function fixLiquidated(db) {
   return cs.length;
 }
 // HĐ thuê bị đồng bộ nhầm theo giá bán (bản cũ): tổng tiền về tiền thuê × số tháng, mỗi kỳ = số tháng của kỳ × tiền thuê, giữ hạn từng kỳ
+function addMonths(iso, n) { const d = new Date(iso + 'T00:00:00Z'), day = d.getUTCDate(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + n); d.setUTCDate(Math.min(day, new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate())); return d.toISOString().slice(0, 10); }
 async function fixRentValue(db, user) {
   const cs = await db.q("SELECT * FROM kd_contract WHERE kind = 'thue' AND rent > 0 AND term_months > 0 AND value IS DISTINCT FROM rent * term_months");
   for (const c of cs) {
@@ -381,6 +382,7 @@ const saleWarn = async (db, r, warn) => { const sc = await saleCheck(db, r.unit_
 const saleLive = async (db, rows) => { const c = new Map(); for (const r of rows) if (r.unit_id) r.sale_check = (await saleCheck(db, r.unit_id, c))?.text ?? r.sale_check; };   // danh sách / chi tiết: theo thông báo hiện tại
 
 H.reservation = {
+  where(qs) { if (qs.group === 'thue') return { sql: "t.deal = 'thue'" }; if (qs.group === 'mua') return { sql: "coalesce(t.deal, 'mua') <> 'thue'" }; },   // 2 tab Đăng ký mua / Đăng ký thuê
   async beforeSave(r, old, { db, warn, opts, user, demo }) {
     const changedUnit = !old || old.unit_id !== r.unit_id;
     const u = await raw(db, 'unit', r.unit_id);
@@ -419,6 +421,11 @@ H.reservation = {
     }
     if (r.source === 'truc_tiep') r.agent_id = null;
     if (changedUnit && old && ['huy', 'het_han'].includes(r.status)) bad('Phiếu đã hủy — không đổi căn được');
+    if (r.deal === 'thue') {   // đăng ký thuê: không có giá bán — tiền thuê/tháng dự kiến sang hợp đồng thuê
+      r.unit_value = r.finish_value = r.price = null;
+      if (!(+r.rent > 0)) bad('Nhập tiền thuê/tháng dự kiến', { fields: ['rent'] });
+      return;
+    }
     if (changedUnit || r.price == null || !r.policy_id) {
       const p = await pricing(db, u, r.reg_date);
       // giá theo mã căn ở Danh mục sản phẩm: giá trị căn hộ = sau thuế + bảo trì; hoàn thiện = giá trị hoàn thiện căn
@@ -464,7 +471,10 @@ H.reservation = {
     async extend(r, d) { if (Date.parse(d.hold_until) <= Date.now()) bad('Hạn mới phải sau thời điểm hiện tại'); return { patch: { hold_until: d.hold_until, status: r.deposit > 0 ? 'da_coc' : 'giu_cho' } }; },
     async release(r, d) { return { patch: { status: 'het_han' }, msg: r.deposit > 0 ? `Đã giải phóng căn. Khách đã cọc ${fmtMoney(r.deposit)}đ — xử lý theo chính sách (lập «Đề xuất hoàn tiền» nếu cần), hệ thống không tự hoàn tiền.` : 'Đã giải phóng căn' }; },
     async to_contract(r, d, { db, user, demo }) {
-      const c = (await create('contract', { kind: d.kind, number: d.number, plan_sign: d.plan_sign, unit_id: r.unit_id, customer_id: r.customer_id, value: r.price, owner_id: r.owner_id || user.id, reservation_id: r.id },
+      // phiếu đăng ký thuê → hợp đồng thuê: tiền thuê, thời hạn từ phiếu; bắt đầu thuê = ngày dự kiến ký
+      const kind = r.deal === 'thue' && d.kind === 'hdmb' ? 'thue' : d.kind, n = +r.term_months || 12, a = d.plan_sign || today();
+      const rent = kind === 'thue' ? { rent: r.rent, term_months: n, eff_on: a, exp_on: addDays(addMonths(a, n), -1), value: Math.round(+r.rent * n) } : { value: r.price };
+      const c = (await create('contract', { kind, number: d.number, plan_sign: d.plan_sign, unit_id: r.unit_id, customer_id: r.customer_id, ...rent, owner_id: r.owner_id || user.id, reservation_id: r.id },
         user, { db, system: true, demo })).row;
       await markCustomer(db, r.customer_id, user);
       return { patch: { status: 'chuyen_hd' }, open: ['contract', c.id], msg: `Đã lập dự thảo hợp đồng ${c.number}. Bước tiếp: lập lịch thanh toán → gửi trình duyệt.` };

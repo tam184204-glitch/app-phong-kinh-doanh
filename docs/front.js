@@ -1028,7 +1028,8 @@ async function listView(main, ent, params = {}) {
   Object.assign(S, params); S.group = params.group || '';
   const st = E.fields.find(f => f.k === 'status');
   const hdKinds = ent === 'contract' && S.group === 'can_ho';   // 2 loại hợp đồng, mỗi loại danh sách và trạng thái riêng
-  const grp = () => hdKinds && S.ht ? (S.ht === 't' ? 'thue' : 'hoan_thien') : S.group;
+  const rsKinds = ent === 'reservation';   // phiếu đăng ký: Đăng ký mua / Đăng ký thuê
+  const grp = () => rsKinds ? (S.ht === 't' ? 'thue' : 'mua') : hdKinds && S.ht ? (S.ht === 't' ? 'thue' : 'hoan_thien') : S.group;
   const projFilter = ['unit', 'building', 'price_policy', 'reservation', 'contract', 'collect_plan', 'handover', 'defect', 'pinkbook', 'debt_call', 'receipt', 'installment', 'noxh_check', 'ticket', 'contract_change', 'commission', 'target', 'agent_alloc', 'refund'].includes(ent);
   const extra = { collect_plan: `<button class="btn" data-x="suggest">${ico('fa-wand-magic-sparkles')} Gợi ý từ công nợ & cam kết</button>`, commission: `<button class="btn" data-x="calc">${ico('fa-calculator')} Tính / cập nhật hoa hồng</button>`,
     receipt: M.imports.receipts ? `<button class="btn amb" data-x="imp" data-k="receipts">${ico('fa-file-import')} Nhập chứng từ Bravo</button>` : '', unit: M.imports.units ? `<button class="btn" data-x="imp" data-k="units">${ico('fa-file-import')} Nhập bảng hàng</button>` : '',
@@ -1039,7 +1040,7 @@ async function listView(main, ent, params = {}) {
       ${projFilter ? `<select id="pj"><option value="">Tất cả dự án</option>${M.projects.map(p => `<option value="${p.id}" ${+S.project === p.id ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select>` : ''}
       ${E.fields.some(f => ['owner_id', 'assignee_id'].includes(f.k)) ? `<label class="chk"><input type="checkbox" id="mine" ${S.mine ? 'checked' : ''}> Của tôi</label>` : ''}
       <span class="grow"></span><span class="small muted" id="cnt"></span></div>
-      ${hdKinds ? `<div class="tabs hd-tabs hd-kinds" id="hdK"><button data-ck="" class="${S.ht ? '' : 'on'}">${ico('fa-file-contract')} HĐ mua bán</button><button data-ck="1" class="${S.ht === '1' ? 'on' : ''}">${ico('fa-couch')} HĐ hoàn thiện căn hộ</button><button data-ck="t" class="${S.ht === 't' ? 'on' : ''}">${ico('fa-key')} HĐ thuê</button></div>` : ''}${st ? `<div class="tabs" id="stTabs"></div>` : ''}<div id="bulk"></div><div class="tbl-wrap" id="tb"><div class="empty">Đang tải…</div></div><div class="more" id="more"></div></div></div>`;
+      ${hdKinds ? `<div class="tabs hd-tabs hd-kinds" id="hdK"><button data-ck="" class="${S.ht ? '' : 'on'}">${ico('fa-file-contract')} HĐ mua bán</button><button data-ck="1" class="${S.ht === '1' ? 'on' : ''}">${ico('fa-couch')} HĐ hoàn thiện căn hộ</button><button data-ck="t" class="${S.ht === 't' ? 'on' : ''}">${ico('fa-key')} HĐ thuê</button></div>` : ''}${rsKinds ? `<div class="tabs hd-tabs hd-kinds" id="hdK"><button data-ck="" class="${S.ht ? '' : 'on'}">${ico('fa-hand-holding-hand')} Đăng ký mua</button><button data-ck="t" class="${S.ht === 't' ? 'on' : ''}">${ico('fa-key')} Đăng ký thuê</button></div>` : ''}${st ? `<div class="tabs" id="stTabs"></div>` : ''}<div id="bulk"></div><div class="tbl-wrap" id="tb"><div class="empty">Đang tải…</div></div><div class="more" id="more"></div></div></div>`;
   const load = async () => {
     const p = new URLSearchParams(); if (S.q) p.set('q', S.q); if (S.status) p.set('status', S.status); if (S.project) p.set('project', S.project); if (S.mine) p.set('mine', '1'); if (S.sort) p.set('sort', S.sort); p.set('limit', S.limit); if (grp()) p.set('group', grp());
     for (const [k, v] of Object.entries(S)) if (k.startsWith('f_') && v) p.set(k, v);
@@ -1067,7 +1068,7 @@ async function listView(main, ent, params = {}) {
   main.onclick = run(async e => {
     const t = e.target;
     if ((t.id === 'newBtn' || t.closest('#newBtn')) && ent === 'reservation')   // phiếu đăng ký căn hộ (chuyển từ Bảng hàng sang đây 28/10/2026)
-      return openForm('reservation', { title: `${ico('fa-hand-holding-hand')} Phiếu đăng ký căn hộ`, onSaved: row => { load(); updateBadges(); openDetail('reservation', row.id); } });
+      return openForm('reservation', { title: S.ht === 't' ? `${ico('fa-key')} Phiếu đăng ký thuê căn hộ` : `${ico('fa-hand-holding-hand')} Phiếu đăng ký căn hộ`, preset: S.ht === 't' ? { deal: 'thue' } : undefined, onSaved: row => { load(); updateBadges(); openDetail('reservation', row.id); } });
     if (t.id === 'newBtn' || t.closest('#newBtn')) return openForm(ent, { tab: hdKinds && S.ht ? (S.ht === 't' ? 'thue' : 'ht') : undefined, preset: { ...(hdKinds && S.ht === 't' ? { kind: 'thue' } : {}), ...(S.project && E.fields.some(f => f.k === 'project_id') ? { project_id: +S.project } : {}), ...(E.groups?.[S.group] ? { ptype: S.group } : {}) } });
     if (t.closest('#infoBtn')) return $('#infoBox', main)?.classList.toggle('hidden');
     if (t.closest('#xls')) { const p = new URLSearchParams(); if (S.q) p.set('q', S.q); if (S.status) p.set('status', S.status); if (S.project) p.set('project', S.project); if (S.mine) p.set('mine', '1'); if (grp()) p.set('group', grp()); return download(`/api/export/${ent}?${p}`); }
@@ -1506,7 +1507,9 @@ function unitPop(u, after) {
   const m = modal({ title: `${ico('fa-door-open')} Căn ${esc(u.code)} ${pill(BGRP_L[bgOf(u)], { giu: 'a', ky: 'g', thue: 'v', tam_khoa: 'r' }[bgOf(u)])}`, narrow: true,
     body: `<dl class="kv"><div><dt>Tầng</dt><dd>${u.floor}</dd></div><div><dt>Loại</dt><dd>${u.bedrooms || ''} phòng ngủ</dd></div><div><dt>Diện tích thông thủy</dt><dd>${fnum(u.area_tt)} m²</dd></div><div><dt>Hướng</dt><dd>${esc(u.direction || '')}</dd></div>
       <div class="wide"><dt>Tổng giá căn hộ</dt><dd><b style="font-size:18px;color:var(--cobalt-d)">${fm(u.total_price)} đ</b></dd></div><div><dt>Dự kiến bàn giao</dt><dd>${esc(u.handover_plan || '')}</dd></div><div><dt>Khách hàng</dt><dd>${esc(u.customer || '—')}</dd></div>${u.hold_until ? `<div class="wide"><dt>Hạn giữ chỗ</dt><dd>${dmyhm(u.hold_until)}</dd></div>` : ''}</dl>`,
-    foot: `<button class="btn" data-x>Đóng</button><button class="btn" id="u3">${ico('fa-building')} Hồ sơ 360°</button>${canRes ? `<button class="btn pri" id="ures">${ico('fa-hand-holding-hand')} Lập phiếu đăng ký căn hộ</button>` : ''}` });
+    foot: `<button class="btn" data-x>Đóng</button><button class="btn" id="u3">${ico('fa-building')} Hồ sơ 360°</button>${canRes ? `<button class="btn" id="urent">${ico('fa-key')} Đăng ký thuê</button><button class="btn pri" id="ures">${ico('fa-hand-holding-hand')} Lập phiếu đăng ký căn hộ</button>` : ''}` });
+  $('#urent', m.el) && ($('#urent', m.el).onclick = () => { m.close(); openForm('reservation', { title: `${ico('fa-key')} Phiếu đăng ký thuê căn hộ — ${esc(u.code)}`, preset: { unit_id: u.id, unit_id__l: u.code, deal: 'thue' },
+    onSaved: row => { after(); toast('Đã lưu — phiếu đã vào «Đăng ký mua / thuê – giữ chỗ» › Đăng ký thuê (04)'); openDetail('reservation', row.id); } }); });
   $('#u3', m.el).onclick = () => { m.close(); location.hash = `#/v/unit360?id=${u.id}`; };
   $('#ures', m.el) && ($('#ures', m.el).onclick = () => { m.close(); openForm('reservation', { title: `${ico('fa-hand-holding-hand')} Phiếu đăng ký căn hộ — ${esc(u.code)}`, preset: { unit_id: u.id, unit_id__l: u.code, price: u.total_price ?? undefined, unit_value: u.price_net != null ? u.price_net + (u.maint_fee || 0) : undefined, finish_value: u.finish_value ?? undefined },
     onSaved: row => { after(); toast('Đã lưu — phiếu đã vào «Đăng ký mua – giữ chỗ» (04)'); openDetail('reservation', row.id); } }); });
@@ -2187,12 +2190,13 @@ const m4Ask = (msg, status, pre) => new Promise(res => {
   };
 });
 V.mau4 = async (main, params) => {
-  const s = ST.mau4 ||= { project: '', q: '', from: '', to: '', tab: 'draft' };
+  const s = ST.mau4 ||= { project: '', q: '', from: '', to: '', tab: 'draft', kind: 'mua' };
+  s.kind ||= 'mua';
   if (params.project) s.project = params.project;
   const canImp = M.imports.mau4, canNew = M.ents.noxh_check.perm.c, canBulk = M.ents.noxh_check.perm.u || M.ents.noxh_check.perm.a;
   const sel = new Set();
-  main.innerHTML = `<div class="page">${head('04', 'Hồ sơ mua NOXH', 'fa-list-check', `${canNew ? `<button class="btn pri" id="m4New">${ico('fa-plus')} Tạo hồ sơ</button>` : ''}${canImp ? `<button class="btn" id="m4Imp">${ico('fa-file-import')} Nhập file Mẫu 4</button>` : ''}<button class="btn" id="m4X">${ico('fa-file-excel')} Xuất Excel Mẫu 4</button>`, 'GD-02')}
-    <div class="card"><div class="tabs m4tabs" id="m4Tab"></div><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="m4Q" placeholder="Tìm họ tên, SĐT, CCCD, mã căn, số công văn…" value="${esc(s.q)}"></div>
+  main.innerHTML = `<div class="page">${head('04', 'Hồ sơ mua / thuê NOXH', 'fa-list-check', `${canNew ? `<button class="btn pri" id="m4New">${ico('fa-plus')} Tạo hồ sơ</button>` : ''}${canImp ? `<button class="btn" id="m4Imp">${ico('fa-file-import')} Nhập file Mẫu 4</button>` : ''}<button class="btn" id="m4X">${ico('fa-file-excel')} Xuất Excel Mẫu 4</button>`, 'GD-02')}
+    <div class="card"><div class="tabs hd-tabs hd-kinds" id="m4K"><button data-k="mua">${ico('fa-house-circle-check')} Hồ sơ mua</button><button data-k="thue">${ico('fa-key')} Hồ sơ thuê</button></div><div class="tabs m4tabs" id="m4Tab"></div><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="m4Q" placeholder="Tìm họ tên, SĐT, CCCD, mã căn, số công văn…" value="${esc(s.q)}"></div>
       <select id="m4P"><option value="">Tất cả dự án</option>${M.projects.map(p => `<option value="${p.id}" ${+s.project === p.id ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select>
       <label class="m4day nowrap"><span id="m4FL">Ngày nộp từ</span> ${segDate('m4F', s.from)}</label><label class="m4day nowrap">đến ${segDate('m4To', s.to)}</label>
       <span class="grow"></span><span class="small muted" id="m4N"></span></div>${canBulk ? `<div class="toolbar m4bulk" id="m4B" hidden><b id="m4BN"></b><span class="muted">→ chuyển sang</span>
@@ -2200,7 +2204,8 @@ V.mau4 = async (main, params) => {
         <button class="btn pri sm" id="m4BGo">${ico('fa-right-left')} Chuyển trạng thái</button><button class="btn sm ghost" id="m4BX">Bỏ chọn</button></div>
       <div class="toolbar m4undo" id="m4U" hidden><span id="m4UT"></span><button class="btn sm" id="m4UGo">${ico('fa-rotate-left')} Hoàn tác</button><button class="btn sm ghost" id="m4UX" title="Ẩn">${ico('fa-xmark')}</button></div>` : ''}<div class="tbl-wrap" id="m4T"><div class="empty">Đang tải…</div></div></div></div>`;
   let hs = [];
-  const load = async () => { hs = await api('GET', '/api/mau4' + (s.project ? '?project=' + s.project : '')); draw(); };
+  const load = async () => { $$('#m4K button', main).forEach(b => b.classList.toggle('on', b.dataset.k === s.kind)); hs = await api('GET', '/api/mau4?' + new URLSearchParams({ kind: s.kind, ...(s.project ? { project: s.project } : {}) })); draw(); };
+  $('#m4K', main).onclick = e => { const b = e.target.closest('[data-k]'); if (b && b.dataset.k !== s.kind) { s.kind = b.dataset.k; sel.clear(); load(); } };
   const draw = () => {
     const q = s.q.trim().toLowerCase();
     const inDay = (h, t = s.tab) => { const d = M4_DAY[t][0].map(k => h[k]).find(Boolean) || ''; return (!s.from || d >= s.from) && (!s.to || (!!d && d <= s.to)); };
@@ -2259,9 +2264,9 @@ V.mau4 = async (main, params) => {
   wireSegDate(main);
   $('#m4F', main).addEventListener('sdchange', e => { s.from = segVal(e.currentTarget); draw(); });
   $('#m4To', main).addEventListener('sdchange', e => { s.to = segVal(e.currentTarget); draw(); });
-  $('#m4X', main).onclick = () => download('/api/mau4/xlsx?' + new URLSearchParams(Object.entries({ project: s.project, from: s.from, to: s.to, by: s.from || s.to ? M4_DAY[s.tab][2] : '' }).filter(([, v]) => v)));   // xuất theo dự án + ngày đang lọc của tab
+  $('#m4X', main).onclick = () => download('/api/mau4/xlsx?' + new URLSearchParams(Object.entries({ kind: s.kind, project: s.project, from: s.from, to: s.to, by: s.from || s.to ? M4_DAY[s.tab][2] : '' }).filter(([, v]) => v)));   // xuất theo dự án + ngày đang lọc của tab
   $('#m4Imp', main) && ($('#m4Imp', main).onclick = () => importModal('mau4', load));
-  $('#m4New', main) && ($('#m4New', main).onclick = () => openForm('noxh_check', { onSaved: () => load() }));
+  $('#m4New', main) && ($('#m4New', main).onclick = () => openForm('noxh_check', { preset: s.kind === 'thue' ? { reg_kind: 'thue' } : undefined, title: s.kind === 'thue' ? `${ico('fa-key')} Tạo hồ sơ thuê NOXH` : undefined, onSaved: () => load() }));
   $('#m4Tab', main).onclick = e => { const b = e.target.closest('[data-tab]'); if (b) { s.tab = b.dataset.tab; sel.clear(); draw(); } };
   $('#m4T', main).onclick = run(async e => {
     const id = +e.target.closest('tr[data-id]')?.dataset.id;

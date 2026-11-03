@@ -202,6 +202,38 @@ async function boot(pgliteUrl) {
       localStorage.setItem('ctg-kd-demo-thue-thu', '1');
     }
   } catch (e) { console.warn('phiếu thu tiền thuê thử', e); }
+  // đăng ký thuê + hồ sơ thuê NOXH thử (dữ liệu giả: tên, SĐT, CCCD 999… không có thật), 1 lần trên mỗi trình duyệt
+  try {
+    if (!localStorage.getItem('ctg-kd-demo-dk-thue')) {
+      const C = require('../server/core'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1");
+      const ten = ['Trần Minh Khôi', 'Nguyễn Thu Hà', 'Lê Quang Vinh', 'Phạm Ngọc Ánh', 'Đỗ Hải Nam', 'Vũ Thanh Tâm', 'Bùi Phương Linh', 'Hoàng Đức Anh', 'Ngô Bảo Trâm'];
+      const fake = i => ({ phone: `09${String(81000000 + i * 1371917 % 18999999).padStart(8, '0')}`, id_no: `999${String(200000000 + i * 7919311 % 799999999)}` });
+      const can = await q(`SELECT u.id, u.project_id, u.area_tt FROM kd_unit u JOIN kd_project p ON p.id = u.project_id WHERE p.code = 'TNS' AND u.status = 'con_ban'
+        AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id) AND NOT EXISTS (SELECT 1 FROM kd_reservation r WHERE r.unit_id = u.id) ORDER BY u.code DESC LIMIT 4`);
+      // [tiền thuê/tháng, thời hạn, tiến trình]
+      const dk = [[4.8e6, 12, 'tiep_nhan'], [5.2e6, 24, 'cho_xet_duyet'], [5.5e6, 36, 'du_dk'], [6e6, 60, 'tiep_nhan']];
+      for (const [i, x] of can.entries()) {
+        const r = await C.create('reservation', { deal: 'thue', unit_id: x.id, cust_name: ten[i], ...fake(i), id_date: '2021-06-1' + i, id_place: 'Cục Cảnh sát QLHC về TTXH', address: ['Từ Sơn', 'Yên Phong', 'Tiên Du', 'Quế Võ'][i] + ', Bắc Ninh',
+          rent: dk[i][0], term_months: dk[i][1], progress: dk[i][2], reg_state: 'giu_cho', source: 'truc_tiep', note: 'Dữ liệu thử — đăng ký thuê' }, u, { system: true, demo: true });
+        await C.submit('reservation', r.row.id, u, { demo: true }); await C.approve('reservation', r.row.id, u, { ok: true });
+      }
+      // hồ sơ thuê NOXH: 2 dự thảo, 2 chờ xét duyệt (đã nộp SXD), 1 đã duyệt SXD
+      const tns = await one("SELECT id FROM kd_project WHERE code = 'TNS'"), un = await q("SELECT c.unit_id, u.area_tt FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id WHERE c.kind = 'thue' AND c.is_demo ORDER BY c.id LIMIT 5");
+      const dt = ['Người thu nhập thấp tại khu vực đô thị', 'Người lao động đang làm việc tại các doanh nghiệp trong và ngoài khu công nghiệp', 'Cán bộ, công chức, viên chức theo quy định của pháp luật về cán bộ, công chức, viên chức'];
+      const d0 = await (await one("SELECT (CURRENT_DATE - 40)::text d")).d, plus = (d, n) => new Date(Date.parse(d + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10);
+      for (let i = 0; i < 5; i++) {
+        const k = i + 4, f = fake(k), rec = un[i] || {};
+        const r = await C.create('noxh_check', { reg_kind: 'thue', project_id: tns.id, unit_id: rec.unit_id ?? null, unit_area: rec.area_tt ?? null, received_on: plus(d0, i * 6),
+          head: [{ name: ten[k] || ten[i], phone: f.phone, bday: 10 + i, bmonth: 1 + i, byear: 1988 + i, id_no: f.id_no, job: 'Người lao động làm việc tại doanh nghiệp', doi_tuong: dt[i % 3], confirm_org: 'UBND phường Đình Bảng',
+            housing: 'Chưa có nhà ở thuộc sở hữu của hộ gia đình', province: 'Bắc Ninh', district: 'Từ Sơn', commune: 'Đình Bảng', income: 'Có thu nhập bình quân hàng tháng thực nhận không quá 25 triệu đồng', relation: 'Chủ hộ' }],
+          members: i % 2 ? [{ name: 'Nguyễn Văn Bình', relation: 'Vợ (Chồng)', byear: 1990 + i }] : [], note: 'Dữ liệu thử — hồ sơ thuê' }, u, { system: true, demo: true });
+        const id = r.row.id;
+        if (i >= 2) await q("UPDATE kd_noxh_check SET status = 'cho_duyet', sxd_submit_on = $2 WHERE id = $1", [id, plus(d0, i * 6 + 5)]);
+        if (i === 4) await q("UPDATE kd_noxh_check SET status = 'da_duyet', sxd_result = 'duoc_duyet', sxd_approved_on = $2, sxd_doc_no = '1234/SXD-QLN' WHERE id = $1", [id, plus(d0, 38)]);
+      }
+      localStorage.setItem('ctg-kd-demo-dk-thue', '1');
+    }
+  } catch (e) { console.warn('đăng ký thuê / hồ sơ thuê thử', e); }
   const job = async () => { try { await tx(db => biz.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.warn('job', e.message); } };
   await job(); setInterval(job, 2 * 60e3);
 

@@ -223,7 +223,7 @@ def('sale_notice', {
     { k: 'in_ds', l: 'In danh sách căn', icon: 'fa-list-ol', from: '*', roles: ALL, url: '/print/sale_notice/:id?kind=danh_sach' }],
 });
 def('reservation', {
-  title: 'Đăng ký mua – giữ chỗ', one: 'phiếu đăng ký', code: 'GD-01', mod: '04', icon: 'fa-hand-holding-hand', disp: "t.code||coalesce(' · '||t.cust_name,'')",
+  title: 'Đăng ký mua / thuê – giữ chỗ', one: 'phiếu đăng ký', code: 'GD-01', mod: '04', icon: 'fa-hand-holding-hand', disp: "t.code||coalesce(' · '||t.cust_name,'')",
   purpose: 'Ghi nhận khách đăng ký mua căn, giữ căn cho khách', users: 'Nhân viên bán hàng',
   how: 'Bảng hàng → bấm căn Còn bán → lập phiếu đăng ký căn hộ → phiếu tự vào danh sách này, căn chuyển «Đang giữ chỗ» → cập nhật tiến trình → in bản đăng ký căn hộ / nội thất',
   rules: 'Chặn đăng ký trùng căn; khách chưa có hồ sơ thì tự tạo theo CCCD / số điện thoại; hủy đăng ký thì căn trở lại Còn bán, không tự hoàn tiền',
@@ -231,6 +231,7 @@ def('reservation', {
     { k: 'code', l: 'Mã phiếu', t: 'code', prefix: 'GD-{Y}-', pad: 4 },
     { k: 'sale_check', l: 'Thông báo mở bán', t: 'text', ro: 1 },   // kiểm tra căn có trong thông báo mở bán đã duyệt gần nhất (cảnh báo, không chặn)
     { k: 'unit_id', l: 'Mã căn hộ', t: 'ref', ref: 'unit', req: 1, filter: 'con_ban,chua_mo_ban', fill: { price: 'total_price', finish_value: 'finish_value' } },
+    { k: 'deal', l: 'Hình thức đăng ký', t: 'sel', req: 1, def: 'mua', o: [['mua', 'Đăng ký mua', 'b'], ['thue', 'Đăng ký thuê', 'v']] },
     { k: 'customer_id', l: 'Khách hàng đã có', t: 'ref', ref: 'customer', help: 'Chọn khách có sẵn để điền nhanh — để trống: hệ thống tự khớp theo CCCD / SĐT hoặc tạo khách mới',
       fill: { cust_code: 'code', cust_name: 'full_name', id_no: 'id_no', id_date: 'id_date', id_place: 'id_place', address: 'address', phone: 'phone', tax_code: 'tax_code', bank_account: 'bank_account' } },
     { k: 'cust_code', l: 'Mã khách hàng', t: 'text', help: 'Để trống → lấy mã khách đã có (khớp CCCD / SĐT) hoặc tự cấp mã mới (KH000001…)' },
@@ -242,9 +243,11 @@ def('reservation', {
     { k: 'phone', l: 'Số điện thoại', t: 'text', req: 1, help: '09xxxxxxxx' },
     { k: 'tax_code', l: 'Mã số thuế cá nhân', t: 'text', pii: 1, help: 'In trên biên bản bàn giao hồ sơ' },
     { k: 'bank_account', l: 'Tài khoản ngân hàng', t: 'text', pii: 1, help: 'Số tài khoản - Ngân hàng (VD 0070101168008 - Ngân hàng MB)' },
-    money('unit_value', 'Giá trị căn hộ', { help: 'Giá trị sau thuế + phí bảo trì — tự lấy theo Danh mục sản phẩm khi chọn căn' }),
-    money('finish_value', 'Giá trị hoàn thiện nội thất'),
-    money('price', 'Tổng giá bán', { help: 'Tự tính = Giá trị căn hộ + Giá trị hoàn thiện nội thất' }),
+    money('unit_value', 'Giá trị căn hộ', { show: { deal: ['mua'] }, help: 'Giá trị sau thuế + phí bảo trì — tự lấy theo Danh mục sản phẩm khi chọn căn' }),
+    money('finish_value', 'Giá trị hoàn thiện nội thất', { show: { deal: ['mua'] } }),
+    money('price', 'Tổng giá bán', { show: { deal: ['mua'] }, help: 'Tự tính = Giá trị căn hộ + Giá trị hoàn thiện nội thất' }),
+    money('rent', 'Tiền thuê/tháng dự kiến', { show: { deal: ['thue'] }, req: 1, help: 'Chuyển sang hợp đồng thuê khi «Lập hợp đồng»' }),
+    { k: 'term_months', l: 'Thời hạn thuê dự kiến (tháng)', t: 'int', show: { deal: ['thue'] } },
     { k: 'reg_state', l: 'Trạng thái căn hộ', t: 'sel', req: 1, def: 'giu_cho', o: REG_ST },
     { k: 'progress', l: 'Tiến trình giao dịch', t: 'sel', req: 1, def: 'tiep_nhan', o: REG_PROG },
     { k: 'policy_id', l: 'Chính sách áp dụng', t: 'ref', ref: 'price_policy', filter: 'phat_hanh', help: 'Để trống → tự lấy chính sách bán hàng đang phát hành cho căn' },
@@ -263,6 +266,8 @@ def('reservation', {
     { k: 'doc_ret', l: 'Trạng thái trả hồ sơ', t: 'sel', show: { status: ['huy'] }, o: [['chua_tra', 'Chưa trả hồ sơ', 'a'], ['da_tra', 'Đã trả hồ sơ', 'g']] },
     { k: 'doc_ret_on', l: 'Ngày trả hồ sơ', t: 'date', show: { status: ['huy'] } },
   ], list: ['stt', 'unit_id', 'sale_check', 'cust_code', 'cust_name', 'id_no', 'id_date', 'id_place', 'address', 'phone', 'unit_value', 'finish_value', 'price', 'reg_at', 'hold_until', 'reg_state', 'progress', 'source', 'agent_id', 'prints'],
+  // tab «Đăng ký thuê» ở danh sách: tiền thuê thay cho giá bán
+  lists: { thue: { cols: ['stt', 'unit_id', 'sale_check', 'cust_code', 'cust_name', 'id_no', 'id_date', 'id_place', 'address', 'phone', 'rent', 'term_months', 'reg_at', 'hold_until', 'reg_state', 'progress', 'source', 'agent_id', 'prints'] } },
   lock: ['chuyen_hd', 'het_han', 'huy', 'cho_duyet'], lockKeep: ['note', 'progress', 'reg_state', 'doc_ret', 'doc_ret_on'],
   files: [['tai_lieu', 'Tài liệu'], ['tra_ho_so', 'File scan trả hồ sơ']], fileKeep: ['tra_ho_so'],   // fileKeep: loại tệp vẫn xóa được khi phiếu đã khóa
   flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'giu_cho' } },
@@ -291,7 +296,7 @@ const M4 = {
 };
 const SIGN_ST = [['chua_lien_he', 'Chưa liên hệ', 's'], ['da_lien_he', 'Đã liên hệ', 'b'], ['da_hen', 'Đã hẹn', 'v'], ['can_bo_sung', 'Cần bổ sung hồ sơ', 'a'], ['da_ky', 'Đã ký', 'g']];
 def('noxh_check', {
-  title: 'Hồ sơ mua NOXH', one: 'hồ sơ', code: 'GD-02', mod: '04', icon: 'fa-list-check', disp: "'NOXH #'||t.id",
+  title: 'Hồ sơ mua / thuê NOXH', one: 'hồ sơ', code: 'GD-02', mod: '04', icon: 'fa-list-check', disp: "'NOXH #'||t.id",
   purpose: 'Kiểm tra hồ sơ theo nhóm đối tượng', users: 'Nhân viên quản lý hồ sơ',
   how: 'Tiếp nhận → khai thông tin hộ (chủ hộ + thành viên) theo Mẫu 4 → đối chiếu giấy tờ, ghi số lượng → in biên bản giao nhận → trình xét duyệt → xuất Bảng tổng hợp Mẫu 4',
   rules: 'Checklist phải cập nhật theo quy định hiện hành; không tự kết luận đủ điều kiện pháp lý',
@@ -303,7 +308,7 @@ def('noxh_check', {
     { k: 'unit_area', l: 'Diện tích thông thủy (m²)', t: 'num', help: 'Tự cập nhật theo Danh mục sản phẩm' },
     { k: 'sale_check', l: 'Thông báo mở bán', t: 'text', ro: 1 },   // căn có trong thông báo mở bán đã duyệt gần nhất? (cảnh báo, không chặn)
     { k: 'received_on', l: 'Ngày nộp hồ sơ', t: 'date', def: 'today' },
-    { k: 'reg_kind', l: 'Hình thức mua', t: 'sel', def: 'mua', o: M4.hinh_thuc },
+    { k: 'reg_kind', l: 'Hình thức', t: 'sel', def: 'mua', o: M4.hinh_thuc },
     { k: 'unit_text', l: 'Mã căn hộ ngoài danh mục', t: 'text', help: 'Chỉ ghi khi căn chưa có trong Danh mục sản phẩm (VD CTS-L-0511)' },
     { k: 'plan_sign', l: 'Ngày dự kiến ký', t: 'date', sec: 'Lịch ký', help: 'Tự sang hợp đồng và màn Lịch ký hợp đồng' },
     { k: 'sign_place', l: 'Địa điểm ký', t: 'text' },

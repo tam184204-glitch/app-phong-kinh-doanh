@@ -1027,7 +1027,8 @@ async function listView(main, ent, params = {}) {
   Object.assign(S, params); S.group = params.group || '';
   const st = E.fields.find(f => f.k === 'status');
   const hdKinds = ent === 'contract' && S.group === 'can_ho';   // 2 loại hợp đồng, mỗi loại danh sách và trạng thái riêng
-  const grp = () => hdKinds && S.ht ? (S.ht === 't' ? 'thue' : 'hoan_thien') : S.group;
+  const rsKinds = ent === 'reservation';   // phiếu đăng ký: Đăng ký mua / Đăng ký thuê
+  const grp = () => rsKinds ? (S.ht === 't' ? 'thue' : 'mua') : hdKinds && S.ht ? (S.ht === 't' ? 'thue' : 'hoan_thien') : S.group;
   const projFilter = ['unit', 'building', 'price_policy', 'reservation', 'contract', 'collect_plan', 'handover', 'defect', 'pinkbook', 'debt_call', 'receipt', 'installment', 'noxh_check', 'ticket', 'contract_change', 'commission', 'target', 'agent_alloc', 'refund'].includes(ent);
   const extra = { collect_plan: `<button class="btn" data-x="suggest">${ico('fa-wand-magic-sparkles')} Gợi ý từ công nợ & cam kết</button>`, commission: `<button class="btn" data-x="calc">${ico('fa-calculator')} Tính / cập nhật hoa hồng</button>`,
     receipt: M.imports.receipts ? `<button class="btn amb" data-x="imp" data-k="receipts">${ico('fa-file-import')} Nhập chứng từ Bravo</button>` : '', unit: M.imports.units ? `<button class="btn" data-x="imp" data-k="units">${ico('fa-file-import')} Nhập bảng hàng</button>` : '',
@@ -1038,7 +1039,7 @@ async function listView(main, ent, params = {}) {
       ${projFilter ? `<select id="pj"><option value="">Tất cả dự án</option>${M.projects.map(p => `<option value="${p.id}" ${+S.project === p.id ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select>` : ''}
       ${E.fields.some(f => ['owner_id', 'assignee_id'].includes(f.k)) ? `<label class="chk"><input type="checkbox" id="mine" ${S.mine ? 'checked' : ''}> Của tôi</label>` : ''}
       <span class="grow"></span><span class="small muted" id="cnt"></span></div>
-      ${hdKinds ? `<div class="tabs hd-tabs hd-kinds" id="hdK"><button data-ck="" class="${S.ht ? '' : 'on'}">${ico('fa-file-contract')} HĐ mua bán</button><button data-ck="1" class="${S.ht === '1' ? 'on' : ''}">${ico('fa-couch')} HĐ hoàn thiện căn hộ</button><button data-ck="t" class="${S.ht === 't' ? 'on' : ''}">${ico('fa-key')} HĐ thuê</button></div>` : ''}${st ? `<div class="tabs" id="stTabs"></div>` : ''}<div id="bulk"></div><div class="tbl-wrap" id="tb"><div class="empty">Đang tải…</div></div><div class="more" id="more"></div></div></div>`;
+      ${hdKinds ? `<div class="tabs hd-tabs hd-kinds" id="hdK"><button data-ck="" class="${S.ht ? '' : 'on'}">${ico('fa-file-contract')} HĐ mua bán</button><button data-ck="1" class="${S.ht === '1' ? 'on' : ''}">${ico('fa-couch')} HĐ hoàn thiện căn hộ</button><button data-ck="t" class="${S.ht === 't' ? 'on' : ''}">${ico('fa-key')} HĐ thuê</button></div>` : ''}${rsKinds ? `<div class="tabs hd-tabs hd-kinds" id="hdK"><button data-ck="" class="${S.ht ? '' : 'on'}">${ico('fa-hand-holding-hand')} Đăng ký mua</button><button data-ck="t" class="${S.ht === 't' ? 'on' : ''}">${ico('fa-key')} Đăng ký thuê</button></div>` : ''}${st ? `<div class="tabs" id="stTabs"></div>` : ''}<div id="bulk"></div><div class="tbl-wrap" id="tb"><div class="empty">Đang tải…</div></div><div class="more" id="more"></div></div></div>`;
   const load = async () => {
     const p = new URLSearchParams(); if (S.q) p.set('q', S.q); if (S.status) p.set('status', S.status); if (S.project) p.set('project', S.project); if (S.mine) p.set('mine', '1'); if (S.sort) p.set('sort', S.sort); p.set('limit', S.limit); if (grp()) p.set('group', grp());
     for (const [k, v] of Object.entries(S)) if (k.startsWith('f_') && v) p.set(k, v);
@@ -1066,7 +1067,7 @@ async function listView(main, ent, params = {}) {
   main.onclick = run(async e => {
     const t = e.target;
     if ((t.id === 'newBtn' || t.closest('#newBtn')) && ent === 'reservation')   // phiếu đăng ký căn hộ (chuyển từ Bảng hàng sang đây 28/10/2026)
-      return openForm('reservation', { title: `${ico('fa-hand-holding-hand')} Phiếu đăng ký căn hộ`, onSaved: row => { load(); updateBadges(); openDetail('reservation', row.id); } });
+      return openForm('reservation', { title: S.ht === 't' ? `${ico('fa-key')} Phiếu đăng ký thuê căn hộ` : `${ico('fa-hand-holding-hand')} Phiếu đăng ký căn hộ`, preset: S.ht === 't' ? { deal: 'thue' } : undefined, onSaved: row => { load(); updateBadges(); openDetail('reservation', row.id); } });
     if (t.id === 'newBtn' || t.closest('#newBtn')) return openForm(ent, { tab: hdKinds && S.ht ? (S.ht === 't' ? 'thue' : 'ht') : undefined, preset: { ...(hdKinds && S.ht === 't' ? { kind: 'thue' } : {}), ...(S.project && E.fields.some(f => f.k === 'project_id') ? { project_id: +S.project } : {}), ...(E.groups?.[S.group] ? { ptype: S.group } : {}) } });
     if (t.closest('#infoBtn')) return $('#infoBox', main)?.classList.toggle('hidden');
     if (t.closest('#xls')) { const p = new URLSearchParams(); if (S.q) p.set('q', S.q); if (S.status) p.set('status', S.status); if (S.project) p.set('project', S.project); if (S.mine) p.set('mine', '1'); if (grp()) p.set('group', grp()); return download(`/api/export/${ent}?${p}`); }
