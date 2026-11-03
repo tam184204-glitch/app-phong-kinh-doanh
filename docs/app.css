@@ -795,14 +795,11 @@ table.prod-t tfoot td { font-weight: 800 !important; color: var(--ink) !importan
 .sdate input[type=date] { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; right: 0; bottom: 0; }
 .m4ask .sdate { display: flex; height: 38px; }
 .m4t td.m4ck, .m4t th input { cursor: pointer; }
-/* cột ô tick + TT đứng yên khi kéo ngang */
-.m4t .m4s1, .m4t .m4s2 { position: sticky; z-index: 2; }
-.main .card .tbl-wrap table.m4t tbody td.m4s1, .main .card .tbl-wrap table.m4t tbody td.m4s2 { background: #fff; }
-.m4t .m4s1 { left: 0; width: 44px; min-width: 44px; max-width: 44px; }
-.m4t .m4s2 { left: 44px; width: 52px; min-width: 52px; max-width: 52px; box-shadow: inset -1px 0 0 #d5e0ec, 6px 0 8px -6px rgba(20, 56, 102, .18); }
-.m4t td.m4s1:only-child { box-shadow: none; }
-.main .card .tbl-wrap table.m4t thead th.m4s1, .main .card .tbl-wrap table.m4t thead th.m4s2 { position: sticky; z-index: 4; background: #f3f7fc; }
-.main .card .tbl-wrap table.m4t tbody tr:hover td.m4s1, .main .card .tbl-wrap table.m4t tbody tr:hover td.m4s2 { background: #f6f9fd; }
+/* cột ô tick đứng yên khi kéo ngang */
+.m4t .m4s1 { position: sticky; left: 0; z-index: 2; width: 44px; min-width: 44px; max-width: 44px; box-shadow: inset -1px 0 0 #d5e0ec, 6px 0 8px -6px rgba(20, 56, 102, .18); }
+.main .card .tbl-wrap table.m4t tbody td.m4s1 { background: #fff; }
+.main .card .tbl-wrap table.m4t thead th.m4s1 { position: sticky; z-index: 4; background: #f3f7fc; }
+.main .card .tbl-wrap table.m4t tbody tr:hover td.m4s1 { background: #f6f9fd; }
 
 /* tiêu đề nhóm trong form (Bên mua / Bên bán / Thông tin chi tiết…) */
 .form .fsec { grid-column: 1 / -1; margin: 10px 0 -2px; padding: 6px 10px; border-radius: 8px; background: #e8f3fb; color: #1e4e8c; font-weight: 700; font-size: 13px; }
