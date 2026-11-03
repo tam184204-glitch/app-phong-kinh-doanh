@@ -255,8 +255,8 @@ def('reservation', {
     { k: 'reg_at', l: 'Ngày giờ đăng ký', t: 'dt', req: 1, def: 'now', help: 'Tự lấy giờ hiện tại khi mở phiếu — sửa được' },
     { k: 'reg_date', l: 'Ngày đăng ký', t: 'date', hide: 1 },   // = ngày của reg_at (giờ VN), giữ cho giá / hoa hồng / kiểm tra hạn
     { k: 'hold_until', l: 'Hạn giữ chỗ', t: 'dt', help: 'Để trống = giữ đến khi ký HĐMB / hủy đăng ký' },
-    money('deposit', 'Số tiền đặt cọc', { hide: 1 }),   // bỏ khỏi phiếu đăng ký — ghi qua nút «Ghi nhận đặt cọc»
-    { k: 'deposit_on', l: 'Ngày đặt cọc', t: 'date' },
+    money('deposit', 'Số tiền đặt cọc', { hide: 1 }),   // không dùng đặt cọc — giữ cột cho dữ liệu cũ
+    { k: 'deposit_on', l: 'Ngày đặt cọc', t: 'date', hide: 1 },   // không dùng đặt cọc — giữ cột cho dữ liệu cũ
     { k: 'docs_deadline', l: 'Hạn hoàn thiện hồ sơ', t: 'date' },
     { k: 'source', l: 'Nguồn bán', t: 'sel', req: 1, def: 'truc_tiep', o: [['truc_tiep', 'Trực tiếp'], ['dai_ly', 'Đại lý / sàn'], ['ctv', 'Cộng tác viên']] },
     { k: 'agent_id', l: 'Đại lý bán hàng', t: 'ref', ref: 'agent', show: { source: ['dai_ly', 'ctv'] } },
@@ -272,7 +272,7 @@ def('reservation', {
   files: [['tai_lieu', 'Tài liệu'], ['tra_ho_so', 'File scan trả hồ sơ']], fileKeep: ['tra_ho_so'],   // fileKeep: loại tệp vẫn xóa được khi phiếu đã khóa
   flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'giu_cho' } },
   acts: [
-    { k: 'deposit', l: 'Ghi nhận đặt cọc', icon: 'fa-money-bill-wave', from: ['giu_cho', 'qua_han'], roles: ['ban_hang', 'truong_phong'], ask: [money('deposit', 'Số tiền đặt cọc', { req: 1 }), { k: 'deposit_on', l: 'Ngày đặt cọc', t: 'date', req: 1, def: 'today' }] },
+    // bỏ «Ghi nhận đặt cọc» (03/11/2026: phòng KD không dùng đặt cọc trên phiếu đăng ký)
     { k: 'extend', l: 'Gia hạn giữ chỗ', icon: 'fa-clock-rotate-left', from: ['giu_cho', 'qua_han'], roles: MGR, ask: [{ k: 'hold_until', l: 'Hạn giữ chỗ mới', t: 'dt', req: 1 }, { k: 'reason', l: 'Lý do', t: 'long', req: 1 }] },
     { k: 'release', l: 'Giải phóng căn', icon: 'fa-unlock', from: ['giu_cho', 'qua_han'], roles: MGR, danger: 1, ask: [{ k: 'reason', l: 'Lý do / phương án xử lý tiền đã nộp', t: 'long', req: 1 }] },
     { k: 'to_contract', l: 'Lập hợp đồng', icon: 'fa-file-signature', from: ['giu_cho', 'da_coc'], roles: ['ban_hang', 'truong_phong', 'ho_so'], ask: [{ k: 'kind', l: 'Loại hợp đồng', t: 'sel', req: 1, def: 'hdmb', o: [['hdmb', 'Hợp đồng mua bán'], ['thue', 'Hợp đồng thuê'], ['thue_mua', 'Hợp đồng thuê mua']] }, { k: 'number', l: 'Số hợp đồng', t: 'text', req: 1 }, { k: 'plan_sign', l: 'Ngày dự kiến ký', t: 'date' }] },

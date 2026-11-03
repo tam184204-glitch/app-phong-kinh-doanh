@@ -310,7 +310,7 @@ async function loadDemo() {
       await C.submit('reservation', res.id, by, { db, demo: true });
       await C.approve('reservation', res.id, tp, { ok: true, db });
       if (stopAt === 'giu_cho') return { cust, res };
-      await C.act('reservation', res.id, 'deposit', by, { deposit: 50000000, deposit_on: C.addDays(regDate, 1) }, { db, demo: true });
+      // không còn bước đặt cọc trên phiếu đăng ký
       if (stopAt === 'da_coc') return { cust, res };
       const r2 = await C.act('reservation', res.id, 'to_contract', by, { kind: 'hdmb', number, plan_sign: signDate }, { db, demo: true });
       const cid = r2.open[1];

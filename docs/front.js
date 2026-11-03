@@ -1567,6 +1567,9 @@ const USTAT = { con_ban: 'Còn bán', giu_cho: 'Giữ chỗ', da_coc: 'Đã cọ
 V.board = async (main, params) => {
   const s = ST.board ||= { project: '', building: '', st: '', kind: '' };
   if (params.project) s.project = params.project;
+  // tra cứu căn: mã căn (0905, K-0905, CTS-K-0905) hoặc tên khách — căn khớp sáng viền, căn khác mờ
+  const norm = v => String(v ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
+  const hitU = u => { const q = norm(s.q).trim(); return !q || norm(u.code).includes(q) || norm(u.code).replace(/-/g, '').includes(q.replace(/-/g, '')) || norm(u.customer).includes(q); };
   const draw = async () => {
     const d = await api('GET', `/api/board?${qsOf({ project: s.project, building: s.building })}`);
     s.project = d.project; s.building = d.building;
@@ -1576,12 +1579,32 @@ V.board = async (main, params) => {
     main.innerHTML = `<div class="page">${head('02', 'Bảng hàng', 'fa-table-cells', M.ents.reservation.perm.c ? `<span class="small muted">Bấm căn còn trống để lập phiếu đăng ký</span>` : '')}
       <div class="card mb"><div class="toolbar" style="border:0"><select id="bp">${d.projects.filter(p => p.n).map(p => `<option value="${p.id}" ${p.id === d.project ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)} (${p.n} căn)</option>`).join('')}</select>
         <select id="bk"><option value="">Mọi loại căn</option>${kinds.map(k => `<option value="${k}" ${s.kind === k ? 'selected' : ''}>${esc(M.ents.unit.fields.find(f => f.k === 'kind').o.find(o => o[0] === k)?.[1] || k)}</option>`).join('')}</select>
+        <div class="search" style="max-width:300px"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="bq" placeholder="Tra cứu căn: mã căn, tên khách…" value="${esc(s.q || '')}" autocomplete="off"></div><span class="small muted" id="bqN"></span>
         <span class="grow"></span>${d.policy ? `<span class="src">${ico('fa-tags')} Chính sách đang áp dụng: <b>${esc(d.policy.code)}</b> (${dmy(d.policy.start_on)} – ${dmy(d.policy.end_on)})${d.policy.src_file ? ' · ' + esc(d.policy.src_file) : ''}</span>` : '<span class="pill a">Chưa có chính sách giá đang phát hành</span>'}</div>
         <div style="padding:0 14px 12px"><div class="towers">${d.buildings.map(b => `<div class="tower ${b.id === d.building ? 'on' : ''}" data-b="${b.id}"><b>${esc(b.name || 'Tòa ' + b.code)}</b><small>${b.n} căn</small></div>`).join('')}</div></div></div>
       <div class="card"><div class="toolbar"><div class="legend">${Object.entries(BGRP_L).filter(([k]) => cnt[k]).map(([k, l]) => `<span data-st="${k}" style="cursor:pointer;${s.st && s.st !== k ? 'opacity:.4' : ''}"><b class="u g-${k}" style="width:12px;height:12px;min-height:0;padding:0;border-radius:3px"></b>${l} <b style="background:none;width:auto;height:auto;color:var(--ink)">${cnt[k]}</b></span>`).join('')}</div>${s.st ? '<button class="btn sm ghost" data-st="">Bỏ lọc</button>' : ''}<span class="grow"></span><span class="small muted">${d.units.length} căn · ${floors.length} tầng</span></div>
-      <div class="bd"><div class="floors">${floors.map(fl => `<div class="floor"><div class="fl">Tầng ${fl}</div><div class="us">${d.units.filter(u => u.floor === fl).map(u => `<div class="u g-${bgOf(u)} ${(s.st && s.st !== bgOf(u)) || (s.kind && s.kind !== u.kind) ? 'dim' : ''}" data-u="${u.id}" title="${esc(u.code)} · ${BGRP_L[bgOf(u)]}${u.rent && u.rent_to ? ' đến ' + dmy(u.rent_to) : ''}${!u.rent && u.res_rent ? ' (đăng ký thuê)' : ''}${u.sale_doc ? ` (bán qua ${u.sale_doc === 'vay' ? 'HĐ vay' : 'HĐ thuê'} — chờ HĐMB)` : ''}${!u.rent && u.rent_ended ? ' · đã hết hạn thuê ' + dmy(u.rent_ended) + ' — bán / cho thuê tiếp được' : ''}${u.cancelled ? ' · đã hủy đăng ký' : ''}${u.customer ? ' · ' + esc(u.customer) : ''}">${u.hold_until ? `<span class="hold">${ico('fa-clock')}</span>` : ''}<b class="no">${esc(u.code.split('-').pop())}</b><div class="sp">${u.bedrooms || ''}PN · ${fnum(u.area_tt)}m²</div><div class="pr">${u.rent && u.rent_amt ? `${fmB(u.rent_amt)}/tháng` : u.res_rent ? `${fmB(u.res_rent)}/tháng` : fmB(u.total_price)}</div><div class="cu">${esc(u.customer || u.direction || '')}</div></div>`).join('')}</div></div>`).join('') || '<div class="empty">Tòa chưa có căn</div>'}</div></div></div></div>`;
+      <div class="bd"><div class="floors">${floors.map(fl => `<div class="floor"><div class="fl">Tầng ${fl}</div><div class="us">${d.units.filter(u => u.floor === fl).map(u => `<div class="u g-${bgOf(u)} ${(s.st && s.st !== bgOf(u)) || (s.kind && s.kind !== u.kind) || !hitU(u) ? 'dim' : ''}${s.q && hitU(u) ? ' hit' : ''}" data-u="${u.id}" title="${esc(u.code)} · ${BGRP_L[bgOf(u)]}${u.rent && u.rent_to ? ' đến ' + dmy(u.rent_to) : ''}${!u.rent && u.res_rent ? ' (đăng ký thuê)' : ''}${u.sale_doc ? ` (bán qua ${u.sale_doc === 'vay' ? 'HĐ vay' : 'HĐ thuê'} — chờ HĐMB)` : ''}${!u.rent && u.rent_ended ? ' · đã hết hạn thuê ' + dmy(u.rent_ended) + ' — bán / cho thuê tiếp được' : ''}${u.cancelled ? ' · đã hủy đăng ký' : ''}${u.customer ? ' · ' + esc(u.customer) : ''}">${u.hold_until ? `<span class="hold">${ico('fa-clock')}</span>` : ''}<b class="no">${esc(u.code.split('-').pop())}</b><div class="sp">${u.bedrooms || ''}PN · ${fnum(u.area_tt)}m²</div><div class="pr">${u.rent && u.rent_amt ? `${fmB(u.rent_amt)}/tháng` : u.res_rent ? `${fmB(u.res_rent)}/tháng` : fmB(u.total_price)}</div><div class="cu">${esc(u.customer || u.direction || '')}</div></div>`).join('')}</div></div>`).join('') || '<div class="empty">Tòa chưa có căn</div>'}</div></div></div></div>`;
     $('#bp', main).onchange = e => { s.project = e.target.value; s.building = ''; draw(); };
     $('#bk', main).onchange = e => { s.kind = e.target.value; draw(); };
+    const applyQ = () => {   // lọc tại chỗ, không tải lại
+      const n = d.units.filter(u => s.q && hitU(u)).length;
+      for (const el of $$('[data-u]', main)) { const u = d.units.find(x => x.id === +el.dataset.u), h = hitU(u); el.classList.toggle('dim', (s.st && s.st !== bgOf(u)) || (s.kind && s.kind !== u.kind) || !h); el.classList.toggle('hit', !!s.q && h); }
+      $('#bqN', main).textContent = s.q ? (n ? `${n} căn khớp` : 'Không có ở tòa này — Enter để tìm cả dự án') : '';
+      if (s.q && n) $('[data-u].hit', main)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    };
+    const bq = $('#bq', main); bq.oninput = debounce(() => { s.q = bq.value; applyQ(); }, 150); applyQ();
+    bq.onkeydown = run(async e => {
+      if (e.key === 'Escape') { bq.value = s.q = ''; return applyQ(); }
+      s.q = bq.value; if (e.key !== 'Enter' || !s.q.trim()) return;
+      const hits = d.units.filter(hitU);
+      if (hits.length === 1) return unitPop(hits[0], draw);
+      if (hits.length) return applyQ();
+      // không có ở tòa đang xem: tìm trong cả dự án rồi chuyển sang tòa của căn
+      const r = (await api('GET', `/api/e/unit?${qsOf({ q: s.q.trim(), project: s.project, limit: 20 })}`)).rows || [];
+      const x = r.find(u => d.buildings.some(b => b.id === u.building_id));
+      if (!x) return toast(`Không tìm thấy căn «${s.q.trim()}» trong dự án này`, true);
+      s.building = x.building_id; await draw(); $('#bq', main)?.focus();
+    });
     main.onclick = run(async e => {
       const b = e.target.closest('[data-b]'); if (b) { s.building = b.dataset.b; return draw(); }
       const st = e.target.closest('[data-st]'); if (st) { s.st = s.st === st.dataset.st ? '' : st.dataset.st; return draw(); }
@@ -1822,7 +1845,7 @@ V.unit360 = async (main, params) => {
       ${c?._debt ? `<div class="sec-title">${ico('fa-sack-dollar')} Công nợ ${esc(c.number)}</div><div class="small">Phải thu <b>${fm(c._debt.total)}</b> · đã thu <b>${fm(c._debt.paid)}</b> (${fnum(c._debt.paid_pct)}%)<br>Còn <b>${fm(c._debt.left)}</b>${c._debt.overdue ? ` · <span class="neg">quá hạn ${fm(c._debt.overdue)} (${c._debt.overdue_days} ngày)</span>` : ''}</div><div class="bar"><i class="sage" style="width:${c._debt.paid_pct}%"></i></div>` : ''}
       <div class="sec-title">${ico('fa-folder-open')} Tệp hồ sơ</div>${d.files.length ? d.files.map(f => `<a class="small" style="display:block;padding:3px 0" href="/api/file/${f.id}" target="_blank">${ico('fa-file-pdf')} ${esc(f.name)}</a>`).join('') : '<div class="muted small">Chưa có</div>'}
     </div><div class="card pad">
-      ${sec('Giao dịch – giữ chỗ', 'reservation', d.reservations, ['code', 'cust_name', 'reg_at', 'price', 'deposit', 'reg_state', 'progress'], 'fa-hand-holding-hand')}
+      ${sec('Giao dịch – giữ chỗ', 'reservation', d.reservations, ['code', 'cust_name', 'reg_at', 'price', 'reg_state', 'progress'], 'fa-hand-holding-hand')}
       ${sec('Hợp đồng', 'contract', d.contracts, ['number', 'kind', 'customer_id', 'value', 'signed_on', 'status'], 'fa-file-contract')}
       ${c?._debt?.inst?.length ? `<div class="sec-title">${ico('fa-calendar-check')} Lịch thanh toán ${esc(c.number)}</div>${schedTable(c._debt.inst, true)}` : ''}
       ${sec('Chứng từ thu (Bravo)', 'receipt', d.receipts, ['voucher_date', 'voucher_no', 'amount', 'content', 'status'], 'fa-receipt')}

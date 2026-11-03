@@ -961,3 +961,6 @@ table.t tr.clk { cursor: pointer; }
 .bv-row > [data-f=link_ids] { grid-column: 1 / -1; }
 .link-ticks { display: flex; flex-direction: column; gap: 4px; flex: 1; padding: 4px 0; }
 .link-ticks .chk { display: flex; gap: 6px; align-items: center; font-size: 13px; }
+
+/* Bảng hàng: tra cứu căn — căn khớp sáng viền */
+.floors .u.hit { outline: 3px solid var(--amber); outline-offset: 1px; box-shadow: 0 0 0 6px rgba(245, 166, 35, .18); }
