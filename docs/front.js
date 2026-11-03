@@ -653,7 +653,10 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     if (rec.kind !== 'hoan_thien' && pair.finish) { const g = await api('GET', `/api/e/contract/${pair.finish}`); htRec = g.row; htLocked = !!g.perm.locked; }
   }
   const lockKeep = perm?.locked ? new Set(perm.lockKeep || []) : null;
-  const fields = E.fields.filter(f => !skip.includes(f.k) && !f.noForm && !(f.ro && !id) && !(f.t === 'code' && !id && !f.manual) && !(f.t === 'json' && f.k !== 'new_schedule' && !f.grid));
+  // khách đã ở giai đoạn sau mở bán (02 Danh mục khách hàng): Tình trạng chỉ chọn các bước sau mở bán — chọn lại «Mới»… thì khách chuyển sang 03 Tiềm năng, mất khỏi danh mục (PROSPECT ở screens.js)
+  const postSale = ent === 'customer' && rec.stage && !PROSPECT.has(rec.stage);
+  const fields = E.fields.filter(f => !skip.includes(f.k) && !f.noForm && !(f.ro && !id) && !(f.t === 'code' && !id && !f.manual) && !(f.t === 'json' && f.k !== 'new_schedule' && !f.grid))
+    .map(f => postSale && f.k === 'stage' ? { ...f, o: f.o.filter(o => !PROSPECT.has(o[0])) } : f);
   const wide = f => ['long', 'check', 'json'].includes(f.t) || !!f.pick || !!f.upload;
   const body = `${E.note ? `<div class="warnbar">${ico('fa-circle-info')}<span>${esc(E.note)}</span></div>` : ''}${lockKeep ? `<div class="lockbar">${ico('fa-lock')} Bản ghi đã chốt — chỉ sửa được: ${[...lockKeep].filter(k => { const f = E.fields.find(x => x.k === k), sh = d => isShown(E.fields.find(x => x.k === d) || {}, rec); return !f?.show || isShown(f, rec) || Object.keys(f.show).every(d => lockKeep.has(d) && sh(d)); }).map(k => k === 'new_schedule' ? 'Lần thanh toán' : E.fields.find(f => f.k === k)?.l).join(', ')}</div>` : ''}${perm?.softOpen ? `<div class="warnbar">${ico('fa-unlock')}<span>Hợp đồng đã trình duyệt: nhân viên đã bị khóa, chỉ sửa được Lần thanh toán. Quản lý vẫn sửa được toàn bộ.</span></div>` : ''}<div id="ferr"></div><form class="form" autocomplete="off">${fields.map(f => {
     const ro = f.ro || (f.t === 'code' && !f.manual) || (lockKeep && !lockKeep.has(f.k)) || (f.pii && id && !M.piiRoles.includes(M.me.role) && rec[f.k]);
