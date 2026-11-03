@@ -138,7 +138,7 @@ const IMPORT = {
       housing: s(r.housing) || null, province: s(r.province) || null, district: s(r.district) || null, commune: s(r.commune) || null, income: s(r.income) || null, members };
     if (r.submit_on) rec.received_on = excelDay(r.submit_on);
     const old = await db.one('SELECT id, status FROM kd_noxh_check WHERE customer_id = $1 ORDER BY id DESC LIMIT 1', [k.id]);
-    if (old && E.noxh_check.delLock.includes(old.status)) return 'trung';
+    if (old && E.noxh_check.lock.includes(old.status)) return 'trung';
     if (old) { await C.update('noxh_check', old.id, rec, ctx.user, { db, system: true, action: 'nhap_excel' }); return 'cap_nhat'; }
     await C.create('noxh_check', { ...rec, reg_kind: 'mua', received_on: rec.received_on || C.today() }, ctx.user, { db, demo: ctx.demo });
     return 'them';

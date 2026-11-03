@@ -297,7 +297,7 @@ function lockKeepOf(e, status, user) {
 }
 // dự thảo (nháp / bị trả lại) → xóa được; đã gửi duyệt / đã duyệt / đã chốt thì không
 const undecided = (e, st) => !!e.flow && e.flow.submit.includes(st);
-const lockDel = (e, st) => !undecided(e, st) && (e.lock?.includes(st) || e.delLock?.includes(st) || e.softLock?.st.includes(st));   // delLock: sửa được nhưng không xóa
+const lockDel = (e, st) => !undecided(e, st) && (e.lock?.includes(st) || e.softLock?.st.includes(st));
 // quyền trên một bản ghi cụ thể — giao diện dựa vào đây để hiện nút
 async function perms(e, row, user, approvals, db) {
   const keep = lockKeepOf(e, row.status, user), locked = !!keep;
