@@ -745,7 +745,10 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
         if (s && form.elements.s_name) { form.elements.seller_unit.value = s.unit; form.elements.s_name.value = s.name; await fillSeller(); }
         form.elements.ptype.value = ['lien_ke', 'shophouse'].includes(src.kind) ? 'lien_ke' : 'can_ho'; vis(); contractNo();
         const bh = form.elements.building_id, bt = bh?.closest('.combo')?.querySelector('[data-combo]'); if (bh) { bh.value = src.building_id ?? ''; if (bt) bt.value = src.building_id__l || ''; }   // số bảng giá = tòa của căn
-        await contractPrefill(src.id); form._setB0?.();   // giá nền gốc theo căn
+        await contractPrefill(src.id);
+        // giá nền gốc theo căn; căn chưa có đơn giá nền (chưa nạp số Bravo, VD tòa G) thì suy ra như cột Đơn giá nền ở Danh mục sản phẩm — để giảm giá, phí bảo trì 2% tính được
+        const after = src.price_net ?? (src.total_price != null && src.maint_fee != null ? src.total_price - src.maint_fee - (src.finish_value || 0) : null);
+        form._unitBase?.(src.base_price ?? (after != null && +src.area_tt > 0 ? Math.round((src.pretax ?? Math.round(after / (1 + (src.vat_pct ?? 5) / 100))) / src.area_tt) : null));
         // giá trị hoàn thiện theo căn thuộc hợp đồng hoàn thiện, không cộng vào hợp đồng mua bán
         const fv = readField(form, fields.find(x => x.k === 'finish_value') || {});
         if (htp && fv > 0 && form.elements.ptype.value !== 'lien_ke') { htp.finish(fv); form.elements.finish_value.value = ''; const tv = readField(form, fields.find(x => x.k === 'value')); if (tv > fv) form.elements.value.value = moneyStr(tv - fv); }
@@ -798,6 +801,8 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     let b0 = null; const rdn = k => readField(form, fields.find(f => f.k === k) || {});
     const setB0 = () => { const b = +rdn('base_price'), a = +rdn('area_tt'); b0 = b > 0 && a > 0 ? b + (+rdn('discount') || 0) / a : null; };
     setB0(); form._setB0 = setB0;
+    // chọn căn: giá nền gốc = giá nền của căn, giá nền trên form = giá nền gốc − tiền giảm đã nhập / DT (nhập giảm giá trước khi chọn căn vẫn đúng)
+    form._unitBase = b => { const a = +rdn('area_tt'); if (!(b > 0) || !(a > 0) || form.elements.ptype?.value === 'lien_ke') return setB0(); b0 = b; form.elements.base_price.value = moneyStr(Math.round(b0 - (+rdn('discount') || 0) / a)); };
     form.addEventListener('input', e => {
       const k = e.target.name; if (!['base_price', 'area_tt', 'discount'].includes(k) || !form.elements.base_price) return;
       if (k === 'base_price') return setB0();

@@ -115,6 +115,13 @@ function contractPrice(r) {
   const F = F0 + corner_amt, vat = r.vat_pct ?? 5, H = F * vat / 100, after_tax = r3(F + H), maint_fee = r3(F * 0.02);
   return { corner_amt: corner_amt || null, pretax: Math.round(F), vat_pct: vat, vat_amt: Math.round(H), after_tax, maint_fee, value: after_tax + maint_fee + (+r.finish_value || 0) };
 }
+// đơn giá nền gốc của căn: số Bravo nếu có; chưa có (VD tòa G) thì suy ra như cột Đơn giá nền ở Danh mục sản phẩm (prodRow, public/screens.js) = tiền trước thuế / DT thông thủy
+function unitBase(u) {
+  if (!u) return null;
+  if (u.base_price != null) return +u.base_price;
+  const after = u.price_net ?? (u.total_price != null && u.maint_fee != null ? +u.total_price - +u.maint_fee - (+u.finish_value || 0) : null);
+  return after != null && +u.area_tt > 0 ? Math.round((u.pretax ?? Math.round(+after / (1 + (u.vat_pct ?? 5) / 100))) / +u.area_tt) : null;
+}
 
 // số hợp đồng kế tiếp: HDCH.YYMM-0001 (chung cư) / HDLK.YYMM-0001 (liền kề)
 async function nextContractNo(db, ptype, on) {
@@ -216,10 +223,13 @@ async function syncContractValue(db, contractId, user, note = 'Đồng bộ giá
   const c = await raw(db, 'contract', contractId);
   const u = c && !['hoan_thien', 'thue', 'vay'].includes(c.kind) && await raw(db, 'unit', c.unit_id);   // HĐ thuê: tổng tiền = tiền thuê × số tháng, không theo giá bán
   if (!u || u.price_net == null) return false;
-  const value = +u.price_net + (+u.maint_fee || 0) + (+c.finish_value || 0);
+  let patch = { value: +u.price_net + (+u.maint_fee || 0) + (+c.finish_value || 0), pretax: u.pretax, vat_pct: u.vat_pct, vat_amt: u.tax_amt, after_tax: u.price_net, maint_fee: u.maint_fee, base_price: u.base_price };
+  // hợp đồng có giảm giá: giữ giảm giá — giá nền của căn chia lại theo tiền giảm rồi tính như BRAVO (phí bảo trì = 2% × tiền trước thuế)
+  const b = +c.discount > 0 && c.ptype !== 'lien_ke' && +u.area_tt > 0 ? unitBase(u) : null;
+  if (b) { const base_price = Math.round(b - +c.discount / +u.area_tt); patch = { ...contractPrice({ ...c, base_price, area_tt: u.area_tt, vat_pct: u.vat_pct ?? c.vat_pct }), base_price, area_tt: u.area_tt }; }
+  const value = patch.value;
   if (+c.value === value) return false;
   if ((await debtOf(db, [c.id])).get(c.id)?.paid > value) bad(`Số đã thu lớn hơn giá trị ${fmtMoney(value)}đ của căn mới — cần xử lý hoàn tiền trước`);
-  const patch = { value, pretax: u.pretax, vat_pct: u.vat_pct, vat_amt: u.tax_amt, after_tax: u.price_net, maint_fee: u.maint_fee, base_price: u.base_price };
   for (const k of Object.keys(patch)) if (patch[k] == null || !C.F.contract[k]) delete patch[k];
   const sets = Object.keys(patch);
   await db.q(`UPDATE kd_contract SET ${sets.map((k, i) => `${k} = $${i + 1}`).join(', ')}, updated_at = now() WHERE id = $${sets.length + 1}`, [...sets.map(k => patch[k]), c.id]);
@@ -825,6 +835,12 @@ H.contract = {
       if (r.eff_on && r.exp_on && r.exp_on >= r.eff_on) r.term_months = rentMonths(r.eff_on, r.exp_on);
       if (+r.rent > 0 && +r.term_months > 0) r.value = Math.round(+r.rent * +r.term_months);
       if (+r.pay_times > 0 && +r.term_months > 0 && +r.pay_times > +r.term_months) bad(`Số kỳ thanh toán (${r.pay_times}) không được nhiều hơn thời hạn thuê (${r.term_months} tháng)`, { fields: ['pay_times'] });
+    }
+    // chưa có giá nền (căn chưa nạp số Bravo, VD tòa G; hoặc lập HĐ không qua form): giá nền gốc theo căn − tiền giảm / DT — để giảm giá, phí bảo trì 2% tính được
+    // (chỉ khi tạo mới hoặc đổi tiền giảm giá: hợp đồng cũ giữ nguyên số)
+    if (!['thue', 'vay', 'hoan_thien'].includes(r.kind) && r.ptype !== 'lien_ke' && !(+r.base_price > 0) && r.unit_id && (!old || String(old.discount ?? '') !== String(r.discount ?? ''))) {
+      const u = await raw(db, 'unit', r.unit_id), b = unitBase(u); r.area_tt ??= u?.area_tt ?? null;
+      if (b && +r.area_tt > 0) r.base_price = Math.round(b - (+r.discount || 0) / +r.area_tt);
     }
     if (!['thue', 'vay'].includes(r.kind) && r.ptype !== 'lien_ke' && +r.base_price > 0 && +r.area_tt > 0 && (!old || PK.some(k => String(old[k] ?? '') !== String(r[k] ?? '')))) Object.assign(r, contractPrice(r));
     if (r.pretax > 0 && r.vat_pct != null && r.vat_amt == null) r.vat_amt = Math.round(r.pretax * r.vat_pct / 100);
