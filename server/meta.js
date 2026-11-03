@@ -392,6 +392,8 @@ def('cancel_req', {
 // phân loại theo màn Bravo «Cập nhật hợp đồng căn hộ»: tự lấy theo loại căn (liền kề / shophouse = nhà liền kề)
 const HD_PTYPE = [['can_ho', 'Hợp đồng căn hộ chung cư'], ['lien_ke', 'Hợp đồng nhà liền kề']];
 const CT_ONLY = { ptype: ['can_ho'] }, LK_ONLY = { ptype: ['lien_ke'] };
+// HĐ thuê: ô giá bán ẩn, hiện ô thuê theo BRAVO (ngày bắt đầu / kết thúc, số tháng, đơn giá thuê, số lần thanh toán)
+const SALE_K = ['hdmb', 'thue_mua', 'hoan_thien'], CT_SALE = { ptype: ['can_ho'], kind: SALE_K }, LK_SALE = { ptype: ['lien_ke'], kind: SALE_K }, SALE_ONLY = { kind: SALE_K }, RENT_ONLY = { kind: ['thue'] };
 const LIQ_REASON = [['tra_lai', 'Trả lại hẳn'], ['chuyen_ten', 'Chuyển tên hợp đồng']];   // lý do thanh lý hợp đồng
 const HD_KIND = [['hdmb', 'HĐ mua bán'], ['thue', 'HĐ thuê'], ['thue_mua', 'HĐ thuê mua'], ['hoan_thien', 'HĐ thỏa thuận hoàn thiện']];
 // bên bán (chủ đầu tư) theo BRAVO: chọn Đơn vị / Bên A → tự điền thông tin bên bán (ô trống lấy theo hợp đồng gần nhất cùng Bên A)
@@ -409,9 +411,15 @@ def('contract', {
   how: 'Tạo dự thảo → gửi trình duyệt → duyệt là tự chuyển Đã ký → tải bản ký lưu hồ sơ',
   rules: 'Không thay trực tiếp bản đã ký; số hợp đồng không trùng theo quy tắc',
   c: ['ho_so', 'truong_phong'], a: MGR, search: ['number', 'code'], files: [['ban_ky', 'Bản hợp đồng đã ký'], ['du_thao', 'Dự thảo'], ['giay_to', 'Giấy tờ khách hàng']],
-  groups: { can_ho: 'Hợp đồng căn hộ chung cư', lien_ke: 'Hợp đồng nhà liền kề' }, listPii: 1,
+  groups: { can_ho: 'Hợp đồng căn hộ chung cư', lien_ke: 'Hợp đồng nhà liền kề' },
+ listPii: 1,
   // danh sách chung cư = bảng BRAVO «Hợp đồng căn hộ.xlsx» (head: tầng tiêu đề trên, [tên, số cột])
-  lists: { hoan_thien: { cols: ['stt', 'number', 'contract_on', 'unit_id', 'b_name', 'b_id_no', 'b_id_date', 'b_id_place', 'b_addr', 'b_phone', 'finish_value', 'discount', 'value'],
+  lists: {
+    // HĐ thuê (tab riêng ở danh sách chung cư): cột theo BRAVO
+    thue: { cols: ['number', 'contract_on', 'unit_id', 'b_name', 'b_phone', 'area_floor', 'area_tt', 'eff_on', 'exp_on', 'term_months', 'rent', 'value', 'pay_times', 'closed', 'status'],
+      head: [['Hợp đồng', 2], ['Bên thuê', 3], ['Thông tin căn hộ', 9], ['', 1]],
+      label: { contract_on: 'Ngày ký', unit_id: 'Mã căn hộ', b_name: 'Họ và tên', b_phone: 'Điện thoại', area_floor: 'Diện tích sàn', area_tt: 'Diện tích nền (T.thủy)', value: 'Tổng tiền' } },
+    hoan_thien: { cols: ['stt', 'number', 'contract_on', 'unit_id', 'b_name', 'b_id_no', 'b_id_date', 'b_id_place', 'b_addr', 'b_phone', 'finish_value', 'discount', 'value'],
     head: [['Hợp đồng', 4], ['Thông tin bên mua nhà', 6], ['Giá trị hoàn thiện', 3]],   // bên mua: dữ liệu chung với HĐ mua bán cùng căn
     label: { stt: 'STT', number: 'Số HĐ', contract_on: 'Ngày ký', unit_id: 'Mã căn', b_name: 'Họ và tên', b_id_no: 'Số CMND', b_id_date: 'Ngày cấp', b_id_place: 'Nơi cấp', b_addr: 'Địa chỉ', b_phone: 'Điện thoại', finish_value: 'Giá trị trước giảm giá', discount: 'Số giảm giá', value: 'Giá trị sau giảm giá' } },
     can_ho: { cols: ['number', 'contract_on', 'unit_id', 'area_tt', 'area_floor', 'base_price', 'pretax', 'vat_pct', 'vat_amt', 'after_tax', 'maint_fee', 'value', 'b_name', 'b_id_no', 'b_id_date', 'b_id_place', 'b_addr', 'b_phone', 'status'],
@@ -458,31 +466,36 @@ def('contract', {
     money('common_area_amt', 'Tiền diện tích chung'),
     { k: 'all_signed', l: 'Các bên đã ký', t: 'bool' },
     // thông tin chi tiết — chung cư: giá nền × thông thủy / giá sàn; liền kề: đất + xây dựng
-    { k: 'building_id', l: 'Số bảng giá', t: 'ref', ref: 'building', sec: 'Thông tin chi tiết', help: 'Bảng giá theo tòa trong Danh mục sản phẩm — chọn căn tự ra, chọn tòa trước thì lọc căn' },
+    { k: 'building_id', l: 'Số bảng giá', t: 'ref', ref: 'building', show: SALE_ONLY, sec: 'Thông tin chi tiết', help: 'Bảng giá theo tòa trong Danh mục sản phẩm — chọn căn tự ra, chọn tòa trước thì lọc căn' },
     { k: 'price_policy_id', l: 'Chính sách giá', t: 'ref', ref: 'price_policy', hide: 1 },   // máy chủ tự lấy theo phiếu giữ chỗ / chính sách đang phát hành
-    money('base_price', 'Giá nền (chưa VAT) đ/m²', { show: CT_ONLY }),
+    money('base_price', 'Giá nền (chưa VAT) đ/m²', { show: CT_SALE }),
     { k: 'area_tt', l: 'Diện tích nền (thông thủy) m²', t: 'num', show: CT_ONLY },
     money('floor_price', 'Giá sàn đ/m²', { show: CT_ONLY, hide: 1 }),   // bỏ khỏi form 31/10/2026
     { k: 'area_floor', l: 'Diện tích sàn m²', t: 'num', show: CT_ONLY },
-    { k: 'area_land', l: 'Diện tích đất m²', t: 'num', show: LK_ONLY },
-    money('land_price', 'Đơn giá đất đ/m²', { show: LK_ONLY }),
-    money('land_amt', 'Tiền sử dụng đất', { show: LK_ONLY }),
-    { k: 'area_build', l: 'Diện tích xây dựng m²', t: 'num', show: LK_ONLY },
-    money('build_price', 'Đơn giá xây dựng đ/m²', { show: LK_ONLY }),
-    money('build_amt', 'Giá trị xây dựng', { show: LK_ONLY }),
-    money('discount', 'Tiền giảm giá'),
-    money('pretax', 'Tiền trước thuế'),
-    { k: 'vat_pct', l: 'Thuế suất %', t: 'num' },
-    money('vat_amt', 'Tiền thuế', { help: 'Để trống → trước thuế × thuế suất' }),
-    money('after_tax', 'Tiền sau thuế', { help: 'Để trống → trước thuế + tiền thuế' }),
-    money('finish_value', 'Giá trị hoàn thiện'),
-    money('maint_fee', 'Phí bảo trì'),
-    { k: 'corner_pct', l: 'Hệ số góc %', t: 'num' },
-    money('corner_amt', 'Tiền hệ số góc'),
+    { k: 'area_land', l: 'Diện tích đất m²', t: 'num', show: LK_SALE },
+    money('land_price', 'Đơn giá đất đ/m²', { show: LK_SALE }),
+    money('land_amt', 'Tiền sử dụng đất', { show: LK_SALE }),
+    { k: 'area_build', l: 'Diện tích xây dựng m²', t: 'num', show: LK_SALE },
+    money('build_price', 'Đơn giá xây dựng đ/m²', { show: LK_SALE }),
+    money('build_amt', 'Giá trị xây dựng', { show: LK_SALE }),
+    money('discount', 'Tiền giảm giá', { show: SALE_ONLY }),
+    money('pretax', 'Tiền trước thuế', { show: SALE_ONLY }),
+    { k: 'vat_pct', l: 'Thuế suất %', t: 'num', show: SALE_ONLY },
+    money('vat_amt', 'Tiền thuế', { help: 'Để trống → trước thuế × thuế suất', show: SALE_ONLY }),
+    money('after_tax', 'Tiền sau thuế', { help: 'Để trống → trước thuế + tiền thuế', show: SALE_ONLY }),
+    money('finish_value', 'Giá trị hoàn thiện', { show: SALE_ONLY }),
+    money('maint_fee', 'Phí bảo trì', { show: SALE_ONLY }),
+    { k: 'corner_pct', l: 'Hệ số góc %', t: 'num', show: SALE_ONLY },
+    money('corner_amt', 'Tiền hệ số góc', { show: SALE_ONLY }),
+    { k: 'eff_on', l: 'Ngày bắt đầu thuê', t: 'date', show: RENT_ONLY, req: 1 },
+    { k: 'exp_on', l: 'Ngày kết thúc thuê', t: 'date', show: RENT_ONLY, req: 1 },
+    { k: 'term_months', l: 'Số tháng', t: 'int', show: RENT_ONLY, help: 'Tự tính theo ngày bắt đầu – kết thúc' },
+    { k: 'pay_times', l: 'Số lần thanh toán', t: 'int', show: RENT_ONLY },
+    money('rent', 'Đơn giá thuê', { show: RENT_ONLY, req: 1, help: 'Tiền thuê một tháng — Tổng tiền = đơn giá thuê × số tháng' }),
     money('value', 'Tổng tiền (giá trị hợp đồng)', { req: 1, help: 'Chung cư có giá nền: tự tính = tiền sau thuế + phí bảo trì + giá trị hoàn thiện' }),
     { k: 'closed', l: 'Hợp đồng đóng', t: 'bool' },
-    { k: 'cn', l: 'CN', t: 'bool' },
-    { k: 'vbtt_hold', l: 'Tạm đóng VBTT', t: 'bool' },
+    { k: 'cn', l: 'CN', t: 'bool', show: SALE_ONLY },
+    { k: 'vbtt_hold', l: 'Tạm đóng VBTT', t: 'bool', show: SALE_ONLY },
     { k: 'new_schedule', l: 'Lần TT · % · Giá trị VND', t: 'json', sec: 'Lần thanh toán', help: 'Nhập tỷ lệ % → giá trị tự tính theo Tổng tiền' },
     { k: 'pay_method', l: 'Phương thức thanh toán', t: 'text' },
     { k: 'plan_sign', l: 'Ngày dự kiến ký', t: 'date', show: LK_ONLY },   // chung cư: nhập ở Hồ sơ mua NOXH, tự sang hợp đồng
@@ -499,12 +512,8 @@ def('contract', {
     { k: 'package_id', l: 'Gói hoàn thiện', t: 'ref', ref: 'package', show: { kind: ['hoan_thien'] } },
     { k: 'design_change', l: 'Thay đổi thiết kế', t: 'long', show: { kind: ['hoan_thien'] } },
     { k: 'accept_on', l: 'Ngày nghiệm thu', t: 'date', show: { kind: ['hoan_thien'] } },
-    { k: 'term_months', l: 'Thời hạn (tháng)', t: 'int', show: { kind: ['thue', 'thue_mua'] } },
-    money('rent', 'Giá thuê / kỳ', { show: { kind: ['thue', 'thue_mua'] } }),
-    { k: 'pay_period', l: 'Kỳ thanh toán', t: 'sel', o: [['thang', 'Tháng'], ['quy', 'Quý'], ['nam', 'Năm']], show: { kind: ['thue', 'thue_mua'] } },
-    { k: 'free_months', l: 'Miễn tiền thuê (tháng)', t: 'int', show: { kind: ['thue', 'thue_mua'] } },
-    { k: 'eff_on', l: 'Ngày hiệu lực', t: 'date', show: { kind: ['thue', 'thue_mua'] } },
-    { k: 'exp_on', l: 'Ngày hết hạn', t: 'date', show: { kind: ['thue', 'thue_mua'] } },
+    { k: 'pay_period', l: 'Kỳ thanh toán', t: 'sel', o: [['thang', 'Tháng'], ['quy', 'Quý'], ['nam', 'Năm']], hide: 1 },
+    { k: 'free_months', l: 'Miễn tiền thuê (tháng)', t: 'int', hide: 1 },
     owner('Nhân viên KD'),
     { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'du_thao', o: [['du_thao', 'Dự thảo', 's'], ['cho_duyet', 'Đang rà soát', 'a'], ['cho_ky', 'Chờ ký', 'b'], ['tu_choi', 'Trả lại dự thảo', 'r'], ['da_ky', 'Đã ký', 'g'], ['thanh_ly', 'Đã thanh lý', 't'], ['huy', 'Đã hủy', 's']] },
   ], list: ['number', 'contract_on', 'kind', 'unit_id', 'customer_id', 'value', 'plan_sign', 'sign_status', 'signed_on', 'status'],

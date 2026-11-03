@@ -676,6 +676,14 @@ H.cancel_req = {
 
 // hợp đồng được duyệt là đã ký: ngày ký thực tế = ngày ký HĐMB trên hợp đồng (ghi ngày tương lai thì lấy hôm nay)
 const signedPatch = r => { const d = String(r.contract_on || today()).slice(0, 10); return { status: 'da_ky', signed_on: d > today() ? today() : d, sign_status: 'da_ky' }; };
+// số tháng thuê: 14/01/2025 → 13/01/2030 = 60 (ngày kết thúc + 1 ngày, đếm tháng tròn; lẻ ≥ 15 ngày tính 1 tháng)
+function rentMonths(a, b) {
+  const s = new Date(a + 'T00:00:00Z'), e = new Date(Date.parse(b + 'T00:00:00Z') + 864e5);
+  let m = (e.getUTCFullYear() - s.getUTCFullYear()) * 12 + e.getUTCMonth() - s.getUTCMonth();
+  if (e.getUTCDate() < s.getUTCDate()) m--;
+  const at = new Date(Date.UTC(s.getUTCFullYear(), s.getUTCMonth() + m, s.getUTCDate())), rest = Math.round((e - at) / 864e5);
+  return Math.max(0, m + (rest >= 15 ? 1 : 0));
+}
 H.contract = {
   onApprove(r, ok) { if (ok) return { patch: signedPatch(r) }; },
   // danh sách: hợp đồng cũ chưa có thông tin bên mua / chi tiết giá thì hiện theo khách hàng và căn
@@ -693,7 +701,8 @@ H.contract = {
   // danh sách theo nhóm: ?group=can_ho (HĐ mua bán) | hoan_thien (HĐ hoàn thiện căn hộ) | lien_ke
   where(qs) {
     if (qs.group === 'hoan_thien') return { sql: 't.ptype = $1 AND t.kind = $2', params: ['can_ho', 'hoan_thien'] };
-    if (qs.group === 'can_ho') return { sql: 't.ptype = $1 AND t.kind <> $2', params: ['can_ho', 'hoan_thien'] };
+    if (qs.group === 'can_ho') return { sql: "t.ptype = $1 AND t.kind NOT IN ('hoan_thien', 'thue')", params: ['can_ho'] };
+    if (qs.group === 'thue') return { sql: 't.ptype = $1 AND t.kind = $2', params: ['can_ho', 'thue'] };
     if (qs.group === 'lien_ke') return { sql: 't.ptype = $1', params: [qs.group] };
   },
   async beforeSave(r, old, ctx) {
@@ -719,7 +728,13 @@ H.contract = {
     if (!r.price_policy_id) r.price_policy_id = (await contractPrefill(db, r.unit_id, r.contract_on || undefined)).policy_id;
     // chung cư có giá nền: tính như BRAVO / Danh mục sản phẩm — chỉ khi tạo mới hoặc đổi ô giá (hợp đồng cũ giữ nguyên số)
     const PK = ['base_price', 'area_tt', 'floor_price', 'area_floor', 'discount', 'corner_pct', 'vat_pct', 'finish_value', 'unit_id'];
-    if (r.ptype !== 'lien_ke' && +r.base_price > 0 && +r.area_tt > 0 && (!old || PK.some(k => String(old[k] ?? '') !== String(r[k] ?? '')))) Object.assign(r, contractPrice(r));
+    // HĐ thuê (BRAVO): số tháng theo ngày bắt đầu – kết thúc, tổng tiền = đơn giá thuê × số tháng
+    if (r.kind === 'thue') {
+      if (r.area_tt == null || r.area_floor == null) { const u = await raw(db, 'unit', r.unit_id); r.area_tt ??= u?.area_tt ?? null; r.area_floor ??= u?.area_xd ?? null; }   // diện tích theo căn (sàn = diện tích xây dựng / tim tường)
+      if (r.eff_on && r.exp_on && r.exp_on >= r.eff_on) r.term_months = rentMonths(r.eff_on, r.exp_on);
+      if (+r.rent > 0 && +r.term_months > 0) r.value = Math.round(+r.rent * +r.term_months);
+    }
+    if (r.kind !== 'thue' && r.ptype !== 'lien_ke' && +r.base_price > 0 && +r.area_tt > 0 && (!old || PK.some(k => String(old[k] ?? '') !== String(r[k] ?? '')))) Object.assign(r, contractPrice(r));
     if (r.pretax > 0 && r.vat_pct != null && r.vat_amt == null) r.vat_amt = Math.round(r.pretax * r.vat_pct / 100);
     if (r.pretax > 0 && r.after_tax == null) r.after_tax = r.pretax + (r.vat_amt || 0);
     if (r.kind === 'hoan_thien' && r.finish_value != null) r.value = +r.finish_value - (+r.discount || 0);
@@ -744,7 +759,7 @@ H.contract = {
       const main = await db.one("SELECT id FROM kd_contract WHERE unit_id = $1 AND kind IN ('hdmb','thue_mua') AND status NOT IN ('huy','thanh_ly') AND id <> $2", [r.unit_id, old?.id || 0]);
       if (!main) bad('HĐ hoàn thiện cần căn đã có hợp đồng mua bán / thuê mua');
     }
-    if (['thue', 'thue_mua'].includes(r.kind) && r.eff_on && r.exp_on && r.exp_on < r.eff_on) bad('Ngày hết hạn phải sau ngày hiệu lực');
+    if (['thue', 'thue_mua'].includes(r.kind) && r.eff_on && r.exp_on && r.exp_on < r.eff_on) bad('Ngày kết thúc thuê phải sau ngày bắt đầu thuê');
   },
   async onSubmit(r, { db }) {
     const n = await db.one('SELECT count(*) n, coalesce(sum(amount),0) s FROM kd_installment WHERE contract_id = $1 AND active', [r.id]);
