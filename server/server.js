@@ -451,6 +451,18 @@ R('GET', '/api/audit', async (req, res, u, p, qs) => {
   if (qs.to) { pp.push(qs.to); w.push(`a.at < $${pp.length}::date + 1`); }
   send(res, 200, await q(`SELECT a.*, us.full_name who FROM kd_audit a LEFT JOIN kd_user us ON us.id = a.user_id ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY a.at DESC, a.id DESC LIMIT 500`, pp));
 });
+// khôi phục 1 dòng nhật ký: ghi lại giá trị «trước» của các trường đã đổi (chỉ thao tác sửa / chuyển trạng thái, bản ghi còn tồn tại)
+R('POST', '/api/audit/:id/restore', async (req, res, u, p) => {
+  if (!['admin', 'truong_phong', 'lanh_dao'].includes(u.role)) deny('Chỉ quản trị, trưởng phòng, lãnh đạo được khôi phục');
+  const a = await one('SELECT * FROM kd_audit WHERE id = $1', [+p.id]); if (!a) C.notFound();
+  const e = M.E[a.ent];
+  if (!e || !a.rec_id || !a.before || !a.after || ['tao', 'xoa'].includes(a.action)) C.bad('Dòng nhật ký này không khôi phục được (chỉ khôi phục thao tác sửa / chuyển trạng thái)');
+  const patch = Object.fromEntries(Object.entries(a.before).filter(([k]) => C.F[a.ent][k]));
+  if (!Object.keys(patch).length) C.bad('Không có trường nào để khôi phục');
+  const r = await tx(async db => { if (!await db.one(`SELECT 1 AS x FROM ${e.table} WHERE id = $1`, [a.rec_id])) C.bad(`${e.one[0].toUpperCase() + e.one.slice(1)} #${a.rec_id} không còn — không khôi phục được`);
+    return C.sys(db, a.ent, a.rec_id, patch, u, 'khoi_phuc', `Khôi phục theo nhật ký lúc ${(t => `${C.dmy(t.slice(0, 10))} ${t.slice(11, 16)}`)(new Date(Date.parse(a.at) + 7 * 3600e3).toISOString())}`); });
+  send(res, 200, { ok: true, ent: a.ent, id: a.rec_id, fields: Object.keys(patch).length, warnings: r.warnings });
+});
 R('GET', '/api/perm-matrix', async (req, res, u) => {
   const rows = Object.values(M.E).map(e => ({ ent: e.key, title: e.title, code: e.code, mod: e.mod, roles: Object.fromEntries(M.ROLES.map(([r]) => { const x = { role: r }; return [r, ['r', 'c', 'u', 'a', 'x'].filter(op => can(x, e, op)).join('')]; })) }));
   send(res, 200, rows);
