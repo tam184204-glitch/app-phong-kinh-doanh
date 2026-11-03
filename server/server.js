@@ -178,7 +178,7 @@ R('GET', '/api/meta', async (req, res, u) => send(res, 200, await metaFor(u)), {
 // --- dữ liệu chung ---
 R('GET', '/api/e/:ent', async (req, res, u, p, qs) => send(res, 200, await C.list(p.ent, u, qs)));
 R('GET', '/api/e/:ent/:id', async (req, res, u, p) => send(res, 200, await C.get(p.ent, p.id, u)));
-R('POST', '/api/e/:ent', async (req, res, u, p, qs) => { const b = await readJson(req); send(res, 200, await C.create(p.ent, b, u, { check: qs.check === '1' })); });
+R('POST', '/api/e/:ent', async (req, res, u, p, qs) => { const b = await readJson(req); send(res, 200, await C.create(p.ent, b, u, { check: qs.check === '1', copyOf: +qs.copy_of || 0 })); });
 R('PUT', '/api/e/:ent/:id', async (req, res, u, p, qs) => { const b = await readJson(req); send(res, 200, await C.update(p.ent, p.id, b, u, { check: qs.check === '1' })); });
 R('DELETE', '/api/e/:ent/:id', async (req, res, u, p) => send(res, 200, await C.remove(p.ent, p.id, u)));
 R('POST', '/api/e/:ent/:id/submit', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await C.submit(p.ent, p.id, u, b)); });
@@ -256,7 +256,7 @@ R('GET', '/api/file/:id', async (req, res, u, p, qs) => {
 });
 R('DELETE', '/api/file/:id', async (req, res, u, p) => {
   const { f, g } = await fileAccess(u, p.id);
-  if (g.perm.locked && !(f.ent === 'reservation' && f.kind === 'scan_tra_ho_so')) bad('Hồ sơ đã chốt — không xóa tệp (tải phiên bản mới nếu cần)');   // bản scan trả hồ sơ thêm sau khi hủy → xóa được bản đính kèm nhầm
+  if (g.perm.locked && !M.E[f.ent]?.fileKeep?.includes(f.kind)) bad('Hồ sơ đã chốt — không xóa tệp (tải phiên bản mới nếu cần)');
   if (f.ent === 'pinkbook' && g.row.status === 'da_giao_so') bad('Đã giao sổ — không xóa tệp của hồ sơ này');
   if (f.uploaded_by !== u.id && !mgr(u)) deny('Chỉ người tải lên hoặc Trưởng phòng được xóa tệp');
   await q('UPDATE kd_file SET deleted_at = now(), deleted_by = $1 WHERE id = $2', [u.id, f.id]);

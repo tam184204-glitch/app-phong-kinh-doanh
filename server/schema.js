@@ -80,7 +80,9 @@ const SPECIAL = [
   `CREATE UNIQUE INDEX IF NOT EXISTS kd_installment_seq ON kd_installment (contract_id, seq) WHERE active`,
   `CREATE INDEX IF NOT EXISTS kd_installment_c ON kd_installment (contract_id) WHERE active`,
   `CREATE INDEX IF NOT EXISTS kd_receipt_c ON kd_receipt (contract_id) WHERE status = 'hop_le'`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS kd_customer_phone ON kd_customer (regexp_replace(phone, '\\D', '', 'g'))`,
+  // bản sao khách được trùng SĐT / CCCD với khách gốc → chặn trùng ở biz (khách mới), bỏ chỉ mục duy nhất
+  'DROP INDEX IF EXISTS kd_customer_phone',
+  `CREATE INDEX IF NOT EXISTS kd_customer_ph ON kd_customer (regexp_replace(phone, '\\D', '', 'g'))`,
   // chính sách giá trước đây chỉ 1 dự án → chép sang danh sách dự án
   `UPDATE kd_price_policy SET project_ids = ARRAY[project_id] WHERE project_ids IS NULL AND project_id IS NOT NULL`,
   // giá niêm yết = Tổng cộng (số cũ từ bảng hàng 10/09/2026 bỏ đi)
@@ -111,7 +113,8 @@ const SPECIAL = [
   `UPDATE kd_reservation SET unit_value = price - coalesce(finish_value, 0) WHERE unit_value IS NULL AND price IS NOT NULL`,
   `CREATE INDEX IF NOT EXISTS kd_price_policy_pids ON kd_price_policy USING gin (project_ids)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS kd_customer_code ON kd_customer (upper(code)) WHERE code IS NOT NULL`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS kd_customer_idno ON kd_customer (upper(id_no)) WHERE id_no IS NOT NULL`,
+  'DROP INDEX IF EXISTS kd_customer_idno',
+  `CREATE INDEX IF NOT EXISTS kd_customer_idn ON kd_customer (upper(id_no)) WHERE id_no IS NOT NULL`,
 ];
 // chạy trước khi dựng lại ràng buộc: đổi giá trị danh sách chọn đã bỏ
 const PRE = [
@@ -128,8 +131,6 @@ const PRE = [
   `UPDATE kd_noxh_check n SET bank_account = c.bank_account FROM kd_customer c WHERE n.customer_id = c.id AND n.bank_account IS NULL AND nullif(c.bank_account, '') IS NOT NULL`,
   `UPDATE kd_reservation r SET bank_account = c.bank_account FROM kd_customer c WHERE r.customer_id = c.id AND nullif(r.bank_account, '') IS NULL AND nullif(c.bank_account, '') IS NOT NULL AND r.status NOT IN ('huy', 'het_han')`,
   `UPDATE kd_contract t SET b_bank_acc = split_part(c.bank_account, ' - ', 1), b_bank_name = coalesce(nullif(t.b_bank_name, ''), nullif(substr(c.bank_account, length(split_part(c.bank_account, ' - ', 1)) + 4), '')) FROM kd_customer c WHERE t.customer_id = c.id AND nullif(t.b_bank_acc, '') IS NULL AND nullif(c.bank_account, '') IS NOT NULL`,
-  // theo dõi trả hồ sơ phiếu đã hủy (02/11/2026): phiếu hủy trước đó mặc định «Chưa trả hồ sơ»
-  `UPDATE kd_reservation SET docs_return = 'chua_tra' WHERE status = 'huy' AND docs_return IS NULL`,
 ];
 // CHECK nghiệp vụ thêm (ngoài money ≥ 0 và giá trị danh sách chọn)
 const CHECKS = {

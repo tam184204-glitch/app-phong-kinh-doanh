@@ -22,10 +22,9 @@ async function exportList(entKey, user, qs) {
   const e = E[entKey] || bad('Loại dữ liệu không hợp lệ');
   if (!can(user, e, 'x')) deny('Vai trò của bạn không được xuất dữ liệu này');
   const { rows } = await C.list(entKey, user, qs, { limit: 20000 });
-  const L = e.lists?.[qs.group], keys = (qs.cols ? String(qs.cols).split(',') : L?.cols || e.list).flatMap(k => qs.status === 'thanh_ly' && k === 'contract_on' && C.F[entKey].liquidated_on ? ['liquidated_on', 'liquidate_reason', 'liquidate_note'] : [k])   // tab Đã thanh lý
-    .flatMap(k => qs.status === 'huy' && k === 'note' && C.F[entKey].docs_return ? ['docs_return', 'docs_return_on', 'scan_files', k] : [k]);   // tab Đã hủy (phiếu đăng ký): trả hồ sơ
+  const L = e.lists?.[qs.group], keys = (qs.cols ? String(qs.cols).split(',') : L?.cols || e.list).flatMap(k => qs.status === 'thanh_ly' && k === 'contract_on' && C.F[entKey].liquidated_on ? ['liquidated_on', 'liquidate_reason', 'liquidate_note'] : [k]);   // tab Đã thanh lý
   const cols = [];
-  rows.forEach((r, i) => { r.stt = i + 1; if (r.scan_files) r.scan_files = r.scan_files.map(f => f.name).join('; '); });
+  rows.forEach((r, i) => { r.stt = i + 1; });
   for (const k of keys) {
     if (k === 'prints' || k === 'bbgn') continue;
     const f = C.F[entKey][k];
@@ -167,7 +166,7 @@ const IMPORTS = {
     async row(r, ctx) {
       const u = await ctx.db.one('SELECT * FROM kd_unit WHERE upper(code) = upper($1)', [String(r.unit || '').trim()]) || bad(`Không có căn «${r.unit}»`);
       const ck = String(r.customer || '').trim(), dg = ck.replace(/\D/g, '');
-      const k = await ctx.db.one("SELECT id FROM kd_customer WHERE upper(code) = upper($1) OR ($2 <> '' AND regexp_replace(phone,'\\D','','g') = $2)", [ck, dg]) || bad(`Không tìm thấy khách hàng «${ck}» — nhập danh sách khách hàng trước`);
+      const k = await ctx.db.one("SELECT id FROM kd_customer WHERE upper(code) = upper($1) OR ($2 <> '' AND regexp_replace(phone,'\\D','','g') = $2) ORDER BY upper(code) = upper($1) DESC, id LIMIT 1", [ck, dg]) || bad(`Không tìm thấy khách hàng «${ck}» — nhập danh sách khách hàng trước`);
       const owner = r.owner ? await ctx.db.one('SELECT id FROM kd_user WHERE lower(username) = lower($1) OR lower(full_name) = lower($1)', [String(r.owner).trim()]) : null;
       const kindS = strip(r.kind || 'hdmb'); const kind = /hoan thien/.test(kindS) ? 'hoan_thien' : /thue mua/.test(kindS) ? 'thue_mua' : /thue/.test(kindS) ? 'thue' : 'hdmb';
       if (!u.activated) await C.sys(ctx.db, 'unit', u.id, { activated: true }, ctx.user, 'kich_hoat', 'Nhập hợp đồng lịch sử');

@@ -218,14 +218,6 @@ async function stageOf(db, rows) {
       : noxhUnits.has(r.unit_id) ? 'Chờ hồ sơ NOXH' : 'Đủ điều kiện ký HĐ');
   }
 }
-// phiếu đã hủy: tệp «Bản scan trả hồ sơ» (bản mới nhất mỗi tên) cho cột File scan ở tab Đã hủy
-async function scanOf(db, rows) {
-  const ids = rows.filter(r => r.status === 'huy').map(r => r.id); if (!ids.length) return;
-  const by = new Map();
-  for (const f of await db.q("SELECT DISTINCT ON (rec_id, name) id, rec_id, name FROM kd_file WHERE ent = 'reservation' AND kind = 'scan_tra_ho_so' AND deleted_at IS NULL AND rec_id = ANY($1) ORDER BY rec_id, name, version DESC", [ids]))
-    (by.get(f.rec_id) || by.set(f.rec_id, []).get(f.rec_id)).push({ id: f.id, name: f.name });
-  for (const r of rows) if (r.status === 'huy') r.scan_files = by.get(r.id) || [];
-}
 
 // ======================= HOOKS =======================
 const H = {};
@@ -281,7 +273,9 @@ const digits = s => String(s || '').replace(/\D/g, '');
 H.customer = {
   // ?group=tiem_nang → chỉ tình trạng tìm khách; ?group=sau_ban → chỉ tình trạng sau mở bán
   where(qs) { if (qs.group === 'tiem_nang') return { sql: 'coalesce(t.stage, $1) = ANY($2)', params: ['moi', PROSPECT_ST] }; if (qs.group === 'sau_ban') return { sql: 'NOT (coalesce(t.stage, $1) = ANY($2))', params: ['moi', PROSPECT_ST] }; },
-  async beforeSave(r, old, { db, warn }) {
+  async beforeSave(r, old, { db, warn, opts }) {
+    const copy = !old && opts?.copyOf, cw = d => `Bản sao dùng chung SĐT / CCCD với khách gốc ${d.code} · ${d.full_name}`;
+    const dup = (d, msg) => { if (!d) return; if (copy && d.id === copy) { if (!warn.includes(cw(d))) warn.push(cw(d)); } else bad(msg); };   // bản sao: trùng với chính khách gốc chỉ cảnh báo
     r.full_name = r.full_name?.replace(/\s+/g, ' ').trim();
     if (r.phone) { const p = digits(r.phone); if (p.length < 9 || p.length > 12) bad('Điện thoại không hợp lệ'); r.phone = p.replace(/^84(?=\d{9}$)/, '0'); }
     if (r.phone2) r.phone2 = digits(r.phone2);
@@ -294,11 +288,11 @@ H.customer = {
       if (d) bad(`Mã khách hàng ${r.code} đã có (khách ${d.full_name}) — nhập mã khác hoặc để trống để hệ thống tự cấp`);
     }
     for (const ph of [r.phone, r.phone2].filter(Boolean)) {
-      const d = await db.one("SELECT code, full_name FROM kd_customer WHERE id <> $1 AND ($2 IN (regexp_replace(phone,'\\D','','g'), regexp_replace(coalesce(phone2,''),'\\D','','g')))", [id, ph]);
-      if (d) bad(`Trùng số điện thoại ${ph} với khách hàng ${d.code} · ${d.full_name}. Hãy mở hồ sơ cũ để liên kết giao dịch, không tạo hồ sơ mới.`);
+      const d = await db.one("SELECT id, code, full_name FROM kd_customer WHERE id <> $1 AND ($2 IN (regexp_replace(phone,'\\D','','g'), regexp_replace(coalesce(phone2,''),'\\D','','g')))", [id, ph]);
+      dup(d, `Trùng số điện thoại ${ph} với khách hàng ${d?.code} · ${d?.full_name}. Hãy mở hồ sơ cũ để liên kết giao dịch, không tạo hồ sơ mới.`);
     }
-    if (r.id_no) { const d = await db.one('SELECT code, full_name FROM kd_customer WHERE id <> $1 AND upper(id_no) = $2', [id, r.id_no]); if (d) bad(`Trùng giấy tờ định danh với khách hàng ${d.code} · ${d.full_name}`); }
-    const sim = !old && r.full_name && await db.one('SELECT code, phone FROM kd_customer WHERE lower(full_name) = lower($1) LIMIT 1', [r.full_name]);
+    if (r.id_no) { const d = await db.one('SELECT id, code, full_name FROM kd_customer WHERE id <> $1 AND upper(id_no) = $2', [id, r.id_no]); dup(d, `Trùng giấy tờ định danh với khách hàng ${d?.code} · ${d?.full_name}`); }
+    const sim = !old && !copy && r.full_name &&await db.one('SELECT code, phone FROM kd_customer WHERE lower(full_name) = lower($1) LIMIT 1', [r.full_name]);
     if (sim) warn.push(`Đã có khách cùng họ tên: ${sim.code} (ĐT …${String(sim.phone).slice(-3)}) — kiểm tra có phải cùng một người không`);
     if (r.source && ['dai_ly', 'ctv'].includes(r.source) && !r.agent_id) warn.push('Nguồn khách là đại lý / CTV nhưng chưa chọn đối tác giới thiệu');
   },
@@ -351,7 +345,7 @@ async function intakeLead(db, b, user, { demo } = {}) {
   const phone = digits(b.phone).replace(/^84(?=\d{9}$)/, '0') || bad('Thiếu số điện thoại khách');
   const pj = b.interest_project ? +b.interest_project : b.project ? (await db.one('SELECT id FROM kd_project WHERE upper(code) = upper($1) OR name ILIKE $1', [String(b.project).trim()]))?.id : null;
   const owner_id = b.owner_id || user.id || null;
-  let k = await db.one("SELECT id, owner_id FROM kd_customer WHERE $1 IN (regexp_replace(phone,'\\D','','g'), regexp_replace(coalesce(phone2,''),'\\D','','g'))", [phone]);
+  let k = await db.one("SELECT id, owner_id FROM kd_customer WHERE $1 IN (regexp_replace(phone,'\\D','','g'), regexp_replace(coalesce(phone2,''),'\\D','','g')) ORDER BY id LIMIT 1", [phone]);
   const isNew = !k;
   if (!k) k = (await create('customer', { full_name: String(b.full_name || '').trim() || `Khách ${LEAD_CH[ch]} …${phone.slice(-3)}`, phone, email: b.email || null, source: ch,
     interest_project: pj, need: b.need || null, owner_id }, user, { db, system: true, demo })).row;
@@ -397,14 +391,6 @@ H.reservation = {
     if (r.reg_state === 'ky_hdmb' && (!old || old.reg_state !== 'ky_hdmb')) r.progress = 'da_ky';
     if (r.reg_state === 'huy') { if (!['huy', 'het_han'].includes(r.status)) r.status = 'huy'; }
     else if (!opts.system && (!r.status || ['nhap', 'tu_choi'].includes(r.status))) r.status = r.deposit > 0 ? 'da_coc' : 'giu_cho';
-    // trả hồ sơ cho khách (phiếu đã hủy): nhập ngày → «Đã trả»; chọn «Đã trả» chưa có ngày → hôm nay; «Chưa trả» thì bỏ ngày
-    if (r.status === 'huy') {
-      if (r.docs_return_on && r.docs_return_on !== old?.docs_return_on) r.docs_return = 'da_tra';
-      r.docs_return ||= 'chua_tra';
-      if (r.docs_return === 'da_tra' && !r.docs_return_on) r.docs_return_on = today();
-      if (r.docs_return === 'chua_tra') r.docs_return_on = null;
-      if (r.docs_return_on > today()) bad('Ngày trả hồ sơ không được sau hôm nay');
-    }
     // qua «Hạn giữ chỗ» mà chưa đặt cọc → «Quá hạn giữ chỗ»; gia hạn sang ngày sau → về lại «Giữ chỗ»
     const expired = !!r.hold_until && Date.parse(r.hold_until) < Date.now() && !(+r.deposit > 0);
     if (expired && r.reg_state === 'giu_cho') { r.reg_state = 'qua_han'; if (r.status === 'giu_cho') r.status = 'qua_han'; }
@@ -455,7 +441,12 @@ H.reservation = {
     if (r.customer_id && ['giu_cho', 'da_coc', 'chuyen_hd'].includes(r.status)) await markCustomer(db, r.customer_id, user);
     if (old && old.unit_id !== r.unit_id) await recomputeUnit(db, old.unit_id, user);
   },
-  async decorate(rows, { db }) { await stageOf(db, rows); await saleLive(db, rows); await scanOf(db, rows); },
+  async decorate(rows, { db }) {
+    await stageOf(db, rows); await saleLive(db, rows);
+    const ids = rows.filter(r => r.status === 'huy').map(r => r.id);   // tệp scan trả hồ sơ cho cột ở tab «Đã hủy»
+    const fs = ids.length ? await db.q("SELECT id, rec_id, name FROM kd_file WHERE ent = 'reservation' AND kind = 'tra_ho_so' AND rec_id = ANY($1) AND deleted_at IS NULL ORDER BY uploaded_at", [ids]) : [];
+    for (const r of rows) if (r.status === 'huy') r.ret_files = fs.filter(f => f.rec_id === r.id).map(f => ({ id: f.id, name: f.name }));
+  },
   acts: {
     async deposit(r, d) { if (d.deposit > r.price) bad('Tiền đặt cọc lớn hơn giá bán'); return { patch: { deposit: d.deposit, deposit_on: d.deposit_on, status: 'da_coc' } }; },
     async extend(r, d) { if (Date.parse(d.hold_until) <= Date.now()) bad('Hạn mới phải sau thời điểm hiện tại'); return { patch: { hold_until: d.hold_until, status: r.deposit > 0 ? 'da_coc' : 'giu_cho' } }; },
