@@ -258,11 +258,14 @@ table.t.noclick tbody tr { cursor: default; }
 .combo .opts small { color: var(--muted); }
 .combo .x { position: absolute; right: 6px; top: 8px; border: 0; background: none; color: var(--muted2); cursor: pointer; }
 .cklist { border: 1px solid var(--line2); border-radius: 10px; overflow: hidden; }
-.cklist .it { display: grid; grid-template-columns: 1fr 150px 1fr; gap: 8px; padding: 7px 10px; border-bottom: 1px solid #eef2f6; align-items: center; }
+.cklist .it { display: grid; grid-template-columns: 1fr 150px 1fr 76px; gap: 8px; padding: 7px 10px; border-bottom: 1px solid #eef2f6; align-items: center; }
 .cklist .it:last-child { border-bottom: 0; } .cklist .it.hd { background: #f3f7fc; font-weight: 700; font-size: 12px; color: #36506d; }
 .cklist select, .cklist input { height: 32px; border: 1px solid #cfdbe8; border-radius: 8px; padding: 0 8px; width: 100%; }
 .cklist .it.da_nhan { background: #f3fbf5; } .cklist .it.thieu, .cklist .it.can_sua { background: #fff8f7; }
-.cklist.qty .it { grid-template-columns: 1fr 90px 150px 1fr; } .cklist.qty input[data-ck=qty] { text-align: right; }
+.cklist.qty .it { grid-template-columns: 1fr 90px 150px 1fr 76px; }
+.cklist .ck-act { display: flex; gap: 2px; justify-content: flex-end; } .cklist .ck-act .btn { width: 32px; height: 30px; padding: 0; justify-content: center; }
+.cklist .ck-act .btn.danger { color: #b3261e; } .cklist .ck-act .btn.danger:hover { background: #fdecea; }
+.cklist .it:not([data-i]):not(.hd) { grid-template-columns: 1fr; }   /* dòng «Thêm giấy tờ khác» trải hết bề ngang */ .cklist.qty input[data-ck=qty] { text-align: right; }
 .gridin .gridt td { padding: 4px; } .gridin .gridt input, .gridin .gridt select { height: 32px; border: 1px solid #cfdbe8; border-radius: 8px; padding: 0 8px; width: 100%; background: #fff; }
 .sched td input { height: 32px; border: 1px solid #cfdbe8; border-radius: 8px; padding: 0 8px; width: 100%; }
 
