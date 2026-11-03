@@ -327,11 +327,12 @@ H.customer = {
       const d = await db.one('SELECT code, full_name FROM kd_customer WHERE id <> $1 AND upper(code) = $2', [id, r.code]);
       if (d) bad(`Mã khách hàng ${r.code} đã có (khách ${d.full_name}) — nhập mã khác hoặc để trống để hệ thống tự cấp`);
     }
-    for (const ph of [r.phone, r.phone2].filter(Boolean)) {
+    const oldPh = old ? [old.phone, old.phone2].filter(Boolean).map(digits) : [];   // chỉ kiểm trùng số vừa nhập / vừa đổi — sửa ô khác, tự cập nhật tình trạng không bị chặn vì dữ liệu cũ
+    for (const ph of [r.phone, r.phone2].filter(Boolean).filter(x => !oldPh.includes(digits(x)))) {
       const d = await db.one("SELECT id, code, full_name FROM kd_customer WHERE id <> $1 AND ($2 IN (regexp_replace(phone,'\\D','','g'), regexp_replace(coalesce(phone2,''),'\\D','','g')))", [id, ph]);
       dup(d, `Trùng số điện thoại ${ph} với khách hàng ${d?.code} · ${d?.full_name}. Hãy mở hồ sơ cũ để liên kết giao dịch, không tạo hồ sơ mới.`);
     }
-    if (r.id_no) { const d = await db.one('SELECT id, code, full_name FROM kd_customer WHERE id <> $1 AND upper(id_no) = $2', [id, r.id_no]); dup(d, `Trùng giấy tờ định danh với khách hàng ${d?.code} · ${d?.full_name}`); }
+    if (r.id_no && String(old?.id_no || '').replace(/\s+/g, '').toUpperCase() !== r.id_no) { const d = await db.one('SELECT id, code, full_name FROM kd_customer WHERE id <> $1 AND upper(id_no) = $2', [id, r.id_no]); dup(d, `Trùng giấy tờ định danh với khách hàng ${d?.code} · ${d?.full_name}`); }
     const sim = !old && !copy && r.full_name &&await db.one('SELECT code, phone FROM kd_customer WHERE lower(full_name) = lower($1) LIMIT 1', [r.full_name]);
     if (sim) warn.push(`Đã có khách cùng họ tên: ${sim.code} (ĐT …${String(sim.phone).slice(-3)}) — kiểm tra có phải cùng một người không`);
     if (r.source && ['dai_ly', 'ctv'].includes(r.source) && !r.agent_id) warn.push('Nguồn khách là đại lý / CTV nhưng chưa chọn đối tác giới thiệu');
@@ -1218,7 +1219,7 @@ async function doSyncStages(db) {
     bump(p.cid, ['da_co_kq', 'da_giao_so'].includes(p.status) ? 'da_ra_so' : 'da_nop_hs_so');
   let n = 0;
   for (const c of await db.q('SELECT id, stage FROM kd_customer WHERE id = ANY($1)', [[...best.keys()]]))
-    if (c.stage !== best.get(c.id)) { await sys(db, 'customer', c.id, { stage: best.get(c.id) }, null, 'cap_nhat_trang_thai', 'Tự đồng bộ theo giao dịch'); n++; }
+    if (c.stage !== best.get(c.id)) { try { await sys(db, 'customer', c.id, { stage: best.get(c.id) }, null, 'cap_nhat_trang_thai', 'Tự đồng bộ theo giao dịch'); n++; } catch (e) { console.warn('syncStages', c.id, e.message); } }   // 1 khách lỗi không chặn cả danh sách
   return n;
 }
 
