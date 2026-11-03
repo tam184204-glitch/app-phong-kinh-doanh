@@ -392,7 +392,7 @@ const HD_LAYOUT = [
   { t: 'Tình trạng vay vốn', cols: 4, rows: [['loan_status', 'loan_bank', 'loan_doc3']] },
 ];
 // mỗi căn 2 hợp đồng riêng: mua bán (tab đầu) và hoàn thiện (kind hoan_thien, tab gọn); Mã căn hộ, bên mua, bên bán chung ở trên 2 tab
-function hdPair(form, { ht, locked, tab, draft, oldFinish }) {   // oldFinish: hợp đồng cũ đã gộp tiền hoàn thiện, giữ ô để xem / tách
+function hdPair(form, { ht, locked, tab, draft, oldFinish, kind }) {   // oldFinish: hợp đồng cũ đã gộp tiền hoàn thiện, giữ ô để xem / tách
   const secs = [...form.children], rest = secs.slice(secs.findIndex(x => $(':scope > .fsec', x)?.textContent === 'Thông tin chi tiết'));   // phần trên dùng chung, từ Thông tin chi tiết thuộc tab mua bán
   const v = { number: ht?.number, on: ht?.contract_on || today(), finish: ht?.finish_value ?? ht?.value, disc: ht?.discount, sched: ht?.new_schedule || [], ...draft };
   const fld = (k, l, t, val) => `<div class="fld"><label for="f_${k}">${l}</label>${input({ k, t }, val, {}, {})}</div>`;
@@ -417,7 +417,7 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish }) {   // oldFinish: h
   hp.addEventListener('change', e => { if (e.target.name === 'ht_make') nav.classList.toggle('ht-has', e.target.checked); });
   hp.addEventListener('change', e => { if (e.target.name === 'ht_on') calc(); });
   // tab Hợp đồng mua bán / Hợp đồng thuê = cùng 1 hợp đồng, đổi Loại hợp đồng; HĐ hoàn thiện đi kèm cả 2
-  const kindSel = $('[name=kind]', form), isRent = () => kindSel?.value === 'thue';
+  const kindSel = $('[name=kind]', form), isRent = () => (kindSel ? kindSel.value : kind) === 'thue';   // hợp đồng đã chốt không có ô Loại — theo bản ghi
   const setKind = k => { if (kindSel && kindSel.value !== k && !kindSel.disabled) { kindSel.value = k; kindSel.dispatchEvent(new Event('change', { bubbles: true })); } };
   const view = p => {   // chỉ đổi khung đang xem
     const at = p === 'ht' ? 'ht' : isRent() ? 'thue' : 'mb';
@@ -550,9 +550,9 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   $('.mf', m.el).insertAdjacentHTML('afterend', traceLine(trace));
   for (const ev of ['click', 'focusin']) form.addEventListener(ev, e => { const d = e.target.closest('.fld[data-f]'); if (d) traceField($('.trace', m.el), trace, d.dataset.f, E.fields.find(f => f.k === d.dataset.f)?.l || ''); });
   let htp = null;
-  if (ent === 'contract') { bravoLayout(form, HD_LAYOUT); $('.modal', m.el).classList.add('full'); if (rec.kind !== 'hoan_thien') htp = hdPair(form, { ht: htRec, locked: htLocked, tab, draft: htDraft, oldFinish: +rec.finish_value > 0 }); }
+  if (ent === 'contract') { bravoLayout(form, HD_LAYOUT); $('.modal', m.el).classList.add('full'); if (rec.kind !== 'hoan_thien') htp = hdPair(form, { ht: htRec, locked: htLocked, tab, draft: htDraft, oldFinish: +rec.finish_value > 0, kind: rec.kind }); }
   const sch = $('[data-sched]', form);
-  if (sch) schedEditor(sch, rec.new_schedule || [], { total: () => ent === 'contract' ? readField(form, E.fields.find(f => f.k === 'value')) || 0 : readField(form, E.fields.find(f => f.k === 'value_after')) || rec.value_before || 0, first: ent === 'contract' ? () => readField(form, E.fields.find(f => f.k === ($('[name=kind]', form)?.value === 'thue' ? 'eff_on' : 'contract_on'))) : null });
+  if (sch) schedEditor(sch, rec.new_schedule || [], { total: () => ent === 'contract' ? readField(form, E.fields.find(f => f.k === 'value')) || 0 : readField(form, E.fields.find(f => f.k === 'value_after')) || rec.value_before || 0, first: ent === 'contract' ? () => readField(form, E.fields.find(f => f.k === (($('[name=kind]', form)?.value ?? rec.kind) === 'thue' ? 'eff_on' : 'contract_on'))) : null });
   const vis = () => { const cur = collect(true); for (const f of fields) { const box = $(`[data-f="${f.k}"]`, form); if (box) box.classList.toggle('hidden', !isShown(f, cur)); } $$('.bv-row, .bv-sec', form).forEach(x => x.classList.toggle('hidden', !$('.fld:not(.hidden)', x))); htp?.sync(cur.ptype !== 'lien_ke' && ['hdmb', 'thue_mua', 'thue'].includes(cur.kind)); };
   const collect = (all) => { const out = {}; for (const f of fields) { if (f.ro || (f.t === 'code' && !f.manual)) continue; if (lockKeep && !lockKeep.has(f.k)) continue; const v = readField(form, f); if (v !== undefined) out[f.k] = v; } return all ? { ...rec, ...out } : out; };
   // checklist theo nhóm / mẫu

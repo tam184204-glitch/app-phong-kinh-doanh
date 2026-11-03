@@ -164,6 +164,28 @@ async function boot(pgliteUrl) {
       localStorage.setItem('ctg-kd-demo-hoanthien', '1');
     }
   } catch (e) { console.warn('hợp đồng hoàn thiện thử', e); }
+  // hợp đồng thuê thử (dữ liệu giả, 1 lần trên mỗi trình duyệt): 6 căn còn trống — 2 dự thảo, 1 chờ duyệt, 3 đã ký; lần thanh toán chia đều theo kỳ
+  try {
+    if (!localStorage.getItem('ctg-kd-demo-thue')) {
+      const C = require('../server/core'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1");
+      const can = await q(`SELECT u.id FROM kd_unit u JOIN kd_project p ON p.id = u.project_id WHERE p.code IN ('CTS', 'TNS') AND u.status IN ('con_ban', 'chua_mo_ban')
+        AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id) AND NOT EXISTS (SELECT 1 FROM kd_reservation r WHERE r.unit_id = u.id) ORDER BY p.code DESC, u.code DESC LIMIT 6`);
+      const kh = await q('SELECT k.id FROM kd_customer k WHERE NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.customer_id = k.id) ORDER BY k.id DESC LIMIT 6');
+      const addMon = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'), day = d.getUTCDate(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + n); d.setUTCDate(Math.min(day, new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate())); return d.toISOString().slice(0, 10); };
+      const ago = m => addMon(new Date().toISOString().slice(0, 8) + '05', -m);
+      // [bắt đầu thuê, số tháng, số lần thanh toán, đơn giá thuê / tháng]
+      const ds = [[ago(-1), 12, 4, 4.5e6], [ago(0), 24, 8, 5.2e6], [ago(1), 36, 12, 6e6], [ago(10), 60, 12, 4.8e6], [ago(6), 12, 12, 7.2e6], [ago(3), 24, 4, 5.5e6]];
+      for (const [i, x] of can.entries()) {
+        if (!kh[i]) break;
+        const [a, n, p, rent] = ds[i], tot = rent * n, off = k => Math.round(k * n / p), each = Math.floor(tot / p / 1000) * 1000;
+        const sched = Array.from({ length: p }, (_, k) => { const m1 = off(k) + 1, m2 = off(k + 1); return { name: `Tiền thuê kỳ ${k + 1}/${p} (tháng ${m1 === m2 ? m1 : `${m1}–${m2}`})`, due_on: addMon(a, off(k)), amount: k === p - 1 ? tot - each * (p - 1) : each }; });
+        const r = await C.create('contract', { kind: 'thue', ptype: 'can_ho', unit_id: x.id, customer_id: kh[i].id, contract_on: a, eff_on: a, exp_on: new Date(Date.parse(addMon(a, n) + 'T00:00:00Z') - 864e5).toISOString().slice(0, 10), term_months: n, pay_times: p, rent, value: tot, new_schedule: sched }, u, { system: true, demo: true });
+        if (i >= 2) await C.submit('contract', r.row.id, u, {});
+        if (i >= 3) await C.approve('contract', r.row.id, u, { ok: true });
+      }
+      localStorage.setItem('ctg-kd-demo-thue', '1');
+    }
+  } catch (e) { console.warn('hợp đồng thuê thử', e); }
   const job = async () => { try { await tx(db => biz.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.warn('job', e.message); } };
   await job(); setInterval(job, 2 * 60e3);
 
