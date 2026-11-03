@@ -180,7 +180,7 @@ function wireSegDate(root) {
     });
     el.addEventListener('mousedown', e => { if (e.target === el || e.target.tagName === 'I') { e.preventDefault(); (ps.find(p => !p.value) || ps[0]).focus(); } });
     $('[data-sdpick]', el).onclick = () => { try { nat.value = segVal(el) || ''; } catch { } try { nat.showPicker(); } catch { nat.click(); } };
-    nat.onchange = () => { if (nat.value) { segSet(el, nat.value); fire(); } };
+    nat.oninput = nat.onchange = () => { segSet(el, nat.value || ''); fire(); };   // chọn ngày / «Hôm nay» / «Xoá» trên bảng lịch
   });
 }
 function parseMonth(s) { s = String(s || '').trim(); const m = /^(\d{1,2})[/.-](\d{4})$/.exec(s); return m ? `${m[2]}-${m[1].padStart(2, '0')}` : s; }
@@ -233,7 +233,7 @@ function wireInputs(root, onChange) {
   $$('[data-pick]', root).forEach(b => {
     const wrap = b.parentElement, txt = $('input[name]', wrap), nat = $(`input[type=${b.dataset.pick}]`, wrap);
     b.onclick = () => { const v = txt.dataset.t === 'date' ? parseDmy(txt.value) : txt.dataset.t === 'month' ? parseMonth(txt.value) : parseDt(txt.value).slice(0, 16); try { nat.value = v; } catch { } try { nat.showPicker(); } catch { nat.click(); } };
-    nat.onchange = () => { const v = nat.value; if (!v) return; txt.value = txt.dataset.t === 'date' ? dmy(v) : txt.dataset.t === 'month' ? mmy(v) : `${dmy(v.slice(0, 10))} ${v.slice(11, 16)}`; txt.dispatchEvent(new Event('change', { bubbles: true })); };
+    nat.oninput = nat.onchange = () => { const v = nat.value; if (!v) { txt.value = ''; txt.dispatchEvent(new Event('change', { bubbles: true })); return; } txt.value = txt.dataset.t === 'date' ? dmy(v) : txt.dataset.t === 'month' ? mmy(v) : `${dmy(v.slice(0, 10))} ${v.slice(11, 16)}`; txt.dispatchEvent(new Event('change', { bubbles: true })); };
   });
   $$('input[data-t=money]', root).forEach(i => { i.addEventListener('blur', () => { const n = num(i.value, true); if (i.value.trim() && isFinite(n)) i.value = fm(n); }); });
   $$('input[data-t=date]', root).forEach(i => i.addEventListener('blur', () => { const m = /^(\d{1,2})(\d{2})(\d{4})$/.exec(i.value.trim()); if (m) i.value = `${m[1].padStart(2, '0')}/${m[2]}/${m[3]}`; }));
