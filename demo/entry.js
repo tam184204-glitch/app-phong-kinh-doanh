@@ -177,8 +177,8 @@ async function boot(pgliteUrl) {
       const ds = [[ago(-1), 12, 4, 4.5e6], [ago(0), 24, 8, 5.2e6], [ago(1), 36, 12, 6e6], [ago(10), 60, 12, 4.8e6], [ago(6), 12, 12, 7.2e6], [ago(3), 24, 4, 5.5e6]];
       for (const [i, x] of can.entries()) {
         if (!kh[i]) break;
-        const [a, n, p, rent] = ds[i], tot = rent * n, off = k => Math.round(k * n / p), each = Math.floor(tot / p / 1000) * 1000;
-        const sched = Array.from({ length: p }, (_, k) => { const m1 = off(k) + 1, m2 = off(k + 1); return { name: `Tiền thuê kỳ ${k + 1}/${p} (tháng ${m1 === m2 ? m1 : `${m1}–${m2}`})`, due_on: addMon(a, off(k)), amount: k === p - 1 ? tot - each * (p - 1) : each }; });
+        const [a, n, p, rent] = ds[i], tot = rent * n, off = k => Math.round(k * n / p);
+        const sched = Array.from({ length: p }, (_, k) => { const m1 = off(k) + 1, m2 = off(k + 1); return { name: `Tiền thuê kỳ ${k + 1}/${p} (tháng ${m1 === m2 ? m1 : `${m1}–${m2}`})`, due_on: addMon(a, off(k)), amount: (off(k + 1) - off(k)) * rent }; });   // mỗi kỳ = số tháng của kỳ × tiền thuê/tháng
         const r = await C.create('contract', { kind: 'thue', ptype: 'can_ho', unit_id: x.id, customer_id: kh[i].id, contract_on: a, eff_on: a, exp_on: new Date(Date.parse(addMon(a, n) + 'T00:00:00Z') - 864e5).toISOString().slice(0, 10), term_months: n, pay_times: p, rent, value: tot, new_schedule: sched }, u, { system: true, demo: true });
         if (i >= 2) await C.submit('contract', r.row.id, u, {});
         if (i >= 3) await C.approve('contract', r.row.id, u, { ok: true });
@@ -186,6 +186,21 @@ async function boot(pgliteUrl) {
       localStorage.setItem('ctg-kd-demo-thue', '1');
     }
   } catch (e) { console.warn('hợp đồng thuê thử', e); }
+  // phiếu thu tiền thuê thử (dữ liệu giả, 1 lần): HĐ thuê đã ký thu đủ các kỳ đã đến hạn — trừ 1 kỳ quá hạn và 1 kỳ thu một phần để thấy Tiến độ thu tiền
+  try {
+    if (!localStorage.getItem('ctg-kd-demo-thue-thu')) {
+      const C = require('../server/core'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1");
+      const cs = await q("SELECT id FROM kd_contract WHERE kind = 'thue' AND status = 'da_ky' AND is_demo ORDER BY id");
+      for (const [j, c] of cs.entries()) {
+        const ins = await q("SELECT id, due_on::text d, amount FROM kd_installment WHERE contract_id = $1 AND active AND due_on < CURRENT_DATE ORDER BY seq", [c.id]);
+        for (const [k, i] of ins.entries()) {
+          const last = k === ins.length - 1; if (j === 0 && last) continue;
+          await C.create('receipt', { voucher_no: `PT-THUE-${c.id}-${k + 1}`, voucher_date: i.d, contract_id: c.id, installment_id: i.id, amount: j === 1 && last ? Math.round(+i.amount / 2000) * 1000 : +i.amount, content: `Thu tiền thuê kỳ ${k + 1}` }, u, { system: true, demo: true });
+        }
+      }
+      localStorage.setItem('ctg-kd-demo-thue-thu', '1');
+    }
+  } catch (e) { console.warn('phiếu thu tiền thuê thử', e); }
   const job = async () => { try { await tx(db => biz.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.warn('job', e.message); } };
   await job(); setInterval(job, 2 * 60e3);
 
