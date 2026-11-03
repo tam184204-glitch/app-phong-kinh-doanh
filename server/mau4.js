@@ -7,7 +7,7 @@ const C = require('./core');
 const IO = require('./io');
 const B = require('./biz');
 const { E, PII_ROLES } = require('./meta');
-const { q, one } = require('./db');
+const { q, one, tx } = require('./db');
 const { buildXlsx } = require('./xlsx');
 const { bad, deny, dmy } = C;
 
@@ -22,24 +22,74 @@ function dmyParts(v) {
 }
 
 // ---------- dữ liệu bảng tổng hợp ----------
-async function data(user, { project } = {}) {
+// ngày dùng để lọc: chưa ghi thì lùi về ngày của bước trước (xét duyệt → nộp SXD → nộp hồ sơ)
+const DAY_BY = { sxd: ['coalesce(n.sxd_submit_on, n.received_on)', 'ngày nộp hồ sơ SXD'], duyet: ['coalesce(n.sxd_approved_on, n.sxd_submit_on, n.received_on)', 'ngày được xét duyệt'] };   // mặc định: received_on · ngày nộp hồ sơ
+async function data(user, { project, from, to, by, kind } = {}) {   // kind=thue: hồ sơ thuê; kind=mua: mua + thuê mua   // from / to (yyyy-mm-dd): lọc theo ngày nộp hồ sơ; by=sxd / duyet → ngày nộp SXD / ngày được xét duyệt
+  const day = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v : null;
   if (!canSee(user)) deny('Bảng tổng hợp Mẫu 4 có dữ liệu định danh — chỉ trưởng phòng, lãnh đạo, nhân viên hồ sơ được xem');
-  const rows = await q(`SELECT n.id, n.received_on, n.reg_kind, n.old_id_no, n.job, n.doi_tuong, n.confirm_org, n.housing, n.income, n.province, n.district, n.commune, n.members, n.status, n.result, n.unit_text, n.unit_area,
+  const rows = await q(`SELECT n.id, n.received_on, n.reg_kind, n.old_id_no, n.job, n.doi_tuong, n.confirm_org, n.housing, n.income, n.province, n.district, n.commune, n.members, n.status, n.result, n.sxd_result, n.sxd_note, n.sxd_submit_on, n.sxd_approved_on, n.sxd_doc_no, n.unit_text, n.unit_area,
       k.full_name, k.phone, k.phone2, k.birth, k.id_no, u.code unit_code, u.area_tt, p.id project_id, p.code project_code, p.name project
     FROM kd_noxh_check n JOIN kd_customer k ON k.id = n.customer_id LEFT JOIN kd_unit u ON u.id = n.unit_id
       LEFT JOIN kd_project p ON p.id = coalesce(u.project_id, (SELECT x.id FROM kd_project x WHERE upper(x.code) = upper(split_part(n.unit_text, '-', 1)) LIMIT 1))   -- căn ngoài danh mục: dự án theo tiền tố mã căn
-    WHERE ($1::int IS NULL OR p.id = $1) ORDER BY n.received_on NULLS LAST, n.id`, [project ? +project : null]);
+    WHERE ($1::int IS NULL OR p.id = $1) AND ${kind === 'thue' ? "n.reg_kind = 'thue' AND" : kind === 'mua' ? "coalesce(n.reg_kind, 'mua') <> 'thue' AND" : ''} ($2::date IS NULL OR ${DAY_BY[by]?.[0] || 'n.received_on'} >= $2) AND ($3::date IS NULL OR ${DAY_BY[by]?.[0] || 'n.received_on'} <= $3)
+    ORDER BY n.received_on NULLS LAST, n.id`, [project ? +project : null, day(from), day(to)]);
   return rows.map((r, i) => {
     const head = { name: r.full_name, phone: [r.phone, r.phone2].filter(Boolean).join('/ '), birth: dmyParts(r.birth), old_id_no: r.old_id_no, id_no: r.id_no, job: r.job, doi_tuong: r.doi_tuong, confirm_org: r.confirm_org, relation: 'Chủ hộ' };
     const mem = (r.members || []).map(m => ({ ...m, birth: [m.bday ?? '', m.bmonth ?? '', m.byear ?? ''] }));
-    return { id: r.id, tt: i + 1, received_on: r.received_on, project: r.project, project_id: r.project_id, unit_code: r.unit_code || r.unit_text, area: r.unit_area ?? r.area_tt, reg_kind: r.reg_kind, status: r.status, result: r.result,
+    return { id: r.id, tt: i + 1, received_on: r.received_on, project: r.project, project_id: r.project_id, unit_code: r.unit_code || r.unit_text, area: r.unit_area ?? r.area_tt, reg_kind: r.reg_kind, status: r.status, result: r.result, sxd_result: r.sxd_result, sxd_note: r.sxd_note, sxd_submit_on: r.sxd_submit_on, sxd_approved_on: r.sxd_approved_on, sxd_doc_no: r.sxd_doc_no,
       housing: r.housing, province: r.province, district: r.district, commune: r.commune, income: r.income, people: [head, ...mem] };
   });
 }
 
+// ---------- chuyển trạng thái hàng loạt (Dự thảo → Chờ xét duyệt → Đã duyệt SXD) ----------
+const BULK_ST = ['nhap', 'cho_duyet', 'da_duyet'];
+// không gửi status = chỉ ghi Ngày nộp hồ sơ SXD cho các hồ sơ đã chọn
+// sang / sửa Đã duyệt SXD: kết quả xét duyệt bắt buộc; ngày được xét duyệt, số công văn, ghi chú để trống thì giữ giá trị cũ
+async function bulkStatus(user, { ids, status, sxd_result, sxd_note, sxd_submit_on, sxd_approved_on, sxd_doc_no } = {}) {
+  const e = E.noxh_check;
+  if (!canSee(user) || !(C.can(user, e, 'u') || C.can(user, e, 'a'))) deny('Chỉ trưởng phòng, lãnh đạo, nhân viên hồ sơ được chuyển trạng thái hồ sơ');
+  ids = [...new Set((ids || []).map(Number).filter(Boolean))];
+  if (!ids.length) bad('Chưa chọn hồ sơ nào');
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(sxd_submit_on || '') ? sxd_submit_on : null;
+  if (!status) {
+    if (!day) bad('Chọn ngày nộp hồ sơ SXD');
+    await tx(async db => { for (const id of ids) await C.sys(db, 'noxh_check', id, { sxd_submit_on: day }, user, 'sua', `Ghi ngày nộp hồ sơ SXD ${dmy(day)}`); });
+    return { ok: true, n: ids.length };
+  }
+  if (!BULK_ST.includes(status)) bad('Trạng thái không hợp lệ');
+  if (status === 'da_duyet' && !['duoc_duyet', 'khong_duyet'].includes(sxd_result)) bad('Chọn kết quả xét duyệt: đủ điều kiện hay không đủ điều kiện');
+  const isDay = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
+  if (sxd_approved_on && !isDay(sxd_approved_on)) bad('Ngày được xét duyệt không hợp lệ');
+  const patch = { status, ...(day ? { sxd_submit_on: day } : {}) };
+  if (status === 'da_duyet') Object.assign(patch, { sxd_result }, isDay(sxd_approved_on) ? { sxd_approved_on } : {}, s(sxd_doc_no) ? { sxd_doc_no: s(sxd_doc_no) } : {}, s(sxd_note) ? { sxd_note: s(sxd_note) } : {});
+  const st = L => e.fields.find(f => f.k === 'status').o.find(o => o[0] === L)?.[1];
+  let n = 0, prev = [];
+  await tx(async db => {
+    prev = await db.q(`SELECT id, ${UNDO_K.join(', ')} FROM kd_noxh_check WHERE id = ANY($1)`, [ids]);
+    for (const id of ids) { await C.sys(db, 'noxh_check', id, patch, user, 'chuyen_tt', `Chuyển hàng loạt sang «${st(status)}»`); n++; }
+  });
+  return { ok: true, n, prev };
+}
+// hoàn tác lần chuyển hàng loạt vừa rồi: ghi lại đúng giá trị cũ của từng hồ sơ
+const UNDO_K = ['status', 'sxd_submit_on', 'sxd_result', 'sxd_approved_on', 'sxd_doc_no', 'sxd_note'];
+async function bulkUndo(user, { prev } = {}) {
+  const e = E.noxh_check;
+  if (!canSee(user) || !(C.can(user, e, 'u') || C.can(user, e, 'a'))) deny('Chỉ trưởng phòng, lãnh đạo, nhân viên hồ sơ được hoàn tác');
+  if (!Array.isArray(prev) || !prev.length) bad('Không có thao tác nào để hoàn tác');
+  const okSt = e.fields.find(f => f.k === 'status').o.map(o => o[0]);
+  await tx(async db => {
+    for (const p of prev) {
+      if (!+p.id || !okSt.includes(p.status)) bad('Dữ liệu hoàn tác không hợp lệ');
+      await C.sys(db, 'noxh_check', +p.id, Object.fromEntries(UNDO_K.map(k => [k, p[k] ?? null])), user, 'hoan_tac', 'Hoàn tác chuyển trạng thái hàng loạt');
+    }
+  });
+  return { ok: true, n: prev.length };
+}
+
 // ---------- xuất Excel đúng bố cục Mẫu 4 ----------
+const HEAD_CAN = 'Thông tin căn hộ dự kiến mua/thuê mua';
 const HEAD = ['TT', 'Ngày nộp hồ sơ', 'Tên dự án', 'Họ và Tên', 'Số điện thoại', 'Ngày sinh', 'Tháng sinh', 'Năm sinh', 'Thông tin cư dân', '', 'Nghề nghiệp', 'Đối tượng chính sách được hưởng nhà ở xã hội',
-  'Cơ quan xác nhận về đối tượng', 'Điều kiện nhà ở\n(Mô tả đúng hiện trạng nhà ở được VPĐKĐĐ xác nhận)', 'Nơi ở hiện tại (thường xuyên sinh sống)', '', '', 'Điều kiện thu nhập (mô tả theo đúng nội dung Giấy xác nhận)', 'Quan hệ với chủ hộ', 'Thông tin căn hộ dự kiến mua/thuê mua', ''];
+  'Cơ quan xác nhận về đối tượng', 'Điều kiện nhà ở\n(Mô tả đúng hiện trạng nhà ở được VPĐKĐĐ xác nhận)', 'Nơi ở hiện tại (thường xuyên sinh sống)', '', '', 'Điều kiện thu nhập (mô tả theo đúng nội dung Giấy xác nhận)', 'Quan hệ với chủ hộ', HEAD_CAN, ''];
 const HEAD2 = ['', '', '', '', '', '', '', '', 'Số CMND', 'Số CCCD', '', '', '', '', 'Tỉnh', 'Huyện/ Thành phố', 'Thị trấn/xã', '', '', 'Số căn hộ', 'Diện tích căn hộ (M2)'];
 const WIDTHS = [5, 13, 20, 26, 16, 8, 8, 9, 13, 15, 24, 42, 24, 22, 12, 14, 14, 28, 13, 14, 11];
 const L = i => String.fromCharCode(65 + i);
@@ -48,7 +98,8 @@ const HH_MERGE = [0, 1, 2, 4, 13, 14, 15, 16, 17, 19, 20];
 async function xlsx(user, qs) {
   const hs = await data(user, qs);
   const pj = qs.project ? hs[0]?.project || (await one('SELECT name FROM kd_project WHERE id = $1', [+qs.project]))?.name : null;
-  const out = [[pj ? `DỰ ÁN: ${pj.toUpperCase()}` : 'DANH SÁCH ĐỐI TƯỢNG ĐĂNG KÝ MUA NHÀ Ở XÃ HỘI'], HEAD, HEAD2];
+  const per = qs.from || qs.to ? ` (${DAY_BY[qs.by]?.[1] || 'ngày nộp hồ sơ'}${qs.from ? ' từ ' + dmy(qs.from) : ''}${qs.to ? ' đến ' + dmy(qs.to) : ''})` : '';
+  const out = [[(pj ? `DỰ ÁN: ${pj.toUpperCase()}` : `DANH SÁCH ĐỐI TƯỢNG ĐĂNG KÝ ${qs.kind === 'thue' ? 'THUÊ' : 'MUA'} NHÀ Ở XÃ HỘI`) + per], qs.kind === 'thue' ? HEAD.map(x => x === HEAD_CAN ? 'Thông tin căn hộ dự kiến thuê' : x) : HEAD, HEAD2];
   const merges = ['A1:U1', 'I2:J2', 'O2:Q2', 'T2:U2', ...HEAD2.map((h, i) => !h && ![8, 9, 14, 15, 16, 19, 20].includes(i) ? `${L(i)}2:${L(i)}3` : null).filter(Boolean)];
   for (const h of hs) {
     const r0 = out.length;
@@ -57,7 +108,7 @@ async function xlsx(user, qs) {
     // SĐT chỉ gộp khi thành viên không ghi số riêng
     if (h.people.length > 1) for (const c of HH_MERGE) if (c !== 4 || h.people.slice(1).every(p => !p.phone)) merges.push(`${L(c)}${r0 + 1}:${L(c)}${r0 + h.people.length}`);
   }
-  await C.audit({ q }, 'noxh_check', null, 'xuat_mau4', null, null, user, `${hs.length} hộ${pj ? ' · ' + pj : ''}`);
+  await C.audit({ q }, 'noxh_check', null, 'xuat_mau4', null, null, user, `${hs.length} hộ${pj ? ' · ' + pj : ''}${per}`);
   return buildXlsx({ sheet: 'Mau 4', rows: out, widths: WIDTHS, merges, heights: { 0: 28, 1: 32, 2: 48 }, styleOf: ri => ri === 0 ? 5 : ri < 3 ? 4 : 3 });
 }
 
@@ -69,7 +120,7 @@ const SPEC = { tt: A('tt'), submit_on: A('ngay nop ho so'), project: A('ten du a
   unit: A('so can ho'), area: A('dien tich can ho m2', 'dien tich') };
 const excelDay = v => typeof v === 'number' ? new Date(Math.round((v - 25569) * 864e5)).toISOString().slice(0, 10) : s(v) || null;
 const IMPORT = {
-  title: 'Hồ sơ mua NOXH — file Mẫu 4', roles: ['truong_phong', 'ho_so'],
+  title: 'Hồ sơ mua / thuê NOXH — file Mẫu 4', roles: ['truong_phong', 'ho_so'],
   note: 'Dùng file Mẫu 4 nộp Sở Xây dựng (sheet «Mau 4»): mỗi hộ một dòng «Chủ hộ» + các dòng thành viên ngay dưới. Chủ hộ khớp khách hàng theo số CCCD (chưa có thì tự tạo khách); căn hộ khớp theo «Số căn hộ». Hộ đã có hồ sơ thì cập nhật thông tin, hồ sơ đang trình / đã duyệt thì bỏ qua.',
   template: () => buildXlsx({ sheet: 'Mau 4', rows: [['DỰ ÁN: …'], HEAD, HEAD2, ['', '', '', 'Nguyễn Văn A', '0912345678', 1, 2, 1990, '', '001090012345', 'Lao động tự do', 'Người thu nhập thấp tại khu vực đô thị', 'Công an xã …', 'Chưa có nhà ở thuộc sở hữu của hộ gia đình', 'Bắc Ninh', '', 'Yên Trung', 'Có thu nhập bình quân hàng tháng thực nhận không quá 25 triệu đồng', 'Chủ hộ', 'CTS-K-0211', '70.00'],
     ['', '', '', 'Trần Thị B', '', 3, 4, 1992, '', '001192012345', 'Lao động tự do', 'Người thu nhập thấp tại khu vực đô thị', 'Công an xã …', '', '', '', '', '', 'Vợ (Chồng)', '', '']],
@@ -87,6 +138,8 @@ const IMPORT = {
       const rel = IO.strip(r.relation);
       if (!cur || rel === 'chu ho' || (!rel && (s(r.unit) || s(r.tt)))) { cur = { ...r, _members: [] }; out.push(cur); } else cur._members.push(r);
     }
+    const thue = rows.slice(0, h + 2).some(r => (r || []).some(c => /dang ky thue nha|du kien thue(?! mua)/.test(IO.strip(c))));
+    for (const x of out) x._thue = thue;
     return { rows: out, cols: m.cols };
   },
   async row(r, ctx) {
@@ -110,7 +163,7 @@ const IMPORT = {
     const old = await db.one('SELECT id, status FROM kd_noxh_check WHERE customer_id = $1 ORDER BY id DESC LIMIT 1', [k.id]);
     if (old && E.noxh_check.lock.includes(old.status)) return 'trung';
     if (old) { await C.update('noxh_check', old.id, rec, ctx.user, { db, system: true, action: 'nhap_excel' }); return 'cap_nhat'; }
-    await C.create('noxh_check', { ...rec, reg_kind: 'mua', received_on: rec.received_on || C.today() }, ctx.user, { db, demo: ctx.demo });
+    await C.create('noxh_check', { ...rec, reg_kind: r._thue ? 'thue' : 'mua', received_on: rec.received_on || C.today() }, ctx.user, { db, demo: ctx.demo });
     return 'them';
   },
 };
@@ -172,14 +225,15 @@ async function printHandover(kind, id, user, tplCode) {
   const tpl = tplCode ? await one('SELECT * FROM kd_template WHERE active AND kind = $1 AND code = $2', [BB_KIND, tplCode]) : (await IO.regTemplates(BB_KIND, unitId))[0];
   const content = tpl?.content || MAU_BIEN_BAN()[0].content;
   const by = await one('SELECT full_name FROM kd_user WHERE id = $1', [n?.owner_id || user.id]);
-  const items = n ? (n.items || []).filter(x => x.st !== 'thieu') : await B.defaultList({ q, one }, 'checklist_noxh', '_all');
+  const thue = (n?.reg_kind || (r?.deal === 'thue' ? 'thue' : null)) === 'thue';
+  const items = (n ? (n.items || []).filter(x => x.st !== 'thieu') : await B.defaultList({ q, one }, 'checklist_noxh', '_all')).map(x => thue ? { ...x, n: B.rentWord(x.n) } : x);
   const day = String(n?.received_on || C.today()).slice(0, 10).split('-');
   const map = { dd: day[2], mm: day[1], yyyy: day[0], du_an_hoa: pj ? (/nhà ở xã hội/i.test(pj) ? pj : 'Nhà ở xã hội ' + pj).toUpperCase() : DOT,
     ten_kh: r?.cust_name || k.full_name, dien_thoai: r?.phone || k.phone, mst: hide(r?.tax_code || k.tax_code), tai_khoan: hide(r?.bank_account || k.bank_account), ma_can: u?.code || n?.unit_text, nguoi_dai_dien: by?.full_name };
   const bang = `<table class="b"><tr class="th"><td style="width:9%">STT</td><td>Nội dung</td><td style="width:16%">SỐ LƯỢNG</td><td style="width:27%">GHI CHÚ</td></tr>
 ${items.map((x, i) => `<tr><td class="c">${i + 1}</td><td>${esc(x.n)}</td><td class="c">${x.qty ?? ''}</td><td>${esc(x.note)}</td></tr>`).join('')}</table>`;
   // trường trộn: giá trị được thoát HTML, ô trống in dấu chấm để điền tay; {bang_tai_lieu} chèn nguyên bảng
-  const body = content.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+  const body = (thue ? content.replace(/HỒ SƠ MUA NHÀ/g, 'HỒ SƠ THUÊ NHÀ').replace(/[Hh]ồ sơ mua nhà/g, m => m.replace('mua', 'thuê')) : content).replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
     .replace(/\{(\w+)\}/g, (m, x) => x === 'bang_tai_lieu' ? bang : x in map ? (map[x] ? esc(map[x]) : DOT) : m);
   await C.audit({ q }, n ? 'noxh_check' : 'reservation', n?.id || r.id, 'in_bien_ban_giao_nhan', null, null, user, tpl?.code);
   return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Biên bản bàn giao tài liệu – ${esc(map.ten_kh)}</title><style>
@@ -191,4 +245,4 @@ ${items.map((x, i) => `<tr><td class="c">${i + 1}</td><td>${esc(x.n)}</td><td cl
     ${IO.EDIT_CSS}</style></head><body>${IO.editBar(`Bản in từ mẫu «${esc(tpl?.name || 'Biên bản giao nhận hồ sơ')}»${n ? ` · hồ sơ NOXH #${n.id}` : ' · chưa lập hồ sơ NOXH — danh mục mặc định, số lượng điền tay'}`)}${IO.editDoc(body)}</body></html>`;
 }
 
-module.exports = { data, xlsx, printHandover, handoverTemplates, MAU_BIEN_BAN, BB_CU };
+module.exports = { data, bulkStatus, bulkUndo, xlsx, printHandover, handoverTemplates, MAU_BIEN_BAN, BB_CU };
