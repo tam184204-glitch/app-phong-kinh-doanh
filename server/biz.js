@@ -311,8 +311,11 @@ H.customer = {
   // ?group=tiem_nang → chỉ tình trạng tìm khách; ?group=sau_ban → chỉ tình trạng sau mở bán
   where(qs) { if (qs.group === 'tiem_nang') return { sql: 'coalesce(t.stage, $1) = ANY($2)', params: ['moi', PROSPECT_ST] }; if (qs.group === 'sau_ban') return { sql: 'NOT (coalesce(t.stage, $1) = ANY($2))', params: ['moi', PROSPECT_ST] }; },
   async beforeSave(r, old, { db, warn, opts }) {
-    const copy = !old && opts?.copyOf, cw = d => `Bản sao dùng chung SĐT / CCCD với khách gốc ${d.code} · ${d.full_name}`;
-    const dup = (d, msg) => { if (!d) return; if (copy && d.id === copy) { if (!warn.includes(cw(d))) warn.push(cw(d)); } else bad(msg); };   // bản sao: trùng với chính khách gốc chỉ cảnh báo
+    const copy = !old && opts?.copyOf, cw = d => `Bản sao dùng chung SĐT / CCCD với khách ${d.code} · ${d.full_name}`;
+    // cùng «họ» mã khách (KH000158, KH000158-01, -02…): bản sao mới, bản sao của bản sao, sửa bản sao — trùng SĐT / CCCD trong họ chỉ cảnh báo
+    const fam = c => String(c || '').toUpperCase().replace(/-\d+$/, ''), myFam = fam(copy ? (await db.one('SELECT code FROM kd_customer WHERE id = $1', [copy]))?.code : r.code || old?.code);
+    const isFam = d => (copy && d.id === copy) || (myFam && fam(d.code) === myFam && (/-\d+$/.test(String(d.code)) || /-\d+$/.test(String(r.code || old?.code || '')) || copy));
+    const dup = (d, msg) => { if (!d) return; if (isFam(d)) { if (!warn.includes(cw(d))) warn.push(cw(d)); } else bad(msg); };
     r.full_name = r.full_name?.replace(/\s+/g, ' ').trim();
     if (r.phone) { const p = digits(r.phone); if (p.length < 9 || p.length > 12) bad('Điện thoại không hợp lệ'); r.phone = p.replace(/^84(?=\d{9}$)/, '0'); }
     if (r.phone2) r.phone2 = digits(r.phone2);
