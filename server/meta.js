@@ -338,13 +338,13 @@ def('noxh_check', {
     { k: 'supplement_due', l: 'Hạn bổ sung', t: 'date' },
     { k: 'result', l: 'Kết quả kiểm tra', t: 'sel', ro: 1, def: 'chua_kt', o: [['chua_kt', 'Chưa kiểm tra', 's'], ['du', 'Đủ', 'g'], ['can_bo_sung', 'Cần bổ sung', 'a']] },
     { k: 'reviews', l: 'Các bước xét duyệt nội bộ', t: 'json', ro: 1 },
-    // 4 bước: Dự thảo → Chờ xét duyệt (nội bộ) → Đã trình duyệt SXD → Đã duyệt SXD (ghi kết quả được / không được duyệt); chuyển hàng loạt ở màn Hồ sơ mua NOXH
-    { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'nhap', o: [['nhap', 'Dự thảo', 's'], ['cho_duyet', 'Chờ xét duyệt', 'a'], ['da_trinh', 'Đã trình duyệt SXD', 'b'], ['da_duyet', 'Đã duyệt SXD', 'g'], ['tu_choi', 'Trả lại', 'r']] },
+    // 3 bước: Dự thảo → Chờ xét duyệt → Đã duyệt SXD (ghi kết quả được / không được duyệt); chuyển hàng loạt ở màn Hồ sơ mua NOXH
+    { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'nhap', o: [['nhap', 'Dự thảo', 's'], ['cho_duyet', 'Chờ xét duyệt', 'a'], ['da_duyet', 'Đã duyệt SXD', 'g'], ['tu_choi', 'Trả lại', 'r']] },
     { k: 'sxd_result', l: 'Kết quả SXD', t: 'sel', ro: 1, o: [['duoc_duyet', 'Được duyệt', 'g'], ['khong_duyet', 'Không được duyệt', 'r']] },
     { k: 'sxd_note', l: 'Ghi chú duyệt SXD', t: 'long', ro: 1 },
     owner('Người tiếp nhận'),
   ], list: ['id', 'received_on', 'customer_id', 'unit_id', 'doi_tuong', 'items', 'result', 'supplement_due', 'status', 'bbgn'],
-  lock: ['da_duyet', 'da_trinh', 'cho_duyet'], lockKeep: ['plan_sign', 'sign_place', 'sign_status'], flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'da_trinh', no: 'tu_choi' }, submitLabel: 'Trình xét duyệt', needAll: 'items' },
+  lock: ['da_duyet', 'cho_duyet'], lockKeep: ['plan_sign', 'sign_place', 'sign_status'], flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'da_duyet', no: 'tu_choi' }, submitLabel: 'Trình xét duyệt', needAll: 'items' },
   acts: [{ k: 'print_bbgn', l: 'In biên bản giao nhận hồ sơ', icon: 'fa-print', from: '*', roles: ALL, handover: 'noxh' },
     { k: 'review', l: 'Ghi bước kiểm tra', icon: 'fa-clipboard-check', from: ['nhap', 'cho_duyet'], roles: ['ho_so', 'truong_phong'],
     ask: [{ k: 'step', l: 'Bước', t: 'sel', req: 1, o: [['kiem_tra_1', 'Kiểm tra lần 1'], ['kiem_tra_cheo', 'Kiểm tra chéo'], ['doi_chieu_goc', 'Đối chiếu bản gốc']] }, { k: 'conclusion', l: 'Kết luận', t: 'sel', req: 1, o: [['dat', 'Đạt'], ['can_bo_sung', 'Cần bổ sung']] }, { k: 'note', l: 'Ghi chú', t: 'long' }] }],

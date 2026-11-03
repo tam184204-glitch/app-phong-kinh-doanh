@@ -37,8 +37,8 @@ async function data(user, { project } = {}) {
   });
 }
 
-// ---------- chuyển trạng thái hàng loạt (Dự thảo → Chờ xét duyệt → Đã trình duyệt SXD → Đã duyệt SXD) ----------
-const BULK_ST = ['nhap', 'cho_duyet', 'da_trinh', 'da_duyet'];
+// ---------- chuyển trạng thái hàng loạt (Dự thảo → Chờ xét duyệt → Đã duyệt SXD) ----------
+const BULK_ST = ['nhap', 'cho_duyet', 'da_duyet'];
 async function bulkStatus(user, { ids, status, sxd_result, sxd_note } = {}) {
   const e = E.noxh_check;
   if (!canSee(user) || !(C.can(user, e, 'u') || C.can(user, e, 'a'))) deny('Chỉ trưởng phòng, lãnh đạo, nhân viên hồ sơ được chuyển trạng thái hồ sơ');
