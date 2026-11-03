@@ -496,7 +496,7 @@ def('contract', {
     money('after_tax', 'Tiền sau thuế', { help: 'Để trống → trước thuế + tiền thuế', show: SALE_ONLY }),
     money('finish_value', 'Giá trị hoàn thiện', { show: SALE_ONLY }),
     money('maint_fee', 'Phí bảo trì', { show: SALE_ONLY }),
-    { k: 'maint_dot', l: 'Đợt thu phí bảo trì', t: 'int', def: 3, show: { kind: ['hdmb', 'thue_mua'] }, help: 'Phí bảo trì thu riêng, cộng trọn vào đợt này (mặc định đợt 3); % các đợt tính trên tiền sau thuế' },
+    { k: 'maint_dot', l: 'Đợt thu phí bảo trì', t: 'int', def: 3, show: { kind: ['hdmb', 'thue_mua'] }, help: 'Phí bảo trì thu riêng, cộng trọn vào đợt này (mặc định đợt 3) — hoặc bấm nút «Phí bảo trì» ở đợt muốn thu; % các đợt tính trên tiền sau thuế' },
     { k: 'corner_pct', l: 'Hệ số góc %', t: 'num', show: SALE_ONLY },
     money('corner_amt', 'Tiền hệ số góc', { show: SALE_ONLY }),
     { k: 'eff_on', l: 'Ngày bắt đầu thuê', t: 'date', show: RENT_VAY },   // HĐ vay: ngày bắt đầu tính lãi (bắt buộc với HĐ thuê — kiểm ở biz)

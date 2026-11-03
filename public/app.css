@@ -964,3 +964,8 @@ table.t tr.clk { cursor: pointer; }
 
 /* Bảng hàng: tra cứu căn — căn khớp sáng viền */
 .floors .u.hit { outline: 3px solid var(--amber); outline-offset: 1px; box-shadow: 0 0 0 6px rgba(245, 166, 35, .18); }
+
+/* Lần thanh toán: cột nút (Bảo trì, xóa) đủ chỗ, không bị cắt */
+.sched th:nth-child(6) { width: 104px; }   /* cột nút: Bảo trì + xóa */
+.sched-acts { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.sched-acts .btn { white-space: nowrap; }
