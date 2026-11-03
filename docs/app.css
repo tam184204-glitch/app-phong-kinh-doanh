@@ -774,9 +774,10 @@ table.prod-t tfoot td { font-weight: 800 !important; color: var(--ink) !importan
 .m4t tbody tr:hover td { background: #f6f9fd; }
 .m4bulk { background: #fff8e6; border-bottom: 1px solid #f1dfb0; }
 .m4bulk[hidden], .m4bulk [hidden] { display: none; }
-.m4bd { display: inline-flex; gap: 8px; align-items: center; margin-left: 12px; padding-left: 12px; border-left: 1px solid #f1dfb0; }
 .m4day { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--ink2, #3d4f66); }
 .m4day input[type=date] { height: 36px; border: 1px solid #cfdbe8; border-radius: 10px; padding: 0 10px; background: #fff; font: inherit; font-weight: 500; font-size: 14px; color: inherit; min-width: 150px; }
+.m4ask input[type=date] { width: 100%; height: 38px; border: 1px solid #cfdbe8; border-radius: 10px; padding: 0 11px; background: #fff; font: inherit; }
+.m4ask .fld { margin-bottom: 10px; }
 .m4t td.m4ck, .m4t th input { cursor: pointer; }
 
 /* tiêu đề nhóm trong form (Bên mua / Bên bán / Thông tin chi tiết…) */

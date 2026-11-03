@@ -960,6 +960,21 @@ const M4_ST = { nhap: ['Dự thảo', 's'], cho_duyet: ['Chờ xét duyệt', 'a
 const M4_SXD = { duoc_duyet: ['Đủ điều kiện', 'g'], khong_duyet: ['Không đủ điều kiện', 'r'] };
 // 3 tab theo trạng thái; Dự thảo gồm cả hồ sơ bị trả lại (sửa, xóa được). Tick chọn nhiều hồ sơ → chuyển trạng thái hàng loạt
 const M4_TAB = { draft: ['Dự thảo', ['nhap', 'tu_choi']], review: ['Chờ xét duyệt', ['cho_duyet']], ok: ['Đã duyệt SXD', ['da_duyet']] }, M4_EDIT = ['nhap', 'tu_choi'];
+// hộp xác nhận chuyển trạng thái: sang Chờ xét duyệt → Ngày nộp hồ sơ SXD; sang Đã duyệt SXD → kết quả, ngày được xét duyệt, số công văn, ghi chú
+// pre: giá trị điền sẵn (chung của các hồ sơ đã chọn); trả về các trường đã điền hoặc null khi bấm Hủy
+const m4Ask = (msg, status, pre) => new Promise(res => {
+  const v = k => esc(pre[k] || ''), f = (l, h, req) => `<div class="fld"><label>${l}${req ? '<span class="req">*</span>' : ''}</label>${h}</div>`;
+  const body = status === 'cho_duyet' ? f('Ngày nộp hồ sơ SXD', `<input type="date" id="aS" value="${v('sxd_submit_on')}">`)
+    : status === 'da_duyet' ? f('Kết quả xét duyệt', `<select id="aR"><option value="">— Chọn —</option>${Object.entries(M4_SXD).map(([k, x]) => `<option value="${k}" ${pre.sxd_result === k ? 'selected' : ''}>${x[0]}</option>`).join('')}</select>`, 1)
+      + f('Ngày được xét duyệt', `<input type="date" id="aA" value="${v('sxd_approved_on')}">`) + f('Số công văn', `<input type="text" id="aC" value="${v('sxd_doc_no')}">`) + f('Ghi chú', `<input type="text" id="aG" value="${v('sxd_note')}">`) : '';
+  const m = modal({ title: 'Chuyển trạng thái hàng loạt', narrow: true, onClose: () => res(null), body: `<div class="m4ask"><p style="margin:0 0 12px">${msg}</p>${body}</div>`,
+    foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="askOk">Chuyển</button>` });
+  const g = id => $(id, m.el)?.value ?? '';
+  $('#askOk', m.el).onclick = () => {
+    if (status === 'da_duyet' && !g('#aR')) return toast('Chọn kết quả xét duyệt: đủ điều kiện hay không đủ điều kiện', true);
+    m.el.remove(); res({ sxd_submit_on: g('#aS'), sxd_result: g('#aR'), sxd_approved_on: g('#aA'), sxd_doc_no: g('#aC'), sxd_note: g('#aG') });
+  };
+});
 V.mau4 = async (main, params) => {
   const s = ST.mau4 ||= { project: '', q: '', from: '', to: '', tab: 'draft' };
   if (params.project) s.project = params.project;
@@ -971,12 +986,7 @@ V.mau4 = async (main, params) => {
       <label class="m4day nowrap">Ngày nộp từ <input type="date" id="m4F" value="${s.from}"></label><label class="m4day nowrap">đến <input type="date" id="m4To" value="${s.to}"></label>
       <span class="grow"></span><span class="small muted" id="m4N"></span></div><div class="tabs" id="m4Tab"></div>${canBulk ? `<div class="toolbar m4bulk" id="m4B" hidden><b id="m4BN"></b><span class="muted">→ chuyển sang</span>
         <select id="m4BS">${Object.entries(M4_ST).filter(([k]) => k !== 'tu_choi').map(([k, v]) => `<option value="${k}">${v[0]}</option>`).join('')}</select>
-        <select id="m4BR" hidden><option value="">— Kết quả xét duyệt —</option>${Object.entries(M4_SXD).map(([k, v]) => `<option value="${k}">${v[0]}</option>`).join('')}</select>
-        <label class="small nowrap" id="m4BAl" hidden>Ngày được xét duyệt <input type="date" id="m4BA"></label>
-        <input type="text" id="m4BC" placeholder="Số công văn" hidden style="width:150px">
-        <input type="text" id="m4BG" placeholder="Ghi chú" hidden style="min-width:180px">
-        <button class="btn pri sm" id="m4BGo">${ico('fa-right-left')} Chuyển trạng thái</button>
-        <span class="m4bd" id="m4BD"><label class="small nowrap">Ngày nộp hồ sơ SXD <input type="date" id="m4BDt"></label><button class="btn sm" id="m4BDGo">${ico('fa-calendar-check')} Lưu ngày nộp</button></span><button class="btn sm ghost" id="m4BX">Bỏ chọn</button></div>` : ''}<div class="tbl-wrap" id="m4T"><div class="empty">Đang tải…</div></div></div></div>`;
+        <button class="btn pri sm" id="m4BGo">${ico('fa-right-left')} Chuyển trạng thái</button><button class="btn sm ghost" id="m4BX">Bỏ chọn</button></div>` : ''}<div class="tbl-wrap" id="m4T"><div class="empty">Đang tải…</div></div></div></div>`;
   let hs = [];
   const load = async () => { hs = await api('GET', '/api/mau4' + (s.project ? '?project=' + s.project : '')); draw(); };
   const draw = () => {
@@ -1009,27 +1019,15 @@ V.mau4 = async (main, params) => {
     const b = $('#m4B', main); if (!b) return;
     if (!sel.size) $('#m4BS', main).value = { draft: 'cho_duyet', review: 'da_duyet', ok: 'da_duyet' }[s.tab];   // bước kế tiếp của tab
     b.hidden = !sel.size; $('#m4BN', main).textContent = `Đã chọn ${sel.size} hồ sơ`;
-    const ok = $('#m4BS', main).value === 'da_duyet';
-    for (const id of ['#m4BR', '#m4BAl', '#m4BC', '#m4BG']) $(id, main).hidden = !ok;
-    $('#m4BGo', main).innerHTML = ok && s.tab === 'ok' ? `${ico('fa-floppy-disk')} Lưu kết quả xét duyệt` : `${ico('fa-right-left')} Chuyển trạng thái`;
-    if (sel.size === 1 && s.tab === 'ok') { const h = hs.find(x => sel.has(x.id));   // sửa 1 hồ sơ: điền sẵn giá trị đang có
-      $('#m4BR', main).value = h.sxd_result || ''; $('#m4BA', main).value = h.sxd_approved_on || ''; $('#m4BC', main).value = h.sxd_doc_no || ''; $('#m4BG', main).value = h.sxd_note || ''; }
-    $('#m4BD', main).hidden = s.tab !== 'review';   // ghi ngày nộp SXD ở tab Chờ xét duyệt
   }
   if (canBulk) {
-    $('#m4BS', main).onchange = drawBulk;
     $('#m4BX', main).onclick = () => { sel.clear(); draw(); };
-    $('#m4BDGo', main).onclick = run(async () => {
-      const d = $('#m4BDt', main).value; if (!d) return toast('Chọn ngày nộp hồ sơ SXD', true);
-      const r = await api('POST', '/api/mau4/status', { ids: [...sel], sxd_submit_on: d });
-      toast(`Đã ghi ngày nộp hồ sơ SXD ${dmy(d)} cho ${r.n} hồ sơ`); sel.clear(); await load();
-    });
     $('#m4BGo', main).onclick = run(async () => {
-      const status = $('#m4BS', main).value, sxd_result = $('#m4BR', main).value, sxd_note = $('#m4BG', main).value, sxd_approved_on = $('#m4BA', main).value, sxd_doc_no = $('#m4BC', main).value;
-      if (status === 'da_duyet' && !sxd_result) return toast('Chọn kết quả xét duyệt: đủ điều kiện hay không đủ điều kiện', true);
-      if (!await ask('Chuyển trạng thái hàng loạt', `Chuyển <b>${sel.size}</b> hồ sơ sang <b>${M4_ST[status][0]}</b>${status === 'da_duyet' ? ` — ${M4_SXD[sxd_result][0]}` : ''}?`, { okLabel: 'Chuyển' })) return;
-      const r = await api('POST', '/api/mau4/status', { ids: [...sel], status, sxd_result, sxd_note, sxd_approved_on, sxd_doc_no });
-      toast(status === 'da_duyet' && s.tab === 'ok' ? `Đã lưu kết quả xét duyệt cho ${r.n} hồ sơ` : `Đã chuyển ${r.n} hồ sơ sang «${M4_ST[status][0]}»`); sel.clear(); for (const id of ['#m4BR', '#m4BA', '#m4BC', '#m4BG']) $(id, main).value = ''; await load();
+      const status = $('#m4BS', main).value, picked = hs.filter(h => sel.has(h.id));
+      const pre = Object.fromEntries(['sxd_submit_on', 'sxd_result', 'sxd_approved_on', 'sxd_doc_no', 'sxd_note'].map(k => { const vs = new Set(picked.map(h => h[k] || '')); return [k, vs.size === 1 ? [...vs][0] : '']; }));   // điền sẵn khi các hồ sơ giống nhau
+      const more = await m4Ask(`Chuyển <b>${sel.size}</b> hồ sơ sang <b>${M4_ST[status][0]}</b>?`, status, pre); if (!more) return;
+      const r = await api('POST', '/api/mau4/status', { ids: [...sel], status, ...more });
+      toast(`Đã chuyển ${r.n} hồ sơ sang «${M4_ST[status][0]}»`); sel.clear(); await load();
     });
   }
   $('#m4Q', main).oninput = debounce(e => { s.q = e.target.value; draw(); }, 200);
