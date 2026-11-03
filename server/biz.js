@@ -47,13 +47,15 @@ const PAY_ST = { da_thu: 'Đã thu đủ', qua_han: 'Quá hạn', den_han: 'Đ�
 
 // ======================= TRẠNG THÁI CĂN =======================
 const FREE_UNIT = ['con_ban', 'chua_mo_ban'];   // căn còn trống — lập phiếu đăng ký được
+// hợp đồng đang giữ căn: chưa hủy / thanh lý; HĐ thuê đã quá ngày kết thúc thì không giữ căn nữa (hết kỳ thuê căn bán / cho thuê tiếp được) — $T = hôm nay
+const LIVE_CT = (a, T) => `${a}.status NOT IN ('huy','thanh_ly') AND NOT (${a}.kind = 'thue' AND ${a}.exp_on < ${T})`;
 async function recomputeUnit(db, unitId, user) {
   const u = unitId && await raw(db, 'unit', unitId); if (!u) return;
   let st;
   if (u.lock) st = u.lock;
   else if (!u.activated) st = 'chua_mo_ban';
   else {
-    const c = await db.one("SELECT id, status FROM kd_contract WHERE unit_id = $1 AND kind IN ('hdmb','thue','thue_mua') AND status NOT IN ('huy','thanh_ly')", [unitId]);
+    const c = await db.one(`SELECT c.id, c.status FROM kd_contract c WHERE c.unit_id = $1 AND c.kind IN ('hdmb','thue','thue_mua') AND ${LIVE_CT('c', '$2::date')} ORDER BY c.id DESC LIMIT 1`, [unitId, today()]);
     const r = await db.one(`SELECT status, deposit, reg_state FROM kd_reservation WHERE unit_id = $1 AND status IN ${ACTIVE_RES}`, [unitId]);
     const h = await db.one('SELECT status FROM kd_handover WHERE unit_id = $1', [unitId]);
     if (c && h && ['da_ban_giao', 'hoan_tat'].includes(h.status)) st = 'da_ban_giao';
@@ -141,6 +143,8 @@ async function fixLiquidated(db) {
   return cs.length;
 }
 // HĐ thuê bị đồng bộ nhầm theo giá bán (bản cũ): tổng tiền về tiền thuê × số tháng, mỗi kỳ = số tháng của kỳ × tiền thuê, giữ hạn từng kỳ
+// giấy tờ / tiêu đề viết cho hồ sơ mua → bản hồ sơ thuê («Đơn đăng ký mua nhà» → «Đơn đăng ký thuê nhà»; «thuê mua» giữ nguyên)
+const rentWord = t => String(t ?? '').replace(/(?<!thuê )\bmua\b/g, 'thuê').replace(/(?<!THUÊ )\bMUA\b/g, 'THUÊ');
 function addMonths(iso, n) { const d = new Date(iso + 'T00:00:00Z'), day = d.getUTCDate(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + n); d.setUTCDate(Math.min(day, new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate())); return d.toISOString().slice(0, 10); }
 async function fixRentValue(db, user) {
   const cs = await db.q("SELECT * FROM kd_contract WHERE kind = 'thue' AND rent > 0 AND term_months > 0 AND value IS DISTINCT FROM rent * term_months");
@@ -413,6 +417,7 @@ H.reservation = {
     await linkCustomer(db, r, old, user, opts, demo);
     if (changedUnit && !opts.system) {
       // căn còn trống (Còn bán / Chưa mở bán) mới lập phiếu được — căn chưa mở bán tự mở bán khi lưu phiếu
+      if (!FREE_UNIT.includes(u.status)) { await recomputeUnit(db, u.id, user); u.status = (await raw(db, 'unit', u.id)).status; }   // vừa hết hạn thuê → căn trống lại ngay
       if (!FREE_UNIT.includes(u.status)) bad(`Căn ${u.code} đang «${await C.optLabel(C.F.unit.status, u.status)}» — không giữ chỗ được`);
     }
     if (r.hold_until && r.reg_date && !opts.system && new Date(Date.parse(r.hold_until) + 7 * 3600e3).toISOString().slice(0, 10) < r.reg_date) bad('Hạn giữ chỗ phải sau ngày đăng ký');
@@ -574,7 +579,7 @@ H.noxh_check = {
       if (m.bmonth && !(mm >= 1 && mm <= 12)) bad(`${who}: tháng sinh phải từ 1 đến 12`);
       if (m.byear && !(yy >= 1900 && yy <= 2100)) bad(`${who}: năm sinh không hợp lệ`);
     }
-    if ((!r.items || !r.items.length) && r.grp) r.items = await defaultList(db, 'checklist_noxh', r.grp);
+    if ((!r.items || !r.items.length) && r.grp) r.items = (await defaultList(db, 'checklist_noxh', r.grp)).map(x => r.reg_kind === 'thue' ? { ...x, n: rentWord(x.n) } : x);
     const it = r.items || [];
     r.result = it.length && it.every(x => x.st === 'da_nhan') ? 'du' : it.some(x => ['thieu', 'can_sua'].includes(x.st)) ? 'can_bo_sung' : 'chua_kt';
     if (r.result === 'can_bo_sung' && !r.supplement_due) warn.push('Hồ sơ cần bổ sung nhưng chưa đặt hạn bổ sung');
@@ -1097,6 +1102,8 @@ async function expireHolds(db) {   // chỉ đổi 2 cột trạng thái (không
 async function jobs(db) {
   const t0 = Date.now();
   await expireHolds(db);
+  // HĐ thuê hết hạn: căn trở lại trống (Còn bán / Chưa mở bán) — HĐ thuê vẫn giữ để theo dõi thu tiền / thanh lý
+  for (const x of await db.q(`SELECT DISTINCT c.unit_id FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id WHERE c.kind = 'thue' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on < $1 AND u.status NOT IN ('con_ban','chua_mo_ban')`, [today()])) await recomputeUnit(db, x.unit_id, null);
   // hợp đồng duyệt trước 31/10/2026 đang «Chờ ký» → chuyển Đã ký như quy trình mới
   for (const c of await db.q("SELECT * FROM kd_contract WHERE status = 'cho_ky'")) await sys(db, 'contract', c.id, signedPatch(c), null, 'tu_dong_da_ky', 'Hợp đồng đã duyệt tự chuyển Đã ký');
   // điều kiện bàn giao cập nhật theo thu tiền
@@ -1139,4 +1146,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { LIVE_CT, rentWord, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

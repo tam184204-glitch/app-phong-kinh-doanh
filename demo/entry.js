@@ -234,6 +234,41 @@ async function boot(pgliteUrl) {
       localStorage.setItem('ctg-kd-demo-dk-thue', '1');
     }
   } catch (e) { console.warn('đăng ký thuê / hồ sơ thuê thử', e); }
+  // HĐ thuê thử ở CTS (tòa K, O — dữ liệu giả, 1 lần): đang thuê, dự thảo, và 1 căn ĐÃ HẾT HẠN THUÊ có khách đăng ký mua (hết kỳ thuê căn bán tiếp được)
+  try {
+    if (!localStorage.getItem('ctg-kd-demo-thue-cts')) {
+      const C = require('../server/core'), B = require('../server/biz'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1");
+      const free = (b, n) => q(`SELECT u.id FROM kd_unit u JOIN kd_building b ON b.id = u.building_id JOIN kd_project p ON p.id = u.project_id WHERE p.code = 'CTS' AND b.code = $1 AND u.status IN ('con_ban', 'chua_mo_ban')
+        AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id) AND NOT EXISTS (SELECT 1 FROM kd_reservation r WHERE r.unit_id = u.id) ORDER BY u.floor DESC, u.code LIMIT $2`, [b, n]);
+      const can = [...await free('K', 4), ...await free('O', 2)];
+      const kh = await q('SELECT k.id FROM kd_customer k WHERE NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.customer_id = k.id) AND NOT EXISTS (SELECT 1 FROM kd_reservation r WHERE r.customer_id = k.id) ORDER BY k.id LIMIT 7');
+      const addMon = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'), day = d.getUTCDate(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + n); d.setUTCDate(Math.min(day, new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate())); return d.toISOString().slice(0, 10); };
+      const ago = m => addMon(new Date().toISOString().slice(0, 8) + '10', -m);
+      // [bắt đầu thuê, số tháng, số kỳ, tiền thuê/tháng, đã ký?] — dòng 4 (tòa K): thuê 12 tháng từ 15 tháng trước → đã hết hạn
+      const ds = [[ago(4), 12, 4, 5e6, 1], [ago(1), 24, 8, 5.5e6, 1], [ago(-1), 12, 12, 4.8e6, 0], [ago(15), 12, 4, 4.5e6, 1], [ago(7), 12, 12, 6e6, 1], [ago(2), 36, 12, 6.5e6, 1]];
+      let ended = null;
+      for (const [i, x] of can.entries()) {
+        if (!kh[i]) break;
+        const [a, n, p, rent, signed] = ds[i], off = k => Math.round(k * n / p);
+        const sched = Array.from({ length: p }, (_, k) => { const m1 = off(k) + 1, m2 = off(k + 1); return { name: `Tiền thuê kỳ ${k + 1}/${p} (tháng ${m1 === m2 ? m1 : `${m1}–${m2}`})`, due_on: addMon(a, off(k)), amount: (off(k + 1) - off(k)) * rent }; });
+        const r = await C.create('contract', { kind: 'thue', ptype: 'can_ho', unit_id: x.id, customer_id: kh[i].id, contract_on: a, eff_on: a, exp_on: new Date(Date.parse(addMon(a, n) + 'T00:00:00Z') - 864e5).toISOString().slice(0, 10), term_months: n, pay_times: p, rent, value: rent * n, new_schedule: sched }, u, { system: true, demo: true });
+        if (signed) { await C.submit('contract', r.row.id, u, {}); await C.approve('contract', r.row.id, u, { ok: true }); }
+        if (signed) for (const [k, it] of (await q("SELECT id, due_on::text d, amount FROM kd_installment WHERE contract_id = $1 AND active AND due_on < CURRENT_DATE ORDER BY seq", [r.row.id])).entries())
+          await C.create('receipt', { voucher_no: `PT-THUE-${r.row.id}-${k + 1}`, voucher_date: it.d, contract_id: r.row.id, installment_id: it.id, amount: +it.amount, content: `Thu tiền thuê kỳ ${k + 1}` }, u, { system: true, demo: true });
+        if (i === 3) ended = x.id;
+      }
+      // căn đã hết hạn thuê: trở lại trống → có khách đăng ký MUA
+      if (ended && kh[6]) {
+        await tx(db => B.recomputeUnit(db, ended, u));
+        const rs = await C.create('reservation', { deal: 'mua', unit_id: ended, customer_id: kh[6].id, source: 'truc_tiep', note: 'Dữ liệu thử — căn đã hết hạn thuê, khách đăng ký mua' }, u, { system: true, demo: true });
+        await C.submit('reservation', rs.row.id, u, { demo: true }); await C.approve('reservation', rs.row.id, u, { ok: true });
+      }
+      // hồ sơ thuê thử chưa có danh mục giấy tờ → điền danh mục bản thuê (đã nhận đủ)
+      const ck = (await B.defaultList({ q, one }, 'checklist_noxh', '_all')).map(x => ({ ...x, n: B.rentWord(x.n), st: 'da_nhan', note: '' }));
+      await q("UPDATE kd_noxh_check SET items = $1 WHERE reg_kind = 'thue' AND is_demo AND (items IS NULL OR items::text IN ('[]', 'null'))", [JSON.stringify(ck)]);
+      localStorage.setItem('ctg-kd-demo-thue-cts', '1');
+    }
+  } catch (e) { console.warn('HĐ thuê thử CTS', e); }
   const job = async () => { try { await tx(db => biz.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.warn('job', e.message); } };
   await job(); setInterval(job, 2 * 60e3);
 

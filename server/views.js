@@ -297,12 +297,13 @@ async function board(db, user, f) {
       coalesce((SELECT k.full_name FROM kd_contract c JOIN kd_customer k ON k.id = c.customer_id WHERE c.unit_id = u.id AND c.status NOT IN ('huy','thanh_ly') AND c.kind <> 'hoan_thien' LIMIT 1),
                (SELECT k.full_name FROM kd_reservation r JOIN kd_customer k ON k.id = r.customer_id WHERE r.unit_id = u.id AND r.status IN ('cho_duyet','giu_cho','qua_han','da_coc','chuyen_hd') LIMIT 1)) customer,
       (SELECT r.hold_until FROM kd_reservation r WHERE r.unit_id = u.id AND r.status IN ('giu_cho','qua_han','da_coc') LIMIT 1) hold_until,
-      EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND c.status NOT IN ('huy','thanh_ly')) rent,   -- căn cho thuê
-      (SELECT c.exp_on FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND c.status NOT IN ('huy','thanh_ly') ORDER BY c.id DESC LIMIT 1) rent_to,
-      (SELECT c.rent FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND c.status NOT IN ('huy','thanh_ly') ORDER BY c.id DESC LIMIT 1) rent_amt,
+      EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on >= $2) rent,   -- căn đang cho thuê (còn thời hạn)
+      (SELECT c.exp_on FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on >= $2 ORDER BY c.id DESC LIMIT 1) rent_to,
+      (SELECT c.rent FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on >= $2 ORDER BY c.id DESC LIMIT 1) rent_amt,
+      (SELECT max(c.exp_on) FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on < $2) rent_ended,   -- đã hết hạn thuê: căn trống lại
       (SELECT r.rent FROM kd_reservation r WHERE r.unit_id = u.id AND r.deal = 'thue' AND r.status IN ('cho_duyet','giu_cho','qua_han','da_coc') LIMIT 1) res_rent,   -- căn giữ chỗ theo phiếu đăng ký thuê: tiền thuê/tháng dự kiến
       u.status = 'con_ban' AND EXISTS (SELECT 1 FROM kd_reservation r WHERE r.unit_id = u.id AND r.status IN ('huy','het_han')) cancelled   -- căn trả lại sau khi hủy đăng ký
-    FROM kd_unit u WHERE u.building_id = $1 ORDER BY u.floor DESC, u.code`, [bid]) : [];
+    FROM kd_unit u WHERE u.building_id = $1 ORDER BY u.floor DESC, u.code`, [bid, today()]) : [];
   // khách hàng: chỉ người có quyền xem khách mới thấy tên
   if (!can(user, E.customer, 'r')) units.forEach(u => { u.customer = u.customer ? '•••' : null; });
   const policy = await db.one("SELECT code, version, start_on, end_on, src_file FROM kd_price_policy WHERE $1 = ANY(project_ids) AND status = 'phat_hanh' AND start_on <= $2 AND end_on >= $2 ORDER BY start_on DESC LIMIT 1", [pid, today()]);

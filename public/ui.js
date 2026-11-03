@@ -611,6 +611,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     if (cur.some(x => x.st || x.note)) return;
     const s = M.settings[ckF.src]; let list = Array.isArray(s) ? s : s?.[readField(form, fields.find(f => f.k === ckF.srcBy) || {})] || s?._all || [];
     list = list.map(ckItem);   // «Tên giấy tờ | 2» → số lượng mặc định
+    if ($('[name=reg_kind]', form)?.value === 'thue') list = list.map(x => ({ ...x, n: x.n.replace(/(?<!thuê )\bmua\b/g, 'thuê') }));   // hồ sơ thuê: «Đơn đăng ký mua nhà» → «… thuê nhà»
     if (list.length && JSON.stringify(list.map(x => x.n)) !== JSON.stringify(cur.map(x => x.n))) el.innerHTML = checkRows(list.map(x => ({ ...x, st: '', note: '' })), 'qty' in el.dataset);
   };
   wireInputs(form, () => { vis(); });
@@ -753,7 +754,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     for (const [k, v] of Object.entries(out)) if (form.elements[k]) form.elements[k].value = moneyStr(v);
   });
   $$('[data-pick-units]', form).forEach(el => unitPicker(el, form).catch(e => toast(e.message, true)));
-  if (ckF && !id) { fillCheck(); form.addEventListener('change', e => { if (e.target.name === ckF.srcBy) fillCheck(); }); }
+  if (ckF && !id) { fillCheck(); form.addEventListener('change', e => { if (e.target.name === ckF.srcBy || e.target.name === 'reg_kind') fillCheck(); }); }
   vis();
   const errBox = $('#ferr', m.el);
   const showErr = (e) => { errBox.innerHTML = `<div class="errbar">${ico('fa-triangle-exclamation')} ${esc(e.message)}</div>`; $$('.fld.err', form).forEach(x => x.classList.remove('err')); (e.fields || []).forEach(k => $(`[data-f="${k}"]`, form)?.classList.add('err')); errBox.scrollIntoView({ block: 'nearest' }); };
