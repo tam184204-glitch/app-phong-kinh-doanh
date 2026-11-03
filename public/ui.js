@@ -369,6 +369,7 @@ function schedEditor(el, rows, { total, base, first } = {}) {   // first(): ngà
     if (n) { R[i]._days = n; $('[data-k="due_on"]', tr).value = dmy(addDays(d, n)); }
     else if (R[i]._days) { delete R[i]._days; R[i].due_on = ''; $('[data-k="due_on"]', tr).value = ''; }   // nội dung không còn theo ngày ký: bỏ hạn đã tự sổ
   });
+  el._set = rows => { R = rows.map(r => ({ ...r })); draw(); };   // điền sẵn các đợt (HĐ thuê tự chia kỳ)
   el._get = () => { sync(); return R.filter(r => r.name || r.due_on || r.pct || r.amount).map(r => ({ name: r.name, due_on: r.due_on, pct: r.pct, amount: r.amount })); };
   el._redraw = () => { sync(); draw(); };
   draw();
@@ -423,17 +424,35 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish }) {   // oldFinish: h
     const lb = $('[data-f=contract_on] label', form); if (lb) lb.textContent = isRent() ? 'Ngày ký hợp đồng thuê' : 'Ngày ký hợp đồng mua bán';
   };
   // HĐ thuê: số tháng + tổng tiền tự tính khi gõ (máy chủ tính lại khi lưu, cùng công thức)
-  const rentCalc = () => {
+  const addMon = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'), day = d.getUTCDate(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + n); d.setUTCDate(Math.min(day, new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate())); return d.toISOString().slice(0, 10); };
+  let autoSched = null;   // lịch do máy chia gần nhất — bảng còn đúng như vậy (hoặc trống) mới chia lại, sửa tay thì giữ
+  const rentSched = () => {
+    const el = $('[data-sched]', form); if (!el?._set) return;
+    const a = readField(form, { k: 'eff_on', t: 'date' }), n = +readField(form, { k: 'term_months', t: 'int' }) || 0, p = +readField(form, { k: 'pay_times', t: 'int' }) || 0, tot = readField(form, { k: 'value', t: 'money' }) || 0;
+    if (!a || !(n > 0) || !(p > 0) || p > n) return;
+    const cur = JSON.stringify(el._get()); if (cur !== '[]' && cur !== autoSched) return;
+    const off = k => Math.round(k * n / p), each = Math.floor(tot / p / 1000) * 1000;
+    const rows = Array.from({ length: p }, (_, k) => {
+      const m1 = off(k) + 1, m2 = off(k + 1);
+      return { name: `Tiền thuê kỳ ${k + 1}/${p} (tháng ${m1 === m2 ? m1 : `${m1}–${m2}`})`, due_on: addMon(a, off(k)), pct: null, amount: tot ? (k === p - 1 ? tot - each * (p - 1) : each) : null };
+    });
+    el._set(rows); autoSched = JSON.stringify(el._get());
+  };
+  const rentCalc = e => {
     if (!isRent()) return;
-    const a = readField(form, { k: 'eff_on', t: 'date' }), b = readField(form, { k: 'exp_on', t: 'date' }), r = readField(form, { k: 'rent', t: 'money' });
-    let n = null;
-    if (a && b && b >= a) { const s0 = new Date(a + 'T00:00:00Z'), e = new Date(Date.parse(b + 'T00:00:00Z') + 864e5); n = (e.getUTCFullYear() - s0.getUTCFullYear()) * 12 + e.getUTCMonth() - s0.getUTCMonth(); if (e.getUTCDate() < s0.getUTCDate()) n--;
+    const a = readField(form, { k: 'eff_on', t: 'date' }), r = readField(form, { k: 'rent', t: 'money' });
+    // gõ Số tháng: có ngày bắt đầu thì tự ra ngày kết thúc (bắt đầu + số tháng − 1 ngày)
+    if (e?.target?.name === 'term_months' && a && +e.target.value > 0) { const x = $('[name=exp_on]', form); if (x) x.value = dmy(addDays(addMon(a, +e.target.value), -1)); }
+    const b = readField(form, { k: 'exp_on', t: 'date' });
+    let n = e?.target?.name === 'term_months' ? +e.target.value || null : null;
+    if (n == null && a && b && b >= a) { const s0 = new Date(a + 'T00:00:00Z'), e = new Date(Date.parse(b + 'T00:00:00Z') + 864e5); n = (e.getUTCFullYear() - s0.getUTCFullYear()) * 12 + e.getUTCMonth() - s0.getUTCMonth(); if (e.getUTCDate() < s0.getUTCDate()) n--;
       const at = new Date(Date.UTC(s0.getUTCFullYear(), s0.getUTCMonth() + n, s0.getUTCDate())); n = Math.max(0, n + (Math.round((e - at) / 864e5) >= 15 ? 1 : 0)); }
     const tm = $('[name=term_months]', form), v = $('[name=value]', form);
     if (tm && n != null) tm.value = n;
     if (v && n && r > 0) { v.value = moneyStr(Math.round(r * n)); v.dispatchEvent(new Event('input', { bubbles: true })); }
+    rentSched();
   };
-  for (const k of ['eff_on', 'exp_on', 'rent']) { const el = $(`[name=${k}]`, form); el?.addEventListener('change', rentCalc); el?.addEventListener('input', rentCalc); }
+  for (const k of ['eff_on', 'exp_on', 'rent', 'term_months', 'pay_times']) { const el = $(`[name=${k}]`, form); el?.addEventListener('change', rentCalc); el?.addEventListener('input', rentCalc); }
   const show = p => { if (p === 'thue') setKind('thue'); else if (p === 'mb' && isRent()) setKind('hdmb'); view(p); };   // người dùng bấm tab
   kindSel?.addEventListener('change', () => view(isRent() ? 'thue' : 'mb'));
   nav.onclick = e => { const b = e.target.closest('[data-p]'); if (b) show(b.dataset.p); };
@@ -532,7 +551,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   let htp = null;
   if (ent === 'contract') { bravoLayout(form, HD_LAYOUT); $('.modal', m.el).classList.add('full'); if (rec.kind !== 'hoan_thien') htp = hdPair(form, { ht: htRec, locked: htLocked, tab, draft: htDraft, oldFinish: +rec.finish_value > 0 }); }
   const sch = $('[data-sched]', form);
-  if (sch) schedEditor(sch, rec.new_schedule || [], { total: () => ent === 'contract' ? readField(form, E.fields.find(f => f.k === 'value')) || 0 : readField(form, E.fields.find(f => f.k === 'value_after')) || rec.value_before || 0, first: ent === 'contract' ? () => readField(form, E.fields.find(f => f.k === 'contract_on')) : null });
+  if (sch) schedEditor(sch, rec.new_schedule || [], { total: () => ent === 'contract' ? readField(form, E.fields.find(f => f.k === 'value')) || 0 : readField(form, E.fields.find(f => f.k === 'value_after')) || rec.value_before || 0, first: ent === 'contract' ? () => readField(form, E.fields.find(f => f.k === ($('[name=kind]', form)?.value === 'thue' ? 'eff_on' : 'contract_on'))) : null });
   const vis = () => { const cur = collect(true); for (const f of fields) { const box = $(`[data-f="${f.k}"]`, form); if (box) box.classList.toggle('hidden', !isShown(f, cur)); } $$('.bv-row, .bv-sec', form).forEach(x => x.classList.toggle('hidden', !$('.fld:not(.hidden)', x))); htp?.sync(cur.ptype !== 'lien_ke' && ['hdmb', 'thue_mua', 'thue'].includes(cur.kind)); };
   const collect = (all) => { const out = {}; for (const f of fields) { if (f.ro || (f.t === 'code' && !f.manual)) continue; if (lockKeep && !lockKeep.has(f.k)) continue; const v = readField(form, f); if (v !== undefined) out[f.k] = v; } return all ? { ...rec, ...out } : out; };
   // checklist theo nhóm / mẫu
