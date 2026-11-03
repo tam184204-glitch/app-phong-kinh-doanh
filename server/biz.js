@@ -140,9 +140,21 @@ async function fixLiquidated(db) {
   for (const c of cs) { await closeReservations(db, c, null); await recomputeUnit(db, c.unit_id, null); }
   return cs.length;
 }
+// HĐ thuê bị đồng bộ nhầm theo giá bán (bản cũ): tổng tiền về tiền thuê × số tháng, mỗi kỳ = số tháng của kỳ × tiền thuê, giữ hạn từng kỳ
+async function fixRentValue(db, user) {
+  const cs = await db.q("SELECT * FROM kd_contract WHERE kind = 'thue' AND rent > 0 AND term_months > 0 AND value IS DISTINCT FROM rent * term_months");
+  for (const c of cs) {
+    const value = Math.round(+c.rent * +c.term_months), n = +c.term_months;
+    await db.q('UPDATE kd_contract SET value = $1, updated_at = now() WHERE id = $2', [value, c.id]);
+    await C.audit(db, 'contract', c.id, 'sua', { value: c.value }, { value }, user, 'Tổng tiền thuê = tiền thuê/tháng × thời hạn thuê', c.is_demo);
+    const inst = await db.q('SELECT name, due_on, src FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [c.id]), p = inst.length;
+    if (p && p <= n) { const off = k => Math.round(k * n / p); await writeSchedule(db, c.id, inst.map((i, k) => ({ name: i.name, due_on: i.due_on, pct: null, amount: (off(k + 1) - off(k)) * +c.rent })), inst[0].src || 'hop_dong', user, c.is_demo); }
+  }
+  return cs.length;
+}
 async function syncContractValue(db, contractId, user, note = 'Đồng bộ giá trị theo Danh mục sản phẩm') {
   const c = await raw(db, 'contract', contractId);
-  const u = c && c.kind !== 'hoan_thien' && await raw(db, 'unit', c.unit_id);
+  const u = c && !['hoan_thien', 'thue'].includes(c.kind) && await raw(db, 'unit', c.unit_id);   // HĐ thuê: tổng tiền = tiền thuê × số tháng, không theo giá bán
   if (!u || u.price_net == null) return false;
   const value = +u.price_net + (+u.maint_fee || 0) + (+c.finish_value || 0);
   if (+c.value === value) return false;
@@ -1113,4 +1125,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

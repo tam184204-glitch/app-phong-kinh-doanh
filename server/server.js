@@ -547,6 +547,7 @@ async function start() {
   if (!n) { console.log('CSDL trống — nạp dữ liệu gốc…'); await require('./seed').seedBase(); }
   await require('./seed').ensureTemplates();
   await B.fixLiquidated({ q, one }).catch(e => console.error('fixLiquidated', e.message));
+  await tx(async db => B.fixRentValue(db, await db.one("SELECT * FROM kd_user WHERE role = 'admin' ORDER BY id LIMIT 1"))).catch(e => console.error('fixRentValue', e.message));
   const srv = http.createServer(handle);
   srv.listen(PORT, HOST, () => console.log(`App Phòng Kinh doanh: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`));
   const job = async () => { try { await tx(db => B.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.error('Việc chạy nền lỗi:', e.message); } };

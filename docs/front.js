@@ -452,6 +452,8 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish, kind, debt, rec0 }) {
     const at = p === 'ht' ? 'ht' : isRent() ? 'thue' : 'mb';
     $$('button', nav).forEach(b => b.classList.toggle('on', b.dataset.p === at)); mb.classList.toggle('hidden', at === 'ht'); hp.classList.toggle('hidden', at !== 'ht');
     const lb = $('[data-f=contract_on] label', form); if (lb) lb.textContent = isRent() ? 'Ngày ký hợp đồng thuê' : 'Ngày ký hợp đồng mua bán';
+    $$('.bv-side .fsec', form).forEach(x => { x.dataset.t ??= x.textContent; x.textContent = isRent() ? x.dataset.t.replace('Bên mua nhà ở', 'Bên thuê nhà ở').replace('Bên bán nhà ở', 'Bên cho thuê nhà ở') : x.dataset.t; });
+    const rq = $('[data-f=request_on] label', form)?.firstChild; if (rq?.nodeType === 3) { rq._t ??= rq.textContent; rq.textContent = isRent() ? rq._t.replace('mua', 'thuê') : rq._t; }
     const vl = $('[data-f=value] label', form)?.firstChild; if (vl?.nodeType === 3) vl.textContent = isRent() ? 'Tổng tiền thuê' : valLabel;
     rentDraw();
   };
