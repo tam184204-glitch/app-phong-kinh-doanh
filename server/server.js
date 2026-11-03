@@ -483,6 +483,7 @@ R('PUT', '/api/seller', async (req, res, u) => {
   send(res, 200, { ok: true });
 });
 R('GET', '/api/mau4', async (req, res, u, p, qs) => send(res, 200, await M4.data(u, qs)));
+R('POST', '/api/mau4/status', async (req, res, u) => send(res, 200, await M4.bulkStatus(u, await readJson(req))));
 R('GET', '/api/mau4/xlsx', async (req, res, u, p, qs) => sendFile(res, await M4.xlsx(u, qs), `Mau4_ho_so_mua_NOXH_${C.today()}.xlsx`, MIME['.xlsx']));
 R('GET', '/print/sale_notice/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printSaleNotice(p.id, u, qs.kind), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 R('GET', '/print/cancel_req/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printCancelReq(p.id, u), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });

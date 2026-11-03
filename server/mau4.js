@@ -7,7 +7,7 @@ const C = require('./core');
 const IO = require('./io');
 const B = require('./biz');
 const { E, PII_ROLES } = require('./meta');
-const { q, one } = require('./db');
+const { q, one, tx } = require('./db');
 const { buildXlsx } = require('./xlsx');
 const { bad, deny, dmy } = C;
 
@@ -24,7 +24,7 @@ function dmyParts(v) {
 // ---------- dữ liệu bảng tổng hợp ----------
 async function data(user, { project } = {}) {
   if (!canSee(user)) deny('Bảng tổng hợp Mẫu 4 có dữ liệu định danh — chỉ trưởng phòng, lãnh đạo, nhân viên hồ sơ được xem');
-  const rows = await q(`SELECT n.id, n.received_on, n.reg_kind, n.old_id_no, n.job, n.doi_tuong, n.confirm_org, n.housing, n.income, n.province, n.district, n.commune, n.members, n.status, n.result, n.unit_text, n.unit_area,
+  const rows = await q(`SELECT n.id, n.received_on, n.reg_kind, n.old_id_no, n.job, n.doi_tuong, n.confirm_org, n.housing, n.income, n.province, n.district, n.commune, n.members, n.status, n.result, n.sxd_result, n.sxd_note, n.unit_text, n.unit_area,
       k.full_name, k.phone, k.phone2, k.birth, k.id_no, u.code unit_code, u.area_tt, p.id project_id, p.code project_code, p.name project
     FROM kd_noxh_check n JOIN kd_customer k ON k.id = n.customer_id LEFT JOIN kd_unit u ON u.id = n.unit_id
       LEFT JOIN kd_project p ON p.id = coalesce(u.project_id, (SELECT x.id FROM kd_project x WHERE upper(x.code) = upper(split_part(n.unit_text, '-', 1)) LIMIT 1))   -- căn ngoài danh mục: dự án theo tiền tố mã căn
@@ -32,9 +32,25 @@ async function data(user, { project } = {}) {
   return rows.map((r, i) => {
     const head = { name: r.full_name, phone: [r.phone, r.phone2].filter(Boolean).join('/ '), birth: dmyParts(r.birth), old_id_no: r.old_id_no, id_no: r.id_no, job: r.job, doi_tuong: r.doi_tuong, confirm_org: r.confirm_org, relation: 'Chủ hộ' };
     const mem = (r.members || []).map(m => ({ ...m, birth: [m.bday ?? '', m.bmonth ?? '', m.byear ?? ''] }));
-    return { id: r.id, tt: i + 1, received_on: r.received_on, project: r.project, project_id: r.project_id, unit_code: r.unit_code || r.unit_text, area: r.unit_area ?? r.area_tt, reg_kind: r.reg_kind, status: r.status, result: r.result,
+    return { id: r.id, tt: i + 1, received_on: r.received_on, project: r.project, project_id: r.project_id, unit_code: r.unit_code || r.unit_text, area: r.unit_area ?? r.area_tt, reg_kind: r.reg_kind, status: r.status, result: r.result, sxd_result: r.sxd_result, sxd_note: r.sxd_note,
       housing: r.housing, province: r.province, district: r.district, commune: r.commune, income: r.income, people: [head, ...mem] };
   });
+}
+
+// ---------- chuyển trạng thái hàng loạt (Dự thảo → Chờ xét duyệt → Đã trình duyệt SXD → Đã duyệt SXD) ----------
+const BULK_ST = ['nhap', 'cho_duyet', 'da_trinh', 'da_duyet'];
+async function bulkStatus(user, { ids, status, sxd_result, sxd_note } = {}) {
+  const e = E.noxh_check;
+  if (!canSee(user) || !(C.can(user, e, 'u') || C.can(user, e, 'a'))) deny('Chỉ trưởng phòng, lãnh đạo, nhân viên hồ sơ được chuyển trạng thái hồ sơ');
+  ids = [...new Set((ids || []).map(Number).filter(Boolean))];
+  if (!ids.length) bad('Chưa chọn hồ sơ nào');
+  if (!BULK_ST.includes(status)) bad('Trạng thái không hợp lệ');
+  if (status === 'da_duyet' && !['duoc_duyet', 'khong_duyet'].includes(sxd_result)) bad('Chọn kết quả SXD: được duyệt hay không được duyệt');
+  const patch = { status, sxd_result: status === 'da_duyet' ? sxd_result : null, sxd_note: status === 'da_duyet' ? s(sxd_note) || null : null };
+  const st = L => e.fields.find(f => f.k === 'status').o.find(o => o[0] === L)?.[1];
+  let n = 0;
+  await tx(async db => { for (const id of ids) { await C.sys(db, 'noxh_check', id, patch, user, 'chuyen_tt', `Chuyển hàng loạt sang «${st(status)}»`); n++; } });
+  return { ok: true, n };
 }
 
 // ---------- xuất Excel đúng bố cục Mẫu 4 ----------
@@ -191,4 +207,4 @@ ${items.map((x, i) => `<tr><td class="c">${i + 1}</td><td>${esc(x.n)}</td><td cl
     ${IO.EDIT_CSS}</style></head><body>${IO.editBar(`Bản in từ mẫu «${esc(tpl?.name || 'Biên bản giao nhận hồ sơ')}»${n ? ` · hồ sơ NOXH #${n.id}` : ' · chưa lập hồ sơ NOXH — danh mục mặc định, số lượng điền tay'}`)}${IO.editDoc(body)}</body></html>`;
 }
 
-module.exports = { data, xlsx, printHandover, handoverTemplates, MAU_BIEN_BAN, BB_CU };
+module.exports = { data, bulkStatus, xlsx, printHandover, handoverTemplates, MAU_BIEN_BAN, BB_CU };

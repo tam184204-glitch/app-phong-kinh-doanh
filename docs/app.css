@@ -772,6 +772,9 @@ table.prod-t tfoot td { font-weight: 800 !important; color: var(--ink) !importan
 .m4t td.wrap { white-space: normal; min-width: 200px; }
 .m4t tr.m4head td { border-top: 1px solid #c9d6e6; }
 .m4t tbody tr:hover td { background: #f6f9fd; }
+.m4bulk { background: #fff8e6; border-bottom: 1px solid #f1dfb0; }
+.m4bulk[hidden], .m4bulk [hidden] { display: none; }
+.m4t td.m4ck, .m4t th input { cursor: pointer; }
 
 /* tiêu đề nhóm trong form (Bên mua / Bên bán / Thông tin chi tiết…) */
 .form .fsec { grid-column: 1 / -1; margin: 10px 0 -2px; padding: 6px 10px; border-radius: 8px; background: #e8f3fb; color: #1e4e8c; font-weight: 700; font-size: 13px; }

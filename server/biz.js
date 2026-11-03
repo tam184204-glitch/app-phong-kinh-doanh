@@ -207,14 +207,14 @@ async function defaultList(db, key, by) {
 // ======================= HỒ SƠ NOXH / GIAO DỊCH: tiến trình =======================
 async function stageOf(db, rows) {
   const ids = rows.map(r => r.id); if (!ids.length) return;
-  const nx = new Map((await db.q('SELECT DISTINCT ON (reservation_id) reservation_id, status, result FROM kd_noxh_check WHERE reservation_id = ANY($1) ORDER BY reservation_id, id DESC', [ids])).map(r => [r.reservation_id, r]));
+  const nx = new Map((await db.q('SELECT DISTINCT ON (reservation_id) reservation_id, status, result, sxd_result FROM kd_noxh_check WHERE reservation_id = ANY($1) ORDER BY reservation_id, id DESC', [ids])).map(r => [r.reservation_id, r]));
   const ct = new Map((await db.q("SELECT reservation_id, status FROM kd_contract WHERE reservation_id = ANY($1) AND kind <> 'hoan_thien'", [ids])).map(r => [r.reservation_id, r]));
   const noxhUnits = new Set((await db.q("SELECT u.id FROM kd_unit u JOIN kd_project p ON p.id = u.project_id WHERE p.kind = 'noxh' AND u.id = ANY($1)", [rows.map(r => r.unit_id)])).map(r => r.id));
   for (const r of rows) {
     const n = nx.get(r.id), c = ct.get(r.id);
     r.stage = { nhap: 'Đăng ký', cho_duyet: 'Chờ duyệt giữ chỗ', huy: 'Đã hủy', het_han: 'Hết hạn', tu_choi: 'Bị từ chối' }[r.status]
       || (r.status === 'chuyen_hd' ? (c?.status === 'da_ky' ? 'Đã ký hợp đồng' : c?.status === 'huy' ? 'Đã hủy' : 'Chờ ký hợp đồng')
-      : n ? ({ nhap: n.result === 'can_bo_sung' ? 'Chờ bổ sung hồ sơ' : 'Đang tiếp nhận hồ sơ', cho_duyet: 'Đang xét duyệt', da_duyet: 'Đủ điều kiện ký HĐ', tu_choi: 'Hồ sơ không đạt' }[n.status])
+      : n ? ({ nhap: n.result === 'can_bo_sung' ? 'Chờ bổ sung hồ sơ' : 'Đang tiếp nhận hồ sơ', cho_duyet: 'Đang xét duyệt', da_trinh: 'Đã trình SXD', da_duyet: n.sxd_result === 'khong_duyet' ? 'SXD không duyệt' : 'Đủ điều kiện ký HĐ', tu_choi: 'Hồ sơ không đạt' }[n.status])
       : noxhUnits.has(r.unit_id) ? 'Chờ hồ sơ NOXH' : 'Đủ điều kiện ký HĐ');
   }
 }
@@ -1073,7 +1073,7 @@ function syncStages(db) { return syncing ||= doSyncStages(db).finally(() => { sy
 async function doSyncStages(db) {
   const best = new Map(), bump = (cid, st) => { if (cid && STAGE_RANK.indexOf(st) > STAGE_RANK.indexOf(best.get(cid) ?? '')) best.set(cid, st); };
   for (const r of await db.q("SELECT customer_id FROM kd_reservation WHERE status IN ('giu_cho','qua_han','da_coc','chuyen_hd')")) bump(r.customer_id, 'da_nop_hsmn');
-  for (const r of await db.q("SELECT customer_id, status FROM kd_noxh_check WHERE status <> 'tu_choi'")) bump(r.customer_id, r.status === 'da_duyet' ? 'sxd_duyet' : 'da_nop_hsmn');
+  for (const r of await db.q("SELECT customer_id, status, sxd_result FROM kd_noxh_check WHERE status <> 'tu_choi'")) bump(r.customer_id, r.status === 'da_duyet' && r.sxd_result !== 'khong_duyet' ? 'sxd_duyet' : 'da_nop_hsmn');
   const cts = await db.q("SELECT id, customer_id, status FROM kd_contract WHERE status NOT IN ('huy','tu_choi') AND kind <> 'hoan_thien'");
   const D = await debtOf(db, cts.filter(c => c.status === 'da_ky').map(c => c.id));
   for (const c of cts) {
