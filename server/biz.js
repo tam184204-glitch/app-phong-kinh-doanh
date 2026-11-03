@@ -176,6 +176,21 @@ async function fixBaseDiscount(db) {
   await db.q("INSERT INTO kd_setting (key, value) VALUES ('base_price_net', $1) ON CONFLICT (key) DO NOTHING", [JSON.stringify({ at: new Date().toISOString(), n })]);
   return n;
 }
+// hợp đồng ↔ phiếu đăng ký của căn: nối phiếu (theo phiếu đã gắn, hoặc phiếu còn hiệu lực cùng căn + cùng khách);
+// hợp đồng Đã ký → phiếu: Ký HĐMB · Đã ký HĐMB · Đã chuyển hợp đồng
+async function resFromContract(db, r, user) {
+  if (!r || r.kind === 'hoan_thien' || ['huy', 'thanh_ly'].includes(r.status)) return;
+  const s = r.reservation_id ? await raw(db, 'reservation', r.reservation_id)
+    : await db.one(`SELECT * FROM kd_reservation WHERE unit_id = $1 AND customer_id = $2 AND status IN ${ACTIVE_RES} ORDER BY id DESC LIMIT 1`, [r.unit_id, r.customer_id]);
+  if (!s) return;
+  if (!r.reservation_id) await db.q('UPDATE kd_contract SET reservation_id = $1 WHERE id = $2 AND reservation_id IS NULL', [s.id, r.id]);
+  if (r.status !== 'da_ky' || ['huy', 'het_han'].includes(s.status)) return;
+  const patch = {};
+  if (s.reg_state !== 'ky_hdmb') patch.reg_state = 'ky_hdmb';
+  if (s.progress !== 'da_ky') patch.progress = 'da_ky';
+  if (s.status !== 'chuyen_hd') patch.status = 'chuyen_hd';
+  if (Object.keys(patch).length) await sys(db, 'reservation', s.id, patch, user, 'cap_nhat_tien_trinh', `Đã ký hợp đồng ${r.number || ''}`);
+}
 async function fixRentValue(db, user) {
   const cs = await db.q("SELECT * FROM kd_contract WHERE kind = 'thue' AND rent > 0 AND term_months > 0 AND value IS DISTINCT FROM rent * term_months");
   for (const c of cs) {
@@ -750,6 +765,7 @@ function rentMonths(a, b) {
 }
 H.contract = {
   onApprove(r, ok) { if (ok) return { patch: signedPatch(r) }; },
+  async afterApprove(r, ok, { db, user }) { if (ok) await resFromContract(db, await raw(db, 'contract', r.id), user); },   // duyệt ở Hộp phê duyệt cũng cập nhật phiếu đăng ký
   // danh sách: hợp đồng cũ chưa có thông tin bên mua / chi tiết giá thì hiện theo khách hàng và căn
   async listFill(rows, db) {
     if (!rows.length) return;
@@ -896,10 +912,7 @@ H.contract = {
       const key = xs => JSON.stringify(xs.map(x => [x.name, String(x.due_on).slice(0, 10), x.pct == null ? null : +x.pct, +x.amount]));
       if (key(cur) !== key(sched)) await writeSchedule(db, r.id, sched, 'hop_dong', user, demo);
     }
-    if (r.status === 'da_ky' && old?.status !== 'da_ky' && r.reservation_id && r.kind !== 'hoan_thien') {
-      const s = await raw(db, 'reservation', r.reservation_id);
-      if (s && s.reg_state !== 'ky_hdmb') await sys(db, 'reservation', s.id, { reg_state: 'ky_hdmb', progress: 'da_ky' }, user, 'cap_nhat_tien_trinh', `Đã ký hợp đồng ${r.number}`);
-    }
+    await resFromContract(db, r, user);
     if (!old || old.status !== r.status || old.unit_id !== r.unit_id) { await recomputeUnit(db, r.unit_id, user); if (old && old.unit_id !== r.unit_id) await recomputeUnit(db, old.unit_id, user); }
     if (old && old.status !== r.status) await refreshCommission(db, r.id, user);
   },
@@ -1191,6 +1204,8 @@ async function expireHolds(db) {   // chỉ đổi 2 cột trạng thái (không
 async function jobs(db) {
   const t0 = Date.now();
   await expireHolds(db);
+  for (const c of await db.q(`SELECT c.* FROM kd_contract c WHERE c.status = 'da_ky' AND c.kind <> 'hoan_thien' AND EXISTS (SELECT 1 FROM kd_reservation s WHERE (s.id = c.reservation_id OR (c.reservation_id IS NULL AND s.unit_id = c.unit_id AND s.customer_id = c.customer_id))
+      AND s.status IN ${ACTIVE_RES} AND (s.reg_state IS DISTINCT FROM 'ky_hdmb' OR s.progress IS DISTINCT FROM 'da_ky' OR s.status <> 'chuyen_hd'))`)) await resFromContract(db, c, null).catch(e => console.warn('resFromContract', c.id, e.message));
   // HĐ thuê hết hạn: căn trở lại trống (Còn bán / Chưa mở bán) — HĐ thuê vẫn giữ để theo dõi thu tiền / thanh lý
   for (const x of await db.q(`SELECT DISTINCT c.unit_id FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id WHERE c.kind = 'thue' AND coalesce(c.nature, 'thue') <> 'ban' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on < $1 AND u.status NOT IN ('con_ban','chua_mo_ban')`, [today()])) await recomputeUnit(db, x.unit_id, null);
   // hợp đồng duyệt trước 31/10/2026 đang «Chờ ký» → chuyển Đã ký như quy trình mới

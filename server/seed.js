@@ -395,8 +395,8 @@ async function loadDemo() {
       housing: 'Chưa có nhà ở thuộc sở hữu của hộ gia đình', income: 'Có thu nhập bình quân hàng tháng thực nhận không quá 25 triệu đồng', province: 'Bắc Ninh', commune: 'Yên Trung', job: 'Người lao động làm việc tại doanh nghiệp', ...extra }, hs, o())).row;
     { const n = await mkNoxh(ctsDeals[14], []); await C.act('noxh_check', n.id, 'review', hs, { step: 'kiem_tra_1', conclusion: 'dat', note: 'Đủ giấy tờ' }, { db, demo: true }); await C.submit('noxh_check', n.id, hs, { db, demo: true }); await C.approve('noxh_check', n.id, tp, { ok: true, db }); }
     { const n = await mkNoxh(ctsDeals[15], []); await C.act('noxh_check', n.id, 'review', hs, { step: 'kiem_tra_1', conclusion: 'dat' }, { db, demo: true }); await C.submit('noxh_check', n.id, hs, { db, demo: true }); }
-    await mkNoxh({ res: (await db.one("SELECT id FROM kd_reservation WHERE status = 'da_coc' AND is_demo ORDER BY id LIMIT 1")) }, ['da_nhan', 'da_nhan', 'thieu', 'da_nhan', 'can_sua', 'da_nhan', 'da_nhan'], { supplement_note: 'Thiếu giấy xác nhận đối tượng; giấy xác nhận thu nhập cần đóng dấu lại', supplement_due: D(-2) });
-    await mkNoxh({ res: (await db.one("SELECT id FROM kd_reservation WHERE status = 'da_coc' AND is_demo ORDER BY id DESC LIMIT 1")) }, ['da_nhan', 'da_nhan', 'da_nhan', '', '', '', '']);
+    await mkNoxh({ res: (await db.one("SELECT id FROM kd_reservation WHERE status IN ('giu_cho', 'da_coc') AND is_demo ORDER BY id LIMIT 1")) }, ['da_nhan', 'da_nhan', 'thieu', 'da_nhan', 'can_sua', 'da_nhan', 'da_nhan'], { supplement_note: 'Thiếu giấy xác nhận đối tượng; giấy xác nhận thu nhập cần đóng dấu lại', supplement_due: D(-2) });
+    await mkNoxh({ res: (await db.one("SELECT id FROM kd_reservation WHERE status IN ('giu_cho', 'da_coc') AND is_demo ORDER BY id DESC LIMIT 1")) }, ['da_nhan', 'da_nhan', 'da_nhan', '', '', '', '']);
     inc('Hồ sơ NOXH'); inc('Hồ sơ NOXH'); inc('Hồ sơ NOXH'); inc('Hồ sơ NOXH');
 
     // ===== điều chỉnh hợp đồng =====
