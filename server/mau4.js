@@ -61,9 +61,27 @@ async function bulkStatus(user, { ids, status, sxd_result, sxd_note, sxd_submit_
   const patch = { status, ...(day ? { sxd_submit_on: day } : {}) };
   if (status === 'da_duyet') Object.assign(patch, { sxd_result }, isDay(sxd_approved_on) ? { sxd_approved_on } : {}, s(sxd_doc_no) ? { sxd_doc_no: s(sxd_doc_no) } : {}, s(sxd_note) ? { sxd_note: s(sxd_note) } : {});
   const st = L => e.fields.find(f => f.k === 'status').o.find(o => o[0] === L)?.[1];
-  let n = 0;
-  await tx(async db => { for (const id of ids) { await C.sys(db, 'noxh_check', id, patch, user, 'chuyen_tt', `Chuyển hàng loạt sang «${st(status)}»`); n++; } });
-  return { ok: true, n };
+  let n = 0, prev = [];
+  await tx(async db => {
+    prev = await db.q(`SELECT id, ${UNDO_K.join(', ')} FROM kd_noxh_check WHERE id = ANY($1)`, [ids]);
+    for (const id of ids) { await C.sys(db, 'noxh_check', id, patch, user, 'chuyen_tt', `Chuyển hàng loạt sang «${st(status)}»`); n++; }
+  });
+  return { ok: true, n, prev };
+}
+// hoàn tác lần chuyển hàng loạt vừa rồi: ghi lại đúng giá trị cũ của từng hồ sơ
+const UNDO_K = ['status', 'sxd_submit_on', 'sxd_result', 'sxd_approved_on', 'sxd_doc_no', 'sxd_note'];
+async function bulkUndo(user, { prev } = {}) {
+  const e = E.noxh_check;
+  if (!canSee(user) || !(C.can(user, e, 'u') || C.can(user, e, 'a'))) deny('Chỉ trưởng phòng, lãnh đạo, nhân viên hồ sơ được hoàn tác');
+  if (!Array.isArray(prev) || !prev.length) bad('Không có thao tác nào để hoàn tác');
+  const okSt = e.fields.find(f => f.k === 'status').o.map(o => o[0]);
+  await tx(async db => {
+    for (const p of prev) {
+      if (!+p.id || !okSt.includes(p.status)) bad('Dữ liệu hoàn tác không hợp lệ');
+      await C.sys(db, 'noxh_check', +p.id, Object.fromEntries(UNDO_K.map(k => [k, p[k] ?? null])), user, 'hoan_tac', 'Hoàn tác chuyển trạng thái hàng loạt');
+    }
+  });
+  return { ok: true, n: prev.length };
 }
 
 // ---------- xuất Excel đúng bố cục Mẫu 4 ----------
@@ -221,4 +239,4 @@ ${items.map((x, i) => `<tr><td class="c">${i + 1}</td><td>${esc(x.n)}</td><td cl
     ${IO.EDIT_CSS}</style></head><body>${IO.editBar(`Bản in từ mẫu «${esc(tpl?.name || 'Biên bản giao nhận hồ sơ')}»${n ? ` · hồ sơ NOXH #${n.id}` : ' · chưa lập hồ sơ NOXH — danh mục mặc định, số lượng điền tay'}`)}${IO.editDoc(body)}</body></html>`;
 }
 
-module.exports = { data, bulkStatus, xlsx, printHandover, handoverTemplates, MAU_BIEN_BAN, BB_CU };
+module.exports = { data, bulkStatus, bulkUndo, xlsx, printHandover, handoverTemplates, MAU_BIEN_BAN, BB_CU };

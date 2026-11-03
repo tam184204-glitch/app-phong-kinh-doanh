@@ -986,7 +986,8 @@ V.mau4 = async (main, params) => {
       <label class="m4day nowrap">Ngày nộp từ <input type="date" id="m4F" value="${s.from}"></label><label class="m4day nowrap">đến <input type="date" id="m4To" value="${s.to}"></label>
       <span class="grow"></span><span class="small muted" id="m4N"></span></div><div class="tabs" id="m4Tab"></div>${canBulk ? `<div class="toolbar m4bulk" id="m4B" hidden><b id="m4BN"></b><span class="muted">→ chuyển sang</span>
         <select id="m4BS">${Object.entries(M4_ST).filter(([k]) => k !== 'tu_choi').map(([k, v]) => `<option value="${k}">${v[0]}</option>`).join('')}</select>
-        <button class="btn pri sm" id="m4BGo">${ico('fa-right-left')} Chuyển trạng thái</button><button class="btn sm ghost" id="m4BX">Bỏ chọn</button></div>` : ''}<div class="tbl-wrap" id="m4T"><div class="empty">Đang tải…</div></div></div></div>`;
+        <button class="btn pri sm" id="m4BGo">${ico('fa-right-left')} Chuyển trạng thái</button><button class="btn sm ghost" id="m4BX">Bỏ chọn</button></div>
+      <div class="toolbar m4undo" id="m4U" hidden><span id="m4UT"></span><button class="btn sm" id="m4UGo">${ico('fa-rotate-left')} Hoàn tác</button><button class="btn sm ghost" id="m4UX" title="Ẩn">${ico('fa-xmark')}</button></div>` : ''}<div class="tbl-wrap" id="m4T"><div class="empty">Đang tải…</div></div></div></div>`;
   let hs = [];
   const load = async () => { hs = await api('GET', '/api/mau4' + (s.project ? '?project=' + s.project : '')); draw(); };
   const draw = () => {
@@ -1028,6 +1029,16 @@ V.mau4 = async (main, params) => {
       const more = await m4Ask(`Chuyển <b>${sel.size}</b> hồ sơ sang <b>${M4_ST[status][0]}</b>?`, status, pre); if (!more) return;
       const r = await api('POST', '/api/mau4/status', { ids: [...sel], status, ...more });
       toast(`Đã chuyển ${r.n} hồ sơ sang «${M4_ST[status][0]}»`); sel.clear(); await load();
+      undo = r.prev; $('#m4UT', main).innerHTML = `Vừa chuyển <b>${r.n}</b> hồ sơ sang <b>${M4_ST[status][0]}</b>.`; $('#m4U', main).hidden = false;
+    });
+    // hoàn tác lần chuyển gần nhất (giữ tới khi chuyển lần khác / rời màn hình)
+    let undo = null;
+    $('#m4UX', main).onclick = () => { undo = null; $('#m4U', main).hidden = true; };
+    $('#m4UGo', main).onclick = run(async () => {
+      if (!undo) return;
+      if (!await ask('Hoàn tác', `Trả <b>${undo.length}</b> hồ sơ về trạng thái và thông tin trước khi chuyển?`, { okLabel: 'Hoàn tác' })) return;
+      const r = await api('POST', '/api/mau4/undo', { prev: undo }); undo = null; $('#m4U', main).hidden = true;
+      toast(`Đã hoàn tác ${r.n} hồ sơ`); sel.clear(); await load();
     });
   }
   $('#m4Q', main).oninput = debounce(e => { s.q = e.target.value; draw(); }, 200);
