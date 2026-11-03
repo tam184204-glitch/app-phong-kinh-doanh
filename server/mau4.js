@@ -98,7 +98,7 @@ async function xlsx(user, qs) {
   const hs = await data(user, qs);
   const pj = qs.project ? hs[0]?.project || (await one('SELECT name FROM kd_project WHERE id = $1', [+qs.project]))?.name : null;
   const per = qs.from || qs.to ? ` (${DAY_BY[qs.by]?.[1] || 'ngày nộp hồ sơ'}${qs.from ? ' từ ' + dmy(qs.from) : ''}${qs.to ? ' đến ' + dmy(qs.to) : ''})` : '';
-  const out = [[(pj ? `DỰ ÁN: ${pj.toUpperCase()}` : 'DANH SÁCH ĐỐI TƯỢNG ĐĂNG KÝ MUA NHÀ Ở XÃ HỘI') + per], HEAD, HEAD2];
+  const out = [[(pj ? `DỰ ÁN: ${pj.toUpperCase()}` : `DANH SÁCH ĐỐI TƯỢNG ĐĂNG KÝ ${qs.kind === 'thue' ? 'THUÊ' : 'MUA'} NHÀ Ở XÃ HỘI`) + per], HEAD, HEAD2];
   const merges = ['A1:U1', 'I2:J2', 'O2:Q2', 'T2:U2', ...HEAD2.map((h, i) => !h && ![8, 9, 14, 15, 16, 19, 20].includes(i) ? `${L(i)}2:${L(i)}3` : null).filter(Boolean)];
   for (const h of hs) {
     const r0 = out.length;

@@ -300,6 +300,7 @@ async function board(db, user, f) {
       EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND c.status NOT IN ('huy','thanh_ly')) rent,   -- căn cho thuê
       (SELECT c.exp_on FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND c.status NOT IN ('huy','thanh_ly') ORDER BY c.id DESC LIMIT 1) rent_to,
       (SELECT c.rent FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND c.status NOT IN ('huy','thanh_ly') ORDER BY c.id DESC LIMIT 1) rent_amt,
+      (SELECT r.rent FROM kd_reservation r WHERE r.unit_id = u.id AND r.deal = 'thue' AND r.status IN ('cho_duyet','giu_cho','qua_han','da_coc') LIMIT 1) res_rent,   -- căn giữ chỗ theo phiếu đăng ký thuê: tiền thuê/tháng dự kiến
       u.status = 'con_ban' AND EXISTS (SELECT 1 FROM kd_reservation r WHERE r.unit_id = u.id AND r.status IN ('huy','het_han')) cancelled   -- căn trả lại sau khi hủy đăng ký
     FROM kd_unit u WHERE u.building_id = $1 ORDER BY u.floor DESC, u.code`, [bid]) : [];
   // khách hàng: chỉ người có quyền xem khách mới thấy tên
