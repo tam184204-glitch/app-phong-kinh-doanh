@@ -748,7 +748,8 @@ H.contract = {
     ctx.sched = Array.isArray(r.new_schedule) && r.new_schedule.length ? await normSchedule(db, r.new_schedule.map(x => x.pct != null ? { ...x, amount: null } : x), r.value, 'Lần thanh toán') : null;
     r.new_schedule = null;
     if (!old || old.unit_id !== r.unit_id) {
-      const u = await raw(db, 'unit', r.unit_id);
+      const u = r.unit_id ? await raw(db, 'unit', r.unit_id) : null;
+      if (!u) bad('Chọn mã căn hộ', { fields: ['unit_id'] });
       if (!u.activated && !opts.system) bad(`Căn ${u.code} chưa được duyệt mở bán`);
       if (r.kind !== 'hoan_thien' && !opts.system) {
         const res = await db.one(`SELECT code, customer_id FROM kd_reservation WHERE unit_id = $1 AND status IN ${ACTIVE_RES}`, [r.unit_id]);

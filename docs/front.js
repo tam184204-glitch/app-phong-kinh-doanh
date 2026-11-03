@@ -422,7 +422,7 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish, kind, debt, rec0 }) {
   const valLabel = $('[data-f=value] label', form)?.firstChild?.textContent || '';
   // HĐ thuê: «Tiến độ thu tiền» thay bảng Lần thanh toán (theo mẫu Màn hình quản lý thu tiền thuê) — kỳ do máy chia, đã thu lấy theo phiếu thu
   const rentMeta = document.createElement('div'), rp = document.createElement('div');
-  rentMeta.className = 'bv-row rent-meta'; rentMeta.style.setProperty('--n', 4); rp.className = 'rent-prog';
+  rentMeta.className = 'bv-row rent-meta'; rentMeta.style.setProperty('--n', 3); rp.className = 'rent-prog';
   $('[data-f=rent]', form)?.closest('.bv-row')?.after(rentMeta);
   const paySec = () => $$('.bv-sec', form).find(s => ['Lần thanh toán', 'Tiến độ thu tiền'].includes($(':scope > .fsec', s)?.textContent));
   const saved0 = JSON.stringify((debt?.inst || []).map(i => [i.due_on, +i.amount]));
@@ -433,7 +433,7 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish, kind, debt, rec0 }) {
     if (!on) return;
     const rd2 = k => readField(form, { k, t: k.endsWith('_on') ? 'date' : 'int' }) || rec0?.[k], n = +rd2('term_months') || 0, p = +rd2('pay_times') || 0, T = today();
     const cell = (l, v) => `<div class="fld"><label>${l}</label><div class="ro">${v}</div></div>`;
-    rentMeta.innerHTML = cell('Phân bổ thanh toán', n > 0 && p > 0 ? (n % p ? 'Chia theo tháng, kỳ cuối điều chỉnh' : `${n / p} tháng/kỳ`) : '—') + cell('Hạn thanh toán', 'Ngày đầu mỗi kỳ') + cell('Ngày đối chiếu', dmy(T)) + cell('Tình trạng', ($('[name=closed]', form)?.checked ?? !!rec0?.closed) ? pill('Đã đóng hợp đồng', 's') : pill('Chưa đóng hợp đồng', 'b'));
+    rentMeta.innerHTML = cell('Phân bổ thanh toán', n > 0 && p > 0 ? (n % p ? 'Chia theo tháng, kỳ cuối điều chỉnh' : `${n / p} tháng/kỳ`) : '—') + cell('Hạn thanh toán', 'Ngày đầu mỗi kỳ') + cell('Ngày đối chiếu', dmy(T));
     const cur = sch?._get ? sch._get() : debt?.inst || [], same = debt?.inst?.length && JSON.stringify(cur.map(i => [i.due_on, +i.amount])) === saved0;
     const end = rd2('exp_on'); let tot = 0, got = 0, late = 0, lateAmt = 0;
     const rows = cur.map((r, k) => {
@@ -482,7 +482,6 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish, kind, debt, rec0 }) {
     if (v && n && r > 0) { v.value = moneyStr(Math.round(r * n)); v.dispatchEvent(new Event('input', { bubbles: true })); }
     rentSched(); rentDraw();
   };
-  $('[name=closed]', form)?.addEventListener('change', () => rentDraw());
   for (const k of ['eff_on', 'exp_on', 'rent', 'term_months', 'pay_times']) { const el = $(`[name=${k}]`, form); el?.addEventListener('change', rentCalc); el?.addEventListener('input', rentCalc); }
   const show = p => { if (p === 'thue') setKind('thue'); else if (p === 'mb' && isRent()) setKind('hdmb'); view(p); };   // người dùng bấm tab
   kindSel?.addEventListener('change', () => view(isRent() ? 'thue' : 'mb'));
