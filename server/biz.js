@@ -755,6 +755,10 @@ H.contract = {
     const cv = custVals(r, old, CT_CUST);
     if (['b_bank_acc', 'b_bank_name'].some(c => !old || old[c] !== r[c])) cv.bank_account = [r.b_bank_acc, r.b_bank_name].filter(Boolean).join(' - ');
     await syncCustomer(db, r.customer_id, cv, user, `Theo hợp đồng ${r.number}`);
+    // lịch ký sửa ở hợp đồng (hoặc màn Lịch ký) → về hồ sơ mua NOXH của khách (cùng căn nếu có), để 2 bên luôn khớp
+    if (old && r.kind !== 'hoan_thien' && ['plan_sign', 'sign_place', 'sign_status'].some(k => String(old[k] ?? '') !== String(r[k] ?? '')))
+      await db.q(`UPDATE kd_noxh_check SET plan_sign = $1, sign_place = $2, sign_status = coalesce($3, sign_status), updated_at = now() WHERE customer_id = $4 AND (unit_id IS NULL OR unit_id = $5)`,
+        [r.plan_sign ?? null, r.sign_place ?? null, r.sign_status ?? null, r.customer_id, r.unit_id]);
     if (sched?.length && ['du_thao', 'tu_choi', 'cho_duyet', 'cho_ky'].includes(r.status)) {   // ghi lịch thu khi khác lịch đang có
       const cur = await db.q('SELECT name, due_on, pct, amount FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [r.id]);
       const key = xs => JSON.stringify(xs.map(x => [x.name, String(x.due_on).slice(0, 10), x.pct == null ? null : +x.pct, +x.amount]));
