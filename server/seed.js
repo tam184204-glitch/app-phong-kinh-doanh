@@ -536,7 +536,7 @@ async function loadDemo() {
 }
 
 // ======================= XÓA DỮ LIỆU THỬ =======================
-const ORDER = ['commission', 'collect_plan', 'debt_call', 'refund', 'cancel_req', 'receipt', 'contract_change', 'defect', 'pinkbook', 'handover', 'ticket', 'notice', 'noxh_check', 'contact_log', 'installment', 'contract', 'reservation',
+const ORDER = ['sale_notice', 'commission', 'collect_plan', 'debt_call', 'refund', 'cancel_req', 'receipt', 'contract_change', 'defect', 'pinkbook', 'handover', 'ticket', 'notice', 'noxh_check', 'contact_log', 'loan_pay', 'installment', 'contract', 'reservation',
   'report', 'target', 'agent_alloc', 'commission', 'customer', 'commission_policy', 'agent', 'package'];
 async function clearDemo() {
   const out = {};
@@ -547,6 +547,22 @@ async function clearDemo() {
       ...(await db.q('SELECT unit_id FROM kd_handover WHERE is_demo')).map(r => r.unit_id),
     ]);
     await db.q('UPDATE kd_contract SET reservation_id = NULL WHERE is_demo');
+    // bản ghi thử đang được dữ liệu thật / người dùng tự nhập dùng tới (VD hợp đồng tự lập chọn khách thử, căn thử) → giữ lại, bỏ dấu thử; lặp tới khi hết
+    const fks = await db.q(`SELECT c.relname AS child, a.attname AS col, p.relname AS parent FROM pg_constraint k
+      JOIN pg_class c ON c.oid = k.conrelid JOIN pg_class p ON p.oid = k.confrelid JOIN pg_attribute a ON a.attrelid = k.conrelid AND a.attnum = k.conkey[1]
+      JOIN pg_namespace n ON n.oid = c.relnamespace WHERE k.contype = 'f' AND n.nspname = current_schema() AND c.relname <> p.relname
+      AND EXISTS (SELECT 1 FROM pg_attribute x WHERE x.attrelid = k.conrelid AND x.attname = 'is_demo') AND EXISTS (SELECT 1 FROM pg_attribute x WHERE x.attrelid = k.confrelid AND x.attname = 'is_demo')`);
+    let kept = 0;
+    for (let more = true, round = 0; more && round < 20; round++) {
+      more = false;
+      for (const f of fks) {
+        const n = (await db.q(`UPDATE ${f.parent} SET is_demo = false WHERE is_demo AND id IN (SELECT ${f.col} FROM ${f.child} WHERE NOT is_demo AND ${f.col} IS NOT NULL) RETURNING id`)).length;
+        if (n) { kept += n; more = true; }
+      }
+    }
+    out.giu_lai_vi_dang_dung = kept;
+    // lịch trả lãi HĐ vay của hợp đồng thử (dòng sinh tự động có thể không mang dấu thử) — không xóa thì khóa ngoại chặn xóa hợp đồng, cả lệnh bị hủy
+    await db.q('UPDATE kd_loan_pay SET is_demo = true WHERE contract_id IN (SELECT id FROM kd_contract WHERE is_demo)');
     for (const k of ORDER) {
       const t = 'kd_' + k;
       const ids = (await db.q(`SELECT id FROM ${t} WHERE is_demo`)).map(r => r.id); if (!ids.length) continue;
