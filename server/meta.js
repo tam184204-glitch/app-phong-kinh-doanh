@@ -492,7 +492,7 @@ def('contract', {
     money('build_amt', 'Giá trị xây dựng', { show: LK_SALE }),
     money('discount', 'Tiền giảm giá', { show: { kind: [...SALE_K, 'thue'] }, help: 'Trừ thẳng vào Tổng tiền (giá trị hợp đồng). HĐ mua bán: chia ngược ra giá trước thuế, thuế, bảo trì. HĐ thuê: không trừ vào tiền thuê' }),
     // HĐ thuê (04/11/2026): giá trị căn hộ theo Danh mục sản phẩm − giảm giá — CHỈ ĐỂ THÔNG TIN (tiền thuê, tiến độ thu, công nợ vẫn = tiền thuê/tháng × số tháng)
-    money('unit_total', 'Tổng tiền (giá trị hợp đồng)', { show: RENT_ONLY, help: 'Tự lấy theo mã căn ở Danh mục sản phẩm (Tổng giá căn hộ = sau thuế + phí bảo trì + hoàn thiện) rồi trừ thẳng Tiền giảm giá; sửa được. Chỉ để thông tin — tiền thuê vẫn tính theo tiền thuê/tháng × số tháng' }),
+    money('unit_total', 'Giá trị HĐMB', { show: RENT_ONLY, help: 'Giá trị nếu mua căn: tự lấy theo mã căn ở Danh mục sản phẩm (Tổng giá căn hộ = sau thuế + phí bảo trì + hoàn thiện) rồi trừ thẳng Tiền giảm giá; sửa được. Chỉ để thông tin — tiền thuê vẫn tính theo tiền thuê/tháng × số tháng' }),
     money('pretax', 'Tiền trước thuế', { show: SALE_ONLY }),
     { k: 'vat_pct', l: 'Thuế suất %', t: 'num', show: SALE_ONLY },
     money('vat_amt', 'Tiền thuế', { help: 'Để trống → trước thuế × thuế suất', show: SALE_ONLY }),

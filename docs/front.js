@@ -870,7 +870,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     // b0 = giá nền gốc (trước giảm giá): theo căn khi chọn căn, hoặc giá gõ tay vào ô giá nền; HĐ đã lưu: base_orig (HĐ cũ: giá nền + tiền giảm / DT).
     // Ô giá nền hiện giá đã chia ngược khi có giảm giá; xóa tiền giảm → về giá gốc
     const rdn = k => readField(form, fields.find(f => f.k === k) || {});
-    // HĐ thuê: Tổng tiền (giá trị hợp đồng) = Tổng giá căn hộ theo danh mục − Tiền giảm giá (trừ thẳng, như HĐMB) — chỉ để thông tin, không đổi tiền thuê.
+    // HĐ thuê: Giá trị HĐMB (unit_total) = Tổng giá căn hộ theo danh mục − Tiền giảm giá (trừ thẳng, như HĐMB) — chỉ để thông tin, không đổi tiền thuê.
     // ut0 = giá trước giảm: theo căn khi chọn căn; HĐ đã lưu = tổng tiền + giảm giá; sửa tay ô Tổng tiền thì lấy số đó cộng lại giảm giá
     let ut0 = form.elements.unit_total && rec.unit_total != null ? +rec.unit_total + (+rec.discount || 0) : null;
     form._ut0 = v => { ut0 = v; if (form.elements.unit_total) form.elements.unit_total.value = moneyStr(v != null ? v - (+rdn('discount') || 0) : null); };
