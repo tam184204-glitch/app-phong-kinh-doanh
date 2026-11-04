@@ -3,7 +3,7 @@
 // Mọi số liệu có nguồn: «App» (dữ liệu nghiệp vụ) hoặc «Bravo» (chứng từ thu đã đồng bộ, kèm ngày chốt).
 const C = require('./core');
 const B = require('./biz');
-const { E, MGR } = require('./meta');
+const { E, MGR, PII_ROLES } = require('./meta');
 const { today, addDays, dayDiff, fmtMoney, can, deny, bad } = C;
 
 const STAFF_SCOPE = ['ban_hang', 'cong_no', 'ho_so', 'cskh'];
@@ -542,6 +542,123 @@ async function ledger(db, user, f) {
 }
 const pgLit = s => `'${String(s).replace(/'/g, "''")}'`;
 
+// ======================= BẢNG TỔNG HỢP CÔNG NỢ (CN-08) =======================
+// Theo file «Bảng tổng hợp công nợ - kinh doanh» của phòng KD: mỗi dòng 1 căn (HĐMB / HĐ thuê mua), nhóm theo dự án → tòa có dòng cộng.
+// Tách khoản: Tiền nhà (sau thuế, không gồm hệ số góc) · Hệ số lô góc (sau thuế) · Phát sinh (hoàn thiện gộp HĐMB + HĐ hoàn thiện riêng) · Bảo trì.
+// Thu không ghi theo khoản → mỗi kỳ thu chia theo cơ cấu của kỳ: kỳ «Đợt thu phí bảo trì» gánh trọn phí bảo trì, phần còn lại chia theo tỷ lệ tiền nhà / góc / hoàn thiện.
+const DS_HEAD = [
+  ['', [['stt', 'Stt', 'int'], ['unit', 'Mã căn hộ'], ['cust_code', 'Mã khách hàng'], ['customer', 'Họ và tên'], ['address', 'Địa chỉ'], ['contract_on', 'Ngày ký hợp đồng', 'date'], ['vbtt_on', 'Ngày ký VBTT', 'date'], ['phone', 'SĐT'],
+    ['area_floor', 'DT sàn', 'num'], ['area_tt', 'DT nền', 'num'], ['base_price', 'Giá nền', 'money'], ['build_price', 'Giá xây dựng', 'money']]],
+  ['Tiền nhà', [['n_total', 'Tổng phải thu', 'money'], ['n_due', 'Phải thu theo tiến độ', 'money'], ['n_paid', 'Tổng đã thu', 'money'], ['n_left', 'Còn lại', 'money'], ['n_left_due', 'Còn lại theo tiến độ', 'money']]],
+  ['Hệ số lô góc', [['g_total', 'Tổng phải thu', 'money'], ['g_due', 'Phải thu theo tiến độ', 'money'], ['g_paid', 'Tổng đã thu', 'money'], ['g_left', 'Còn lại', 'money']]],
+  ['Phát sinh', [['p_total', 'Tổng phải thu', 'money'], ['p_due', 'Phải thu theo tiến độ', 'money'], ['p_paid', 'Tổng đã thu', 'money'], ['p_left', 'Còn lại', 'money'], ['p_left_due', 'Còn lại theo tiến độ', 'money']]],
+  ['Bảo trì', [['b_total', 'Tổng phải thu', 'money'], ['b_due', 'Phải thu theo tiến độ', 'money'], ['b_paid', 'Tổng đã thu', 'money'], ['b_left', 'Còn lại', 'money']]],
+  ['Tổng hợp', [['value', 'Giá trị hợp đồng', 'money'], ['t_total', 'Tổng phải thu', 'money'], ['t_due', 'Tổng phải thu theo tiến độ', 'money'], ['t_paid', 'Tổng đã thu', 'money'], ['t_left_due', 'Số còn lại theo tiến độ', 'money'], ['t_left', 'Còn lại theo hợp đồng', 'money'], ['pct5', '5 % theo hợp đồng', 'money']]],
+  ['Kế toán', [['k_old', 'Thu quá khứ', 'money'], ['k_new', 'Thu phát sinh', 'money'], ['k_paid', 'Tổng đã thu', 'money'], ['k_debt', 'Công nợ còn lại', 'money']]],
+  ['', [['common_amt', 'Tiền diện tích sử dụng chung đã chi', 'money'], ['sign_l', 'Ký hợp đồng'], ['tax_code', 'Mã số thuế'], ['id_no', 'CCCD'], ['id_date', 'Ngày cấp', 'date'], ['id_place', 'Nơi cấp'], ['hdv_left', 'Số dư còn lại HĐV', 'money']]],
+];
+const DS_COLS = DS_HEAD.flatMap(([, cs]) => cs);
+const DS_SUM = DS_COLS.filter(c => ['money', 'num'].includes(c[2]) && !['base_price', 'build_price'].includes(c[0])).map(c => c[0]);
+const isoDay = v => v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+async function debtSummary(db, user, f = {}) {
+  if (!can(user, E.installment, 'r')) deny();
+  const t = today(), to = isoDay(f.to) || t, from = isoDay(f.from) || to.slice(0, 7) + '-01';
+  if (from > to) bad('«Thu phát sinh từ ngày» sau «Số liệu đến ngày»');
+  if (f.sign && !['da_ky', 'chua'].includes(f.sign)) bad('Bộ lọc không hợp lệ');
+  const p = [];
+  const cs = await db.q(`SELECT c.*, u.code unit, u.project_id, u.building_id, pr.code project, pr.name project_name, b.code building, k.code cust_code, k.full_name customer, k.address k_addr, k.phone k_phone, k.tax_code k_tax, k.id_no k_id_no, k.id_date k_id_date, k.id_place k_id_place,
+      (SELECT r.reg_date FROM kd_reservation r WHERE r.id = c.reservation_id) vbtt_on
+    FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id JOIN kd_project pr ON pr.id = u.project_id JOIN kd_building b ON b.id = u.building_id
+    WHERE c.kind IN ('hdmb','thue_mua','hoan_thien') AND c.status NOT IN ('huy','thanh_ly') ${f.sign === 'da_ky' ? "AND c.status = 'da_ky'" : f.sign === 'chua' ? "AND c.status <> 'da_ky'" : ''} ${uf(f, p)}${mine(user, 'c')}
+    ORDER BY pr.code, b.code, u.floor, u.code, c.id`, p);
+  const ids = cs.map(c => c.id), D = await B.debtOf(db, ids, to);
+  const RC = new Map((await db.q(`SELECT contract_id, sum(amount) FILTER (WHERE voucher_date < $2) old, sum(amount) FILTER (WHERE voucher_date >= $2 AND voucher_date <= $3) new
+    FROM kd_receipt WHERE status = 'hop_le' AND contract_id = ANY($1) GROUP BY 1`, [ids, from, to])).map(r => [r.contract_id, r]));
+  // HĐ vay cùng căn (bản chất bán): số dư = gốc khách đã chuyển − gốc công ty đã trả lại
+  const unitIds = [...new Set(cs.map(c => c.unit_id))];
+  const vays = await db.q("SELECT c.id, c.unit_id FROM kd_contract c WHERE c.kind = 'vay' AND c.status <> 'huy' AND coalesce(c.nature, 'ban') = 'ban' AND c.unit_id = ANY($1)", [unitIds]);
+  const DV = await B.debtOf(db, vays.map(v => v.id), to);
+  const GT = new Map((await db.q("SELECT contract_id, sum(coalesce(paid_amt, 0)) s FROM kd_loan_pay WHERE kind = 'goc' AND contract_id = ANY($1) AND (paid_on IS NULL OR paid_on <= $2) GROUP BY 1", [vays.map(v => v.id), to])).map(x => [x.contract_id, +x.s]));
+  const HDV = new Map(); for (const v of vays) HDV.set(v.unit_id, (HDV.get(v.unit_id) || 0) + (DV.get(v.id)?.paid || 0) - (GT.get(v.id) || 0));
+  const pii = PII_ROLES.includes(user.role), mask = v => v == null || v === '' ? '' : pii ? v : '•••••' + String(v).slice(-3);
+  const ST_L = Object.fromEntries(C.F.contract.status.o.map(o => [o[0], o[1]]));
+  // chia 1 hợp đồng ra các khoản: { n, g, p, b } × { total, due, paid }
+  const split = c => {
+    const d = D.get(c.id), Z = () => ({ total: 0, due: 0, paid: 0 }), o = { n: Z(), g: Z(), p: Z(), b: Z() };
+    const value = +c.value || 0;
+    if (c.kind === 'hoan_thien') { o.p.total = value; o.p.due = d.inst.filter(i => i.due_on <= to).reduce((s, i) => s + +i.amount, 0); o.p.paid = d.paid; return o; }
+    const vat = c.vat_pct ?? 5, maint = +c.maint_fee || 0, fin = +c.finish_value || 0, corner = c.corner_amt ? Math.round(+c.corner_amt * (1 + vat / 100)) : 0;
+    const house = Math.max(0, value - maint - fin - corner), nonM = house + corner + fin || 1;
+    o.n.total = house; o.g.total = corner; o.p.total = fin; o.b.total = maint;
+    const inst = [...d.inst].sort((a, b) => a.seq - b.seq), mi = maint > 0 && inst.length ? Math.min(Math.max(1, +c.maint_dot || 3), inst.length) - 1 : -1;
+    inst.forEach((i, ix) => {
+      const amt = +i.amount || 0, m = ix === mi ? Math.min(maint, amt) : 0, rest = amt - m, due = i.due_on <= to, pr = amt ? (+i.paid || 0) / amt : 0;
+      const parts = { b: m, n: rest * house / nonM, g: rest * corner / nonM, p: rest * fin / nonM };
+      for (const k in parts) { if (due) o[k].due += parts[k]; o[k].paid += parts[k] * pr; }
+    });
+    if (d.credit > 0) { const tot = value || 1; for (const [k, v] of [['n', house], ['g', corner], ['p', fin], ['b', maint]]) o[k].paid += d.credit * v / tot; }   // thu chưa có kỳ (chưa lập lịch / thu trước)
+    for (const x of ['due', 'paid']) {   // làm tròn từng khoản, phần lệch dồn vào tiền nhà để tổng khớp số thật
+      const exact = Math.round(Object.values(o).reduce((s, v) => s + v[x], 0));
+      for (const k in o) o[k][x] = Math.round(o[k][x]);
+      o.n[x] += exact - Object.values(o).reduce((s, v) => s + v[x], 0);
+    }
+    return o;
+  };
+  // gom theo căn: HĐMB / thuê mua là dòng chính, HĐ hoàn thiện riêng cộng vào «Phát sinh»
+  const byU = new Map();
+  for (const c of cs) { const g = byU.get(c.unit_id) || byU.set(c.unit_id, { main: null, fin: [] }).get(c.unit_id); if (c.kind === 'hoan_thien') g.fin.push(c); else if (!g.main) g.main = c; else g.fin.push(c); }
+  const rows = [];
+  for (const [uid, g] of byU) {
+    const c = g.main || g.fin[0], all = [...(g.main ? [g.main] : []), ...g.fin];
+    const o = { n: { total: 0, due: 0, paid: 0 }, g: { total: 0, due: 0, paid: 0 }, p: { total: 0, due: 0, paid: 0 }, b: { total: 0, due: 0, paid: 0 } };
+    for (const x of all) { const s = split(x); for (const k in o) for (const y in o[k]) o[k][y] += s[k][y]; }
+    const pos = v => Math.max(0, v), r = {
+      unit_id: uid, contract_id: c.id, project: c.project, project_name: c.project_name, building: c.building, unit: c.unit, number: c.number, cust_code: c.cust_code, customer: c.customer,
+      address: c.b_addr || c.k_addr || '', contract_on: c.contract_on, vbtt_on: c.vbtt_on, phone: c.b_phone || c.k_phone || '',
+      area_floor: c.area_floor ?? c.area_build ?? null, area_tt: c.area_tt ?? c.area_land ?? null, base_price: c.base_price ?? c.land_price ?? null, build_price: c.build_price ?? null,
+      common_amt: all.reduce((s, x) => s + (+x.common_area_amt || 0), 0) || null, sign_l: c.status === 'da_ky' ? 'Đã ký hợp đồng' : ST_L[c.status] || c.status, signed: c.status === 'da_ky',
+      tax_code: mask(c.k_tax), id_no: mask(c.b_id_no || c.k_id_no), id_date: pii ? (c.b_id_date || c.k_id_date) : null, id_place: pii ? (c.b_id_place || c.k_id_place || '') : '',
+      hdv_left: HDV.has(uid) ? HDV.get(uid) : null };
+    for (const k of ['n', 'g', 'p', 'b']) { r[k + '_total'] = o[k].total; r[k + '_due'] = o[k].due; r[k + '_paid'] = o[k].paid; r[k + '_left'] = o[k].total - o[k].paid; r[k + '_left_due'] = pos(o[k].due - o[k].paid); }
+    r.value = all.reduce((s, x) => s + (+x.value || 0), 0);
+    r.t_total = r.n_total + r.g_total + r.p_total + r.b_total; r.t_due = r.n_due + r.g_due + r.p_due + r.b_due; r.t_paid = r.n_paid + r.g_paid + r.p_paid + r.b_paid;
+    r.t_left_due = pos(r.t_due - r.t_paid); r.t_left = r.t_total - r.t_paid; r.pct5 = Math.round(r.n_total * 0.05);
+    r.k_old = all.reduce((s, x) => s + (+RC.get(x.id)?.old || 0), 0); r.k_new = all.reduce((s, x) => s + (+RC.get(x.id)?.new || 0), 0); r.k_paid = r.k_old + r.k_new; r.k_debt = pos(r.t_due - r.k_paid);
+    r.overdue = all.reduce((s, x) => s + (D.get(x.id)?.overdue || 0), 0);
+    rows.push(r);
+  }
+  return { head: DS_HEAD.map(([g, cs]) => [g, cs.map(c => c.slice(0, 3))]), sum: DS_SUM, rows, from, to, pii, bravo_sync: await bravoSync(db) };
+}
+// xuất Excel đúng bố cục bảng: 2 tầng tiêu đề, dòng mục (1. HỢP ĐỒNG …), dòng cộng từng tòa, dòng Tổng cộng
+function debtSummaryXlsx(d, q = '') {
+  const { buildXlsx } = require('./xlsx');
+  const cols = DS_COLS, n = cols.length, out = [], merges = [], styles = new Map(), L = i => { let s = ''; i++; while (i) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = (i - m - 1) / 26; } return s; };
+  const st = (ri, ci, v) => styles.set(ri + ':' + ci, v);
+  const cell = (r, c) => { const v = r[c[0]]; if (v == null || v === '') return ''; return c[2] === 'date' ? C.dmy(v) : ['money', 'num', 'int'].includes(c[2]) ? +v : v; };
+  out.push(['BẢNG TỔNG HỢP CÔNG NỢ - KINH DOANH']); merges.push(`A1:${L(n - 1)}1`); st(0, 0, 5);
+  out.push([`Số liệu đến ngày ${C.dmy(d.to)} · thu phát sinh từ ${C.dmy(d.from)} · thực thu Bravo${d.bravo_sync ? ' chốt ' + new Date(d.bravo_sync).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : ''}${q ? ` · lọc «${q}»` : ''}`]); merges.push(`A2:${L(n - 1)}2`);
+  out.push([]);
+  const h1 = [], h2 = []; let ci = 0;
+  for (const [g, cs] of DS_HEAD) {
+    if (!g) for (const c of cs) { h1.push(c[1]); h2.push(''); merges.push(`${L(ci)}4:${L(ci)}5`); ci++; }
+    else { cs.forEach((c, i) => { h1.push(i ? '' : g); h2.push(c[1]); }); merges.push(`${L(ci)}4:${L(ci + cs.length - 1)}4`); ci += cs.length; }
+  }
+  out.push(h1, h2); for (let i = 0; i < n; i++) { st(3, i, 4); st(4, i, 4); }
+  const sumRow = (label, rs) => { const ri = out.length, row = cols.map(c => d.sum.includes(c[0]) ? rs.reduce((s, r) => s + (+r[c[0]] || 0), 0) : ''); row[1] = label; out.push(row); merges.push(`B${ri + 1}:H${ri + 1}`); for (let i = 0; i < n; i++) st(ri, i, i === 1 ? 9 : 8); };
+  const pjs = [...new Set(d.rows.map(r => r.project))];
+  pjs.forEach((pj, pi) => {
+    const prs = d.rows.filter(r => r.project === pj);
+    sumRow(`${pi + 1}. HỢP ĐỒNG CĂN HỘ/NHÀ LIỀN KỀ — ${prs[0].project_name || pj} (${prs.length})`, prs);
+    for (const b of [...new Set(prs.map(r => r.building))]) {
+      const brs = prs.filter(r => r.building === b); sumRow('Tòa ' + b, brs);
+      brs.forEach((r, i) => { const ri = out.length; out.push(cols.map(c => c[0] === 'stt' ? i + 1 : cell(r, c))); cols.forEach((c, j) => st(ri, j, c[2] === 'num' ? 10 : ['money', 'int'].includes(c[2]) ? 7 : 6)); });
+    }
+  });
+  sumRow('Tổng cộng:', d.rows);
+  const widths = cols.map(c => c[0] === 'stt' ? 6 : c[0] === 'address' ? 34 : c[0] === 'customer' ? 22 : c[2] === 'money' ? 15 : c[2] === 'num' ? 9 : c[2] === 'date' ? 11 : 15);
+  return buildXlsx({ sheet: 'Bảng tổng hợp công nợ', rows: out, merges, widths, styleOf: (ri, ci) => styles.get(ri + ':' + ci) || null, heights: { 3: 30, 4: 45 } });
+}
+
 // ======================= CĂN ĐỦ ĐIỀU KIỆN BÀN GIAO =======================
 const noPlan = r => (r.eligible && !r.handover_id) || r.ho_st === 'du_dk';   // đủ điều kiện, chưa lập lịch bàn giao
 async function readyList(db, f = {}) {
@@ -723,4 +840,4 @@ async function monthly(db, period, projectId) {
   };
 }
 
-module.exports = { loanTrack, loanItems, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
+module.exports = { debtSummary, debtSummaryXlsx, loanTrack, loanItems, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };

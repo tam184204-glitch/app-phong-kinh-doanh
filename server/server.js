@@ -324,6 +324,14 @@ R('GET', '/api/sale-check/:id', async (req, res, u, p) => send(res, 200, await B
 R('GET', '/api/unit360/:id', async (req, res, u, p) => send(res, 200, await V.unit360({ q, one }, u, p.id)));
 R('GET', '/api/customer360/:id', async (req, res, u, p) => send(res, 200, await V.customer360({ q, one }, u, p.id)));
 R('GET', '/api/search', async (req, res, u, p, qs) => send(res, 200, await V.search({ q, one }, u, qs.q)));
+R('GET', '/api/debt-summary', async (req, res, u, p, qs) => send(res, 200, await V.debtSummary({ q, one }, u, qs)));
+R('GET', '/api/debt-summary.xlsx', async (req, res, u, p, qs) => {
+  if (!EXPORT_ROLES.includes(u.role)) deny();
+  const d = await V.debtSummary({ q, one }, u, qs), s = String(qs.q || '').trim().toLowerCase();
+  if (s) d.rows = d.rows.filter(r => [r.unit, r.customer, r.cust_code, r.number, r.phone].some(x => String(x || '').toLowerCase().includes(s)));
+  await C.audit({ q }, 'view', null, 'xuat_du_lieu', null, null, u, `CN-08 Bảng tổng hợp công nợ · ${d.rows.length} căn`);
+  sendFile(res, V.debtSummaryXlsx(d, qs.q), `Bang_tong_hop_cong_no_${d.to}.xlsx`, MIME['.xlsx']);
+});
 R('GET', '/api/ledger', async (req, res, u, p, qs) => send(res, 200, await V.ledger({ q, one }, u, qs)));
 R('GET', '/api/ready', async (req, res, u, p, qs) => { if (!can(u, M.E.handover, 'r')) deny(); send(res, 200, await V.readyList({ q, one }, { ...qs, all: qs.all === '1' })); });
 R('GET', '/api/signing', async (req, res, u, p, qs) => { if (!can(u, M.E.contract, 'r')) deny(); send(res, 200, await V.signing({ q, one }, u, qs)); });

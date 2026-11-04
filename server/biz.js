@@ -8,15 +8,16 @@ const { bad, raw, sys, create, setting, today, addDays, dayDiff, dmy, fmtMoney, 
 
 // ======================= CÔNG NỢ =======================
 // Phân bổ thu: chứng từ chỉ định kỳ thì vào kỳ đó trước, phần còn lại vào kỳ đến hạn sớm nhất (FIFO).
-async function debtOf(db, ids) {
+// asOf (YYYY-MM-DD): tính tại ngày đó — chỉ chứng từ thu đến ngày đó, đến hạn / quá hạn so với ngày đó
+async function debtOf(db, ids, asOf) {
   ids = [...new Set(ids.filter(Boolean).map(Number))];
   const M = new Map(ids.map(id => [id, { total: 0, paid: 0, left: 0, due: 0, overdue: 0, due7: 0, credit: 0, next: null, overdue_since: null, overdue_days: 0, last_receipt: null, inst: [] }]));
   if (!ids.length) return M;
-  const t = today(), t7 = addDays(t, 7);
+  const t = asOf || today(), t7 = addDays(t, 7);
   for (const i of await db.q('SELECT id, contract_id, seq, name, due_on, pct, amount, src FROM kd_installment WHERE active AND contract_id = ANY($1) ORDER BY contract_id, due_on, seq', [ids]))
     M.get(i.contract_id).inst.push({ ...i, paid: 0 });
   const pool = new Map();
-  for (const r of await db.q("SELECT contract_id, installment_id, amount, voucher_date FROM kd_receipt WHERE status = 'hop_le' AND contract_id = ANY($1) ORDER BY voucher_date, id", [ids])) {
+  for (const r of await db.q("SELECT contract_id, installment_id, amount, voucher_date FROM kd_receipt WHERE status = 'hop_le' AND contract_id = ANY($1) AND voucher_date <= coalesce($2::date, voucher_date) ORDER BY voucher_date, id", [ids, asOf || null])) {
     const m = M.get(r.contract_id); m.paid += r.amount; m.last_receipt = r.voucher_date;
     let rest = r.amount;
     const target = r.installment_id && m.inst.find(i => i.id === r.installment_id);

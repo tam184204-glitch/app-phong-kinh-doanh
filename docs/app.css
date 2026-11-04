@@ -969,3 +969,12 @@ table.t tr.clk { cursor: pointer; }
 .sched th:nth-child(6) { width: 104px; }   /* cột nút: Bảo trì + xóa */
 .sched-acts { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .sched-acts .btn { white-space: nowrap; }
+
+/* CN-08 bảng tổng hợp công nợ: 2 tầng tiêu đề dính cùng nhau, dòng mục / tòa / tổng như file Excel */
+.main .card .tbl-wrap table.dsum thead { position: sticky; top: 0; z-index: 3; }
+.main .card .tbl-wrap table.dsum thead th { position: static; }
+table.dsum thead th { text-align: center; white-space: normal; min-width: 92px; vertical-align: middle; }
+table.dsum tr.ds-sec td { background: #fde9c8; font-weight: 800; color: var(--ink); }
+table.dsum tr.ds-bld td { background: #fff8e6; font-weight: 700; color: var(--ink); cursor: pointer; }
+table.dsum tfoot td { font-weight: 800; background: #fde9c8; }
+table.dsum td.ds-addr { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
