@@ -90,11 +90,12 @@ async function receiptContract(r, ctx) {
   const key = upKey(r.contract);
   if (key) return (await ctx.db.one(`SELECT c.id FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id WHERE (upper(c.number) = $1 OR upper(u.code) = $1) AND ${LIVE_HD} ORDER BY c.id DESC LIMIT 1`, [key]))?.id
     || bad(`Không tìm thấy hợp đồng / căn «${String(r.contract).trim()}»`);
-  // số HĐ hoặc mã căn ghi trong diễn giải (VD «Thu đợt 2 căn CTS-O-0101»; gõ cách / gạch dưới thay gạch ngang vẫn nhận)
+  // số HĐ hoặc mã căn ghi trong diễn giải (VD «Thu đợt 2 căn CTS-O-0101»; gõ cách / gạch dưới thay gạch ngang vẫn nhận).
+  // Số HĐ so với diễn giải GỐC (số HĐ có dấu chấm: HDCH.2607-0001); chỉ khi dò mã căn mới đổi «_» «.» thành «-»
   const txt = String(r.content || '').toUpperCase().replace(/[\s_.]+(?=[0-9A-Z])/g, m => /[_.]/.test(m) ? '-' : m);
   if (txt.trim()) {
     ctx.hdKeys ||= await ctx.db.q(`SELECT c.id, upper(c.number) num, upper(u.code) code FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id WHERE ${LIVE_HD} ORDER BY c.id DESC`);
-    const flat = txt.replace(/\s+/g, ''), esc = s => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+    const flat = String(r.content).toUpperCase().replace(/\s+/g, ''), esc =s => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
     const by = (re) => [...new Set(ctx.hdKeys.filter(re).map(k => k.id))];
     let ids = by(k => k.num && k.num.length >= 6 && flat.includes(k.num.replace(/\s+/g, '')));
     if (!ids.length) ids = by(k => k.code && new RegExp(`(^|[^A-Z0-9])${esc(k.code).replace(/-/g, '[-\\s]?')}(?![0-9])`).test(txt));
@@ -287,6 +288,29 @@ const IMPORTS = {
     },
   },
 };
+// file MISA thử (bố cục Sổ quỹ tiền mặt: Số phiếu Thu/Chi, Số tiền Thu/Chi/Tồn) theo các hợp đồng THỬ đang nợ — để thử «Nhập phiếu thu MISA»:
+// căn quá hạn thứ 1 trả đủ số quá hạn (cảnh báo mất), căn thứ 2 trả một nửa, căn thứ 3 trả đủ số đến hạn tiếp; thêm 1 phiếu không rõ căn, 1 phiếu chi, dòng Cộng.
+// Số phiếu theo giờ tải → mỗi lần tải là bộ phiếu mới; nhập lại cùng tệp thì trùng, tự bỏ qua
+async function misaSample(user) {
+  if (user.role !== 'admin' && !IMPORTS.misa.roles.includes(user.role)) deny('Vai trò của bạn không được nhập phiếu thu MISA');
+  const cs = await q(`SELECT c.id, c.number, u.code unit, k.full_name, k.code kh FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id
+    WHERE c.is_demo AND c.status = 'da_ky' AND c.kind IN ('hdmb', 'thue_mua') ORDER BY u.code`);
+  if (!cs.length) bad('Chưa có hợp đồng thử đã ký — bản demo tự dựng 5 hợp đồng thử khi mở lần đầu (hoặc bấm «Làm mới dữ liệu»)');
+  const D = await B.debtOf({ q, one }, cs.map(c => c.id)), day = C.today(), st = new Date(Date.now() + 7 * 3600e3).toISOString().slice(5, 16).replace(/[-T:]/g, '');
+  const over = cs.filter(c => D.get(c.id).overdue > 0), rest = cs.filter(c => !(D.get(c.id).overdue > 0) && D.get(c.id).left > 0);
+  const rows = []; let n = 0, sum = 0;
+  const add = (c, amt, text) => { amt = Math.round(amt / 1000) * 1000; if (!(amt > 0)) return; sum += amt; rows.push([dmy(day), dmy(day), `PT${st}${String(++n).padStart(2, '0')}`, '', text, amt, '', '']); };
+  if (over[0]) add(over[0], D.get(over[0].id).overdue + 999, `Thu tiền khách ${over[0].full_name} nộp đủ số quá hạn căn ${over[0].unit}`);
+  if (over[1]) add(over[1], D.get(over[1].id).overdue / 2, `Thu một phần căn ${over[1].unit.toLowerCase().replace(/-/g, ' ')}`);
+  if (over[2]) add(over[2], D.get(over[2].id).overdue, `Thu tiền theo hợp đồng ${over[2].number}`);
+  const nx = rest[0] && D.get(rest[0].id).next; if (nx) add(rest[0], nx.rem, `Khách chuyển khoản trước hạn — ${nx.name} căn ${rest[0].unit}`);
+  rows.push([dmy(day), dmy(day), `PT${st}${String(++n).padStart(2, '0')}`, '', 'Thu tiền khách lẻ (không ghi căn)', 5000000, '', '']); sum += 5000000;
+  rows.push([dmy(day), dmy(day), '', `PC${st}01`, 'Chi tiếp khách', '', 2000000, '']);
+  rows.push(['', '', '', '', 'Cộng phát sinh', sum, 2000000, '']);
+  return buildXlsx({ sheet: 'So quy', rows: [['CÔNG TY CP ĐẦU TƯ CÁT TƯỜNG (FILE THỬ — giả lập MISA)'], [], ['SỔ QUỸ TIỀN MẶT'], [`Ngày ${dmy(day)}`],
+    ['Ngày hạch toán', 'Ngày chứng từ', 'Số phiếu', '', 'Diễn giải', 'Số tiền', '', ''], ['', '', 'Thu', 'Chi', '', 'Thu', 'Chi', 'Tồn'], ...rows],
+    merges: ['C5:D5', 'F5:H5'], boldRows: [0, 2, 4, 5], widths: [14, 14, 16, 14, 60, 16, 14, 12] });
+}
 async function importFile(kind, file, user, { dry, demo } = {}) {
   const I = IMPORTS[kind] || bad('Loại nhập không hợp lệ');
   if (user.role !== 'admin' && !I.roles.includes(user.role)) deny(`Vai trò của bạn không được nhập «${I.title}»`);
@@ -570,4 +594,5 @@ ${units.map((u, i) => `<tr><td class="ct">${i + 1}</td><td>${escH(u.code)}</td><
 <body>${editBar(`${kind === 'danh_sach' ? 'Danh sách căn mở bán' : 'Thông báo mở bán'} ${escH(n.code)} · ${units.length} căn`)}${editDoc(body)}</body></html>`;
 }
 
-module.exports = { printSaleNotice, printCancelReq, EDIT_CSS, editBar, editDoc, A, strip, mapRows, exportList, sheet, importFile, importTemplate, IMPORTS, createUser, hashPw, checkPw, printContract, printReservation, regTemplates, moneyWords };
+module.exports = {
+  misaSample, printSaleNotice, printCancelReq, EDIT_CSS, editBar, editDoc, A, strip, mapRows, exportList, sheet, importFile, importTemplate, IMPORTS, createUser, hashPw, checkPw, printContract, printReservation, regTemplates, moneyWords };

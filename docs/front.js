@@ -1292,9 +1292,10 @@ async function suggestModal() {
 async function importModal(kind, after) {
   const I = M.imports[kind];
   const m = modal({ title: `${ico('fa-file-import')} Nhập ${esc(I.title)}`, body: `<div class="warnbar">${ico('fa-circle-info')}<div>${esc(I.note || 'Dùng đúng tệp mẫu. Mỗi dòng được kiểm tra theo luật như nhập tay; dòng lỗi bị bỏ qua và báo lại số dòng.')}<br>Bấm <b>Kiểm tra trước</b> để chạy thử (không ghi dữ liệu), rồi <b>Nhập</b>.</div></div>
-    <div class="row mb"><button class="btn" id="tpl">${ico('fa-download')} Tải tệp mẫu</button><input type="file" id="ifile" accept=".xlsx,.csv" class="inp" style="padding-top:5px;flex:1"></div><div id="ires"></div>`,
+    <div class="row mb"><button class="btn" id="tpl">${ico('fa-download')} Tải tệp mẫu</button>${kind === 'misa' ? `<button class="btn" id="tplT" title="File giả lập sổ quỹ MISA theo các hợp đồng thử đang nợ — tải về rồi chọn lại để thử nhập">${ico('fa-flask')} Tải file MISA thử</button>` : ''}<input type="file" id="ifile" accept=".xlsx,.csv" class="inp" style="padding-top:5px;flex:1"></div><div id="ires"></div>`,
     foot: `<button class="btn" data-x>Đóng</button><button class="btn" id="iDry">${ico('fa-list-check')} Kiểm tra trước</button><button class="btn pri" id="iGo">${ico('fa-file-import')} Nhập</button>` });
   $('#tpl', m.el).onclick = () => download(`/api/import/template/${kind}`);
+  if ($('#tplT', m.el)) $('#tplT', m.el).onclick = run(() => download('/api/import/misa-sample'));
   const go = dry => run(async () => {
     const f = $('#ifile', m.el).files[0]; if (!f) return toast('Chọn tệp .xlsx / .csv', true);
     const fd = new FormData(); fd.append('file', f, f.name);

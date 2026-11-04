@@ -409,6 +409,7 @@ R('POST', '/api/leads/manual', async (req, res, u) => {   // khách gặp trực
 });
 
 // --- nhập dữ liệu ---
+R('GET', '/api/import/misa-sample', async (req, res, u) => sendFile(res, await IO.misaSample(u), `File_MISA_thu_${C.today()}.xlsx`, MIME['.xlsx']));
 R('GET', '/api/import/template/:kind', async (req, res, u, p) => sendFile(res, IO.importTemplate(p.kind), `Mau_nhap_${p.kind}.xlsx`, MIME['.xlsx']));
 R('POST', '/api/import/:kind', async (req, res, u, p, qs) => {
   const { files } = await readUpload(req); if (!files[0]) bad('Chưa chọn tệp');

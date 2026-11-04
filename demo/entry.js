@@ -126,26 +126,71 @@ async function boot(pgliteUrl) {
   } catch (e) { console.warn('đồng bộ giá phiếu', e); }
   // mẫu in đơn đăng ký chuẩn (thêm 27/10/2026) — giống máy thật: nạp mẫu còn thiếu, tắt mẫu khung cũ
   try { await require('../server/seed').ensureTemplates(); } catch (e) { console.warn('mẫu in', e); }
-  // hồ sơ mua NOXH theo Mẫu 4 (87 hộ — họ tên, SĐT, ngày sinh, CMND, CCCD là dữ liệu giả); nạp như «Nhập file Mẫu 4»
-  if ((await one('SELECT count(*) n FROM kd_noxh_check WHERE doi_tuong IS NOT NULL')).n < 80) {
-    say('Đang nạp hồ sơ mua NOXH (Mẫu 4)…');
-    try {
-      const IO = require('../server/io'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1");
-      await IO.importFile('mau4', { name: 'Mau 4 - demo (du lieu gia).xlsx', buffer: Buffer.from(require('../data/seed/Mau 4 - demo (du lieu gia).xlsx')) }, u);
-    } catch (e) { console.warn('nạp Mẫu 4', e); }
-  }
+  // 04/11/2026: bỏ 87 hồ sơ NOXH giả (Mẫu 4 demo) — không nạp nữa; trình duyệt đã nạp thì dọn ở bước «dọn dữ liệu thử» bên dưới
   // tòa K dự án CTS (thêm 27/10/2026, chưa có căn)
   if (!(await one("SELECT 1 FROM kd_building b JOIN kd_project p ON p.id = b.project_id WHERE p.code = 'CTS' AND b.code = 'K'")))
     await q("INSERT INTO kd_building (project_id, code, name, kind, created_at) SELECT id, 'K', 'Tòa K', 'chung_cu', now() FROM kd_project WHERE code = 'CTS'");
   // 04/11/2026: bỏ toàn bộ dữ liệu thử (hợp đồng, phiếu giữ chỗ, thu tiền, khách… gắn nhãn «thử») — demo chỉ còn bảng hàng, Mẫu 4 và dữ liệu người dùng tự nhập.
   // Trình duyệt đã lưu dữ liệu thử từ bản trước: xóa 1 lần (bản ghi tự nhập không có dấu thử nên được giữ)
   try {
-    if (!localStorage.getItem('ctg-kd-demo-xoa-thu') || (await one('SELECT 1 AS x FROM kd_contract WHERE is_demo LIMIT 1'))) {
+    if (!localStorage.getItem('ctg-kd-demo-xoa-thu')) {
       say('Đang dọn dữ liệu thử…');
       console.log('đã xóa dữ liệu thử', await require('../server/seed').clearDemo());
       localStorage.setItem('ctg-kd-demo-xoa-thu', '1');
     }
   } catch (e) { console.warn('xóa dữ liệu thử', e); }
+  // hồ sơ NOXH + khách giả nạp từ «Mau 4 - demo (du lieu gia).xlsx» (bản trước 04/11/2026): đánh dấu thử rồi xóa 1 lần
+  // (chạy trước khi dựng 5 bộ dữ liệu thử; khách / hồ sơ đang được dữ liệu tự nhập dùng tới thì clearDemo giữ lại)
+  try {
+    if (!localStorage.getItem('ctg-kd-demo-xoa-m4')) {
+      const F = 'Mau 4 - demo (du lieu gia).xlsx';
+      const ks = (await q("SELECT id FROM kd_customer WHERE note = $1", ['Nhập từ ' + F])).map(r => r.id);
+      if (ks.length) {
+        say('Đang dọn hồ sơ NOXH mẫu…');
+        await q('UPDATE kd_noxh_check SET is_demo = true WHERE customer_id = ANY($1)', [ks]);
+        await q('UPDATE kd_customer SET is_demo = true WHERE id = ANY($1)', [ks]);
+        await q("UPDATE kd_import SET is_demo = true WHERE file_name = $1", [F]);
+        console.log('đã xóa hồ sơ NOXH mẫu', await require('../server/seed').clearDemo());
+      }
+      localStorage.setItem('ctg-kd-demo-xoa-m4', '1');
+    }
+  } catch (e) { console.warn('xóa hồ sơ NOXH mẫu', e); }
+  // 5 bộ dữ liệu thử (04/11/2026): khách + HĐMB đã ký + lịch thanh toán + phiếu thu (nguồn MISA) — mỗi bộ 1 tình huống công nợ, để thử «Nhập phiếu thu MISA»
+  // (nút «Tải file MISA thử» trong hộp nhập tạo file theo đúng số các căn này đang nợ). Tạo 1 lần / trình duyệt; ngày tính theo ngày mở lần đầu
+  try {
+    if (!localStorage.getItem('ctg-kd-demo-5bo')) {
+      say('Đang dựng 5 bộ dữ liệu thử…');
+      const C = require('../server/core'), B = require('../server/biz'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1");
+      const day = n => C.addDays(C.today(), n);
+      const units = await q(`SELECT u.id, u.code, u.area_tt FROM kd_unit u JOIN kd_building b ON b.id = u.building_id JOIN kd_project p ON p.id = u.project_id
+        WHERE p.code = 'CTS' AND b.code = 'O' AND u.status = 'con_ban' AND u.base_price > 0 ORDER BY u.code DESC LIMIT 5`);
+      const KB = [
+        // [đợt, tỷ lệ đã trả của đợt đó, ngày thu (số ngày so với hôm nay)]
+        ['Nguyễn Văn An', 'quá hạn đợt 2 (đã trả đủ đợt 1)', [[1, 1, -118]]],
+        ['Trần Thị Bình', 'đúng tiến độ (đã trả đợt 1 + 2)', [[1, 1, -118], [2, 1, -32]]],
+        ['Lê Hoàng Cường', 'trả thiếu đợt 1 (mới trả một nửa)', [[1, 0.5, -118]]],
+        ['Phạm Thu Dung', 'chưa trả đồng nào — quá hạn đợt 1 + 2', []],
+        ['Hoàng Minh Đức', 'trả trước (đã trả đợt 1 + 2 và 40% đợt 3)', [[1, 1, -118], [2, 1, -32], [3, 0.4, -5]]],
+      ];
+      for (const [i, un] of units.entries()) {
+        const [name, note, pays] = KB[i];
+        const k = (await C.create('customer', { full_name: `${name} (khách thử)`, phone: `09880000${i + 1}${i + 1}`, source: 'truc_tiep', note: `Dữ liệu thử: ${note}` }, u, { demo: true })).row;
+        const on = day(-120);
+        const c = (await C.create('contract', { kind: 'hdmb', ptype: 'can_ho', unit_id: un.id, customer_id: k.id, contract_on: on, area_tt: un.area_tt, note: `Dữ liệu thử: ${note}`,
+          new_schedule: [{ name: 'Đợt 1: ký hợp đồng mua bán', due_on: on, pct: 30 }, { name: 'Đợt 2', due_on: day(-30), pct: 30 }, { name: 'Đợt 3', due_on: day(60), pct: 35 },
+            { name: 'Đợt 4: nhận bàn giao', due_on: day(180), pct: 5 }, { name: 'Thu phí bảo trì (2% tiền trước thuế)', due_on: day(60), maint: true }] }, u, { demo: true })).row;
+        await tx(async db => { await C.sys(db, 'contract', c.id, { status: 'da_ky', sign_status: 'da_ky', signed_on: on }, u, 'nhap_lich_su', 'Dữ liệu thử'); await B.recomputeUnit(db, un.id, u); });
+        const inst = await q('SELECT id, seq, amount FROM kd_installment WHERE contract_id = $1 AND active AND NOT is_maint ORDER BY seq', [c.id]);
+        let v = 0;
+        for (const [dot, part, at] of pays) {   // đợt thứ «dot» trong các đợt thường (không tính dòng phí bảo trì)
+          const it = inst[dot - 1], amt = part < 1 ? Math.round(+it.amount * part / 1000) * 1000 : +it.amount; v++;   // trả đủ = đúng số tiền đợt (làm tròn nghìn chỉ cho phần trả một phần)
+          await C.create('receipt', { voucher_no: `PT-THU-${un.code.slice(-4)}-${v}`, voucher_date: day(at), contract_id: c.id, amount: amt, installment_id: it.id,
+            content: `Thu tiền đợt ${dot} căn ${un.code}${part < 1 ? ` (một phần, ${Math.round(part * 100)}%)` : ''}`, src: 'misa', synced_at: new Date().toISOString() }, u, { system: true, demo: true });
+        }
+      }
+      localStorage.setItem('ctg-kd-demo-5bo', '1');
+    }
+  } catch (e) { console.warn('5 bộ dữ liệu thử', e); }
   const job = async () => { try { await tx(db => biz.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.warn('job', e.message); } };
   await job(); setInterval(job, 2 * 60e3);
 
