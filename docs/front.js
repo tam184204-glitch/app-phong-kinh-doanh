@@ -693,7 +693,9 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   if (sch) schedEditor(sch, rec.new_schedule || [], { mdot: () => rec.maint_dot ?? 3, maint: () => ent === 'contract' && ['hdmb', 'thue_mua'].includes(form.elements.kind?.value ?? rec.kind) ? readField(form, E.fields.find(f => f.k === 'maint_fee')) || 0 : null, total: () => ent === 'contract' ? readField(form, E.fields.find(f => f.k === 'value')) || 0 : readField(form, E.fields.find(f => f.k === 'value_after')) || rec.value_before || 0, first: ent === 'contract' ? () => readField(form, E.fields.find(f => f.k === (($('[name=kind]', form)?.value ?? rec.kind) === 'thue' ? 'eff_on' : 'contract_on'))) : null });
   htp?.rentDraw(); htp?.loanDraw?.();
   const vis = () => { const cur = collect(true); for (const f of fields) { const box = $(`[data-f="${f.k}"]`, form); if (box) box.classList.toggle('hidden', !isShown(f, cur)); } $$('.bv-row, .bv-sec:not(.loan-sec)', form).forEach(x => x.classList.toggle('hidden', !$('.fld:not(.hidden)', x))); htp?.sync(cur.ptype !== 'lien_ke' && ['hdmb', 'thue_mua', 'thue', 'vay'].includes(cur.kind)); };
-  const collect = (all) => { const out = {}; for (const f of fields) { if (f.ro || (f.t === 'code' && !f.manual)) continue; if (lockKeep && !lockKeep.has(f.k)) continue; const v = readField(form, f); if (v !== undefined) out[f.k] = v; } return all ? { ...rec, ...out } : out; };
+  const collect = (all) => { const out = {}; for (const f of fields) { if (f.ro || (f.t === 'code' && !f.manual)) continue; if (lockKeep && !lockKeep.has(f.k)) continue; const v = readField(form, f); if (v !== undefined) out[f.k] = v; }
+    if (form._b0 && !lockKeep && 'discount' in out) out.base_orig = +out.discount > 0 ? form._b0() : null;   // hợp đồng: giá nền gốc trước giảm giá (máy chủ tính lại từ giá này)
+    return all ? { ...rec, ...out } : out; };
   // checklist theo nhóm / mẫu
   const ckF = fields.find(f => f.t === 'check' && f.src);
   const fillCheck = () => {
@@ -788,14 +790,19 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     const d = await api('GET', '/api/seller?name=' + encodeURIComponent(n));
     for (const [k, v] of Object.entries(d)) if (form.elements[k] && (v || k !== 'seller_unit')) form.elements[k].value = v;
   };
-  const contractCalc = () => {
+  // giá hợp đồng chung cư — cùng công thức máy chủ (contractPrice, server/biz.js): giá nền gốc (form._b0) × DT → trước thuế, thuế, sau thuế, bảo trì 2%;
+  // có giảm giá: tổng giá − tiền giảm rồi chia ngược ra giá (trước thuế = tổng mới / (1 + thuế + 2%), giá nền = trước thuế / DT). keepBase: đang gõ ô giá nền thì không ghi đè ô đó
+  const contractCalc = keepBase => {
     if (ent !== 'contract' || !form.elements.base_price) return;
-    const rd = k => readField(form, fields.find(f => f.k === k) || {}), base = +rd('base_price'), area = +rd('area_tt');
+    const rd = k => readField(form, fields.find(f => f.k === k) || {}), base = form._b0?.() ?? +rd('base_price'), area = +rd('area_tt'), d = +rd('discount') || 0;
     if (base > 0 && area > 0 && readField(form, fields.find(f => f.k === 'ptype')) !== 'lien_ke' && !['thue', 'vay'].includes(form.elements.kind?.value ?? rec.kind)) {   // HĐ thuê: tổng tiền = tiền thuê × số tháng, không tính theo giá nền
-      const r3 = v => Math.round(v / 1000) * 1000, F0 = base * area + (+rd('floor_price') || 0) * (+rd('area_floor') || 0), Fg = F0 + (+rd('discount') || 0), cp = rd('corner_pct');   // giá nền đã chia lại sau giảm giá
-      const corner = cp != null ? Math.round(Fg * cp / 100) : +rd('corner_amt') || 0, F = F0 + corner, vat = rd('vat_pct') ?? 5, H = F * vat / 100;
-      const out = { corner_amt: corner || null, pretax: Math.round(F), vat_amt: Math.round(H), after_tax: r3(F + H), maint_fee: r3(F * 0.02) };
-      out.value = out.after_tax + out.maint_fee + (+rd('finish_value') || 0);
+      const r3 = v => Math.round(v / 1000) * 1000, F0 = base * area + (+rd('floor_price') || 0) * (+rd('area_floor') || 0), cp = rd('corner_pct');
+      const corner = cp != null ? Math.round(F0 * cp / 100) : +rd('corner_amt') || 0, F = F0 + corner, vat = rd('vat_pct') ?? 5;
+      let P = F, after = r3(F * (1 + vat / 100)), maint = r3(F * 0.02);
+      if (d > 0) { const T = after + maint - d; P = T / (1 + vat / 100 + 0.02); maint = r3(P * 0.02); after = T - maint; }
+      const out = { corner_amt: corner || null, pretax: Math.round(P), vat_amt: d > 0 ? after - Math.round(P) : Math.round(F * vat / 100), after_tax: after, maint_fee: maint };
+      if (!keepBase) out.base_price = d > 0 ? Math.round(P / area) : base;
+      out.value = after + maint + (+rd('finish_value') || 0);
       for (const [k, v] of Object.entries(out)) if (form.elements[k]) form.elements[k].value = moneyStr(v);
     }
     const pct = readField(form, fields.find(f => f.k === 'commission_pct') || {}), val = readField(form, fields.find(f => f.k === 'value') || {});
@@ -817,19 +824,15 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   if (ent === 'contract') {
     contractNo();
     if (!id) fillSeller().catch(() => {});   // form mới: sổ sẵn bên bán đã lưu
-    // giảm giá → chia lại giá nền: giá nền = giá nền gốc − tiền giảm / DT thông thủy (gõ giá nền = giá đã giảm; xóa tiền giảm → về giá gốc)
-    let b0 = null; const rdn = k => readField(form, fields.find(f => f.k === k) || {});
-    const setB0 = () => { const b = +rdn('base_price'), a = +rdn('area_tt'); b0 = b > 0 && a > 0 ? b + (+rdn('discount') || 0) / a : null; };
-    setB0(); form._setB0 = setB0;
-    // chọn căn: giá nền gốc = giá nền của căn, giá nền trên form = giá nền gốc − tiền giảm đã nhập / DT (nhập giảm giá trước khi chọn căn vẫn đúng)
-    form._unitBase = b => { const a = +rdn('area_tt'); if (!(b > 0) || !(a > 0) || form.elements.ptype?.value === 'lien_ke') return setB0(); b0 = b; form.elements.base_price.value = moneyStr(Math.round(b0 - (+rdn('discount') || 0) / a)); };
-    form.addEventListener('input', e => {
-      const k = e.target.name; if (!['base_price', 'area_tt', 'discount'].includes(k) || !form.elements.base_price) return;
-      if (k === 'base_price') return setB0();
-      const a = +rdn('area_tt'); if (b0 == null) return setB0();
-      if (a > 0) form.elements.base_price.value = moneyStr(Math.round(b0 - (+rdn('discount') || 0) / a));
-    });
-    form.addEventListener('input', e => { if (['base_price', 'area_tt', 'floor_price', 'area_floor', 'discount', 'corner_pct', 'vat_pct', 'finish_value', 'commission_pct', 'value'].includes(e.target.name)) contractCalc(); if (e.target.name === 'maint_fee') sch?._redraw?.(); });
+    // b0 = giá nền gốc (trước giảm giá): theo căn khi chọn căn, hoặc giá gõ tay vào ô giá nền; HĐ đã lưu: base_orig (HĐ cũ: giá nền + tiền giảm / DT).
+    // Ô giá nền hiện giá đã chia ngược khi có giảm giá; xóa tiền giảm → về giá gốc
+    const rdn = k => readField(form, fields.find(f => f.k === k) || {});
+    let b0 = +rec.base_orig > 0 ? +rec.base_orig : +rec.base_price > 0 ? +rec.base_price + (+rec.discount > 0 && +rec.area_tt > 0 ? +rec.discount / +rec.area_tt : 0) : null;
+    form._b0 = () => b0;
+    form._unitBase = b => { if (!(b > 0) || form.elements.ptype?.value === 'lien_ke') { b0 = +rdn('base_price') || null; return; } b0 = b; form.elements.base_price.value = moneyStr(b); };   // chọn căn: giá gốc theo căn
+    form.addEventListener('input', e => { if (e.target.name === 'base_price') { b0 = +rdn('base_price') || null; contractCalc(true); } });   // gõ giá nền = sửa giá gốc
+    form.addEventListener('change', e => { if (e.target.name === 'base_price') contractCalc(); });   // rời ô giá nền: hiện giá đã chia ngược nếu có giảm giá
+    form.addEventListener('input', e => { if (['area_tt', 'floor_price', 'area_floor', 'discount', 'corner_pct', 'vat_pct', 'finish_value', 'commission_pct', 'value'].includes(e.target.name)) contractCalc(); if (e.target.name === 'maint_fee') sch?._redraw?.(); });
     // không có giá nền: gõ Tiền trước thuế → tiền thuế, sau thuế, phí bảo trì (= 2% × tiền trước thuế, làm tròn nghìn), tổng tiền
     form.addEventListener('input', e => {
       if (!['pretax', 'vat_pct'].includes(e.target.name) || +rdn('base_price') > 0 || ['thue', 'vay', 'hoan_thien'].includes(form.elements.kind?.value ?? rec.kind)) return;

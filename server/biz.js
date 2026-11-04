@@ -117,14 +117,24 @@ async function writeSchedule(db, contractId, rows, src, user, demo) {
   await C.audit(db, 'contract', contractId, 'lich_thanh_toan', null, { lich: rows }, user, `${rows.length} kỳ · ${src === 'phu_luc' ? 'theo phụ lục' : 'theo hợp đồng'}`, demo);
 }
 
-// tiền hợp đồng chung cư (như BRAVO, cùng công thức Danh mục sản phẩm): F = giá nền × DT thông thủy + giá sàn × DT sàn + tiền hệ số góc − giảm giá;
+// tiền hợp đồng chung cư (như BRAVO, cùng công thức Danh mục sản phẩm): F = giá nền × DT thông thủy + giá sàn × DT sàn + tiền hệ số góc;
 // thuế = F × thuế suất; sau thuế = ROUND(F + thuế, -3); bảo trì = ROUND(F × 2%, -3); tổng = sau thuế + bảo trì + giá trị hoàn thiện
-// giá nền lưu = giá nền ĐÃ CHIA LẠI sau giảm giá (giá nền × DT = tiền nhà, như BRAVO); hệ số góc vẫn tính trên giá trước giảm
+// giảm giá (phòng KD 04/11/2026): tổng giá (sau thuế + bảo trì) − tiền giảm rồi chia ngược ra giá — trước thuế = tổng mới / (1 + thuế suất + 2%),
+// bảo trì = ROUND(2% × trước thuế, -3), sau thuế = tổng mới − bảo trì, thuế = sau thuế − trước thuế, giá nền = trước thuế / DT thông thủy.
+// base_orig = giá nền gốc (trước giảm) để sửa / xóa tiền giảm vẫn tính lại từ giá gốc; hệ số góc tính trên giá gốc
 function contractPrice(r) {
-  const r3 = v => Math.round(v / 1000) * 1000, F0 = +r.base_price * +r.area_tt + (+r.floor_price || 0) * (+r.area_floor || 0), Fg = F0 + (+r.discount || 0);
-  const corner_amt = r.corner_pct != null && r.corner_pct !== '' ? Math.round(Fg * +r.corner_pct / 100) : +r.corner_amt || 0;
-  const F = F0 + corner_amt, vat = r.vat_pct ?? 5, H = F * vat / 100, after_tax = r3(F + H), maint_fee = r3(F * 0.02);
-  return { corner_amt: corner_amt || null, pretax: Math.round(F), vat_pct: vat, vat_amt: Math.round(H), after_tax, maint_fee, value: after_tax + maint_fee + (+r.finish_value || 0) };
+  const r3 = v => Math.round(v / 1000) * 1000, d = +r.discount || 0, b = d > 0 && +r.base_orig > 0 ? +r.base_orig : +r.base_price;
+  const F0 = b * +r.area_tt + (+r.floor_price || 0) * (+r.area_floor || 0);
+  const corner_amt = r.corner_pct != null && r.corner_pct !== '' ? Math.round(F0 * +r.corner_pct / 100) : +r.corner_amt || 0;
+  const F = F0 + corner_amt, vat = r.vat_pct ?? 5, H = F * vat / 100;
+  let pretax = Math.round(F), after_tax = r3(F + H), maint_fee = r3(F * 0.02), vat_amt = Math.round(H);
+  const out = { corner_amt: corner_amt || null, vat_pct: vat, base_orig: null };
+  if (d > 0) {
+    const T = after_tax + maint_fee - d, P = T / (1 + vat / 100 + 0.02);
+    pretax = Math.round(P); maint_fee = r3(P * 0.02); after_tax = T - maint_fee; vat_amt = after_tax - pretax;
+    Object.assign(out, { base_orig: b, base_price: Math.round(P / +r.area_tt) });
+  } else out.base_price = b;
+  return { ...out, pretax, vat_amt, after_tax, maint_fee, value: after_tax + maint_fee + (+r.finish_value || 0) };
 }
 // đơn giá nền gốc của căn: số Bravo nếu có; chưa có (VD tòa G) thì suy ra như cột Đơn giá nền ở Danh mục sản phẩm (prodRow, public/screens.js) = tiền trước thuế / DT thông thủy
 function unitBase(u) {
@@ -235,9 +245,9 @@ async function syncContractValue(db, contractId, user, note = 'Đồng bộ giá
   const u = c && !['hoan_thien', 'thue', 'vay'].includes(c.kind) && await raw(db, 'unit', c.unit_id);   // HĐ thuê: tổng tiền = tiền thuê × số tháng, không theo giá bán
   if (!u || u.price_net == null) return false;
   let patch = { value: +u.price_net + (+u.maint_fee || 0) + (+c.finish_value || 0), pretax: u.pretax, vat_pct: u.vat_pct, vat_amt: u.tax_amt, after_tax: u.price_net, maint_fee: u.maint_fee, base_price: u.base_price };
-  // hợp đồng có giảm giá: giữ giảm giá — giá nền của căn chia lại theo tiền giảm rồi tính như BRAVO (phí bảo trì = 2% × tiền trước thuế)
+  // hợp đồng có giảm giá: giữ giảm giá — tổng giá căn mới − tiền giảm, chia ngược ra giá (contractPrice; phí bảo trì = 2% × tiền trước thuế)
   const b = +c.discount > 0 && c.ptype !== 'lien_ke' && +u.area_tt > 0 ? unitBase(u) : null;
-  if (b) { const base_price = Math.round(b - +c.discount / +u.area_tt); patch = { ...contractPrice({ ...c, base_price, area_tt: u.area_tt, vat_pct: u.vat_pct ?? c.vat_pct }), base_price, area_tt: u.area_tt }; }
+  if (b) patch = { ...contractPrice({ ...c, base_price: b, base_orig: b, area_tt: u.area_tt, vat_pct: u.vat_pct ?? c.vat_pct }), area_tt: u.area_tt };
   const value = patch.value;
   if (+c.value === value) return false;
   if ((await debtOf(db, [c.id])).get(c.id)?.paid > value) bad(`Số đã thu lớn hơn giá trị ${fmtMoney(value)}đ của căn mới — cần xử lý hoàn tiền trước`);
@@ -840,7 +850,7 @@ H.contract = {
     r.building_id = (await raw(db, 'unit', r.unit_id))?.building_id ?? null;
     if (!r.price_policy_id) r.price_policy_id = (await contractPrefill(db, r.unit_id, r.contract_on || undefined)).policy_id;
     // chung cư có giá nền: tính như BRAVO / Danh mục sản phẩm — chỉ khi tạo mới hoặc đổi ô giá (hợp đồng cũ giữ nguyên số)
-    const PK = ['base_price', 'area_tt', 'floor_price', 'area_floor', 'discount', 'corner_pct', 'vat_pct', 'finish_value', 'unit_id'];
+    const PK = ['base_price', 'base_orig', 'area_tt', 'floor_price', 'area_floor', 'discount', 'corner_pct', 'vat_pct', 'finish_value', 'unit_id'];
     // HĐ thuê (BRAVO): số tháng theo ngày bắt đầu – kết thúc, tổng tiền = đơn giá thuê × số tháng
     if (r.kind === 'thue') {
       if (r.area_tt == null || r.area_floor == null) { const u = await raw(db, 'unit', r.unit_id); r.area_tt ??= u?.area_tt ?? null; r.area_floor ??= u?.area_xd ?? null; }   // diện tích theo căn (sàn = diện tích xây dựng / tim tường)
@@ -848,13 +858,17 @@ H.contract = {
       if (+r.rent > 0 && +r.term_months > 0) r.value = Math.round(+r.rent * +r.term_months);
       if (+r.pay_times > 0 && +r.term_months > 0 && +r.pay_times > +r.term_months) bad(`Số kỳ thanh toán (${r.pay_times}) không được nhiều hơn thời hạn thuê (${r.term_months} tháng)`, { fields: ['pay_times'] });
     }
-    // chưa có giá nền (căn chưa nạp số Bravo, VD tòa G; hoặc lập HĐ không qua form): giá nền gốc theo căn − tiền giảm / DT — để giảm giá, phí bảo trì 2% tính được
+    // chưa có giá nền (căn chưa nạp số Bravo, VD tòa G; hoặc lập HĐ không qua form): giá nền gốc theo căn — để giảm giá, phí bảo trì 2% tính được
     // (chỉ khi tạo mới hoặc đổi tiền giảm giá: hợp đồng cũ giữ nguyên số)
     if (!['thue', 'vay', 'hoan_thien'].includes(r.kind) && r.ptype !== 'lien_ke' && !(+r.base_price > 0) && r.unit_id && (!old || String(old.discount ?? '') !== String(r.discount ?? ''))) {
       const u = await raw(db, 'unit', r.unit_id), b = unitBase(u); r.area_tt ??= u?.area_tt ?? null;
-      if (b && +r.area_tt > 0) r.base_price = Math.round(b - (+r.discount || 0) / +r.area_tt);
+      if (b && +r.area_tt > 0) { r.base_price = b; r.base_orig = null; }
     }
-    if (!['thue', 'vay'].includes(r.kind) && r.ptype !== 'lien_ke' && +r.base_price > 0 && +r.area_tt > 0 && (!old || PK.some(k => String(old[k] ?? '') !== String(r[k] ?? '')))) Object.assign(r, contractPrice(r));
+    const priceChg = !old || PK.some(k => String(old[k] ?? '') !== String(r[k] ?? ''));
+    if (priceChg && !(+r.discount > 0) && old && +old.discount > 0 && +old.base_orig > 0 && String(r.base_price ?? '') === String(old.base_price ?? '')) r.base_price = +old.base_orig;   // xóa tiền giảm → về giá gốc
+    // có giảm giá mà chưa có giá nền gốc: HĐ cũ (giá nền đã trừ tiền giảm / DT) → cộng lại; nhập mới qua API → giá nền gửi lên là giá gốc
+    if (priceChg && +r.discount > 0 && !(+r.base_orig > 0) && +r.base_price > 0) r.base_orig = old && +old.discount > 0 && !(+old.base_orig > 0) && +old.area_tt > 0 ? Math.round(+old.base_price + +old.discount / +old.area_tt) : +r.base_price;
+    if (!['thue', 'vay'].includes(r.kind) && r.ptype !== 'lien_ke' && +r.base_price > 0 && +r.area_tt > 0 && priceChg) Object.assign(r, contractPrice(r));
     if (r.pretax > 0 && r.vat_pct != null && r.vat_amt == null) r.vat_amt = Math.round(r.pretax * r.vat_pct / 100);
     if (r.pretax > 0 && r.after_tax == null) r.after_tax = r.pretax + (r.vat_amt || 0);
     if (r.pretax > 0 && r.maint_fee == null && ['hdmb', 'thue_mua'].includes(r.kind)) r.maint_fee = Math.round(+r.pretax * 0.02 / 1000) * 1000;   // phí bảo trì = 2% × tiền trước thuế

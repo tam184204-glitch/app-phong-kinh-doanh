@@ -480,6 +480,7 @@ def('contract', {
     { k: 'building_id', l: 'Số bảng giá', t: 'ref', ref: 'building', show: SALE_ONLY, sec: 'Thông tin chi tiết', help: 'Bảng giá theo tòa trong Danh mục sản phẩm — chọn căn tự ra, chọn tòa trước thì lọc căn' },
     { k: 'price_policy_id', l: 'Chính sách giá', t: 'ref', ref: 'price_policy', hide: 1 },   // máy chủ tự lấy theo phiếu giữ chỗ / chính sách đang phát hành
     money('base_price', 'Giá nền (chưa VAT) đ/m²', { show: CT_SALE }),
+    money('base_orig', 'Giá nền gốc trước giảm giá (đ/m²)', { noForm: 1 }),   // có giảm giá: giá nền trên form = giá chia ngược từ tổng sau giảm; giữ giá gốc để sửa tiền giảm vẫn tính đúng
     { k: 'area_tt', l: 'Diện tích nền (thông thủy) m²', t: 'num', show: CT_ONLY },
     money('floor_price', 'Giá sàn đ/m²', { show: CT_ONLY, hide: 1 }),   // bỏ khỏi form 31/10/2026
     { k: 'area_floor', l: 'Diện tích sàn m²', t: 'num', show: CT_ONLY },
