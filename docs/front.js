@@ -438,7 +438,7 @@ const HD_LAYOUT = [
     ['loan_recv_on', 'loan_tranches', 'int_mode', 'loan_rate'],   // HĐ vay
     ['eff_on', 'exp_on', 'term_months', 'pay_times'],   // HĐ thuê (BRAVO) · HĐ vay: bắt đầu tính lãi / đáo hạn / thời hạn vay
     ['int_period', 'principal_method', 'int_note'], ['link_ids'],
-    ['rent', 'value', 'closed', 'cn', 'vbtt_hold'], ['sale_price', 'plan_hdmb', 'prev_id', 'next_id']] },   // bán qua HĐ vay / HĐ thuê; HĐMB nối tiếp   // HĐ thuê: tiền thuê/tháng cạnh tổng tiền thuê; mua bán không có ô tiền thuê
+    ['rent_house', 'rent_furn', 'rent', 'value', 'cn', 'vbtt_hold'], ['sale_price', 'plan_hdmb', 'prev_id', 'next_id']] },   // bán qua HĐ vay / HĐ thuê; HĐMB nối tiếp   // HĐ thuê: tiền thuê/tháng cạnh tổng tiền thuê; mua bán không có ô tiền thuê
   { t: 'Lần thanh toán', rows: [['new_schedule'], ['pay_method']] },
   { t: 'Lịch ký', cols: 4, rows: [['plan_sign', 'sign_place', 'sign_status', 'signed_on']] },
   { t: 'Tình trạng vay vốn', cols: 4, rows: [['loan_status', 'loan_bank', 'loan_doc3']] },
@@ -502,8 +502,7 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish, kind, debt, rec0 }) {
     rp.innerHTML = `<div class="grid g3 mb">${[['Tổng tiền thuê', all, 'Toàn bộ thời hạn hợp đồng'], ['Đã thu', got, 'Theo phiếu thu đã ghi nhận'], ['Còn phải thu', all - got, 'Gồm đến hạn và chưa đến hạn']].map(([l, v, s]) => `<div class="card kpi" style="cursor:default"><div class="l">${l}</div><div class="v" style="font-size:18px">${fm(v)} đ</div><div class="s">${s}</div></div>`).join('')}</div>
       ${rows.length ? `<div class="${late ? 'warnbar' : 'okbar'} mb">${ico(late ? 'fa-triangle-exclamation' : 'fa-circle-check')} ${late ? `${late} kỳ còn tiền quá hạn · ${fm(lateAmt)} đồng cần đối chiếu thu tiền` : 'Không có khoản thu quá hạn'}</div>
       <table class="t compact noclick"><thead><tr><th>Kỳ</th><th>Thời gian tính tiền</th><th>Hạn thanh toán</th><th class="num">Phải thu</th><th class="num">Đã thu</th><th class="num">Còn lại</th><th>Tình trạng</th></tr></thead><tbody>${rows.join('')}</tbody><tfoot><tr><td colspan="3"><b>Cộng ${rows.length} kỳ</b></td><td class="num ${Math.abs(tot - all) > 1000 ? 'neg' : ''}"><b>${fm(tot)}</b></td><td class="num"><b>${fm(got)}</b></td><td class="num"><b>${fm(tot - got)}</b></td><td></td></tr></tfoot></table>
-      ${Math.abs(tot - all) > 1000 ? `<div class="warnbar mt">${ico('fa-triangle-exclamation')} Cộng các kỳ ${fm(tot)} đ khác Tổng tiền thuê ${fm(all)} đ — nhập lại Số kỳ thanh toán để chia lại.</div>` : ''}
-      <div class="small muted mt">Đơn vị: đồng · Đã thu lấy theo phiếu thu (Bravo / kế toán nhập); quá hạn tính theo ngày đối chiếu.</div>`
+      ${Math.abs(tot - all) > 1000 ? `<div class="warnbar mt">${ico('fa-triangle-exclamation')} Cộng các kỳ ${fm(tot)} đ khác Tổng tiền thuê ${fm(all)} đ — nhập lại Số kỳ thanh toán để chia lại.</div>` : ''}`
       : `<div class="empty">${over ? `Số kỳ thanh toán (${p}) không được nhiều hơn thời hạn thuê (${n} tháng) — mỗi kỳ ít nhất 1 tháng.` : 'Nhập Ngày bắt đầu thuê, Thời hạn thuê, Tiền thuê/tháng và Số kỳ thanh toán — các kỳ thu tự chia.'}</div>`}`;
   };
   // ô Tổng tiền (value): HĐ mua bán đứng cạnh Tiền giảm giá (giảm giá trừ thẳng vào tổng tiền); HĐ thuê / vay về chỗ cũ cạnh Tiền thuê/tháng
@@ -516,7 +515,7 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish, kind, debt, rec0 }) {
     const vay = isVay();
     const lb = $('[data-f=contract_on] label', form); if (lb) lb.textContent = isRent() ? 'Ngày ký hợp đồng thuê' : vay ? 'Ngày ký hợp đồng vay' : 'Ngày ký hợp đồng mua bán';
     $$('.bv-side .fsec', form).forEach(x => { x.dataset.t ??= x.textContent; x.textContent = isRent() ? x.dataset.t.replace('Bên mua nhà ở', 'Bên thuê nhà ở').replace('Bên bán nhà ở', 'Bên cho thuê nhà ở') : vay ? x.dataset.t.replace('Bên mua nhà ở', 'Bên cho vay (khách hàng)').replace('Bên bán nhà ở', 'Bên vay') : x.dataset.t; });
-    for (const [k, l] of Object.entries({ eff_on: 'Ngày bắt đầu tính lãi', exp_on: 'Ngày đáo hạn', term_months: 'Thời hạn vay (tháng)', rent: 'Tiền thuê/tháng (trả lãi)' })) { const x = $(`[data-f=${k}] label`, form)?.firstChild; if (x?.nodeType === 3) { x._t ??= x.textContent; x.textContent = vay ? l : x._t; } }
+    for (const [k, l] of Object.entries({ eff_on: 'Ngày bắt đầu tính lãi', exp_on: 'Ngày đáo hạn', term_months: 'Thời hạn vay (tháng)', rent: 'Tiền thuê/tháng (trả lãi)' })) { const x = $(`[data-f=${k}] label`, form)?.firstChild; if (x?.nodeType === 3) { x._t ??= x.textContent; x.textContent = vay ? l : k === 'rent' && isRent() ? 'Tổng giá thuê/tháng' : x._t; } }
     const lkl = $('[data-f=link_ids] label', form)?.firstChild; if (lkl?.nodeType === 3) lkl.textContent = vay ? 'HĐ thuê đi kèm (tick chọn)' : 'HĐ vay đi kèm (tick chọn)';
     for (const x of [$('[data-f=request_on] label', form), ...$$('.bv-side .fld > label', form)].map(l => l?.firstChild)) if (x?.nodeType === 3) { x._t ??= x.textContent; x.textContent = isRent() ? x._t.replace('Ngày đề nghị mua', 'Ngày đề nghị thuê').replace('(bên bán)', '(bên cho thuê)') : vay ? x._t.replace('Ngày đề nghị mua', 'Ngày đề nghị').replace('(bên bán)', '(bên vay)') : x._t; }
     const vl = $('[data-f=value] label', form)?.firstChild; if (vl?.nodeType === 3) vl.textContent = isRent() ? 'Tổng tiền thuê' : vay ? 'Số tiền vay (gốc)' : valLabel;
@@ -602,6 +601,16 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish, kind, debt, rec0 }) {
     rentSched(); rentDraw();
   };
   for (const k of ['eff_on', 'exp_on', 'rent', 'term_months', 'pay_times']) { const el = $(`[name=${k}]`, form); el?.addEventListener('change', rentCalc); el?.addEventListener('input', rentCalc); }
+  // Tổng giá thuê/tháng = Tiền thuê nhà + Tiền thuê nội thất (có nhập 1 trong 2 thì ô tổng tự cộng, không gõ tay; HĐ cũ chưa tách vẫn gõ thẳng ô tổng)
+  const rH = $('[name=rent_house]', form), rF = $('[name=rent_furn]', form), rT = $('[name=rent]', form);
+  const rentSum = fire => {
+    if (!rT || !(rH || rF)) return;
+    const h = rH?.value.trim() ? readField(form, { k: 'rent_house', t: 'money' }) : null, f = rF?.value.trim() ? readField(form, { k: 'rent_furn', t: 'money' }) : null, on = isRent() && (h != null || f != null);
+    rT.readOnly = on; rT.title = on ? 'Tự cộng: tiền thuê nhà + tiền thuê nội thất' : '';
+    if (on) { const v = moneyStr((+h || 0) + (+f || 0)); if (rT.value !== v) { rT.value = v; if (fire) rT.dispatchEvent(new Event('input', { bubbles: true })); } }
+  };
+  for (const el of [rH, rF]) el?.addEventListener('input', () => rentSum(true));
+  rentSum(false);
   // chọn căn ở HĐ thuê: ô Tổng tiền bị điền giá bán căn → về tiền thuê × số tháng (chưa có tiền thuê thì để trống)
   const rentValue = () => { if (!isRent()) return; const v = $('[name=value]', form); if (v) v.value = ''; rentCalc(); };
   // đổi Mua bán / Thuê / Vay: cất tổng tiền + lịch thu của loại đang xem, quay lại thì trả về — không mang giá bán sang HĐ thuê / HĐ vay hay ngược lại
@@ -614,7 +623,7 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish, kind, debt, rec0 }) {
     if (back) { v.value = back.value; sch._set(back.sched); rentDraw(); loanDraw(); return; }
     v.value = ''; sch._set([]);
     const u = form.elements.unit_id?.value;   // mua bán: giá theo căn (giá trị hoàn thiện thuộc HĐ hoàn thiện, như khi chọn căn)
-    if (g === 'thue') rentCalc();
+    if (g === 'thue') { rentSum(true); rentCalc(); } else if (rT) rT.readOnly = false;
     else if (u) api('GET', `/api/e/unit/${u}`).then(({ row: x }) => { const t = +x.total_price || 0, f = +x.finish_value || 0, pr = f > 0 && t > f ? t - f : t; if (!pr) return;
       if (g === 'mb' && !v.value) { v.value = moneyStr(pr); v.dispatchEvent(new Event('input', { bubbles: true })); }
       if (g === 'vay' && form.elements.sale_price && !form.elements.sale_price.value) form.elements.sale_price.value = moneyStr(pr); }).catch(() => {});
