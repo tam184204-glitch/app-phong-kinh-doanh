@@ -121,7 +121,7 @@ async function boot(pgliteUrl) {
     // hợp đồng căn hộ cũng theo Danh mục sản phẩm: giá trị + lịch thanh toán tính lại theo tỷ lệ cũ (như máy thật 28/10/2026)
     const B = require('../server/biz'), u = await one("SELECT * FROM kd_user WHERE role = 'admin' ORDER BY id LIMIT 1");
     const cs = await q(`SELECT c.id FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id WHERE c.kind NOT IN ('hoan_thien', 'thue') AND c.status NOT IN ('huy', 'thanh_ly')
-      AND u.price_net IS NOT NULL AND c.value IS DISTINCT FROM u.price_net + coalesce(u.maint_fee, 0)`);
+      AND u.price_net IS NOT NULL AND coalesce(c.discount, 0) = 0 AND c.value IS DISTINCT FROM u.price_net + coalesce(u.maint_fee, 0)`);   // HĐ có giảm giá: giá đã chia lại theo tiền giảm — không đưa về giá danh mục
     if (cs.length) await tx(async db => { for (const c of cs) await B.syncContractValue(db, c.id, u); });
     await tx(db => B.fixRentValue(db, u));
     await tx(db => B.fixBaseDiscount(db));   // giá nền chia lại theo tiền giảm giá (1 lần)   // HĐ thuê đã bị ghi giá bán ở bản trước
@@ -329,6 +329,16 @@ async function boot(pgliteUrl) {
       localStorage.setItem('ctg-kd-demo-vay-lai', '1');
     }
   } catch (e) { console.warn('HĐ vay lãi & gốc thử', e); }
+  // phiếu đăng ký thử đã hủy để xem tab Đã hủy (trạng thái / ngày trả hồ sơ, file scan): dữ liệu chưa có phiếu hủy nào thì hủy 3 phiếu mua thử chưa lập hợp đồng
+  // (không đụng phiếu của các kịch bản thuê / hết hạn thuê ở trên), 1 phiếu ghi đã trả hồ sơ
+  try {
+    if (!(await one("SELECT 1 AS x FROM kd_reservation WHERE status = 'huy' LIMIT 1"))) {
+      const C = require('../server/core'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1");
+      const rs = await q("SELECT id FROM kd_reservation WHERE is_demo AND coalesce(deal, 'mua') = 'mua' AND status IN ('qua_han', 'giu_cho', 'da_coc') AND coalesce(note, '') NOT LIKE 'Dữ liệu thử%' ORDER BY id LIMIT 3");
+      for (const r of rs) await C.update('reservation', r.id, { reg_state: 'huy', note: 'Khách xin hủy đăng ký (dữ liệu thử)' }, u);
+      if (rs[0]) await C.update('reservation', rs[0].id, { doc_ret: 'da_tra', doc_ret_on: await (await one('SELECT CURRENT_DATE::text d')).d }, u);
+    }
+  } catch (e) { console.warn('phiếu hủy thử', e); }
   const job = async () => { try { await tx(db => biz.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.warn('job', e.message); } };
   await job(); setInterval(job, 2 * 60e3);
 

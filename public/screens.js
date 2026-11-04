@@ -78,6 +78,20 @@ async function boot(mustChange) {
   window.onhashchange = route;
   route();
   updateBadges(); setInterval(updateBadges, 120e3);
+  ST.verT ||= setInterval(checkVer, 60e3);
+}
+// máy chủ có bản giao diện mới trong lúc trang đang mở (giao diện chỉ nạp 1 lần khi mở trang): báo để người dùng tự tải lại, không tự tải kẻo mất phần đang nhập
+let VER0 = null;
+async function checkVer() {
+  try {
+    const { ver } = await api('GET', '/api/ver'); if (!ver) return;   // bản demo: không có
+    if (!VER0) { VER0 = ver; return; }
+    if (ver === VER0 || $('#updBar')) return;
+    const b = document.createElement('div'); b.id = 'updBar'; b.className = 'upd-bar';
+    b.innerHTML = `${ico('fa-rotate')}<span>Có bản cập nhật mới của app — lưu phần đang nhập rồi bấm <b>Tải lại</b> để dùng bản mới.</span><button type="button" class="btn sm">Tải lại</button>`;
+    b.querySelector('button').onclick = () => location.reload();
+    document.body.append(b);
+  } catch { }
 }
 async function updateBadges() {
   try {
@@ -102,7 +116,7 @@ function globalSearch() {
   inp.onkeydown = e => { const as = $$('[data-i]', box); if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); cur = Math.max(0, Math.min(as.length - 1, cur + (e.key === 'ArrowDown' ? 1 : -1))); as.forEach((a, i) => a.classList.toggle('on', i === cur)); } if (e.key === 'Enter') { e.preventDefault(); if (res[Math.max(cur, 0)]) open(res[Math.max(cur, 0)]); } if (e.key === 'Escape') box.classList.add('hidden'); };
 }
 async function route() {
-  closeDetail(); document.body.classList.remove('nav-open'); ST.reload = null;
+  closeDetail(); document.body.classList.remove('nav-open'); ST.reload = null; checkVer();
   const tok = ST.nav = (ST.nav || 0) + 1;   // màn cũ còn tải dở mà người dùng đã chuyển màn: bỏ qua lỗi của nó
   const h = location.hash.slice(1) || '/v/dashboard';
   const [p, qs] = h.split('?'); const params = Object.fromEntries(new URLSearchParams(qs || ''));
@@ -448,7 +462,7 @@ V.customers = async (main, params) => {
   const s = ST.cust ||= { project: '', q: '', st: '' };
   if (params.project) s.project = params.project;
   const ce = M.ents.customer.perm;
-  const CC = [['code', 'Mã'], ['full_name', 'Tên'], ['address', 'Địa chỉ'], ['phone', 'Điện thoại'], ['email', 'Email'], ['tax_code', 'Mã số thuế'], ['stage', 'Tình trạng']];   // như lưới Bravo, mã trước tên
+  const CC = [['code', 'Mã'], ['full_name', 'Tên'], ['address', 'Địa chỉ'], ['phone', 'Điện thoại'], ['email', 'Email'], ['tax_code', 'Mã số thuế']];   // như lưới Bravo, mã trước tên; bỏ cột Tình trạng (03/11/2026) — vẫn lọc được ở ô «Mọi tình trạng»
   const draw = async () => {
     const get = async e => M.ents[e]?.perm.r ? (await api('GET', `/api/e/${e}?limit=20000${e === 'customer' ? '&group=sau_ban' : ''}`)).rows : [];   // 02 chỉ khách sau mở bán; khách tiềm năng ở 03
     const [cs, us, hd, gc, pj] = await Promise.all([get('customer'), get('unit'), get('contract'), get('reservation'), get('project')]);
@@ -1053,9 +1067,12 @@ V.mau4 = async (main, params) => {
         <th rowspan="2">Điều kiện thu nhập</th><th rowspan="2">Quan hệ với chủ hộ</th><th colspan="2" class="center">Thông tin căn hộ dự kiến ${s.kind === 'thue' ? 'thuê' : 'mua/thuê mua'}</th><th rowspan="2">Tình trạng</th>${sxdDay ? '<th rowspan="2">Ngày nộp hồ sơ SXD</th>' : ''}${okTab ? '<th rowspan="2">Kết quả xét duyệt</th><th rowspan="2">Ngày được xét duyệt</th><th rowspan="2">Số công văn</th><th rowspan="2">Ghi chú</th>' : ''}<th rowspan="2">Biên bản</th>${draft ? '<th rowspan="2">Thao tác</th>' : ''}</tr>
       <tr><th>Số CMND</th><th>Số CCCD</th><th>Tỉnh</th><th>Huyện/ Thành phố</th><th>Thị trấn/xã</th><th>Số căn hộ</th><th>Diện tích (m²)</th></tr></thead>
       <tbody>${rows.map((h, i) => { const n = h.people.length, ownPhone = h.people.slice(1).some(p => p.phone);
+        // nhà ở, nơi ở, thu nhập: thành viên khai riêng thì mỗi người một ô, không thì gộp theo hộ (như SĐT)
+        const own = Object.fromEntries(['housing', 'province', 'district', 'commune', 'income'].map(k => [k, h.people.slice(1).some(p => String(p[k] ?? '').trim())]));
+        const hh = (p, j, k, cls = '') => j && !own[k] ? '' : td(esc((j ? p[k] : h[k]) || ''), own[k] ? 1 : n, cls);
         return h.people.map((p, j) => `<tr data-id="${h.id}" class="${j ? 'm4mem' : 'm4head'}">${j ? '' : (canBulk ? td(`<input type="checkbox" data-ck ${sel.has(h.id) ? 'checked' : ''}>`, n, 'center m4ck m4s1') : '') + td(i + 1, n, 'center') + td(dmy(h.received_on), n)}<td>${esc(p.name)}</td>${j && !ownPhone ? '' : td(esc(p.phone || ''), ownPhone ? 1 : n)}
           <td class="center">${p.birth[0]}</td><td class="center">${p.birth[1]}</td><td class="center">${p.birth[2]}</td><td>${esc(p.old_id_no || '')}</td><td>${esc(p.id_no || '')}</td><td class="wrap">${esc(p.job || '')}</td><td class="wrap">${esc(p.doi_tuong || '')}</td><td class="wrap">${esc(p.confirm_org || '')}</td>
-          ${j ? '' : td(esc(h.housing || ''), n, 'wrap') + td(esc(h.province || ''), n) + td(esc(h.district || ''), n) + td(esc(h.commune || ''), n) + td(esc(h.income || ''), n, 'wrap')}<td>${esc(p.relation)}</td>
+          ${hh(p, j, 'housing', 'wrap') + hh(p, j, 'province') + hh(p, j, 'district') + hh(p, j, 'commune') + hh(p, j, 'income', 'wrap')}<td>${esc(p.relation)}</td>
           ${j ? '' : td(`<b>${esc(h.unit_code || '')}</b>`, n) + td(h.area != null ? fnum(h.area) : '', n, 'num') + td(M4_ST[h.status] ? pill(...M4_ST[h.status]) : '', n) + (sxdDay ? td(h.sxd_submit_on ? `<b>${dmy(h.sxd_submit_on)}</b>` : '<span class="small muted">chưa ghi</span>', n, 'center nowrap') : '')
           + (okTab ? td(M4_SXD[h.sxd_result] ? pill(...M4_SXD[h.sxd_result]) : '<span class="small muted">chưa ghi</span>', n, 'nowrap') + td(h.sxd_approved_on ? dmy(h.sxd_approved_on) : '', n, 'center nowrap') + td(esc(h.sxd_doc_no || ''), n, 'nowrap') + td(esc(h.sxd_note || ''), n, 'wrap') : '') + td(`<button type="button" class="btn sm" data-bbgn title="In biên bản bàn giao tài liệu hồ sơ mua nhà">${ico('fa-file-signature')} Biên bản</button>`, n) + (draft ? td(acts(h), n) : '')}</tr>`).join(''); }).join('')}</tbody></table>`;
     syncTopScroll();

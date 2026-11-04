@@ -22,9 +22,10 @@ async function exportList(entKey, user, qs) {
   const e = E[entKey] || bad('Loại dữ liệu không hợp lệ');
   if (!can(user, e, 'x')) deny('Vai trò của bạn không được xuất dữ liệu này');
   const { rows } = await C.list(entKey, user, qs, { limit: 20000 });
-  const L = e.lists?.[qs.group], keys = (qs.cols ? String(qs.cols).split(',') : L?.cols || e.list).flatMap(k => qs.status === 'thanh_ly' && k === 'contract_on' && C.F[entKey].liquidated_on ? ['liquidated_on', 'liquidate_reason', 'liquidate_note'] : [k]);   // tab Đã thanh lý
+  const L = e.lists?.[qs.group], keys = (qs.cols ? String(qs.cols).split(',') : L?.cols || e.list).flatMap(k => qs.status === 'thanh_ly' && k === 'contract_on' && C.F[entKey].liquidated_on ? ['liquidated_on', 'liquidate_reason', 'liquidate_note'] : [k])   // tab Đã thanh lý
+    .concat(qs.status === 'huy' && C.F[entKey].doc_ret ? ['doc_ret', 'doc_ret_on', 'ret_files'] : []);   // tab Đã hủy (phiếu đăng ký): 3 cột trả hồ sơ ở cuối, như trên màn hình
   const cols = [];
-  rows.forEach((r, i) => { r.stt = i + 1; });
+  rows.forEach((r, i) => { r.stt = i + 1; if (r.ret_files) r.ret_files = r.ret_files.map(f => f.name).join('; '); });
   for (const k of keys) {
     if (k === 'prints' || k === 'bbgn') continue;
     const f = C.F[entKey][k];
@@ -385,20 +386,15 @@ async function printReservation(id, user, kind, tplCode) {
   const lab = (f, v) => E.reservation.fields.find(x => x.k === f).o.find(o => o[0] === v)?.[1] || '';
   // giá trị hoàn thiện: số nhập trên phiếu đăng ký trước, chưa có thì theo căn / gói / mẫu
   const finish = r.finish_value ?? u.finish_value ?? u.pk_value ?? require('./mau-dang-ky').NT_GIA[tpl.code];
-  // giá căn theo công thức đơn đăng ký Excel: trước thuế = ROUND(DT × đơn giá, -3); VAT 5%; bảo trì = ROUND(trước thuế × 2%, -3); tổng = ROUND(cộng, -3)
-  // đơn giá lấy ở Danh mục sản phẩm; căn chưa có thì suy ra từ giá sau thuế
-  const r3 = v => Math.round(v / 1000) * 1000, area = +(u.area_tt || 0), net = +(u.price_net || 0);
-  const sumOf = g => { const p = r3(area * g); return r3(p + Math.round(p * 0.05) + r3(p * 0.02)); };
-  let unitPrice = u.base_price != null ? Math.round(+u.base_price) : net && area ? Math.round(net / 1.05 / area) : null;
-  if (u.base_price == null && unitPrice && u.total_price) {   // đơn giá suy ra: dò quanh để tổng khớp đúng Tổng giá căn hộ
-    const want = +u.total_price; for (let d = 0; d <= 300 && sumOf(unitPrice) !== want; d++) { if (sumOf(unitPrice + d) === want) { unitPrice += d; break; } if (sumOf(unitPrice - d) === want) { unitPrice -= d; break; } }
-  }
-  // căn đã có số Bravo ở Danh mục sản phẩm → in đúng các số đó; chưa có mới tính theo công thức
-  const pretax = u.pretax != null ? Math.round(+u.pretax) : unitPrice && area ? r3(area * unitPrice) : null;
-  const tax = u.tax_amt != null ? Math.round(+u.tax_amt) : pretax ? Math.round(pretax * 0.05) : null;
-  const maint = u.maint_fee != null ? Math.round(+u.maint_fee) : pretax ? r3(pretax * 0.02) : null;
+  // bảng giá trên đơn = đúng các cột của căn ở Danh mục sản phẩm (cùng cách tính với prodRow, public/screens.js):
+  // căn có số Bravo (đơn giá nền, trước thuế, tiền thuế) thì lấy nguyên; chưa có thì tách từ giá sau thuế theo % thuế (mặc định 5%)
+  const vat = u.vat_pct ?? 5;
+  const after = u.price_net ?? (u.total_price != null && u.maint_fee != null ? u.total_price - u.maint_fee - (u.finish_value || 0) : null);
+  const pretax = u.pretax ?? (after != null ? Math.round(after / (1 + vat / 100)) : null);
+  const unitPrice = u.base_price ?? (pretax != null && u.area_tt ? Math.round(pretax / u.area_tt) : null);
+  const tax = u.tax_amt ?? (after != null && pretax != null ? after - pretax : null), maint = u.maint_fee;
   // tổng giá trị căn hộ in riêng với nội thất: = sau thuế + bảo trì ở Danh mục sản phẩm (không cộng giá trị hoàn thiện)
-  const total = u.price_net != null ? +u.price_net + (+u.maint_fee || 0) : u.total_price ? +u.total_price - (+u.finish_value || 0) : pretax ? r3(pretax + tax + maint) : +r.unit_value || r.price;
+  const total = after != null ? after + (maint || 0) : +r.unit_value || r.price;
   const rd = r.reg_at ? new Date(Date.parse(r.reg_at) + 7 * 3600e3) : new Date(r.reg_date || Date.now());
   const map = { ma_phieu: r.code, ngay_dk: r.reg_at ? new Date(Date.parse(r.reg_at) + 7 * 3600e3).toISOString().replace(/^(\d+)-(\d+)-(\d+)T(\d+:\d+).*/, '$4 ngày $3/$2/$1') : dmy(r.reg_date), ten_kh: r.cust_name, dien_thoai: r.phone, cccd: pii ? r.id_no : '(ẩn)', ngay_cap: pii ? dmy(r.id_date) : '', noi_cap: pii ? r.id_place : '', dia_chi: r.address,
     ma_can: u.code, du_an: u.project, dia_diem: u.p_addr, chu_dau_tu: u.investor, toa: u.building, tang: u.floor, dien_tich: String(u.area_tt ?? '').replace('.', ','), huong: u.direction,

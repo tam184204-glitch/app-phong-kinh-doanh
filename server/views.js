@@ -590,7 +590,7 @@ async function debtSummary(db, user, f = {}) {
     const vat = c.vat_pct ?? 5, maint = +c.maint_fee || 0, fin = +c.finish_value || 0, corner = c.corner_amt ? Math.round(+c.corner_amt * (1 + vat / 100)) : 0;
     const house = Math.max(0, value - maint - fin - corner), nonM = house + corner + fin || 1;
     o.n.total = house; o.g.total = corner; o.p.total = fin; o.b.total = maint;
-    const inst = [...d.inst].sort((a, b) => a.seq - b.seq), mi = maint > 0 && inst.length ? Math.min(Math.max(1, +c.maint_dot || 3), inst.length) - 1 : -1;
+    const inst = [...d.inst].sort((a, b) => a.seq - b.seq), mo = inst.findIndex(i => i.is_maint), mi = maint > 0 && inst.length ? (mo >= 0 ? mo : Math.min(Math.max(1, +c.maint_dot || 3), inst.length) - 1) : -1;   // dòng phí bảo trì riêng (is_maint); lịch cũ: đợt maint_dot
     inst.forEach((i, ix) => {
       const amt = +i.amount || 0, m = ix === mi ? Math.min(maint, amt) : 0, rest = amt - m, due = i.due_on <= to, pr = amt ? (+i.paid || 0) / amt : 0;
       const parts = { b: m, n: rest * house / nonM, g: rest * corner / nonM, p: rest * fin / nonM };
