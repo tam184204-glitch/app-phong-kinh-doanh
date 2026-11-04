@@ -83,6 +83,82 @@ function mapRows(sheetRows, spec) {
 
 // ---------- các loại nhập ----------
 const A = (...xs) => xs.map(strip);
+// chứng từ thu (Bravo / MISA): tìm hợp đồng đang hiệu lực (không tính HĐ hoàn thiện riêng)
+const LIVE_HD = "c.status NOT IN ('huy','thanh_ly') AND c.kind <> 'hoan_thien'";
+const upKey = s => String(s ?? '').trim().toUpperCase().replace(/\s+/g, '');
+async function receiptContract(r, ctx) {
+  const key = upKey(r.contract);
+  if (key) return (await ctx.db.one(`SELECT c.id FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id WHERE (upper(c.number) = $1 OR upper(u.code) = $1) AND ${LIVE_HD} ORDER BY c.id DESC LIMIT 1`, [key]))?.id
+    || bad(`Không tìm thấy hợp đồng / căn «${String(r.contract).trim()}»`);
+  // số HĐ hoặc mã căn ghi trong diễn giải (VD «Thu đợt 2 căn CTS-O-0101»; gõ cách / gạch dưới thay gạch ngang vẫn nhận)
+  const txt = String(r.content || '').toUpperCase().replace(/[\s_.]+(?=[0-9A-Z])/g, m => /[_.]/.test(m) ? '-' : m);
+  if (txt.trim()) {
+    ctx.hdKeys ||= await ctx.db.q(`SELECT c.id, upper(c.number) num, upper(u.code) code FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id WHERE ${LIVE_HD} ORDER BY c.id DESC`);
+    const flat = txt.replace(/\s+/g, ''), esc = s => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+    const by = (re) => [...new Set(ctx.hdKeys.filter(re).map(k => k.id))];
+    let ids = by(k => k.num && k.num.length >= 6 && flat.includes(k.num.replace(/\s+/g, '')));
+    if (!ids.length) ids = by(k => k.code && new RegExp(`(^|[^A-Z0-9])${esc(k.code).replace(/-/g, '[-\\s]?')}(?![0-9])`).test(txt));
+    if (ids.length === 1) return ids[0];
+    if (ids.length > 1) bad(`Diễn giải nhắc tới nhiều hợp đồng / căn — ghi rõ 1 số hợp đồng: «${String(r.content).trim().slice(0, 80)}»`);
+  }
+  // mã khách hàng (mã đối tượng MISA = mã KH trên app) hoặc tên khách: chỉ nhận khi khách có đúng 1 hợp đồng đang hiệu lực
+  const one = async (where, v) => { const xs = await ctx.db.q(`SELECT c.id FROM kd_contract c JOIN kd_customer k ON k.id = c.customer_id WHERE ${where} AND ${LIVE_HD}`, [v]); return xs; };
+  const code = upKey(r.cust_code), name = String(r.cust_name || '').trim();
+  for (const [where, v, l] of [[`upper(k.code) = $1`, code, `mã khách «${r.cust_code}»`], [`lower(k.full_name) = lower($1)`, name, `khách «${name}»`]]) {
+    if (!v) continue;
+    const xs = await one(where, v);
+    if (xs.length === 1) return xs[0].id;
+    if (xs.length > 1) bad(`${l} có ${xs.length} hợp đồng — ghi số hợp đồng hoặc mã căn vào diễn giải`);
+  }
+  bad(`Không xác định được hợp đồng${r.content ? ` từ diễn giải «${String(r.content).trim().slice(0, 80)}»` : ''}${code || name ? ` / ${code || name}` : ''} — ghi số hợp đồng hoặc mã căn vào diễn giải`);
+}
+// tệp MISA: thử từng dòng (≤ 20) làm tiêu đề, 1 tầng hoặc 2 tầng (ô gộp tầng trên kéo sang các cột con: «Phát sinh» → «Phát sinh Nợ / Có»,
+// «Số tiền» → «Số tiền Thu / Chi / Tồn»); chọn cách khớp có số chứng từ + số tiền và nhiều cột nhất. Nhiều sheet → sheet khớp nhất
+function misaParse(sheets) {
+  const spec = IMPORTS.misa.spec; let best = null;
+  for (const sh of sheets) {
+    const rows = sh.rows || [];
+    for (let i = 0; i < Math.min(rows.length, 20); i++) for (const two of [false, true]) {
+      const top = rows[i] || [], sub = two ? rows[i + 1] || [] : [];
+      if (!top.some(c => strip(c)) || (two && (!sub.some(c => strip(c)) || sub.some(c => typeof c === 'number' || /^[\d.,\/ -]{4,}$/.test(String(c ?? '').trim()))))) continue;   // tầng dưới phải là tên cột, không phải dòng số liệu
+      let carry = '';
+      const head = Array.from({ length: Math.max(top.length, sub.length) }, (_, j) => {
+        const t = String(top[j] ?? '').trim(), s = String(sub[j] ?? '').trim();
+        if (t) carry = t;
+        return two ? (s ? `${t || carry} ${s}` : t) : t;
+      });
+      let m; try { m = mapRows([head], spec); } catch { continue; }
+      if (!m.cols.includes('voucher_no') || !m.cols.includes('amount')) continue;
+      if (best && (best.n > m.cols.length || (best.n === m.cols.length && !(two && best.i === i)))) continue;   // bằng điểm ở cùng dòng: 2 tầng cụ thể hơn («Số tiền Thu» thay vì «Số tiền»)
+      const start = i + (two ? 2 : 1), body = mapRows([head, ...rows.slice(start)], spec);
+      body.rows.forEach(r => { r._line += start - 1; r._raw = rows[r._line - 1] || []; });
+      best = { n: m.cols.length, i, rows: body.rows, cols: body.cols };
+    }
+  }
+  if (!best) bad('Không nhận ra dòng tiêu đề của tệp MISA — cần các cột Số chứng từ, Ngày, Số tiền (hoặc Phát sinh Có / Số tiền Thu), Diễn giải.');
+  let cur = null;   // mã khách của nhóm đang đọc (sổ chi tiết công nợ theo đối tượng)
+  for (const r of best.rows) {
+    const raw = r._raw.map(c => String(c ?? '')).join(' ');
+    if (!String(r.voucher_no ?? '').trim() && /(khach hang|doi tuong|ma kh)\b/.test(strip(raw))) { const m = /\b([A-Z]{1,5}[0-9]{3,}(?:-[0-9]+)?)\b/.exec(raw.toUpperCase()); cur = m ? m[1] : null; r._group = true; continue; }
+    if (cur && !String(r.cust_code ?? '').trim()) r.cust_code = cur;
+  }
+  best.rows.forEach(r => delete r._raw);
+  return { rows: best.rows, cols: best.cols };
+}
+async function receiptRow(r, ctx) {
+  if (r._group) return 'bo_qua';   // dòng tên nhóm khách hàng
+  const amt = r.amount == null || String(r.amount).trim() === '' ? 0 : C.parseNum(r.amount, true);
+  if (!String(r.voucher_no || '').trim() && (!amt || /^(tong|cong|so du|luy ke|du dau|du cuoi)/.test(strip(r.content || r.cust_name || '')))) return 'bo_qua';
+  if (String(r.voucher_no || '').trim() && amt === 0 && ctx.src === 'misa') return 'bo_qua';   // dòng phát sinh Nợ (hóa đơn) / phiếu chi trong sổ — không phải tiền thu
+  const no = String(r.voucher_no || '').trim().toUpperCase();
+  if (!no) bad('Thiếu số chứng từ');
+  if (await ctx.db.one('SELECT 1 FROM kd_receipt WHERE upper(voucher_no) = $1', [no])) return 'trung';
+  const cid = await receiptContract(r, ctx);
+  const inst = r.installment ? await ctx.db.one('SELECT id FROM kd_installment WHERE contract_id = $1 AND active AND seq = $2', [cid, parseInt(r.installment)]) : null;
+  await C.create('receipt', { voucher_no: no, voucher_date: r.voucher_date, contract_id: cid, amount: r.amount, content: r.content, installment_id: inst?.id, src: ctx.src || 'bravo', synced_at: ctx.at }, ctx.user, { db: ctx.db, system: true, demo: ctx.demo });
+  return 'them';
+}
+async function receiptAfter(ctx) { if (!ctx.dry && ctx.res.them) await ctx.db.q("UPDATE kd_setting SET value = jsonb_set(jsonb_set(coalesce(value,'{}'::jsonb), '{last_sync}', to_jsonb($1::text)), '{last_src}', to_jsonb($3::text)), updated_at = now(), updated_by = $2 WHERE key = 'bravo'", [ctx.at, ctx.user.id, ctx.src || 'bravo']); }
 const IMPORTS = {
   units: {
     title: 'Bảng hàng (dự án / tòa / căn)', roles: ['truong_phong'],
@@ -181,21 +257,24 @@ const IMPORTS = {
       return 'them';
     },
   },
+  // phiếu thu / giấy báo có xuất từ MISA (SME hoặc AMIS) — phòng KD tự nhập tệp kế toán gửi (kế toán không dùng app), hoặc app tự nhập từ thư mục chung (MISA_DIR)
+  misa: {
+    title: 'Phiếu thu / báo có (xuất từ MISA)', roles: ['ke_toan', 'truong_phong'], src: 'misa',
+    note: 'Nhận tệp Excel xuất từ MISA (Sổ chi tiết thu tiền / Bảng kê phiếu thu, giấy báo có). Hợp đồng được tìm theo: cột Số hợp đồng / Mã căn (nếu có) → số HĐ hoặc mã căn ghi trong Diễn giải → Mã khách hàng (khách chỉ có 1 HĐ). Phiếu trùng số chứng từ tự bỏ qua; dòng Cộng / Tổng bỏ qua.',
+    spec: { voucher_no: A('so chung tu', 'so ct', 'so phieu thu', 'so hieu chung tu thu', 'chung tu so', 'so hieu chung tu', 'so phieu', 'ma chung tu'),
+      voucher_date: A('ngay chung tu', 'ngay hach toan', 'ngay ct', 'ngay ht', 'chung tu ngay', 'ngay thu', 'ngay'),
+      amount: A('so tien thu', 'phat sinh co', 'so phat sinh co', 'ps co', 'so tien gui vao', 'gui vao', 'thu vao', 'so tien quy doi', 'so tien', 'co'), content: A('dien giai', 'ly do nop', 'ly do thu', 'noi dung', 'ly do'),
+      contract: A('so hop dong', 'so hd', 'hop dong', 'ma hop dong', 'hop dong ban', 'ma can', 'can ho'), cust_code: A('ma doi tuong', 'ma khach hang', 'ma kh', 'ma nguoi nop'),
+      cust_name: A('ten doi tuong', 'ten khach hang', 'doi tuong', 'nguoi nop', 'ten nguoi nop', 'khach hang'), installment: A('dot', 'ky thu') },
+    sample: [['PT00123', '20/10/2026', '100.000.000', 'Thu tiền đợt 2 căn CTS-O-0101 - HĐMB-CTS-O-0101/2026', '', 'KH000123', 'Nguyễn Văn A', '']],
+    parse: misaParse, row: receiptRow, after: receiptAfter,
+  },
   receipts: {
-    title: 'Chứng từ thu tiền (xuất từ Bravo)', roles: ['ke_toan'],
+    title: 'Chứng từ thu tiền (xuất từ Bravo)', roles: ['ke_toan'], src: 'bravo',
     note: 'Chứng từ đã có (trùng số chứng từ) được bỏ qua — nhập lại cùng tệp không bị cộng hai lần.',
     spec: { voucher_no: A('so chung tu', 'ma chung tu', 'so ct'), voucher_date: A('ngay chung tu', 'ngay thu', 'ngay ct', 'ngay'), contract: A('so hop dong', 'so hd', 'ma can'), amount: A('so tien', 'phat sinh co', 'tien thu'), content: A('noi dung', 'dien giai'), installment: A('dot', 'ky thu') },
     sample: [['PT-2026-000123', '20/10/2026', 'HĐMB-CTS-O-0101/2026', '100.000.000', 'Thu tiền đợt 2 căn CTS-O-0101', 2]],
-    async row(r, ctx) {
-      const no = String(r.voucher_no || '').trim().toUpperCase() || bad('Thiếu số chứng từ');
-      if (await ctx.db.one('SELECT 1 FROM kd_receipt WHERE upper(voucher_no) = $1', [no])) return 'trung';
-      const key = String(r.contract || '').trim();
-      const c = await ctx.db.one("SELECT c.id FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id WHERE (upper(c.number) = upper($1) OR upper(u.code) = upper($1)) AND c.status NOT IN ('huy','thanh_ly') AND c.kind <> 'hoan_thien' ORDER BY c.id DESC LIMIT 1", [key.replace(/\s+/g, '')]) || bad(`Không tìm thấy hợp đồng / căn «${key}»`);
-      const inst = r.installment ? await ctx.db.one('SELECT id FROM kd_installment WHERE contract_id = $1 AND active AND seq = $2', [c.id, parseInt(r.installment)]) : null;
-      await C.create('receipt', { voucher_no: no, voucher_date: r.voucher_date, contract_id: c.id, amount: r.amount, content: r.content, installment_id: inst?.id, src: 'bravo', synced_at: ctx.at }, ctx.user, { db: ctx.db, system: true, demo: ctx.demo });
-      return 'them';
-    },
-    async after(ctx) { if (!ctx.dry) await ctx.db.q("UPDATE kd_setting SET value = jsonb_set(coalesce(value,'{}'::jsonb), '{last_sync}', to_jsonb($1::text)), updated_at = now(), updated_by = $2 WHERE key = 'bravo'", [ctx.at, ctx.user.id]); },
+    row: receiptRow, after: receiptAfter,
   },
   users: {
     title: 'Tài khoản nhân viên', roles: ['admin'],
@@ -225,10 +304,10 @@ async function importFile(kind, file, user, { dry, demo } = {}) {
   return importRows(I, main, file, user, { dry, demo, kind, extra });
 }
 async function importRows(I, main, file, user, { dry, demo, kind, extra = new Map() }) {
-  const res = { kind, title: I.title, total: main.rows.length, them: 0, cap_nhat: 0, trung: 0, loi: 0, errors: [], dry: !!dry, cols: main.cols };
+  const res = { kind, title: I.title, total: main.rows.length, them: 0, cap_nhat: 0, trung: 0, bo_qua: 0, loi: 0, errors: [], dry: !!dry, cols: main.cols };
   const at = new Date().toISOString();
   await tx(async db => {
-    const ctx = { db, user, demo: !!demo, fileName: file.name, extra, at, dry };
+    const ctx = { db, user, demo: !!demo, fileName: file.name, extra, at, dry, src: I.src, res };
     for (const r of main.rows) {
       await db.q('SAVEPOINT r');
       try { const out = await I.row(r, ctx); res[out]++; await db.q('RELEASE SAVEPOINT r'); }
@@ -241,7 +320,7 @@ async function importRows(I, main, file, user, { dry, demo, kind, extra = new Ma
     if (I.after) await I.after(ctx);
     if (dry) throw Object.assign(new Error('dry'), { dryRun: true });
     await db.q('INSERT INTO kd_import (kind, file_name, by, total, ok, failed, errors, is_demo) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [kind, file.name, user.id, res.total, res.them + res.cap_nhat, res.loi, JSON.stringify(res.errors.slice(0, 500)), !!demo]);
-    await C.audit(db, 'import', null, 'nhap_' + kind, null, null, user, `${file.name}: thêm ${res.them}, cập nhật ${res.cap_nhat}, trùng ${res.trung}, lỗi ${res.loi}`);
+    await C.audit(db, 'import', null, 'nhap_' + kind, null, null, user, `${file.name}: thêm ${res.them}, cập nhật ${res.cap_nhat}, trùng ${res.trung}, bỏ qua ${res.bo_qua}, lỗi ${res.loi}`);
   }).catch(e => { if (!e.dryRun) throw e; });
   return res;
 }
@@ -255,6 +334,7 @@ function importTemplate(kind) {
     leads: ['Họ tên', 'Điện thoại', 'Email', 'Kênh', 'Dự án quan tâm', 'Nội dung trao đổi', 'Ngày liên hệ', 'Ngày nhắc tiếp', 'Nhân viên phụ trách'],
     contracts: ['Số hợp đồng', 'Loại hợp đồng', 'Mã căn', 'Điện thoại khách hàng', 'Đồng sở hữu', 'Giá trị hợp đồng', 'Ngày ký', 'Nhân viên phụ trách', 'Mã đại lý'],
     receipts: ['Số chứng từ', 'Ngày chứng từ', 'Số hợp đồng', 'Số tiền', 'Nội dung', 'Đợt'],
+    misa: ['Số chứng từ', 'Ngày hạch toán', 'Số tiền', 'Diễn giải', 'Số hợp đồng', 'Mã đối tượng', 'Tên đối tượng', 'Đợt'],
     users: ['Tên đăng nhập', 'Họ tên', 'Vai trò', 'Chức danh', 'Điện thoại', 'Email'],
   }[kind];
   const rows = [[`MẪU NHẬP: ${I.title.toUpperCase()}`], [I.note || 'Giữ nguyên dòng tiêu đề. Xóa dòng ví dụ trước khi nhập. Ngày: dd/mm/yyyy. Tiền: số, có thể có dấu chấm ngăn cách.'], LBL, ...I.sample];

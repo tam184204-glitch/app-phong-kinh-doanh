@@ -111,6 +111,7 @@ async function metaFor(user) {
   const settings = Object.fromEntries((await q("SELECT key, value FROM kd_setting WHERE key IN ('checklist_noxh','checklist_so_hong','checklist_ban_giao','schedule_presets','schedule_contents','sla_hours','handover_pay_pct','bravo','bsc')")).map(r => [r.key, r.value]));
   return {
     me: user, exportRoles: EXPORT_ROLES, roles: M.ROLES, menu, ents, virt: M.VIRT, piiRoles: M.PII_ROLES, sellers: M.SELLERS, settings, alertCat: V.ALERT_CAT, reports: V.REPORTS,
+    misaDir: user.role === 'admin' || user.role === 'truong_phong' ? (process.env.MISA_DIR || '') : (process.env.MISA_DIR ? 'có' : ''),
     imports: Object.fromEntries(Object.entries(IO.IMPORTS).filter(([, i]) => user.role === 'admin' || i.roles.includes(user.role)).map(([k, i]) => [k, { title: i.title, note: i.note }])),
     users: await q('SELECT id, full_name, role, title, active FROM kd_user ORDER BY active DESC, full_name'),
     projects: await q('SELECT id, code, name FROM kd_project ORDER BY code'), buildings: await q('SELECT id, project_id, code, name FROM kd_building ORDER BY code'),
@@ -576,6 +577,7 @@ async function start() {
   srv.listen(PORT, HOST, () => console.log(`App Phòng Kinh doanh: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`));
   const job = async () => { try { await tx(db => B.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.error('Việc chạy nền lỗi:', e.message); } };
   if (!process.env.NO_JOBS) { setTimeout(job, 3000); setInterval(job, 2 * 60e3); }
+  require('./misa-watch').startMisaWatch();   // MISA_DIR: tự nhập phiếu thu MISA từ thư mục chung
   return srv;
 }
 if (require.main === module) start().catch(e => { console.error(e); process.exit(1); });

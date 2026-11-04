@@ -616,8 +616,8 @@ def('contract_change', {
 
 // ===================== 06. CÔNG NỢ =====================
 def('receipt', {
-  title: 'Thu tiền (đồng bộ Bravo)', one: 'chứng từ', mod: '06', icon: 'fa-receipt', disp: 't.voucher_no',
-  note: 'Bravo là nguồn gốc số thực thu. Nhân viên kinh doanh không được sửa; kế toán nhập/đồng bộ và chỉ được hủy chứng từ có lý do.',
+  title: 'Thu tiền (MISA / Bravo)', one: 'chứng từ', mod: '06', icon: 'fa-receipt', disp: 't.voucher_no',
+  note: 'Số thực thu lấy từ sổ kế toán (MISA / Bravo): nhập tệp phiếu thu / báo có kế toán xuất ra (Trưởng phòng KD hoặc kế toán), hoặc app tự nhập từ thư mục chung. Không sửa tay số thu; sai thì kế toán hủy chứng từ có lý do.',
   c: ['ke_toan'], u: [], d: [], order: 't.voucher_date desc', search: ['voucher_no', 'content'], fields: [
     { k: 'voucher_no', l: 'Mã chứng từ', t: 'text', req: 1, uniq: 1 },
     { k: 'voucher_date', l: 'Ngày thu', t: 'date', req: 1 },
@@ -625,7 +625,7 @@ def('receipt', {
     money('amount', 'Số tiền', { req: 1 }),
     { k: 'content', l: 'Nội dung thanh toán', t: 'text' },
     { k: 'installment_id', l: 'Khoản phải thu', t: 'ref', ref: 'installment', help: 'Để trống = tự phân bổ vào kỳ đến hạn sớm nhất' },
-    { k: 'src', l: 'Nguồn', t: 'sel', ro: 1, def: 'thu_cong', o: [['bravo', 'Bravo', 'b'], ['thu_cong', 'Kế toán nhập', 's']] },
+    { k: 'src', l: 'Nguồn', t: 'sel', ro: 1, def: 'thu_cong', o: [['bravo', 'Bravo', 'b'], ['misa', 'MISA', 'v'], ['thu_cong', 'Kế toán nhập', 's']] },
     { k: 'synced_at', l: 'Ngày chốt dữ liệu', t: 'dt', ro: 1 },
     { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'hop_le', o: [['hop_le', 'Hợp lệ', 'g'], ['huy', 'Đã hủy', 'r']] },
     { k: 'void_reason', l: 'Lý do hủy', t: 'text', ro: 1 },
@@ -957,7 +957,7 @@ const MENU = [
   ['09', 'Chăm sóc khách hàng', 'fa-headset', [['e:ticket'], ['e:notice']]],
   ['10', 'Đại lý & cộng tác viên', 'fa-people-arrows', [['e:agent'], ['e:agent_alloc'], ['e:commission_policy'], ['e:commission']]],
   ['11', 'Báo cáo quản trị', 'fa-chart-pie', [['reports', 'Báo cáo tổng hợp'], ['e:report'], ['e:target']]],
-  ['12', 'Quản trị hệ thống', 'fa-gear', [['users', 'Tài khoản – phân quyền'], ['catalog', 'Danh mục dùng chung'], ['flows', 'Luồng phê duyệt'], ['e:template'], ['audit', 'Nhật ký thao tác'], ['integr', 'Tích hợp Bravo / BSC']]],
+  ['12', 'Quản trị hệ thống', 'fa-gear', [['users', 'Tài khoản – phân quyền'], ['catalog', 'Danh mục dùng chung'], ['flows', 'Luồng phê duyệt'], ['e:template'], ['audit', 'Nhật ký thao tác'], ['integr', 'Tích hợp MISA / Bravo / BSC']]],
 ];
 // màn tự dựng chỉ mở cho các vai trò
 const VIEW_ROLES = {
