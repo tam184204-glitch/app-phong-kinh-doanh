@@ -341,6 +341,17 @@ function schedEditor(el, rows, { total, base, first, maint, mdot } = {}) {   // 
   const C = first ? M.settings.schedule_contents || [] : [];   // gợi ý nội dung từng đợt (hợp đồng)
   // «Sau 60 ngày…», «Trong 60 ngày…», «Trong vòng 60 (sáu mươi) ngày…» = số ngày sau ngày ký; «… ngày kể từ ngày Bên Bán…» theo sự kiện khác nên không tính
   const nDays = s => +(/(?:sau|trong)(?:\s+vòng)?\s+(\d+)(?:\s*\([^)]*\))?\s+ngày(?!\s+kể từ ngày\s+(?!ký))/i.exec(s || '')?.[1] || 0);
+  // tỷ lệ thanh toán ghi trong nội dung («… thanh toán 30% giá trị căn hộ»): số % đầu tiên KHÔNG thuộc phí bảo trì / thuế
+  // (bỏ «2% phí bảo trì», «thuế VAT 10%», «10% thuế»); trả { v, at, len } để đổi ngược khi sửa ô Tỷ lệ
+  const pctIn = s0 => {
+    const s = String(s0 || '');
+    for (const m of s.matchAll(/(\d{1,3}(?:[.,]\d{1,2})?)\s*%/g)) {
+      const before = s.slice(Math.max(0, m.index - 14), m.index).toLowerCase(), after = s.slice(m.index + m[0].length, m.index + m[0].length + 22).toLowerCase();
+      if (/(phí\s*)?bảo\s*trì|thuế|vat|gtgt/.test(after) || /thuế|vat|gtgt|lãi/.test(before)) continue;
+      const v = +m[1].replace(',', '.'); if (v > 0 && v <= 100) return { v, at: m.index, len: m[1].length };
+    }
+    return null;
+  };
   const useC = (r, c) => { const d = first?.(); Object.assign(r, { name: c.name, pct: c.pct, amount: null, _days: c.days || 0, due_on: c.days && d ? addDays(d, c.days) : c.days === 0 ? r.due_on || d : '' }); };
   if (first?.()) for (const r of R) { const n = nDays(r.name); if (n && addDays(first(), n) === r.due_on) r._days = n; }   // lịch đã lưu: hạn đúng «Sau N ngày» thì vẫn đi theo ngày ký
   const draw = () => {
@@ -374,10 +385,27 @@ function schedEditor(el, rows, { total, base, first, maint, mdot } = {}) {   // 
     const d = e.target.dataset;
     if (d.sug !== undefined) { sync(); if (e.target.value) useC(R[+d.sug], C[+e.target.value]); draw(); }
     if (d.k === 'due_on') { sync(); delete R[+e.target.closest('tr').dataset.i]._days; }   // sửa tay hạn đợt thì không còn tự theo ngày ký
-    if (d.k === 'pct' || d.k === 'amount') { sync(); draw(); }
+    if (d.k === 'pct') {   // sửa ô Tỷ lệ → số % trong nội dung đổi theo (nội dung có ghi tỷ lệ)
+      const i = +e.target.closest('tr').dataset.i, old = R[i]?.name; sync();
+      const f = pctIn(old), v = R[i].pct; if (f && v != null && v !== f.v) R[i].name = old.slice(0, f.at) + fnum(v) + old.slice(f.at + f.len);
+      R[i].amount = null; draw();
+    }
+    if (d.k === 'amount') { sync(); draw(); }
   });
   // sửa «Sau 60 ngày» thành «Sau 65 ngày» trong nội dung → hạn đổi ngay theo ngày ký
   el.addEventListener('input', e => {
+    if (e.target.dataset.k === 'name') {   // «… thanh toán 30% …» → sửa thành 100% thì Tỷ lệ = 100, Số tiền tính lại
+      const tr = e.target.closest('tr'), r = R[+tr.dataset.i], f = pctIn(e.target.value);
+      if (r && f && f.v !== r.pct) {
+        r.pct = f.v; r.amount = null; $('[data-k="pct"]', tr).value = fnum(f.v);
+        const tot = totalOf() || 0, mt = +(maint?.() || 0), a = $('[data-k="amount"]', tr);
+        a.value = ''; a.placeholder = tot ? fm(Math.round((mt > 0 ? tot - mt : tot) * f.v / 100)) : '';
+        // dòng Tổng cập nhật tại chỗ (không vẽ lại bảng: đang gõ, và bấm nút ngay sau khi rời ô không bị mất)
+        const base = mt > 0 ? tot - mt : tot, sum = R.reduce((x, q) => x + (+q.amount || (q.pct ? Math.round(base * q.pct / 100) : 0)), 0) + (mt > 0 ? mt : 0), ft = $$('tfoot td.num', el), lech = !!tot && Math.abs(sum - tot) > 1000 * (R.length + 1);
+        if (ft[0]) ft[0].textContent = fnum(R.reduce((x, q) => x + (+q.pct || 0), 0)) + '%';
+        if (ft[1]) { ft[1].textContent = fm(sum); ft[1].classList.toggle('neg', lech); ft[1].classList.toggle('pos', !lech); }
+      }
+    }
     if (e.target.dataset.k !== 'name' || !first) return;
     const tr = e.target.closest('tr'), i = +tr.dataset.i, n = nDays(e.target.value), d = first();
     if (!i || !/^\d{4}-\d{2}-\d{2}$/.test(d || '')) return;
