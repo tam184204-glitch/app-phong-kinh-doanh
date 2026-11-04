@@ -66,7 +66,7 @@ const safeName = s => String(s).replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').slice(0, 
 // đổi vai trò bằng menu tên người dùng. Vận hành thật: bỏ NO_LOGIN trong .env.
 const NO_LOGIN = /^(1|true|yes)$/i.test(process.env.NO_LOGIN || '');
 const NO_LOGIN_USER = process.env.NO_LOGIN_USER || 'thu.truongphong';
-const USER_COLS = 'u.id, u.username, u.full_name, u.role, u.title, u.must_change, u.is_trial';
+const USER_COLS = 'u.id, u.username, u.full_name, u.role, u.title, u.must_change, u.is_trial, u.status, u.status_msg, u.prefs';
 async function userFromReq(req) {
   const sid = cookies(req).kd_sid;
   const u = sid && await one(`SELECT ${USER_COLS} FROM kd_session s JOIN kd_user u ON u.id = s.user_id
@@ -110,7 +110,7 @@ async function metaFor(user) {
   const menu = M.MENU.map(([no, t, icon, items]) => [no, t, icon, items.map(([id, l, code]) => { const e = id.startsWith('e:') && ents[id.slice(2).split('?')[0]]; return e ? (e.perm.r ? [id, l || e.title, e.icon, e.code] : null) : viewOk(id) ? [id, l, null, code] : null; }).filter(Boolean)]).filter(m => m[3].length);
   const settings = Object.fromEntries((await q("SELECT key, value FROM kd_setting WHERE key IN ('checklist_noxh','checklist_so_hong','checklist_ban_giao','schedule_presets','schedule_contents','sla_hours','handover_pay_pct','bravo','bsc')")).map(r => [r.key, r.value]));
   return {
-    me: user, exportRoles: EXPORT_ROLES, roles: M.ROLES, menu, ents, virt: M.VIRT, piiRoles: M.PII_ROLES, sellers: M.SELLERS, settings, alertCat: V.ALERT_CAT, reports: V.REPORTS,
+    me: { ...user, avatar: (await one('SELECT avatar FROM kd_user WHERE id = $1', [user.id]))?.avatar || null }, exportRoles: EXPORT_ROLES, roles: M.ROLES, menu, ents, virt: M.VIRT, piiRoles: M.PII_ROLES, sellers: M.SELLERS, settings, alertCat: V.ALERT_CAT, reports: V.REPORTS,
     misaDir: user.role === 'admin' || user.role === 'truong_phong' ? (process.env.MISA_DIR || '') : (process.env.MISA_DIR ? 'có' : ''),
     imports: Object.fromEntries(Object.entries(IO.IMPORTS).filter(([, i]) => user.role === 'admin' || i.roles.includes(user.role)).map(([k, i]) => [k, { title: i.title, note: i.note }])),
     users: await q('SELECT id, full_name, role, title, active FROM kd_user ORDER BY active DESC, full_name'),
@@ -175,6 +175,31 @@ R('POST', '/api/password', async (req, res, u) => {
   send(res, 200, { ok: true });
 }, { allowMustChange: true });
 R('GET', '/api/meta', async (req, res, u) => send(res, 200, await metaFor(u)), { allowMustChange: true });
+// --- tài khoản cá nhân: ai cũng tự sửa được hồ sơ của mình (chức danh / bộ phận / vai trò do Quản trị đặt) ---
+const STATUS = ['lam_viec', 'ban', 'hop', 'cong_tac', 'vang', 'nghi'];
+const PROFILE_COLS = 'id, username, full_name, role, title, dept, phone, email, bio, status, status_msg, prefs, avatar, cover, last_login, created_at, is_trial';
+const IMG = (v, max, l) => { if (v == null || v === '') return null; if (typeof v !== 'string' || !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(v)) bad(`${l}: tệp ảnh không hợp lệ`); if (v.length > max) bad(`${l} quá lớn — chọn ảnh khác`); return v; };
+R('GET', '/api/profile', async (req, res, u) => send(res, 200, await one(`SELECT ${PROFILE_COLS} FROM kd_user WHERE id = $1`, [u.id])));
+R('PUT', '/api/profile', async (req, res, u) => {
+  const b = await readJson(req), old = await one(`SELECT ${PROFILE_COLS} FROM kd_user WHERE id = $1`, [u.id]), d = {};
+  const txt = (k, max, l) => { if (!(k in b)) return; const v = b[k] == null ? '' : String(b[k]).trim(); if (v.length > max) bad(`${l} tối đa ${max} ký tự`); d[k] = v || null; };
+  txt('full_name', 80, 'Họ tên'); if ('full_name' in d && !d.full_name) bad('Họ tên không được để trống');
+  txt('phone', 20, 'Điện thoại'); if (d.phone && !/^[0-9 +().-]{8,20}$/.test(d.phone)) bad('Số điện thoại không hợp lệ');
+  txt('email', 120, 'Email'); if (d.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email)) bad('Email không hợp lệ');
+  txt('bio', 300, 'Giới thiệu'); txt('status_msg', 120, 'Lời nhắn trạng thái');
+  if (u.role === 'admin') { txt('title', 80, 'Chức danh'); txt('dept', 80, 'Bộ phận'); }
+  if ('status' in b) { if (b.status && !STATUS.includes(b.status)) bad('Trạng thái không hợp lệ'); d.status = b.status || null; }
+  if ('avatar' in b) d.avatar = IMG(b.avatar, 400e3, 'Ảnh đại diện');
+  if ('cover' in b) d.cover = IMG(b.cover, 1.6e6, 'Ảnh bìa');
+  if ('prefs' in b) { if (b.prefs != null && (typeof b.prefs !== 'object' || Array.isArray(b.prefs))) bad('Cài đặt không hợp lệ'); const s = JSON.stringify(b.prefs || {}); if (s.length > 4000) bad('Cài đặt quá lớn'); d.prefs = s; }
+  const keys = Object.keys(d).filter(k => (k === 'prefs' ? JSON.stringify(old.prefs || {}) : old[k] ?? null) !== d[k]);
+  if (keys.length) {
+    await q(`UPDATE kd_user SET ${keys.map((k, i) => `${k} = $${i + 1}${k === 'prefs' ? '::jsonb' : ''}`).join(', ')} WHERE id = $${keys.length + 1}`, [...keys.map(k => d[k]), u.id]);
+    const sh = (k, v) => ['avatar', 'cover'].includes(k) ? (v ? 'ảnh mới' : 'không có') : k === 'prefs' ? '(cài đặt)' : v;   // nhật ký: không chép nguyên ảnh
+    await C.audit({ q }, 'user', u.id, 'cap_nhat_ho_so', Object.fromEntries(keys.map(k => [k, sh(k, old[k])])), Object.fromEntries(keys.map(k => [k, sh(k, d[k])])), u);
+  }
+  send(res, 200, await one(`SELECT ${PROFILE_COLS} FROM kd_user WHERE id = $1`, [u.id]));
+});
 // phiên bản giao diện = giờ sửa các tệp public: trang đang mở so với số này, khác thì báo «Có bản cập nhật mới» (giao diện chỉ nạp 1 lần khi mở trang)
 R('GET', '/api/ver', (req, res) => {
   let v = ''; try { v = ['index.html', 'ui.js', 'screens.js', 'ai.js', 'app.css'].map(f => fs.statSync(path.join(PUBLIC, f)).mtimeMs.toFixed(0)).join('.'); } catch {}   // bản demo không có tệp → bỏ qua

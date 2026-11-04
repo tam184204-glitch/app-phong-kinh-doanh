@@ -43,10 +43,11 @@ async function boot(mustChange) {
   try { M = await api('GET', '/api/meta'); } catch { return loginView(); }
   if (mustChange || M.me.must_change) { document.body.innerHTML = ''; return forcePassword(true); }
   document.body.classList.toggle('no-xr', !M.exportRoles.includes(M.me.role));
-  document.body.innerHTML = `<header class="top"><button class="ibtn burger" id="burger" aria-label="Menu">${ico('fa-bars')}</button><a class="brand" href="#/v/dashboard"><img src="/logo.png" alt="Cát Tường"><div><b>CAT TUONG GROUP</b><span>Phòng Kinh doanh</span></div></a>
+  applyPrefs();
+  document.body.innerHTML = `<header class="top"><button class="ibtn burger" id="burger" aria-label="Menu">${ico('fa-bars')}</button><a class="brand" href="${homeHash()}"><img src="/logo.png" alt="Cát Tường"><div><b>CAT TUONG GROUP</b><span>Phòng Kinh doanh</span></div></a>
     <div class="gsearch"><i class="fa-solid fa-magnifying-glass"></i><input id="gs" type="search" placeholder="Tìm mã căn, khách hàng, số điện thoại, số hợp đồng…" autocomplete="off"><div class="gres hidden" id="gr"></div></div>
     <div class="topact"><button class="ibtn ai-btn" id="bAi" title="Trợ lý AI tra cứu">${ico('fa-wand-magic-sparkles')}</button><button class="ibtn" id="bApr" title="Hộp phê duyệt">${ico('fa-stamp')}<span class="dot a hidden" id="nApr"></span></button><button class="ibtn" id="bAl" title="Cảnh báo / nhắc việc">${ico('fa-bell')}<span class="dot hidden" id="nAl"></span></button>
-    <div class="me" id="meBtn"><span class="av">${esc(M.me.full_name.split(' ').slice(-1)[0].slice(0, 2).toUpperCase())}</span><div><b>${esc(M.me.full_name)}</b><small>${esc(roleName(M.me.role))}</small></div></div></div></header>
+    <div class="me" id="meBtn" title="Tài khoản cá nhân">${meInner()}</div></div></header>
     <nav class="side" id="side"><h6>DANH MỤC PHÂN HỆ</h6>${M.menu.map(([no, t, icon, items]) => items.length === 1   // phân hệ chỉ một màn: bấm thẳng tên phân hệ, không xổ mục con
       ? `<div class="mod" data-mod="${no}"><a class="solo" href="${items[0][0].startsWith('e:') ? '#/e/' + items[0][0].slice(2) : '#/v/' + items[0][0]}" data-nav="${items[0][0]}"><span class="n">${no}</span>${esc(t)}</a></div>`
       : `<div class="mod" data-mod="${no}"><button>${`<span class="n">${no}</span>`}${esc(t)}<i class="fa-solid fa-chevron-right chev"></i></button><div class="items">${items.map(([id, l]) => `<a href="${id.startsWith('e:') ? '#/e/' + id.slice(2) : '#/v/' + id}" data-nav="${id}">${esc(l)}</a>`).join('')}</div></div>`).join('')}
@@ -60,16 +61,23 @@ async function boot(mustChange) {
   $('#meBtn').onclick = e => {
     e.stopPropagation(); if ($('.menu-pop')) return $('.menu-pop').remove();
     const p = document.createElement('div'); p.className = 'menu-pop';
-    const who = `<div style="padding:8px 12px"><b>${esc(M.me.full_name)}</b><div class="small muted">${esc(M.me.username)} · ${esc(roleName(M.me.role))}</div></div>`;
+    const who = `<div class="mp-who">${avHtml(M.me, 'av')}<div><b>${esc(M.me.full_name)}</b><div class="small muted">${esc(M.me.username)} · ${esc(roleName(M.me.role))}</div></div></div>
+      <div class="mp-st">${STATUS.map(([k, l, c, i]) => `<button type="button" data-st="${k}" class="${(M.me.status || 'lam_viec') === k ? 'on' : ''}" title="${esc(l)}"><i class="sdot s-${k}"></i>${esc(l.split(' –')[0])}</button>`).join('')}</div>
+      <button data-go="#/v/profile">${ico('fa-id-card')} Tài khoản cá nhân</button><button data-go="#/v/profile?tab=set">${ico('fa-sliders')} Cài đặt hệ thống</button>`;
+    const pop = async ev => {   // dùng chung 2 kiểu menu: đổi trạng thái nhanh / mở trang cá nhân
+      const s = ev.target.closest('[data-st]'), g = ev.target.closest('[data-go]');
+      if (g) { p.remove(); location.hash = g.dataset.go; return true; }
+      if (s) { try { await saveProfile({ status: s.dataset.st }); toast('Đã đổi trạng thái: ' + STATUS.find(x => x[0] === s.dataset.st)[1]); } catch (x) { toast(x.message, true); } p.remove(); return true; }
+    };
     if (M.noLogin) {   // chạy thử không đăng nhập: đổi vai trò bằng một cú bấm
       p.classList.add('as-pop');
       p.innerHTML = `${who}<div class="small muted" style="padding:6px 12px 4px">${ico('fa-user-gear')} Xem app với vai trò</div>${M.users.filter(u => u.active).map(u => `<button data-as="${u.id}" class="${u.id === M.me.id ? 'on' : ''}">${ico(u.id === M.me.id ? 'fa-circle-check' : 'fa-user')} ${esc(u.full_name)}<small class="muted"> · ${esc(roleName(u.role))}</small></button>`).join('')}`;
       document.body.append(p);
-      p.onclick = async ev => { const b = ev.target.closest('[data-as]'); if (!b || +b.dataset.as === M.me.id) return; try { await api('POST', `/api/as/${b.dataset.as}`, {}); await window.__ctgBeforeReload?.(); location.reload(); } catch (x) { toast(x.message, true); } };
+      p.onclick = async ev => { if (await pop(ev)) return; const b = ev.target.closest('[data-as]'); if (!b || +b.dataset.as === M.me.id) return; try { await api('POST', `/api/as/${b.dataset.as}`, {}); await window.__ctgBeforeReload?.(); location.reload(); } catch (x) { toast(x.message, true); } };
       return;
     }
     p.innerHTML = `${who}<button id="mPw">${ico('fa-key')} Đổi mật khẩu</button><button id="mOut">${ico('fa-right-from-bracket')} Đăng xuất</button>`;
-    document.body.append(p);
+    document.body.append(p); p.addEventListener('click', pop);
     $('#mPw').onclick = () => { p.remove(); forcePassword(); };
     $('#mOut').onclick = async () => { await api('POST', '/api/logout', {}); await window.__ctgBeforeReload?.(); location.hash = ''; location.reload(); };
   };
@@ -77,7 +85,7 @@ async function boot(mustChange) {
   globalSearch();
   window.onhashchange = route;
   route();
-  updateBadges(); setInterval(updateBadges, 120e3);
+  badgeTimer();
   ST.verT ||= setInterval(checkVer, 60e3);
 }
 // máy chủ có bản giao diện mới trong lúc trang đang mở (giao diện chỉ nạp 1 lần khi mở trang): báo để người dùng tự tải lại, không tự tải kẻo mất phần đang nhập
@@ -96,7 +104,7 @@ async function checkVer() {
 async function updateBadges() {
   try {
     const [a, al] = await Promise.all([api('GET', '/api/approvals'), api('GET', '/api/alerts')]);
-    const n1 = a.pending.length, n2 = al.filter(x => x.lvl === 'r').length || al.length;
+    const P = prefs(), n1 = P.badgeApr ? a.pending.length : 0, n2 = P.badgeAl ? al.filter(x => x.lvl === 'r').length || al.length : 0;
     $('#nApr').textContent = n1; $('#nApr').classList.toggle('hidden', !n1);
     $('#nAl').textContent = n2 > 99 ? '99+' : n2; $('#nAl').classList.toggle('hidden', !n2);
   } catch { }
@@ -118,11 +126,11 @@ function globalSearch() {
 async function route() {
   closeDetail(); document.body.classList.remove('nav-open'); ST.reload = null; checkVer();
   const tok = ST.nav = (ST.nav || 0) + 1;   // màn cũ còn tải dở mà người dùng đã chuyển màn: bỏ qua lỗi của nó
-  const h = location.hash.slice(1) || '/v/dashboard';
+  const h = location.hash.slice(1) || homeHash().slice(1);
   const [p, qs] = h.split('?'); const params = Object.fromEntries(new URLSearchParams(qs || ''));
   const [, kind, name] = p.split('/');
   const main = $('#main'); if (!main) return;
-  main.onclick = null; main.innerHTML = '<div class="empty">Đang tải…</div>';
+  main.onclick = main.onchange = main.onkeydown = null; main.innerHTML = '<div class="empty">Đang tải…</div>';
   const navId = kind === 'e' ? ({ project: 'projects', building: 'projects', unit: 'products', cancel_req: 'payouts' }[name] || 'e:' + name + (params.group ? '?group=' + params.group : '')) : name === 'unit360' || name === 'cust360' ? 'lookup' : name === 'pricesheet' ? 'e:price_policy' : name;
   $$('[data-nav]').forEach(a => a.classList.toggle('on', a.dataset.nav === navId));
   const on = $(`[data-nav="${navId}"]`); $$('.mod').forEach(m => m.classList.remove('cur'));
@@ -1391,3 +1399,166 @@ V.loans = async main => {
 
 // ---------- khởi động ----------
 if (location.hash.startsWith('#/login')) loginView(); else boot();
+
+// ---------- tài khoản cá nhân (04/11/2026): đổi tên, ảnh đại diện, ảnh bìa, trạng thái, cài đặt giao diện riêng ----------
+const STATUS = [['lam_viec', 'Đang làm việc', 'g', 'fa-circle-check'], ['ban', 'Bận – không làm phiền', 'r', 'fa-circle-minus'], ['hop', 'Đang họp', 'a', 'fa-people-group'],
+  ['cong_tac', 'Đi công tác / công trình', 'b', 'fa-car-side'], ['vang', 'Tạm vắng', 'v', 'fa-mug-hot'], ['nghi', 'Nghỉ phép', 's', 'fa-umbrella-beach']];
+const PREF0 = { theme: 'light', accent: 'cobalt', zoom: 1, dense: false, anim: true, deco: true, home: 'dashboard', badgeApr: true, badgeAl: true, refresh: 2 };
+const ACCENTS = { cobalt: ['Xanh Cát Tường', '#1E4E8C', '#143866', '#2D7DD2', '#EEF4FB', '#DCE8F6'], teal: ['Xanh ngọc', '#0F766E', '#0B5550', '#14A39A', '#E6F6F4', '#C9ECE8'],
+  sage: ['Xanh lá', '#2F6B3A', '#1F4D28', '#4E9A5B', '#EDF6EE', '#D4EAD6'], violet: ['Tím', '#5B3FA8', '#412C7C', '#7C5CD6', '#F2EEFC', '#E0D7F7'],
+  wine: ['Đỏ rượu', '#9B2C3A', '#6F1E29', '#C2465A', '#FBEFF1', '#F3D6DB'], slate: ['Xám than', '#334155', '#1E293B', '#56657A', '#F1F4F8', '#DFE5EE'] };
+const prefs = () => ({ ...PREF0, ...(M?.me?.prefs || {}) });
+const homeHash = () => { const h = prefs().home || 'dashboard'; return h.startsWith('e:') ? '#/e/' + h.slice(2) : '#/v/' + h; };
+const initials = n => esc(String(n || '?').trim().split(/\s+/).slice(-1)[0].slice(0, 2).toUpperCase());
+const avHtml = (u, cls = 'av') => `<span class="${cls}">${u.avatar ? `<img src="${u.avatar}" alt="">` : initials(u.full_name)}<i class="sdot s-${u.status || 'lam_viec'}" title="${esc(STATUS.find(s => s[0] === (u.status || 'lam_viec'))[1])}"></i></span>`;
+const meInner = () => `${avHtml(M.me)}<div><b>${esc(M.me.full_name)}</b><small>${M.me.status_msg ? esc(M.me.status_msg) : esc(roleName(M.me.role))}</small></div>`;
+function applyPrefs(p = prefs()) {
+  const r = document.documentElement, a = ACCENTS[p.accent] || ACCENTS.cobalt;
+  ['--cobalt', '--cobalt-d', '--cobalt-l', '--cobalt-50', '--cobalt-100'].forEach((v, i) => p.accent === 'cobalt' ? r.style.removeProperty(v) : r.style.setProperty(v, a[i + 1]));
+  const mq = matchMedia('(prefers-color-scheme: dark)');
+  r.dataset.theme = p.theme === 'dark' || (p.theme === 'auto' && mq.matches) ? 'dark' : 'light';
+  if (!applyPrefs.mq) { applyPrefs.mq = 1; mq.addEventListener?.('change', () => applyPrefs()); }
+  r.style.zoom = +p.zoom && +p.zoom !== 1 ? p.zoom : '';
+  document.body.classList.toggle('dense', !!p.dense); document.body.classList.toggle('no-anim', !p.anim); document.body.classList.toggle('no-deco', !p.deco);
+}
+function badgeTimer() {
+  clearInterval(ST.badgeT); updateBadges();
+  const m = +prefs().refresh; if (m > 0) ST.badgeT = setInterval(updateBadges, m * 60e3);
+}
+async function saveProfile(d) {
+  const r = await api('PUT', '/api/profile', d);
+  Object.assign(M.me, { full_name: r.full_name, title: r.title, status: r.status, status_msg: r.status_msg, prefs: r.prefs, avatar: r.avatar });
+  const u = M.users.find(x => x.id === M.me.id); if (u) Object.assign(u, { full_name: r.full_name, title: r.title });
+  if ($('#meBtn')) $('#meBtn').innerHTML = meInner();
+  return r;
+}
+// chọn ảnh → khung cắt (kéo để chỉnh vị trí, thanh trượt để phóng to) → data URL JPEG đã thu nhỏ
+function pickFile(accept = 'image/png,image/jpeg,image/webp,image/gif') {
+  return new Promise(ok => { const i = document.createElement('input'); i.type = 'file'; i.accept = accept; i.onchange = () => ok(i.files[0] || null); i.click(); });
+}
+function cropImage(file, { w, h, fw, fh, round, title, q = .86 }) {
+  return new Promise((done, fail) => {
+    if (!/^image\//.test(file.type)) return fail(new Error('Tệp không phải ảnh'));
+    if (file.size > 25e6) return fail(new Error('Ảnh quá lớn (tối đa 25MB)'));
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onerror = () => { URL.revokeObjectURL(url); fail(new Error('Không đọc được tệp ảnh')); };
+    img.onload = () => {
+      const nw = img.naturalWidth, nh = img.naturalHeight, s0 = Math.max(fw / nw, fh / nh);
+      let z = 1, ox = (fw - nw * s0) / 2, oy = (fh - nh * s0) / 2, res = null;
+      const m = modal({ title, narrow: fw <= 320, body: `<div class="crop-wrap"><div class="crop ${round ? 'round' : ''}" style="width:${fw}px;height:${fh}px"><img src="${url}" alt="" draggable="false"></div></div>
+        <div class="row mt" style="justify-content:center;gap:10px">${ico('fa-image')}<input type="range" id="cz" min="1" max="4" step=".01" value="1" style="width:220px">${ico('fa-magnifying-glass-plus')}</div>
+        <div class="small muted center mt">Kéo ảnh để chỉnh vị trí · kéo thanh trượt để phóng to</div>`,
+        foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="cOk">${ico('fa-check')} Dùng ảnh này</button>`, onClose: () => { URL.revokeObjectURL(url); done(res); } });
+      const im = $('.crop img', m.el), box = $('.crop', m.el);
+      const draw = () => { const W = nw * s0 * z, H = nh * s0 * z; ox = Math.min(0, Math.max(fw - W, ox)); oy = Math.min(0, Math.max(fh - H, oy)); im.style.cssText = `width:${W}px;height:${H}px;transform:translate(${ox}px,${oy}px)`; };
+      draw();
+      $('#cz', m.el).oninput = e => { const z2 = +e.target.value, cx = fw / 2, cy = fh / 2; ox = cx - (cx - ox) * z2 / z; oy = cy - (cy - oy) * z2 / z; z = z2; draw(); };
+      box.onpointerdown = e => { box.setPointerCapture(e.pointerId); const x0 = e.clientX - ox, y0 = e.clientY - oy; box.onpointermove = ev => { ox = ev.clientX - x0; oy = ev.clientY - y0; draw(); }; box.onpointerup = () => box.onpointermove = null; };
+      box.onwheel = e => { e.preventDefault(); const r = $('#cz', m.el); r.value = Math.min(4, Math.max(1, +r.value - e.deltaY / 600)); r.oninput({ target: r }); };
+      $('#cOk', m.el).onclick = () => {
+        const c = document.createElement('canvas'), k = w / fw; c.width = w; c.height = h;
+        const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.imageSmoothingQuality = 'high';
+        g.drawImage(img, ox * k, oy * k, nw * s0 * z * k, nh * s0 * z * k);
+        res = c.toDataURL('image/jpeg', q); m.close();
+      };
+    };
+    img.src = url;
+  });
+}
+
+V.profile = async (main, params) => {
+  let P = await api('GET', '/api/profile'), tab = ['info', 'status', 'set', 'sec'].includes(params.tab) ? params.tab : 'info';
+  const isAdmin = M.me.role === 'admin', sysLinks = (M.menu.find(m => m[0] === '12')?.[3] || []);
+  const stOf = k => STATUS.find(s => s[0] === (k || 'lam_viec'));
+  const seg = (k, opts, v) => `<div class="segc" data-pref="${k}">${opts.map(([val, l, i]) => `<button type="button" data-v="${val}" class="${String(v) === String(val) ? 'on' : ''}">${i ? ico(i) + ' ' : ''}${l}</button>`).join('')}</div>`;
+  const sw = (k, v) => `<label class="sw"><input type="checkbox" data-pref="${k}" ${v ? 'checked' : ''}><span></span></label>`;
+  const row = (l, sub, ctl) => `<div class="pf-row"><div><b>${l}</b>${sub ? `<div class="small muted">${sub}</div>` : ''}</div><div class="pf-ctl">${ctl}</div></div>`;
+  const homes = M.menu.flatMap(([, t, , items]) => items.map(([id, l]) => [id, `${t} › ${l}`]));
+
+  const hero = () => `<div class="card pf-hero">
+    <div class="pf-cover ${P.cover ? '' : 'empty'}" ${P.cover ? `style="background-image:url('${P.cover}')"` : ''}>
+      <div class="pf-cbtns"><button class="btn sm glass" id="pfCover">${ico('fa-camera')} ${P.cover ? 'Đổi ảnh bìa' : 'Cập nhật ảnh bìa'}</button>${P.cover ? `<button class="btn sm glass" id="pfCoverX" title="Gỡ ảnh bìa">${ico('fa-trash-can')}</button>` : ''}</div></div>
+    <div class="pf-id">
+      <div class="pf-avw">${avHtml(P, 'pf-av')}<button class="pf-cam" id="pfAv" title="Đổi ảnh đại diện">${ico('fa-camera')}</button></div>
+      <div class="pf-name"><h1>${esc(P.full_name)}${P.is_trial ? ' <span class="tag demo">thử</span>' : ''}</h1>
+        <div class="muted">${[P.title, roleName(P.role), P.dept].filter(Boolean).map(esc).join(' · ')}</div>
+        <div class="pf-stline">${pill(stOf(P.status)[1], stOf(P.status)[2])}${P.status_msg ? `<span class="small">“${esc(P.status_msg)}”</span>` : ''}</div></div>
+      <div class="pf-acts">${P.avatar ? `<button class="btn sm ghost" id="pfAvX">${ico('fa-user-slash')} Gỡ ảnh đại diện</button>` : ''}</div>
+    </div>
+    <div class="tabs">${[['info', 'Thông tin cá nhân', 'fa-id-card'], ['status', 'Trạng thái', 'fa-signal'], ['set', 'Cài đặt hệ thống', 'fa-sliders'], ['sec', 'Bảo mật & đăng nhập', 'fa-shield-halved']].map(([k, l, i]) => `<button data-t="${k}" class="${tab === k ? 'on' : ''}">${ico(i)} ${l}</button>`).join('')}</div></div>`;
+
+  const body = () => {
+    if (tab === 'info') {
+      const ro = v => `<div class="ro">${esc(v || '—')}</div>`;
+      return `<div class="card mt"><div class="hd"><h3>${ico('fa-id-card')} Thông tin cá nhân</h3></div><div class="bd"><div id="pfErr"></div><form class="form" id="pfForm">
+        <div class="fld"><label>Họ và tên<span class="req">*</span></label><input name="full_name" maxlength="80" value="${esc(P.full_name)}"><div class="help">Tên hiển thị trên app, phiếu trình duyệt, nhật ký</div></div>
+        <div class="fld"><label>Tên đăng nhập</label>${ro(P.username)}</div>
+        <div class="fld"><label>Chức danh</label>${isAdmin ? `<input name="title" maxlength="80" value="${esc(P.title || '')}">` : ro(P.title)}</div>
+        <div class="fld"><label>Bộ phận</label>${isAdmin ? `<input name="dept" maxlength="80" value="${esc(P.dept || '')}">` : ro(P.dept)}</div>
+        <div class="fld"><label>Điện thoại</label><input name="phone" maxlength="20" inputmode="tel" value="${esc(P.phone || '')}"></div>
+        <div class="fld"><label>Email</label><input name="email" maxlength="120" inputmode="email" value="${esc(P.email || '')}"></div>
+        <div class="fld"><label>Vai trò</label>${ro(roleName(P.role))}</div>
+        <div class="fld"><label>Ngày tạo tài khoản</label>${ro(dmyhm(P.created_at))}</div>
+        <div class="fld wide"><label>Giới thiệu ngắn</label><textarea name="bio" maxlength="300" placeholder="VD: Phụ trách khách hàng dự án CTS tòa O, P">${esc(P.bio || '')}</textarea></div>
+      </form>${isAdmin ? '' : '<div class="small muted mt">Chức danh, bộ phận và vai trò do Quản trị hệ thống cập nhật.</div>'}
+      <div class="row mt" style="justify-content:flex-end"><button class="btn pri" id="pfSave">${ico('fa-floppy-disk')} Lưu thông tin</button></div></div></div>`;
+    }
+    if (tab === 'status') return `<div class="card mt"><div class="hd"><h3>${ico('fa-signal')} Trạng thái làm việc</h3><span class="grow"></span><span class="small muted">Hiện cạnh ảnh đại diện để đồng nghiệp biết bạn đang ở đâu</span></div><div class="bd">
+      <div class="pf-sts">${STATUS.map(([k, l, c, i]) => `<button type="button" class="pf-st ${(P.status || 'lam_viec') === k ? 'on' : ''}" data-st="${k}"><i class="sdot s-${k}"></i>${ico(i)}<b>${esc(l)}</b></button>`).join('')}</div>
+      <div class="fld mt"><label>Lời nhắn trạng thái</label><div class="row" style="gap:8px;flex-wrap:nowrap"><input id="stMsg" maxlength="120" style="flex:1" value="${esc(P.status_msg || '')}" placeholder="VD: Đang dẫn khách xem căn mẫu CTS, quay lại lúc 15h"><button class="btn pri" id="stSave">${ico('fa-check')} Lưu</button><button class="btn" id="stClr">${ico('fa-eraser')} Xóa</button></div></div>
+      <div class="pf-chips mt">${['Đang dẫn khách xem nhà mẫu', 'Đang ở Sở Xây dựng', 'Đang đi công trình', 'Làm việc tại nhà', 'Nghỉ trưa – quay lại 13h30', 'Liên hệ qua Zalo'].map(t => `<button type="button" class="chip" data-msg="${esc(t)}">${esc(t)}</button>`).join('')}</div></div></div>`;
+    if (tab === 'set') {
+      const p = prefs();
+      return `<div class="grid g2 mt pf-setg"><div class="card"><div class="hd"><h3>${ico('fa-palette')} Giao diện</h3></div><div class="bd">
+        ${row('Chế độ hiển thị', 'Giao diện tối dịu mắt khi làm buổi tối', seg('theme', [['light', 'Sáng', 'fa-sun'], ['dark', 'Tối', 'fa-moon'], ['auto', 'Theo máy', 'fa-desktop']], p.theme))}
+        ${row('Màu nhấn', esc((ACCENTS[p.accent] || ACCENTS.cobalt)[0]), `<div class="swatches" data-pref="accent">${Object.entries(ACCENTS).map(([k, a]) => `<button type="button" data-v="${k}" class="${p.accent === k ? 'on' : ''}" title="${esc(a[0])}" style="--c:${a[1]};--c2:${a[3]}"></button>`).join('')}</div>`)}
+        ${row('Cỡ chữ', 'Phóng to / thu nhỏ toàn bộ app', seg('zoom', [[.9, 'Nhỏ'], [1, 'Vừa'], [1.1, 'Lớn'], [1.2, 'Rất lớn']], p.zoom))}
+        ${row('Bảng dữ liệu gọn', 'Hàng thấp hơn, xem được nhiều dòng hơn', sw('dense', p.dense))}
+        ${row('Hiệu ứng chuyển động', 'Tắt nếu máy chạy chậm', sw('anim', p.anim))}
+        ${row('Hình nền thành phố', 'Lưới và hình tòa nhà mờ phía sau', sw('deco', p.deco))}
+      </div></div>
+      <div><div class="card"><div class="hd"><h3>${ico('fa-compass')} Điều hướng</h3></div><div class="bd">
+        ${row('Trang mở đầu', 'Màn hình hiện ra khi mở app / bấm logo', `<select data-pref="home" class="inp">${homes.map(([id, l]) => `<option value="${esc(id)}" ${p.home === id ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`)}
+      </div></div>
+      <div class="card mt"><div class="hd"><h3>${ico('fa-bell')} Thông báo</h3></div><div class="bd">
+        ${row('Đếm phiếu chờ duyệt', 'Số đỏ trên nút ' + ico('fa-stamp'), sw('badgeApr', p.badgeApr))}
+        ${row('Đếm cảnh báo / nhắc việc', 'Số đỏ trên nút ' + ico('fa-bell'), sw('badgeAl', p.badgeAl))}
+        ${row('Tự làm mới thông báo', '', seg('refresh', [[1, '1 phút'], [2, '2 phút'], [5, '5 phút'], [0, 'Tắt']], p.refresh))}
+      </div></div></div></div>
+      ${sysLinks.length ? `<div class="card mt"><div class="hd"><h3>${ico('fa-gear')} Cấu hình chung của hệ thống</h3><span class="grow"></span><span class="small muted">Áp dụng cho mọi người dùng</span></div><div class="bd"><div class="pf-links">${sysLinks.map(([id, l]) => `<a href="${id.startsWith('e:') ? '#/e/' + id.slice(2) : '#/v/' + id}">${ico('fa-arrow-right')} ${esc(l)}</a>`).join('')}</div></div></div>` : ''}
+      <div class="row mt" style="justify-content:space-between"><span class="small muted">${ico('fa-cloud')} Cài đặt tự lưu theo tài khoản — đăng nhập máy khác vẫn giữ nguyên</span><button class="btn" id="pfReset">${ico('fa-rotate-left')} Khôi phục mặc định</button></div>`;
+    }
+    return `<div class="grid g2 mt"><div class="card"><div class="hd"><h3>${ico('fa-key')} Mật khẩu</h3></div><div class="bd">
+        ${M.noLogin ? '<div class="warnbar">Đang chạy thử không đăng nhập — đổi mật khẩu dùng khi vận hành thật.</div>' : `<p class="small muted" style="margin-top:0">Mật khẩu tối thiểu 6 ký tự. Không dùng chung mật khẩu với tài khoản khác.</p><button class="btn pri" id="pfPw">${ico('fa-key')} Đổi mật khẩu</button>`}</div></div>
+      <div class="card"><div class="hd"><h3>${ico('fa-clock-rotate-left')} Đăng nhập</h3></div><div class="bd"><dl class="kv"><div><dt>Lần đăng nhập gần nhất</dt><dd>${dmyhm(P.last_login) || '—'}</dd></div><div><dt>Tài khoản tạo lúc</dt><dd>${dmyhm(P.created_at)}</dd></div></dl>
+        ${M.noLogin ? '' : `<button class="btn mt" id="pfOut">${ico('fa-right-from-bracket')} Đăng xuất</button>`}</div></div></div>`;
+  };
+  const draw = () => { main.innerHTML = `<div class="page pf">${hero()}${body()}</div>`; };
+  const save = async d => { P = await saveProfile(d); return P; };
+  const savePref = debounce(async () => { try { await save({ prefs: M.me.prefs }); toast('Đã lưu cài đặt'); } catch (e) { toast(e.message, true); } }, 500);
+  const setPref = (k, v) => { M.me.prefs = { ...(M.me.prefs || {}), [k]: v }; applyPrefs(); if (k === 'refresh' || k.startsWith('badge')) badgeTimer(); draw(); savePref(); };
+  draw();
+  main.onchange = e => { const t = e.target; if (t.dataset.pref) setPref(t.dataset.pref, t.type === 'checkbox' ? t.checked : t.value); };
+  main.onclick = run(async e => {
+    const t = e.target.closest('[data-t]'); if (t) { tab = t.dataset.t; history.replaceState(null, '', `#/v/profile?tab=${tab}`); return draw(); }
+    const sv = e.target.closest('.segc [data-v], .swatches [data-v]'); if (sv) { const k = sv.parentElement.dataset.pref, v = sv.dataset.v; return setPref(k, ['zoom', 'refresh'].includes(k) ? +v : v); }
+    if (e.target.closest('#pfAv')) { const f = await pickFile(); if (!f) return; const d = await cropImage(f, { w: 320, h: 320, fw: 280, fh: 280, round: 1, title: `${ico('fa-user')} Ảnh đại diện`, q: .88 }); if (!d) return; await save({ avatar: d }); toast('Đã cập nhật ảnh đại diện'); return draw(); }
+    if (e.target.closest('#pfCover')) { const f = await pickFile(); if (!f) return; const fw = Math.min(640, innerWidth - 80); const d = await cropImage(f, { w: 1600, h: 400, fw, fh: Math.round(fw / 4), title: `${ico('fa-image')} Ảnh bìa`, q: .82 }); if (!d) return; await save({ cover: d }); toast('Đã cập nhật ảnh bìa'); return draw(); }
+    if (e.target.closest('#pfAvX')) { if (!await ask('Gỡ ảnh đại diện', 'Gỡ ảnh đại diện và dùng chữ viết tắt tên?', { danger: 1, okLabel: 'Gỡ ảnh' })) return; await save({ avatar: null }); return draw(); }
+    if (e.target.closest('#pfCoverX')) { if (!await ask('Gỡ ảnh bìa', 'Gỡ ảnh bìa và dùng nền mặc định?', { danger: 1, okLabel: 'Gỡ ảnh' })) return; await save({ cover: null }); return draw(); }
+    if (e.target.closest('#pfSave')) {
+      const f = $('#pfForm'), d = {}; for (const k of ['full_name', 'title', 'dept', 'phone', 'email', 'bio']) if (f.elements[k]) d[k] = f.elements[k].value;
+      if (!d.full_name.trim()) { $('#pfErr').innerHTML = '<div class="errbar">Họ tên không được để trống</div>'; return; }
+      try { await save(d); toast('Đã lưu thông tin cá nhân'); draw(); } catch (x) { $('#pfErr').innerHTML = `<div class="errbar">${esc(x.message)}</div>`; }
+      return;
+    }
+    const st = e.target.closest('[data-st]'); if (st) { await save({ status: st.dataset.st }); toast('Trạng thái: ' + stOf(st.dataset.st)[1]); return draw(); }
+    const ch = e.target.closest('[data-msg]'); if (ch) { $('#stMsg').value = ch.dataset.msg; $('#stMsg').focus(); return; }
+    if (e.target.closest('#stSave')) { await save({ status_msg: $('#stMsg').value }); toast('Đã lưu lời nhắn'); return draw(); }
+    if (e.target.closest('#stClr')) { await save({ status_msg: '' }); return draw(); }
+    if (e.target.closest('#pfReset')) { if (!await ask('Khôi phục mặc định', 'Đưa toàn bộ cài đặt giao diện, điều hướng, thông báo về mặc định?')) return; M.me.prefs = {}; applyPrefs(); badgeTimer(); await save({ prefs: {} }); toast('Đã khôi phục mặc định'); return draw(); }
+    if (e.target.closest('#pfPw')) return forcePassword();
+    if (e.target.closest('#pfOut')) { await api('POST', '/api/logout', {}); await window.__ctgBeforeReload?.(); location.hash = ''; location.reload(); }
+  });
+  main.onkeydown = e => { if (e.key === 'Enter' && e.target.id === 'stMsg') $('#stSave').click(); };
+};
