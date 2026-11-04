@@ -235,7 +235,7 @@ async function fixRentValue(db, user) {
   for (const c of cs) {
     const value = Math.round(+c.rent * +c.term_months), n = +c.term_months;
     await db.q('UPDATE kd_contract SET value = $1, updated_at = now() WHERE id = $2', [value, c.id]);
-    await C.audit(db, 'contract', c.id, 'sua', { value: c.value }, { value }, user, 'Tổng tiền thuê = tiền thuê/tháng × thời hạn thuê', c.is_demo);
+    await C.audit(db, 'contract', c.id, 'sua', { value: c.value }, { value }, user, 'Giá trị HĐ thuê = tổng giá thuê/tháng × thời hạn thuê', c.is_demo);
     const inst = await db.q('SELECT name, due_on, src FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [c.id]), p = inst.length;
     if (p && p <= n) { const off = k => Math.round(k * n / p); await writeSchedule(db, c.id, inst.map((i, k) => ({ name: i.name, due_on: i.due_on, pct: null, amount: (off(k + 1) - off(k)) * +c.rent })), inst[0].src || 'hop_dong', user, c.is_demo); }
   }

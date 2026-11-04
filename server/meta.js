@@ -424,7 +424,7 @@ def('contract', {
     // HĐ thuê (tab riêng ở danh sách chung cư): cột theo BRAVO
     thue: { cols: ['number', 'contract_on', 'unit_id', 'b_name', 'b_id_no', 'b_id_date', 'b_id_place', 'b_addr', 'b_phone', 'b_email', 'area_floor', 'area_tt', 'eff_on', 'exp_on', 'term_months', 'rent_house', 'rent_furn', 'rent', 'value', 'unit_total', 'discount', 'pay_times', 'nature', 'status'],
       head: [['Hợp đồng', 2], ['Bên thuê nhà', 8], ['Thông tin căn hộ', 10], ['', 1]],
-      label: { contract_on: 'Ngày ký', unit_id: 'Mã căn hộ', b_name: 'Họ và tên', b_id_no: 'Số CMND / CCCD', b_id_date: 'Ngày cấp', b_id_place: 'Nơi cấp', b_addr: 'Địa chỉ', b_phone: 'Điện thoại', b_email: 'Email', area_floor: 'Diện tích sàn', area_tt: 'Diện tích nền (T.thủy)', value: 'Tổng tiền' } },
+      label: { contract_on: 'Ngày ký', unit_id: 'Mã căn hộ', b_name: 'Họ và tên', b_id_no: 'Số CMND / CCCD', b_id_date: 'Ngày cấp', b_id_place: 'Nơi cấp', b_addr: 'Địa chỉ', b_phone: 'Điện thoại', b_email: 'Email', area_floor: 'Diện tích sàn', area_tt: 'Diện tích nền (T.thủy)', value: 'Giá trị HĐ thuê' } },
     vay: { cols: ['number', 'contract_on', 'unit_id', 'b_name', 'b_id_no', 'b_phone', 'value', 'paid', 'loan_recv_on', 'eff_on', 'exp_on', 'term_months', 'int_mode', 'loan_rate', 'rent', 'int_period', 'principal_method', 'nature', 'link_ids', 'status'],
       head: [['Hợp đồng', 2], ['Bên cho vay (khách hàng)', 4], ['Khoản vay', 3], ['Lãi & gốc', 8], ['Liên kết', 2], ['', 1]],
       label: { contract_on: 'Ngày ký', unit_id: 'Mã căn hộ', b_name: 'Họ và tên', b_id_no: 'Số CMND / CCCD', b_phone: 'Điện thoại', value: 'Số tiền vay', paid: 'Gốc đã nhận', eff_on: 'Bắt đầu tính lãi', exp_on: 'Ngày đáo hạn', term_months: 'Thời hạn vay (tháng)', rent: 'Tiền thuê/tháng (trả lãi)' } },
@@ -510,7 +510,7 @@ def('contract', {
     // HĐ thuê (04/11/2026): tiền thuê tách tiền thuê nhà + tiền thuê nội thất; Tổng giá thuê/tháng (rent) = 2 khoản cộng lại → tổng tiền thuê = rent × số tháng
     money('rent_house', 'Tiền thuê nhà/tháng', { show: RENT_ONLY }),
     money('rent_furn', 'Tiền thuê nội thất/tháng', { show: RENT_ONLY }),
-    money('rent', 'Tiền thuê/tháng', { show: RENT_VAY, help: 'HĐ thuê: tổng tiền thuê = tiền thuê/tháng × thời hạn thuê. HĐ vay: tiền lãi mỗi tháng = 1 tháng tiền thuê (để trống: lấy theo HĐ thuê đi kèm)' }),
+    money('rent', 'Tiền thuê/tháng', { show: RENT_VAY, help: 'HĐ thuê: giá trị HĐ thuê = tổng giá thuê/tháng × thời hạn thuê. HĐ vay: tiền lãi mỗi tháng = 1 tháng tiền thuê (để trống: lấy theo HĐ thuê đi kèm)' }),
     // HĐ vay (công ty vay tiền của khách, bản chất thường là bán căn): giải ngân gốc = các đợt ở bảng Lần thanh toán; lãi trả cho khách theo lịch kd_loan_pay
     { k: 'loan_recv_on', l: 'Ngày nhận tiền vay', t: 'date', show: VAY_ONLY },
     { k: 'loan_tranches', l: 'Số đợt giải ngân gốc', t: 'int', show: VAY_ONLY, help: 'Các đợt khách chuyển tiền gốc nhập ở bảng «Các đợt giải ngân gốc» bên dưới' },
