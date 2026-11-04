@@ -1007,3 +1007,7 @@ table.dsum td.ds-addr { max-width: 260px; overflow: hidden; text-overflow: ellip
 .flt-hd .pill { margin-left: 4px; }
 .flt-d { display: grid; grid-template-columns: auto 1fr; gap: 4px 6px; align-items: center; }
 .flt-d > .sdate { width: 100%; min-width: 0; }
+.flt [hidden] { display: none !important; }
+.flt .flt-q { width: 100%; margin: 0 0 8px; }
+.flt .flt-q input { width: 100%; }
+.flt-none { padding: 6px 2px; }

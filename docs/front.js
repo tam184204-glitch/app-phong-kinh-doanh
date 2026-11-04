@@ -1282,12 +1282,24 @@ async function listView(main, ent, params = {}) {
     const secs = (L?.secs || []).map(x => ({ ...x, ks: x.cols.filter(k => !['stt'].includes(k)) })).filter(x => x.ks.length);
     const nOn = secs.reduce((a, x) => a + x.ks.filter(k => colOn(k, x)).length, 0), nAll = secs.reduce((a, x) => a + x.ks.length, 0);
     box.innerHTML = `<div class="flt-hd"><b>${ico('fa-filter')} Điều kiện lọc</b><button type="button" class="btn ghost sm" data-fx="hide" title="Ẩn">${ico('fa-xmark')}</button></div>
+      <div class="search flt-q"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="fltQ" placeholder="Tra cứu trường…" value="${esc(S.flt.q || '')}" autocomplete="off"></div>
       <div class="flt-ft row" style="margin:0 0 6px;gap:6px"><button type="button" class="btn sm" data-fx="all">${ico('fa-square-check')} Chọn tất cả</button><button type="button" class="btn sm ghost" data-fx="none">Bỏ chọn</button><span class="small muted">${nOn}/${nAll}</span></div>
-      ${secs.map(x => `${x.h ? `<div class="flt-sec">${esc(x.h)}</div>` : ''}${x.ks.map(k => `<label class="chk flt-v"><input type="checkbox" data-fc="${k}" ${colOn(k, x) ? 'checked' : ''}> <span class="n">${++i}.</span> ${esc(lab(k))}</label>`).join('')}`).join('')}`;
+      ${secs.map(x => `<div data-sg>${x.h ? `<div class="flt-sec">${esc(x.h)}</div>` : ''}${x.ks.map(k => `<label class="chk flt-v" data-l="${esc(fNorm(lab(k) + ' ' + (x.h || '')))}"><input type="checkbox" data-fc="${k}" ${colOn(k, x) ? 'checked' : ''}> <span class="n">${++i}.</span> ${esc(lab(k))}</label>`).join('')}</div>`).join('')}
+      <div class="small muted flt-none" hidden>Không có trường nào khớp</div>`;
+    fltQ();
+  };
+  // tra cứu trường trong ô Điều kiện lọc: không phân biệt dấu / hoa thường; tìm theo tên trường hoặc tên nhóm
+  const fNorm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().replace(/\s+/g, ' ').trim();
+  const fltQ = () => {
+    const box = $('#flt', main); if (!box) return; const q = fNorm(S.flt.q); let any = false;
+    $$('[data-sg]', box).forEach(g => { let n = 0; $$('[data-l]', g).forEach(l => { const on = !q || l.dataset.l.includes(q); l.hidden = !on; if (on) n++; }); g.hidden = !n; if (n) any = true; });
+    const no = $('.flt-none', box); if (no) no.hidden = any;
   };
   if (hdKinds) {
     drawFlt();
     const box = $('#flt', main);
+    box.addEventListener('input', e => { if (e.target.id === 'fltQ') { S.flt.q = e.target.value; fltQ(); } });   // tra cứu: lọc danh sách tại chỗ (không vẽ lại để không mất con trỏ)
+    box.addEventListener('keydown', e => { if (e.target.id === 'fltQ' && e.key === 'Escape') { e.target.value = S.flt.q = ''; fltQ(); } });
     box.addEventListener('change', run(async e => {
       const k = e.target.dataset?.fc; if (!k) return;
       (S.flt.view[grp()] ||= {})[k] = e.target.checked; try { localStorage.setItem(FV, JSON.stringify(S.flt.view)); } catch { }
@@ -1310,7 +1322,11 @@ async function listView(main, ent, params = {}) {
     if (xb?.dataset.x === 'lead') return leadModal(load);
     const ck = t.closest('[data-ck]'); if (ck) { S.ht = ck.dataset.ck; S.status = ''; S.sort = ''; S.sel.clear(); $$('button', ck.parentElement).forEach(b => b.classList.toggle('on', b === ck)); drawFlt(); return load(); }
     if (t.closest('#fltT') || t.closest('[data-fx=hide]')) { S.flt.hide = !S.flt.hide; $('.flt-wrap', main)?.classList.toggle('flt-off', S.flt.hide); return; }
-    if (t.closest('[data-fx=all]') || t.closest('[data-fx=none]')) { const on = !!t.closest('[data-fx=all]'), L = E.lists?.[grp()]; S.flt.view[grp()] = Object.fromEntries((L?.cols || []).map(k => [k, on])); try { localStorage.setItem(FV, JSON.stringify(S.flt.view)); } catch { } drawFlt(); return load(); }
+    if (t.closest('[data-fx=all]') || t.closest('[data-fx=none]')) {   // đang tra cứu: chỉ chọn / bỏ các trường đang hiện trong kết quả tra cứu
+      const on = !!t.closest('[data-fx=all]'), L = E.lists?.[grp()], v = S.flt.view[grp()] ||= {};
+      const ks = S.flt.q ? $$('#flt [data-l]:not([hidden]) [data-fc]', main).map(c => c.dataset.fc) : (L?.cols || []);
+      for (const k of ks) v[k] = on; try { localStorage.setItem(FV, JSON.stringify(S.flt.view)); } catch { } drawFlt(); return load();
+    }
     const tab = t.closest('[data-s]'); if (tab) { S.status = tab.dataset.s; S.sel.clear(); return load(); }
     const th = t.closest('th[data-k]'); if (th?.dataset.k) { const k = th.dataset.k; S.sort = S.sort === k ? '-' + k : k; return load(); }
     if (t.id === 'selAll') { $$('[data-sel]', main).forEach(c => { c.checked = t.checked; t.checked ? S.sel.add(+c.dataset.sel) : S.sel.delete(+c.dataset.sel); c.closest('tr').classList.toggle('sel', t.checked); }); return drawBulk(); }
