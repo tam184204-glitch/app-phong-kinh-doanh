@@ -516,7 +516,7 @@ def('contract', {
     // HĐ thuê (04/11/2026): tiền thuê tách tiền thuê nhà + tiền thuê nội thất; Tổng giá thuê/tháng (rent) = 2 khoản cộng lại → tổng tiền thuê = rent × số tháng
     money('rent_house', 'Tiền thuê nhà/tháng', { show: RENT_ONLY }),
     money('rent_furn', 'Tiền thuê nội thất/tháng', { show: RENT_ONLY }),
-    money('rent', 'Tiền thuê/tháng', { show: RENT_VAY, help: 'HĐ thuê: giá trị HĐ thuê = tổng giá thuê/tháng × thời hạn thuê. HĐ vay: tiền lãi mỗi tháng = 1 tháng tiền thuê (để trống: lấy theo HĐ thuê đi kèm)' }),
+    money('rent', 'Tiền thuê/tháng', { show: RENT_ONLY, help: 'Giá trị HĐ thuê = tổng giá thuê/tháng × thời hạn thuê' }),   // HĐ vay bỏ ô này khỏi form 04/11/2026: lãi theo tiền thuê/tháng của HĐ thuê đi kèm (tick chọn)
     // HĐ vay (công ty vay tiền của khách, bản chất thường là bán căn): giải ngân gốc = các đợt ở bảng Lần thanh toán; lãi trả cho khách theo lịch kd_loan_pay
     { k: 'loan_recv_on', l: 'Ngày nhận tiền vay', t: 'date', show: VAY_ONLY },
     { k: 'loan_tranches', l: 'Số đợt giải ngân gốc', t: 'int', show: VAY_ONLY, help: 'Các đợt khách chuyển tiền gốc nhập ở bảng «Các đợt giải ngân gốc» bên dưới' },
@@ -529,7 +529,7 @@ def('contract', {
     money('value', 'Tổng tiền (giá trị hợp đồng)', { req: 1, help: 'Chung cư có giá nền: tự tính = tiền sau thuế + phí bảo trì + giá trị hoàn thiện' }),
     { k: 'closed', l: 'Hợp đồng đóng', t: 'bool', show: RENT_VAY, noForm: 1 },   // HĐMB bỏ ô này (03/11/2026); HĐ thuê / vay bỏ khỏi form 04/11/2026 (giữ cột dữ liệu cũ)
     money('sale_price', 'Giá bán căn hộ', { show: { kind: ['thue', 'vay'], nature: ['ban'] }, help: 'Giá bán của giao dịch (chưa có HĐMB) — để trống: lấy theo Danh mục sản phẩm' }),
-    { k: 'plan_hdmb', l: 'Dự kiến ký HĐMB', t: 'date', show: { kind: ['thue', 'vay'], nature: ['ban'] } },
+    { k: 'plan_hdmb', l: 'Dự kiến ký HĐMB', t: 'date', show: { kind: ['thue', 'vay'], nature: ['ban'] }, noForm: 1 },   // bỏ khỏi form + CN-06 04/11/2026 (giữ cột dữ liệu cũ)
     { k: 'prev_id', l: 'Chuyển tiếp từ hợp đồng', t: 'ref', ref: 'contract', hide: 1,   // bỏ khỏi form (03/11/2026) — máy tự nối khi lưu HĐMB
       help: 'HĐ vay / HĐ thuê (bản chất bán) trước đó của căn — chỉ để nối giao dịch, tiền đã thu theo hợp đồng đó KHÔNG trừ vào giá mua. Để trống: tự nối khi căn có' },
     { k: 'next_id', l: 'Đã chuyển sang hợp đồng', t: 'ref', ref: 'contract', ro: 1, show: { kind: ['thue', 'vay'], nature: ['ban'] } },

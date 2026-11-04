@@ -1235,7 +1235,7 @@ V.debtsum = async main => {
 // CN-06 tình trạng căn hộ theo bản chất giao dịch + công nợ tách theo hợp đồng (tiền vay / tiền thuê không trừ vào giá mua)
 V.unitstatus = async main => {
   const f = filt(), s = ST.unitstatus ||= { state: '', q: '' };
-  const cols = [['project', 'Dự án'], ['building', 'Tòa'], ['unit', 'Mã căn'], ['state_l', 'Tình trạng'], ['customer', 'Khách hàng'], ['docs', 'Văn bản'], ['sale_price', 'Giá bán', 'money'], ['plan_hdmb', 'Dự kiến ký HĐMB', 'date'],
+  const cols = [['project', 'Dự án'], ['building', 'Tòa'], ['unit', 'Mã căn'], ['state_l', 'Tình trạng'], ['customer', 'Khách hàng'], ['docs', 'Văn bản'], ['sale_price', 'Giá bán', 'money'], 
     ['sale_paid', 'Đã thu HĐMB', 'money'], ['sale_left', 'Còn phải thu HĐMB', 'money'], ['vay_left', 'Gốc vay khách chưa chuyển', 'money'], ['vay_int', 'Lãi vay còn phải trả khách', 'money'], ['rent_amt', 'Tiền thuê/tháng', 'money'], ['rent_to', 'Thuê đến', 'date'],
     ['rent_left', 'Còn phải thu tiền thuê', 'money'], ['fin_left', 'Còn phải thu hoàn thiện', 'money'], ['overdue', 'Quá hạn', 'money']];
   const SUM = ['sale_price', 'sale_paid', 'sale_left', 'vay_left', 'rent_left', 'fin_left', 'overdue'];

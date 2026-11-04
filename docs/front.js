@@ -541,6 +541,7 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish, kind, debt, rec0 }) {
     if (sf && !$('[data-sched]', sf) && debt?.inst?.length && !sf.dataset.vt) { sf.dataset.vt = 1; const ro = $('.ro', sf); if (ro) ro.outerHTML = `<div style="flex:1">${schedTable(debt.inst, true)}</div>`; }
     const rv = (k, t) => readField(form, { k, t }) ?? rec0?.[k];
     const r = { term_months: rv('term_months', 'int'), eff_on: rv('eff_on', 'date'), exp_on: rv('exp_on', 'date'), int_period: rv('int_period', 'sel') ?? '1', int_mode: rv('int_mode', 'sel') || 'tien_thue', rent: rv('rent', 'money'), loan_rate: rv('loan_rate', 'num'), value: rv('value', 'money'), principal_method: rv('principal_method', 'sel') || 'dao_han' };
+    if (r.int_mode === 'tien_thue') { const on = $$('[data-lk]:checked', lkBox).map(x => +x.dataset.lk), lr = lkList.find(x => on.includes(x.id) && +x.rent > 0)?.rent; if (lr != null) r.rent = +lr; }   // lãi = tiền thuê/tháng của HĐ thuê đi kèm
     const saved = new Map((rec0?._loan || []).map(x => [x.kind + x.seq, x])), T = today();
     const plan = loanPlanOf(r).map(x => { const s = saved.get(x.kind + x.seq), paid = s && (+s.paid_amt || s.paid_on) ? s : null; return paid ? { ...x, amount: +s.amount, paid_amt: +s.paid_amt || 0, paid_on: s.paid_on } : { ...x, paid_amt: 0 }; });
     const lai = plan.filter(x => x.kind === 'lai'), sum = (xs, k) => xs.reduce((a, x) => a + (+x[k] || 0), 0);
@@ -554,7 +555,9 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish, kind, debt, rec0 }) {
   const loanCalc = e => {
     if (!isVay()) return;
     const a = readField(form, { k: 'eff_on', t: 'date' }), x = $('[name=exp_on]', form);
-    if (e?.target?.name === 'loan_recv_on' && !a && e.target.value) { const ef = $('[name=eff_on]', form); if (ef) ef.value = e.target.value; }
+    // ngày nhận tiền vay → ngày bắt đầu tính lãi: chỉ chép khi đã gõ đủ ngày (gõ dở «0» không chép); ô bắt đầu chưa sửa tay (trống / đang = số chép lần trước) thì chép tiếp theo
+    if (e?.target?.name === 'loan_recv_on') { const ef = $('[name=eff_on]', form), v = readField(form, { k: 'loan_recv_on', t: 'date' });
+      if (ef && /^\d{4}-\d{2}-\d{2}$/.test(v || '') && (!a || !ef.value.trim() || ef.value === form._effAuto || !/^\d{4}-\d{2}-\d{2}$/.test(a))) { ef.value = e.target.value; form._effAuto = ef.value; } }
     if (e?.target?.name === 'term_months' && (a || readField(form, { k: 'eff_on', t: 'date' })) && +e.target.value > 0 && x) x.value = dmy(addDays(addMon(a || readField(form, { k: 'eff_on', t: 'date' }), +e.target.value), -1));
     loanDraw();
   };
@@ -562,15 +565,16 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish, kind, debt, rec0 }) {
   // HĐ vay ↔ HĐ thuê: tick chọn hợp đồng loại kia (cùng căn / cùng khách), lưu vào ô link_ids — bên kia tự cập nhật khi lưu
   const lkF = $('[data-f=link_ids]', form), lkBox = document.createElement('div'); lkBox.className = 'link-ticks';
   if (lkF) { lkF.append(lkBox); const cb = $('.combo', lkF); if (cb) cb.style.display = 'none'; }
+  let lkList = [];   // HĐ thuê / vay có thể đi kèm (kèm tiền thuê/tháng — HĐ vay tính lãi theo tiền thuê của HĐ thuê đã tick)
   const linkDraw = async () => {
     const g = grpOf(); if (!lkF || !['thue', 'vay'].includes(g)) return;
     const hid = $('[name=link_ids]', lkF), cur = hid ? (hid.value ? hid.value.split(',').map(Number) : []) : rec0?.link_ids || [], other = g === 'vay' ? 'thue' : 'vay';
-    const list = await api('GET', '/api/contract-links?' + new URLSearchParams({ kind: other, self: rec0?.id || '', unit: form.elements.unit_id?.value || rec0?.unit_id || '', customer: form.elements.customer_id?.value || rec0?.customer_id || '', ids: cur.join(',') })).catch(() => []);
+    const list = lkList = await api('GET', '/api/contract-links?' + new URLSearchParams({ kind: other, self: rec0?.id || '', unit: form.elements.unit_id?.value || rec0?.unit_id || '', customer: form.elements.customer_id?.value || rec0?.customer_id || '', ids: cur.join(',') })).catch(() => []);
     const ro = $(':scope > .ro', lkF); if (ro) ro.style.display = 'none';
     lkBox.innerHTML = list.length ? list.map(x => `<label class="chk"><input type="checkbox" data-lk="${x.id}" ${cur.includes(x.id) ? 'checked' : ''} ${hid ? '' : 'disabled'}> <b>${esc(x.number || '#' + x.id)}</b> · ${esc(x.unit)} · ${esc(x.customer)}${other === 'thue' && x.rent ? ` · ${fm(x.rent)} đ/tháng` : x.value ? ` · ${fm(x.value)} đ` : ''}${x.exp_on ? ` · đến ${dmy(x.exp_on)}` : ''}</label>`).join('')
       : `<span class="small muted">Chưa có ${other === 'thue' ? 'HĐ thuê' : 'HĐ vay'} cùng căn / cùng khách hàng — chọn Mã căn, Khách hàng trước</span>`;
   };
-  lkBox.addEventListener('change', e => { if (!e.target.dataset.lk) return; const hid = $('[name=link_ids]', lkF); if (hid) hid.value = $$('[data-lk]:checked', lkBox).map(x => x.dataset.lk).join(','); });
+  lkBox.addEventListener('change', e => { if (!e.target.dataset.lk) return; const hid = $('[name=link_ids]', lkF); if (hid) hid.value = $$('[data-lk]:checked', lkBox).map(x => x.dataset.lk).join(','); loanDraw(); });
   form.addEventListener('change', e => { if (['unit_id', 'customer_id'].includes(e.target.name)) linkDraw(); });
   // HĐ thuê: số tháng + tổng tiền tự tính khi gõ (máy chủ tính lại khi lưu, cùng công thức)
   const addMon = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'), day = d.getUTCDate(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + n); d.setUTCDate(Math.min(day, new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate())); return d.toISOString().slice(0, 10); };
@@ -612,6 +616,18 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish, kind, debt, rec0 }) {
   for (const el of [rH, rF]) el?.addEventListener('input', () => rentSum(true));
   rentSum(false);
   // chọn căn ở HĐ thuê: ô Tổng tiền bị điền giá bán căn → về tiền thuê × số tháng (chưa có tiền thuê thì để trống)
+  const loanSched = () => {
+    const n = parseInt(form.elements.loan_tranches?.value, 10), sch = $('[data-sched]', form);
+    if (!isVay() || !(n > 0) || n > 60 || !sch?._set) return;
+    const V = readField(form, { k: 'value', t: 'money' }) || 0, d0 = readField(form, { k: 'loan_recv_on', t: 'date' }) || readField(form, { k: 'contract_on', t: 'date' }) || today();
+    const cur = (sch._get?.() || []).filter(r => !/Bên Mua thanh toán/i.test(r.name || ''));   // bỏ nội dung mẫu của HĐMB
+    const each = Math.floor(V / n / 1000) * 1000;
+    sch._set(Array.from({ length: n }, (_, k) => ({ name: cur[k]?.name || `Đợt ${k + 1}: khách chuyển tiền gốc`, due_on: cur[k]?.due_on || addMon(d0, k), pct: null, amount: V ? (k === n - 1 ? V - each * (n - 1) : each) : null })));
+    loanDraw();
+  };
+  form.elements.loan_tranches?.addEventListener('change', loanSched);
+  form.addEventListener('change', e => { if (e.target.closest?.('[data-f=loan_recv_on]') && isVay()) $('[data-sched]', form)?._redraw?.(); });   // đợt 1 theo ngày nhận tiền vay
+  form.elements.value?.addEventListener('change', () => { if (isVay() && +form.elements.loan_tranches?.value > 0) loanSched(); });   // đổi số tiền vay → chia lại các đợt
   const rentValue = () => { if (!isRent()) return; const v = $('[name=value]', form); if (v) v.value = ''; rentCalc(); };
   // đổi Mua bán / Thuê / Vay: cất tổng tiền + lịch thu của loại đang xem, quay lại thì trả về — không mang giá bán sang HĐ thuê / HĐ vay hay ngược lại
   let wasG = grpOf(); const stash = {};
@@ -732,7 +748,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   let htp = null;
   if (ent === 'contract') { bravoLayout(form, HD_LAYOUT); $('.modal', m.el).classList.add('full'); if (rec.kind !== 'hoan_thien') htp = hdPair(form, { ht: htRec, locked: htLocked, tab, draft: htDraft, oldFinish: +rec.finish_value > 0, kind: rec.kind, debt: rec._debt, rec0: rec }); }
   const sch = $('[data-sched]', form);
-  if (sch) schedEditor(sch, rec.new_schedule || [], { mdot: () => rec.maint_dot ?? 3, maint: () => ent === 'contract' && ['hdmb', 'thue_mua'].includes(form.elements.kind?.value ?? rec.kind) ? readField(form, E.fields.find(f => f.k === 'maint_fee')) || 0 : null, total: () => ent === 'contract' ? readField(form, E.fields.find(f => f.k === 'value')) || 0 : readField(form, E.fields.find(f => f.k === 'value_after')) || rec.value_before || 0, first: ent === 'contract' ? () => readField(form, E.fields.find(f => f.k === (($('[name=kind]', form)?.value ?? rec.kind) === 'thue' ? 'eff_on' : 'contract_on'))) : null });
+  if (sch) schedEditor(sch, rec.new_schedule || [], { mdot: () => rec.maint_dot ?? 3, maint: () => ent === 'contract' && ['hdmb', 'thue_mua'].includes(form.elements.kind?.value ?? rec.kind) ? readField(form, E.fields.find(f => f.k === 'maint_fee')) || 0 : null, total: () => ent === 'contract' ? readField(form, E.fields.find(f => f.k === 'value')) || 0 : readField(form, E.fields.find(f => f.k === 'value_after')) || rec.value_before || 0, first: ent === 'contract' ? () => { const kd = $('[name=kind]', form)?.value ?? rec.kind; return readField(form, E.fields.find(f => f.k === (kd === 'thue' ? 'eff_on' : kd === 'vay' && form.elements.loan_recv_on?.value ? 'loan_recv_on' : 'contract_on'))); } : null });
   htp?.rentDraw(); htp?.loanDraw?.();
   const vis = () => { const cur = collect(true); for (const f of fields) { const box = $(`[data-f="${f.k}"]`, form); if (box) box.classList.toggle('hidden', !isShown(f, cur)); } $$('.bv-row, .bv-sec:not(.loan-sec)', form).forEach(x => x.classList.toggle('hidden', !$('.fld:not(.hidden)', x))); htp?.sync(cur.ptype !== 'lien_ke' && ['hdmb', 'thue_mua', 'thue', 'vay'].includes(cur.kind)); };
   const collect = (all) => { const out = {}; for (const f of fields) { if (f.ro || (f.t === 'code' && !f.manual)) continue; if (lockKeep && !lockKeep.has(f.k)) continue; const v = readField(form, f); if (v !== undefined) out[f.k] = v; }
@@ -2659,7 +2675,7 @@ V.debtsum = async main => {
 // CN-06 tình trạng căn hộ theo bản chất giao dịch + công nợ tách theo hợp đồng (tiền vay / tiền thuê không trừ vào giá mua)
 V.unitstatus = async main => {
   const f = filt(), s = ST.unitstatus ||= { state: '', q: '' };
-  const cols = [['project', 'Dự án'], ['building', 'Tòa'], ['unit', 'Mã căn'], ['state_l', 'Tình trạng'], ['customer', 'Khách hàng'], ['docs', 'Văn bản'], ['sale_price', 'Giá bán', 'money'], ['plan_hdmb', 'Dự kiến ký HĐMB', 'date'],
+  const cols = [['project', 'Dự án'], ['building', 'Tòa'], ['unit', 'Mã căn'], ['state_l', 'Tình trạng'], ['customer', 'Khách hàng'], ['docs', 'Văn bản'], ['sale_price', 'Giá bán', 'money'], 
     ['sale_paid', 'Đã thu HĐMB', 'money'], ['sale_left', 'Còn phải thu HĐMB', 'money'], ['vay_left', 'Gốc vay khách chưa chuyển', 'money'], ['vay_int', 'Lãi vay còn phải trả khách', 'money'], ['rent_amt', 'Tiền thuê/tháng', 'money'], ['rent_to', 'Thuê đến', 'date'],
     ['rent_left', 'Còn phải thu tiền thuê', 'money'], ['fin_left', 'Còn phải thu hoàn thiện', 'money'], ['overdue', 'Quá hạn', 'money']];
   const SUM = ['sale_price', 'sale_paid', 'sale_left', 'vay_left', 'rent_left', 'fin_left', 'overdue'];

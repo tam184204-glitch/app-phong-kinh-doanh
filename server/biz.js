@@ -922,8 +922,9 @@ H.contract = {
       if (r.eff_on && +r.term_months > 0 && (!r.exp_on || (old && +old.term_months !== +r.term_months && old.exp_on === r.exp_on))) r.exp_on = addDays(addMonths(r.eff_on, +r.term_months), -1);
       if (r.eff_on && r.exp_on && r.exp_on < r.eff_on) bad('Ngày đáo hạn phải sau ngày bắt đầu tính lãi', { fields: ['exp_on'] });
       if (r.eff_on && r.exp_on && !(+r.term_months > 0)) r.term_months = rentMonths(r.eff_on, r.exp_on);
-      if (r.int_mode === 'tien_thue' && !(+r.rent > 0) && r.link_ids?.length) r.rent = (await db.one("SELECT rent FROM kd_contract WHERE id = ANY($1) AND kind = 'thue' AND rent > 0 ORDER BY id LIMIT 1", [r.link_ids]))?.rent ?? null;
-      if (r.int_mode === 'tien_thue' && !(+r.rent > 0)) bad('Lãi trả bằng tiền thuê: nhập Tiền thuê/tháng hoặc tick chọn HĐ thuê đi kèm', { fields: ['rent'] });
+      // lãi trả bằng tiền thuê: mỗi tháng = tiền thuê/tháng của HĐ thuê đi kèm (ô tiền thuê không còn trên form HĐ vay) — luôn lấy lại theo HĐ thuê
+      if (r.int_mode === 'tien_thue' && r.link_ids?.length) { const x = (await db.one("SELECT rent FROM kd_contract WHERE id = ANY($1) AND kind = 'thue' AND rent > 0 ORDER BY id LIMIT 1", [r.link_ids]))?.rent; if (x != null) r.rent = +x; }
+      if (r.int_mode === 'tien_thue' && !(+r.rent > 0)) bad('Lãi trả bằng tiền thuê: tick chọn HĐ thuê đi kèm (lãi mỗi tháng = tiền thuê/tháng của HĐ thuê đó), hoặc chọn «Theo lãi suất %/năm»', { fields: ['link_ids'] });
       if (r.int_mode === 'lai_suat' && !(+r.loan_rate > 0)) bad('Nhập lãi suất %/năm', { fields: ['loan_rate'] });
       if (r.int_mode !== 'lai_suat') r.loan_rate = null;
       if (!(+r.term_months > 0) && !r.exp_on) ctx.warn?.push('HĐ vay chưa có Thời hạn vay / Ngày đáo hạn — chưa lập lịch trả lãi');
