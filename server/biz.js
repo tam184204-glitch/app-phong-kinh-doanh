@@ -821,6 +821,23 @@ H.contract = {
       r.area_tt ??= u.area_tt; r.base_price ??= u.base_price; r.pretax ??= u.pretax; r.vat_pct ??= u.vat_pct; r.vat_amt ??= u.tax_amt; r.after_tax ??= u.price_net; r.maint_fee ??= u.maint_fee;
     }
   },
+  // lọc theo từng trường: cột lấy theo khách hàng / căn khi hợp đồng để trống (cùng cách listFill hiện ra)
+  colExpr: {
+    b_name: "(SELECT k.full_name FROM kd_customer k WHERE k.id = t.customer_id)",
+    b_id_no: "coalesce(t.b_id_no, (SELECT k.id_no FROM kd_customer k WHERE k.id = t.customer_id))",
+    b_id_date: "coalesce(t.b_id_date, (SELECT k.id_date FROM kd_customer k WHERE k.id = t.customer_id))",
+    b_id_place: "coalesce(t.b_id_place, (SELECT k.id_place FROM kd_customer k WHERE k.id = t.customer_id))",
+    b_addr: "coalesce(t.b_addr, (SELECT k.address FROM kd_customer k WHERE k.id = t.customer_id))",
+    b_phone: "coalesce(t.b_phone, (SELECT k.phone FROM kd_customer k WHERE k.id = t.customer_id))",
+    unit_id: "(SELECT u.code FROM kd_unit u WHERE u.id = t.unit_id)",
+    area_tt: "coalesce(t.area_tt, (SELECT u.area_tt FROM kd_unit u WHERE u.id = t.unit_id))",
+    base_price: "coalesce(t.base_price, (SELECT u.base_price FROM kd_unit u WHERE u.id = t.unit_id))",
+    pretax: "coalesce(t.pretax, (SELECT u.pretax FROM kd_unit u WHERE u.id = t.unit_id))",
+    vat_pct: "coalesce(t.vat_pct, (SELECT u.vat_pct FROM kd_unit u WHERE u.id = t.unit_id))",
+    vat_amt: "coalesce(t.vat_amt, (SELECT u.tax_amt FROM kd_unit u WHERE u.id = t.unit_id))",
+    after_tax: "coalesce(t.after_tax, (SELECT u.price_net FROM kd_unit u WHERE u.id = t.unit_id))",
+    maint_fee: "coalesce(t.maint_fee, (SELECT u.maint_fee FROM kd_unit u WHERE u.id = t.unit_id))",
+  },
   // danh sách theo nhóm: ?group=can_ho (HĐ mua bán) | hoan_thien (HĐ hoàn thiện căn hộ) | lien_ke
   where(qs) {
     if (qs.group === 'hoan_thien') return { sql: 't.ptype = $1 AND t.kind = $2', params: ['can_ho', 'hoan_thien'] };

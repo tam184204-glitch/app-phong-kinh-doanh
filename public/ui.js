@@ -1237,11 +1237,11 @@ async function listView(main, ent, params = {}) {
   const grp = () => rsKinds ? (S.ht === 't' ? 'thue' : 'mua') : hdKinds && S.ht ? ({ t: 'thue', v: 'vay' }[S.ht] || 'hoan_thien') : S.group;
   // Điều kiện lọc (như BRAVO) ở danh sách Hợp đồng căn hộ chung cư: lọc ngày theo ô chọn, dự án, phân loại (tòa); «Xem …» bật / tắt nhóm cột — theo từng loại HĐ
   const FV = 'ctg-kd-hd-xem';
-  if (hdKinds && !S.flt) { let view = {}; try { view = JSON.parse(localStorage.getItem(FV) || '{}') || {}; } catch { } S.flt = { fr: '', to: '', by: {}, bld: [], view, hide: false }; }
+  if (hdKinds && !S.flt) { let view = {}; try { view = JSON.parse(localStorage.getItem(FV) || '{}') || {}; } catch { } S.flt = { v: {}, view, hide: false }; }   // v[loại HĐ] = { lk_/fr_/to_/mn_/mx_/f_<trường>: giá trị }
   const optOn = x => { const v = S.flt?.view[grp()]?.[x.opt]; return v == null ? x.def : !!v; };
   const visSecs = () => { const L = E.lists?.[grp()]; return hdKinds && L?.secs ? L.secs.filter(x => !x.opt || optOn(x)) : null; };
-  const dateBy = () => { const ds = E.lists?.[grp()]?.dates || [['contract_on', 'Ngày ký']], b = S.flt?.by[grp()]; return ds.some(d => d[0] === b) ? b : ds[0][0]; };
-  const fltParams = p => { if (!hdKinds) return; const by = dateBy(); if (S.flt.fr) p.set('fr_' + by, S.flt.fr); if (S.flt.to) p.set('to_' + by, S.flt.to); if (S.flt.bld.length) p.set('building', S.flt.bld.join(',')); };
+  const fltV = () => (S.flt.v[grp()] ||= {});
+  const fltParams = p => { if (!hdKinds) return; for (const [k, v] of Object.entries(fltV())) if (v != null && String(v).trim() !== '') p.set(k, v); };
   const projFilter = ['unit', 'building', 'price_policy', 'reservation', 'contract', 'collect_plan', 'handover', 'defect', 'pinkbook', 'debt_call', 'receipt', 'installment', 'noxh_check', 'ticket', 'contract_change', 'commission', 'target', 'agent_alloc', 'refund'].includes(ent);
   const extra = { collect_plan: `<button class="btn" data-x="suggest">${ico('fa-wand-magic-sparkles')} Gợi ý từ công nợ & cam kết</button>`, commission: `<button class="btn" data-x="calc">${ico('fa-calculator')} Tính / cập nhật hoa hồng</button>`,
     receipt: (M.imports.misa ? `<button class="btn amb" data-x="imp" data-k="misa">${ico('fa-file-import')} Nhập phiếu thu MISA</button>` : '') + (M.imports.receipts ? `<button class="btn" data-x="imp" data-k="receipts">${ico('fa-file-import')} Nhập chứng từ Bravo</button>` : ''), unit: M.imports.units ? `<button class="btn" data-x="imp" data-k="units">${ico('fa-file-import')} Nhập bảng hàng</button>` : '',
@@ -1249,7 +1249,7 @@ async function listView(main, ent, params = {}) {
     contact_log: `${M.imports.leads ? `<button class="btn" data-x="imp" data-k="leads">${ico('fa-file-import')} Nhập Excel khách</button>` : ''}${E.perm.c ? `<button class="btn amb" data-x="lead">${ico('fa-user-plus')} Thêm khách trực tiếp / Hotline</button>` : ''}`, contract: M.imports.contracts ? `<button class="btn" data-x="imp" data-k="contracts">${ico('fa-file-import')} Nhập HĐ cũ</button>` : '' }[ent] || '';
   main.innerHTML = `<div class="page"><div class="ph"><div>${eyebrow(E)}<h1>${ico(E.icon)} ${esc(S.group === 'tiem_nang' ? E.title + ' tiềm năng' : E.groups?.[S.group] || E.title)}</h1></div><div class="acts">${E.purpose ? `<button class="btn ghost" id="infoBtn">${ico('fa-circle-info')} Quy trình</button>` : ''}${extra}${E.perm.x ? `<button class="btn" id="xls">${ico('fa-file-excel')} Xuất Excel</button>` : ''}<button class="btn" onclick="print()">${ico('fa-print')} In / PDF</button>${E.perm.c ? `<button class="btn pri" id="newBtn">${ico('fa-plus')} ${ent === 'reservation' ? 'Tạo phiếu đăng ký' : `Tạo ${esc(E.one)}`}</button>` : ''}</div></div>${infoBox(E)}
     <div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="q" placeholder="Tìm mã, tên, mã căn, khách hàng…" value="${esc(S.q)}"></div>
-      ${hdKinds ? `<button class="btn sm" id="fltT">${ico('fa-filter')} Điều kiện lọc</button>` : ''}${projFilter && !hdKinds ? `<select id="pj"><option value="">Tất cả dự án</option>${M.projects.map(p => `<option value="${p.id}" ${+S.project === p.id ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select>` : ''}
+      ${hdKinds ? `<button class="btn sm" id="fltT">${ico('fa-filter')} Điều kiện lọc</button>` : ''}${projFilter ? `<select id="pj"><option value="">Tất cả dự án</option>${M.projects.map(p => `<option value="${p.id}" ${+S.project === p.id ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select>` : ''}
       ${E.fields.some(f => ['owner_id', 'assignee_id'].includes(f.k)) ? `<label class="chk"><input type="checkbox" id="mine" ${S.mine ? 'checked' : ''}> Của tôi</label>` : ''}
       <span class="grow"></span><span class="small muted" id="cnt"></span></div>
       ${hdKinds ? `<div class="tabs hd-tabs hd-kinds" id="hdK"><button data-ck="" class="${S.ht ? '' : 'on'}">${ico('fa-file-contract')} HĐ mua bán</button><button data-ck="1" class="${S.ht === '1' ? 'on' : ''}">${ico('fa-couch')} HĐ hoàn thiện căn hộ</button><button data-ck="t" class="${S.ht === 't' ? 'on' : ''}">${ico('fa-key')} HĐ thuê</button><button data-ck="v" class="${S.ht === 'v' ? 'on' : ''}">${ico('fa-hand-holding-dollar')} HĐ vay</button></div>` : ''}${rsKinds ? `<div class="tabs hd-tabs hd-kinds" id="hdK"><button data-ck="" class="${S.ht ? '' : 'on'}">${ico('fa-hand-holding-hand')} Đăng ký mua</button><button data-ck="t" class="${S.ht === 't' ? 'on' : ''}">${ico('fa-key')} Đăng ký thuê</button></div>` : ''}${st ? `<div class="tabs" id="stTabs"></div>` : ''}${hdKinds ? `<div class="flt-wrap ${S.flt.hide ? 'flt-off' : ''}"><aside class="flt" id="flt"></aside><div class="flt-main">` : ''}<div id="bulk"></div><div class="tbl-wrap" id="tb"><div class="empty">Đang tải…</div></div><div class="more" id="more"></div>${hdKinds ? '</div></div>' : ''}</div></div>`;
@@ -1277,30 +1277,39 @@ async function listView(main, ent, params = {}) {
   };
   const drawFlt = () => {
     const box = $('#flt', main); if (!box) return;
-    const L = E.lists?.[grp()], ds = L?.dates || [['contract_on', 'Ngày ký']], by = dateBy(), bs = M.buildings.filter(b => !S.project || b.project_id === +S.project);
-    const pc = id => M.projects.find(x => x.id === id)?.code || '';
-    const n = s => `<span class="n">${s}.</span>`;
-    box.innerHTML = `<div class="flt-hd"><b>${ico('fa-filter')} Điều kiện lọc</b><button type="button" class="btn ghost sm" data-fx="hide" title="Ẩn ô lọc">${ico('fa-xmark')}</button></div>
-      <div class="flt-f"><label>${n(1)} Lọc theo</label><select data-fx-by>${ds.map(([k, l]) => `<option value="${k}" ${k === by ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>
-      <div class="flt-f"><label>${n(2)} Từ ngày</label>${segDate('fltFr', S.flt.fr)}</div>
-      <div class="flt-f"><label>${n(3)} Đến ngày</label>${segDate('fltTo', S.flt.to)}</div>
-      <div class="flt-f"><label>${n(4)} Dự án</label><select data-fx-pj><option value="">Tất cả dự án</option>${M.projects.map(x => `<option value="${x.id}" ${+S.project === x.id ? 'selected' : ''}>${esc(x.code)} · ${esc(x.name)}</option>`).join('')}</select></div>
-      <div class="flt-f"><label>${n(5)} Phân loại (tòa)${S.flt.bld.length ? ` <span class="muted small">— đã chọn ${S.flt.bld.length}</span>` : ''}</label><div class="flt-list">${bs.map(b => `<label class="chk"><input type="checkbox" data-fb="${b.id}" ${S.flt.bld.includes(b.id) ? 'checked' : ''}> ${S.project ? '' : `<span class="muted">${esc(pc(b.project_id))}</span> `}${esc(b.name || b.code)}</label>`).join('') || '<span class="small muted">Chưa có tòa</span>'}</div></div>
-      ${(L?.secs || []).some(x => x.opt) ? `<div class="flt-sec">Hiển thị cột</div>${L.secs.filter(x => x.opt).map((x, i) => `<label class="chk flt-v"><input type="checkbox" data-fv="${esc(x.opt)}" ${optOn(x) ? 'checked' : ''}> ${n(String.fromCharCode(97 + i))} ${esc(x.opt)}</label>`).join('')}` : ''}
-      <div class="flt-ft"><button type="button" class="btn sm" data-fx="clr">${ico('fa-eraser')} Bỏ lọc</button></div>`;
+    const L = E.lists?.[grp()], v = fltV(), pii = M.piiRoles.includes(M.me.role);
+    const ks = (L?.cols || []).filter(k => !['stt', 'status', 'paid', 'link_ids'].includes(k));
+    const lab = k => L?.label?.[k] || colLabel(ent, k), on = Object.values(v).filter(x => String(x ?? '').trim()).length;
+    const ctl = k => {
+      const f = E.fields.find(x => x.k === k) || { t: 'text' };
+      if (f.pii && !pii) return '';   // dữ liệu định danh: chỉ vai trò được xem mới lọc
+      const val = x => esc(v[x] ?? '');
+      if (['date', 'dt'].includes(f.t)) return `<div class="flt-d"><span class="muted small">Từ</span>${segDate('fd-fr_' + k, v['fr_' + k] || '')}<span class="muted small">Đến</span>${segDate('fd-to_' + k, v['to_' + k] || '')}</div>`;
+      if (['money', 'num', 'int'].includes(f.t)) return `<div class="flt-2"><input data-q="mn_${k}" value="${val('mn_' + k)}" placeholder="Từ" inputmode="decimal"><span class="muted">–</span><input data-q="mx_${k}" value="${val('mx_' + k)}" placeholder="Đến" inputmode="decimal"></div>`;
+      if (f.t === 'sel' && f.o) return `<select data-q="f_${k}"><option value="">Tất cả</option>${f.o.map(o => `<option value="${esc(o[0])}" ${v['f_' + k] === o[0] ? 'selected' : ''}>${esc(o[1])}</option>`).join('')}</select>`;
+      if (f.t === 'bool') return `<select data-q="f_${k}"><option value="">Tất cả</option><option value="1" ${v['f_' + k] === '1' ? 'selected' : ''}>Có</option><option value="0" ${v['f_' + k] === '0' ? 'selected' : ''}>Không</option></select>`;
+      return `<input data-q="lk_${k}" value="${val('lk_' + k)}" placeholder="có chứa…">`;
+    };
+    let i = 0;
+    box.innerHTML = `<div class="flt-hd"><b>${ico('fa-filter')} Điều kiện lọc${on ? ` <span class="pill b">${on}</span>` : ''}</b><button type="button" class="btn ghost sm" data-fx="hide" title="Ẩn ô lọc">${ico('fa-xmark')}</button></div>
+      ${ks.map(k => { const c = ctl(k); return c ? `<div class="flt-f"><label><span class="n">${++i}.</span> ${esc(lab(k))}</label>${c}</div>` : ''; }).join('')}
+      <div class="flt-ft"><button type="button" class="btn sm" data-fx="clr">${ico('fa-eraser')} Bỏ lọc</button></div>
+      ${(L?.secs || []).some(x => x.opt) ? `<div class="flt-sec">Hiển thị cột</div>${L.secs.filter(x => x.opt).map((x, j) => `<label class="chk flt-v"><input type="checkbox" data-fv="${esc(x.opt)}" ${optOn(x) ? 'checked' : ''}> <span class="n">${String.fromCharCode(97 + j)}.</span> ${esc(x.opt)}</label>`).join('')}` : ''}`;
     wireSegDate(box);
   };
   if (hdKinds) {
     drawFlt();
     const box = $('#flt', main), saveView = () => { try { localStorage.setItem(FV, JSON.stringify(S.flt.view)); } catch { } };
+    const badge = () => { const n = Object.values(fltV()).filter(x => String(x ?? '').trim()).length, h = $('.flt-hd b', box); if (h) h.innerHTML = `${ico('fa-filter')} Điều kiện lọc${n ? ` <span class="pill b">${n}</span>` : ''}`; };
+    const setQ = (k, val) => { const v = fltV(); if (String(val ?? '').trim()) v[k] = String(val).trim(); else delete v[k]; badge(); };
+    const later = debounce(() => load(), 400);
+    box.addEventListener('input', e => { const k = e.target.dataset?.q; if (!k || e.target.tagName === 'SELECT') return; setQ(k, e.target.value); later(); });
     box.addEventListener('change', run(async e => {
       const t = e.target;
-      if (t.matches('[data-fx-by]')) { S.flt.by[grp()] = t.value; if (S.flt.fr || S.flt.to) await load(); return; }
-      if (t.matches('[data-fx-pj]')) { S.project = t.value; const ok = new Set(M.buildings.filter(b => !S.project || b.project_id === +S.project).map(b => b.id)); S.flt.bld = S.flt.bld.filter(id => ok.has(id)); drawFlt(); return load(); }
-      if (t.dataset.fb) { const id = +t.dataset.fb; S.flt.bld = t.checked ? [...new Set([...S.flt.bld, id])] : S.flt.bld.filter(x => x !== id); drawFlt(); return load(); }
+      if (t.tagName === 'SELECT' && t.dataset.q) { setQ(t.dataset.q, t.value); return load(); }
       if (t.dataset.fv) { (S.flt.view[grp()] ||= {})[t.dataset.fv] = t.checked; saveView(); return load(); }
     }));
-    box.addEventListener('sdchange', run(async e => { const v = segVal(e.target); if (v === null) return; if (e.target.id === 'fltFr') S.flt.fr = v; else S.flt.to = v; await load(); }));
+    box.addEventListener('sdchange', run(async e => { const v = segVal(e.target); if (v === null) return; setQ(e.target.id.slice(3), v); await load(); }));
   }
   ST.reload = load;
   main.oncontextmenu = e => { const tr = e.target.closest('tbody tr[data-id]'); if (!tr || ent !== 'customer') return; e.preventDefault(); rowMenu(ent, +tr.dataset.id, e.clientX, e.clientY); };
@@ -1318,7 +1327,7 @@ async function listView(main, ent, params = {}) {
     if (xb?.dataset.x === 'lead') return leadModal(load);
     const ck = t.closest('[data-ck]'); if (ck) { S.ht = ck.dataset.ck; S.status = ''; S.sort = ''; S.sel.clear(); $$('button', ck.parentElement).forEach(b => b.classList.toggle('on', b === ck)); drawFlt(); return load(); }
     if (t.closest('#fltT') || t.closest('[data-fx=hide]')) { S.flt.hide = !S.flt.hide; $('.flt-wrap', main)?.classList.toggle('flt-off', S.flt.hide); return; }
-    if (t.closest('[data-fx=clr]')) { Object.assign(S.flt, { fr: '', to: '', bld: [] }); S.project = ''; drawFlt(); return load(); }
+    if (t.closest('[data-fx=clr]')) { S.flt.v[grp()] = {}; drawFlt(); return load(); }
     const tab = t.closest('[data-s]'); if (tab) { S.status = tab.dataset.s; S.sel.clear(); return load(); }
     const th = t.closest('th[data-k]'); if (th?.dataset.k) { const k = th.dataset.k; S.sort = S.sort === k ? '-' + k : k; return load(); }
     if (t.id === 'selAll') { $$('[data-sel]', main).forEach(c => { c.checked = t.checked; t.checked ? S.sel.add(+c.dataset.sel) : S.sel.delete(+c.dataset.sel); c.closest('tr').classList.toggle('sel', t.checked); }); return drawBulk(); }

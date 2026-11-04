@@ -1000,3 +1000,10 @@ table.dsum td.ds-addr { max-width: 260px; overflow: hidden; text-overflow: ellip
 .flt-sec { font-weight: 700; font-size: 12.5px; margin: 10px 0 4px; padding-top: 8px; border-top: 1px dashed var(--line, #dfe5ee); color: var(--cobalt-d, #163d70); }
 .flt-ft { margin-top: 10px; }
 @media (max-width: 900px) { .flt-wrap { flex-direction: column; } .flt { width: 100%; position: static; max-height: none; } }
+.flt-2 { display: flex; align-items: center; gap: 4px; }
+.flt-2 > input { flex: 1; min-width: 0; width: 100%; }
+.flt-2 > .sdate { flex: 1; min-width: 0; }
+.flt-f > input, .flt-f > select { width: 100%; }
+.flt-hd .pill { margin-left: 4px; }
+.flt-d { display: grid; grid-template-columns: auto 1fr; gap: 4px 6px; align-items: center; }
+.flt-d > .sdate { width: 100%; min-width: 0; }

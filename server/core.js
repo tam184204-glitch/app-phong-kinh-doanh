@@ -233,10 +233,16 @@ async function list(entKey, user, qs = {}, { db = { q, one }, limit } = {}) {
   const pj = projExpr(e); if (qs.project && F[entKey].project_ids) add('$1 = ANY(t.project_ids)', +qs.project); else if (qs.project && pj) add(`${pj} = $1`, +qs.project);
   const ids = v => String(v).split(',').map(Number).filter(Number.isInteger);   // «1,2,3» → chọn nhiều
   const bd = buildingExpr(e); if (qs.building && bd) { const b = ids(qs.building); if (b.length > 1) add(`${bd} = ANY($1::int[])`, b); else add(`${bd} = $1`, b[0] ?? -1); }
-  // khoảng ngày: fr_<ô ngày> = từ ngày, to_<ô ngày> = đến ngày (VD fr_contract_on=2026-10-01&to_contract_on=2026-11-04)
+  // lọc theo từng trường (ô «Điều kiện lọc»): fr_/to_<ô ngày> từ – đến ngày · mn_/mx_<ô tiền, số> từ – đến · lk_<ô> có chứa (chữ, mã căn, tên khách…)
+  // hook colExpr: biểu thức của cột hiện trên danh sách mà không lưu ở bảng (VD họ tên bên mua lấy theo khách hàng) — lọc đúng như đang thấy
+  const X = H[entKey]?.colExpr || {};
   for (const [k, v] of Object.entries(qs)) {
-    const m = /^(fr|to)_([a-z0-9_]+)$/.exec(k), f = m && F[entKey][m[2]], d = f && ['date', 'dt'].includes(f.t) && isoDate(v); if (!d) continue;
-    add(`${f.t === 'dt' ? `(t.${f.k} AT TIME ZONE 'Asia/Ho_Chi_Minh')::date` : `t.${f.k}`} ${m[1] === 'fr' ? '>=' : '<='} $1::date`, d);
+    const m = /^(fr|to|mn|mx|lk)_([a-z0-9_]+)$/.exec(k); if (!m || v == null || String(v).trim() === '') continue;
+    const [, op, c] = m, f = F[entKey][c], ex = X[c] || (f ? `t.${c}` : null); if (!ex) continue;
+    if (f?.pii && !PII_ROLES.includes(user?.role)) continue;   // không cho dò dữ liệu định danh khi vai trò không được xem
+    if (op === 'fr' || op === 'to') { const d = f && ['date', 'dt'].includes(f.t) && isoDate(v); if (!d) continue; add(`${f.t === 'dt' ? `(${ex} AT TIME ZONE 'Asia/Ho_Chi_Minh')::date` : ex} ${op === 'fr' ? '>=' : '<='} $1::date`, d); }
+    else if (op === 'mn' || op === 'mx') { const n = f && ['money', 'num', 'int'].includes(f.t) ? parseNum(v, f.t === 'money') : NaN; if (!isFinite(n)) continue; add(`${ex} ${op === 'mn' ? '>=' : '<='} $1`, n); }
+    else { const e2 = X[c] || (f?.t === 'ref' ? `(SELECT ${dispOf(f.ref, 'x')} FROM ${E[f.ref].table} x WHERE x.id = t.${c})` : `t.${c}`); add(`(${e2})::text ILIKE $1`, `%${String(v).trim()}%`); }
   }
   for (const [k, v] of Object.entries(qs)) {
     if (!k.startsWith('f_') || v === '') continue;
