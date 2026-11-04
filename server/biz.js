@@ -853,7 +853,12 @@ H.contract = {
     // chung cư có giá nền: tính như BRAVO / Danh mục sản phẩm — chỉ khi tạo mới hoặc đổi ô giá (hợp đồng cũ giữ nguyên số)
     const PK = ['base_price', 'base_orig', 'area_tt', 'floor_price', 'area_floor', 'discount', 'corner_pct', 'vat_pct', 'finish_value', 'unit_id'];
     // HĐ thuê (BRAVO): số tháng theo ngày bắt đầu – kết thúc, tổng tiền = đơn giá thuê × số tháng
+    if (r.kind !== 'thue') r.unit_total = null;
     if (r.kind === 'thue') {
+      if (r.unit_id && (r.unit_total == null || (old && old.unit_id !== r.unit_id && String(old.unit_total ?? '') === String(r.unit_total ?? '')))) {   // giá trị căn hộ theo Danh mục sản phẩm (đổi căn → lấy lại)
+        const u = await raw(db, 'unit', r.unit_id);
+        r.unit_total = u?.total_price != null ? +u.total_price : u?.price_net != null ? +u.price_net + (+u.maint_fee || 0) + (+u.finish_value || 0) : null;
+      }
       if (r.area_tt == null || r.area_floor == null) { const u = await raw(db, 'unit', r.unit_id); r.area_tt ??= u?.area_tt ?? null; r.area_floor ??= u?.area_xd ?? null; }   // diện tích theo căn (sàn = diện tích xây dựng / tim tường)
       if (r.eff_on && r.exp_on && r.exp_on >= r.eff_on) r.term_months = rentMonths(r.eff_on, r.exp_on);
       if (+r.rent > 0 && +r.term_months > 0) r.value = Math.round(+r.rent * +r.term_months);

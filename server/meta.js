@@ -422,7 +422,7 @@ def('contract', {
   // danh sách chung cư = bảng BRAVO «Hợp đồng căn hộ.xlsx» (head: tầng tiêu đề trên, [tên, số cột])
   lists: {
     // HĐ thuê (tab riêng ở danh sách chung cư): cột theo BRAVO
-    thue: { cols: ['number', 'contract_on', 'unit_id', 'b_name', 'b_id_no', 'b_id_date', 'b_id_place', 'b_addr', 'b_phone', 'b_email', 'area_floor', 'area_tt', 'eff_on', 'exp_on', 'term_months', 'rent', 'value', 'pay_times', 'nature', 'closed', 'status'],
+    thue: { cols: ['number', 'contract_on', 'unit_id', 'b_name', 'b_id_no', 'b_id_date', 'b_id_place', 'b_addr', 'b_phone', 'b_email', 'area_floor', 'area_tt', 'eff_on', 'exp_on', 'term_months', 'rent', 'value', 'unit_total', 'discount', 'pay_times', 'nature', 'closed', 'status'],
       head: [['Hợp đồng', 2], ['Bên thuê nhà', 8], ['Thông tin căn hộ', 10], ['', 1]],
       label: { contract_on: 'Ngày ký', unit_id: 'Mã căn hộ', b_name: 'Họ và tên', b_id_no: 'Số CMND / CCCD', b_id_date: 'Ngày cấp', b_id_place: 'Nơi cấp', b_addr: 'Địa chỉ', b_phone: 'Điện thoại', b_email: 'Email', area_floor: 'Diện tích sàn', area_tt: 'Diện tích nền (T.thủy)', value: 'Tổng tiền' } },
     vay: { cols: ['number', 'contract_on', 'unit_id', 'b_name', 'b_id_no', 'b_phone', 'value', 'paid', 'loan_recv_on', 'eff_on', 'exp_on', 'term_months', 'int_mode', 'loan_rate', 'rent', 'int_period', 'principal_method', 'nature', 'link_ids', 'status'],
@@ -490,7 +490,9 @@ def('contract', {
     { k: 'area_build', l: 'Diện tích xây dựng m²', t: 'num', show: LK_SALE },
     money('build_price', 'Đơn giá xây dựng đ/m²', { show: LK_SALE }),
     money('build_amt', 'Giá trị xây dựng', { show: LK_SALE }),
-    money('discount', 'Tiền giảm giá', { show: SALE_ONLY }),
+    money('discount', 'Tiền giảm giá', { show: { kind: [...SALE_K, 'thue'] }, help: 'HĐ mua bán: trừ vào tổng giá rồi chia ngược ra giá. HĐ thuê: chỉ ghi nhận (không trừ vào tiền thuê)' }),
+    // HĐ thuê (04/11/2026): giá trị căn hộ theo Danh mục sản phẩm — CHỈ ĐỂ THÔNG TIN (tiền thuê, tiến độ thu, công nợ vẫn = tiền thuê/tháng × số tháng)
+    money('unit_total', 'Tổng tiền (giá trị hợp đồng)', { show: RENT_ONLY, help: 'Tự lấy theo mã căn ở Danh mục sản phẩm (Tổng giá căn hộ = sau thuế + phí bảo trì + hoàn thiện); sửa được. Chỉ để thông tin — tiền thuê vẫn tính theo tiền thuê/tháng × số tháng' }),
     money('pretax', 'Tiền trước thuế', { show: SALE_ONLY }),
     { k: 'vat_pct', l: 'Thuế suất %', t: 'num', show: SALE_ONLY },
     money('vat_amt', 'Tiền thuế', { help: 'Để trống → trước thuế × thuế suất', show: SALE_ONLY }),

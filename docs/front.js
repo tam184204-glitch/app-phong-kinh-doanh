@@ -432,7 +432,7 @@ const HD_LAYOUT = [
   { side: [
     { t: 'Bên mua nhà ở', rows: [['customer_id'], ['b_id_no'], ['b_id_date'], ['b_id_place'], ['b_addr'], ['b_perm_addr'], ['b_temp_addr'], ['b_phone', 'b_email'], ['b_bank_acc'], ['b_bank_name'], ['request_on', 'co_owner']] },
     { t: 'Bên bán nhà ở', rows: [['s_name'], ['s_addr'], ['s_phone', 's_tax'], ['s_bank_acc'], ['s_bank_name'], ['s_rep'], ['s_title'], ['s_poa'], ['owner_id'], ['commission_amt', 'commission_pct'], ['common_area_amt', 'all_signed']] }] },
-  { t: 'Thông tin chi tiết', cols: 4, rows: [['number', 'contract_on'], ['ptype', 'building_id', 'kind', 'nature'], ['base_price', 'area_tt', 'area_floor', 'discount'], ['area_land', 'land_price', 'land_amt'], ['area_build', 'build_price', 'build_amt'],
+  { t: 'Thông tin chi tiết', cols: 4, rows: [['number', 'contract_on'], ['ptype', 'building_id', 'kind', 'nature'], ['base_price', 'unit_total', 'area_tt', 'area_floor', 'discount'], ['area_land', 'land_price', 'land_amt'], ['area_build', 'build_price', 'build_amt'],
     ['pretax', 'vat_pct', 'vat_amt', 'after_tax'], ['finish_value', 'maint_fee', 'corner_pct', 'corner_amt'],
     ['loan_recv_on', 'loan_tranches', 'int_mode', 'loan_rate'],   // HĐ vay
     ['eff_on', 'exp_on', 'term_months', 'pay_times'],   // HĐ thuê (BRAVO) · HĐ vay: bắt đầu tính lãi / đáo hạn / thời hạn vay
@@ -803,6 +803,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
         const fv = readField(form, fields.find(x => x.k === 'finish_value') || {});
         if (htp && fv > 0 && form.elements.ptype.value !== 'lien_ke') { htp.finish(fv); form.elements.finish_value.value = ''; const tv = readField(form, fields.find(x => x.k === 'value')); if (tv > fv) form.elements.value.value = moneyStr(tv - fv); }
         contractCalc();
+        if (form.elements.unit_total) { form.elements.unit_total.value = moneyStr(src.total_price != null ? +src.total_price : src.price_net != null ? +src.price_net + (+src.maint_fee || 0) + (+src.finish_value || 0) : null); form._utNet?.(); }   // HĐ thuê: giá trị căn hộ (thông tin)
         const kd = form.elements.kind?.value; if (['vay', 'thue'].includes(kd) && form.elements.sale_price) { form.elements.sale_price.value = form.elements.value.value; if (kd === 'vay') form.elements.value.value = ''; }
         htp?.rentValue();
       }
@@ -855,6 +856,11 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     // b0 = giá nền gốc (trước giảm giá): theo căn khi chọn căn, hoặc giá gõ tay vào ô giá nền; HĐ đã lưu: base_orig (HĐ cũ: giá nền + tiền giảm / DT).
     // Ô giá nền hiện giá đã chia ngược khi có giảm giá; xóa tiền giảm → về giá gốc
     const rdn = k => readField(form, fields.find(f => f.k === k) || {});
+    // HĐ thuê: «Sau giảm giá» = Tổng tiền (giá trị căn hộ) − Tiền giảm giá — chỉ hiện số, không đổi tiền thuê
+    const utBox = $('[data-f=unit_total]', form);
+    if (utBox) { const sp = document.createElement('div'); sp.className = 'small muted ut-net'; sp.style.marginTop = '3px'; utBox.append(sp);
+      form._utNet = () => { const t = +rdn('unit_total') || 0, d = +rdn('discount') || 0; sp.innerHTML = t ? `Sau giảm giá: <b>${fm(t - d)}</b> đ` : ''; };
+      form.addEventListener('input', e => { if (['unit_total', 'discount'].includes(e.target.name)) form._utNet(); }); form._utNet(); }
     let b0 = +rec.base_orig > 0 ? +rec.base_orig : +rec.base_price > 0 ? +rec.base_price + (+rec.discount > 0 && +rec.area_tt > 0 ? +rec.discount / +rec.area_tt : 0) : null;
     form._b0 = () => b0;
     form._unitBase = b => { if (!(b > 0) || form.elements.ptype?.value === 'lien_ke') { b0 = +rdn('base_price') || null; return; } b0 = b; form.elements.base_price.value = moneyStr(b); };   // chọn căn: giá gốc theo căn
