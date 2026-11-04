@@ -231,12 +231,19 @@ async function list(entKey, user, qs = {}, { db = { q, one }, limit } = {}) {
     add(`concat_ws(' ', t.id::text, ${parts.join(', ') || "''"}) ILIKE $1`, `%${String(qs.q).trim()}%`);
   }
   const pj = projExpr(e); if (qs.project && F[entKey].project_ids) add('$1 = ANY(t.project_ids)', +qs.project); else if (qs.project && pj) add(`${pj} = $1`, +qs.project);
-  const bd = buildingExpr(e); if (qs.building && bd) add(`${bd} = $1`, +qs.building);
+  const ids = v => String(v).split(',').map(Number).filter(Number.isInteger);   // «1,2,3» → chọn nhiều
+  const bd = buildingExpr(e); if (qs.building && bd) { const b = ids(qs.building); if (b.length > 1) add(`${bd} = ANY($1::int[])`, b); else add(`${bd} = $1`, b[0] ?? -1); }
+  // khoảng ngày: fr_<ô ngày> = từ ngày, to_<ô ngày> = đến ngày (VD fr_contract_on=2026-10-01&to_contract_on=2026-11-04)
+  for (const [k, v] of Object.entries(qs)) {
+    const m = /^(fr|to)_([a-z0-9_]+)$/.exec(k), f = m && F[entKey][m[2]], d = f && ['date', 'dt'].includes(f.t) && isoDate(v); if (!d) continue;
+    add(`${f.t === 'dt' ? `(t.${f.k} AT TIME ZONE 'Asia/Ho_Chi_Minh')::date` : `t.${f.k}`} ${m[1] === 'fr' ? '>=' : '<='} $1::date`, d);
+  }
   for (const [k, v] of Object.entries(qs)) {
     if (!k.startsWith('f_') || v === '') continue;
     const f = F[entKey][k.slice(2)]; if (!f) continue;
     if (f.t === 'bool') add(`coalesce(t.${f.k}, false) = $1`, v === '1' || v === 'true');
     else if (f.t === 'refs') add(`$1 = ANY(t.${f.k})`, +v);
+    else if ((f.t === 'ref' || f.t === 'user' || f.t === 'int') && String(v).includes(',')) add(`t.${f.k} = ANY($1::int[])`, ids(v));
     else if (f.t === 'ref' || f.t === 'user' || f.t === 'int') add(`t.${f.k} = $1`, +v);
     else add(`t.${f.k} = $1`, v);
   }

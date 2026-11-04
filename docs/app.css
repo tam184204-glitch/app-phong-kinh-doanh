@@ -983,3 +983,20 @@ table.dsum td.ds-addr { max-width: 260px; overflow: hidden; text-overflow: ellip
 .upd-bar { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 9000; display: flex; align-items: center; gap: 10px; max-width: calc(100vw - 32px);
   background: var(--cobalt-d, #163d70); color: #fff; padding: 10px 12px 10px 16px; border-radius: 12px; box-shadow: 0 8px 24px rgba(10, 30, 60, .28); font-size: 14px; }
 .upd-bar .btn { flex: none; background: var(--amber); border-color: var(--amber); color: #1b2430; font-weight: 700; }
+
+/* Điều kiện lọc bên trái danh sách Hợp đồng căn hộ chung cư (như BRAVO) */
+.flt-wrap { display: flex; gap: 14px; align-items: flex-start; }
+.flt-wrap > .flt-main { flex: 1; min-width: 0; }
+.flt { flex: none; width: 250px; border: 1px solid var(--line, #dfe5ee); border-radius: 12px; padding: 10px 12px; background: var(--card, #fff); position: sticky; top: 8px; max-height: calc(100vh - 120px); overflow: auto; }
+.flt-wrap.flt-off > .flt { display: none; }
+.flt-hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; color: var(--cobalt-d, #163d70); }
+.flt-f { margin-bottom: 9px; }
+.flt-f > label { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 3px; color: var(--ink-2, #3d4a5c); }
+.flt .n { color: var(--muted, #7a8699); font-weight: 600; margin-right: 2px; }
+.flt select { width: 100%; }
+.flt .sdate { width: 100%; }
+.flt-list { max-height: 150px; overflow: auto; border: 1px solid var(--line, #dfe5ee); border-radius: 8px; padding: 4px 8px; }
+.flt-list .chk, .flt .flt-v { display: flex; gap: 6px; align-items: center; font-size: 13px; padding: 2px 0; }
+.flt-sec { font-weight: 700; font-size: 12.5px; margin: 10px 0 4px; padding-top: 8px; border-top: 1px dashed var(--line, #dfe5ee); color: var(--cobalt-d, #163d70); }
+.flt-ft { margin-top: 10px; }
+@media (max-width: 900px) { .flt-wrap { flex-direction: column; } .flt { width: 100%; position: static; max-height: none; } }

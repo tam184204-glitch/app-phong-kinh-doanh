@@ -411,6 +411,9 @@ const SELLERS = [
     rep: 'Bà Nguyễn Thị Thanh Dung', title: 'Trưởng phòng Kinh Doanh và Marketing', poa: '06/2026/UQ-TN ký ngày 1/8/2026', projects: ['TNS', 'TN'] },
 ];
 const CHUC_VU = ['Tổng Giám đốc', 'Phó Tổng Giám đốc', 'Giám đốc', 'Phó Giám đốc', 'Trưởng phòng Kinh doanh'];
+// danh sách hợp đồng chia nhóm cột như BRAVO «Điều kiện lọc → Xem …» (04/11/2026): [tiêu đề nhóm, [cột], ô tick «Xem …» (bỏ trống = luôn hiện), mặc định hiện]
+// cols / head = đủ các nhóm (xuất Excel không gửi cols, máy cũ); màn danh sách tự ghép theo nhóm đang tick
+const secList = (secs, more = {}) => ({ secs: secs.map(([h, cols, opt, def]) => ({ h, cols, opt: opt || null, def: def !== false })), cols: secs.flatMap(x => x[1]), head: secs.map(x => [x[0], x[1].length]), ...more });
 def('contract', {
   title: 'Sổ theo dõi hợp đồng', one: 'hợp đồng', code: 'HD-01', mod: '05', icon: 'fa-file-contract', disp: "t.number",
   purpose: 'Theo dõi ký kết và lưu hợp đồng', users: 'Nhân viên quản lý hợp đồng',
@@ -422,18 +425,21 @@ def('contract', {
   // danh sách chung cư = bảng BRAVO «Hợp đồng căn hộ.xlsx» (head: tầng tiêu đề trên, [tên, số cột])
   lists: {
     // HĐ thuê (tab riêng ở danh sách chung cư): cột theo BRAVO
-    thue: { cols: ['number', 'contract_on', 'unit_id', 'b_name', 'b_id_no', 'b_id_date', 'b_id_place', 'b_addr', 'b_phone', 'b_email', 'area_floor', 'area_tt', 'eff_on', 'exp_on', 'term_months', 'rent_house', 'rent_furn', 'rent', 'value', 'unit_total', 'discount', 'pay_times', 'nature', 'status'],
-      head: [['Hợp đồng', 2], ['Bên thuê nhà', 8], ['Thông tin căn hộ', 10], ['', 1]],
-      label: { contract_on: 'Ngày ký', unit_id: 'Mã căn hộ', b_name: 'Họ và tên', b_id_no: 'Số CMND / CCCD', b_id_date: 'Ngày cấp', b_id_place: 'Nơi cấp', b_addr: 'Địa chỉ', b_phone: 'Điện thoại', b_email: 'Email', area_floor: 'Diện tích sàn', area_tt: 'Diện tích nền (T.thủy)', value: 'Giá trị HĐ thuê' } },
-    vay: { cols: ['number', 'contract_on', 'unit_id', 'b_name', 'b_id_no', 'b_phone', 'value', 'paid', 'loan_recv_on', 'eff_on', 'exp_on', 'term_months', 'int_mode', 'loan_rate', 'rent', 'int_period', 'principal_method', 'nature', 'link_ids', 'status'],
-      head: [['Hợp đồng', 2], ['Bên cho vay (khách hàng)', 4], ['Khoản vay', 3], ['Lãi & gốc', 8], ['Liên kết', 2], ['', 1]],
-      label: { contract_on: 'Ngày ký', unit_id: 'Mã căn hộ', b_name: 'Họ và tên', b_id_no: 'Số CMND / CCCD', b_phone: 'Điện thoại', value: 'Số tiền vay', paid: 'Gốc đã nhận', eff_on: 'Bắt đầu tính lãi', exp_on: 'Ngày đáo hạn', term_months: 'Thời hạn vay (tháng)', rent: 'Tiền thuê/tháng (trả lãi)' } },
-    hoan_thien: { cols: ['stt', 'number', 'contract_on', 'unit_id', 'b_name', 'b_id_no', 'b_id_date', 'b_id_place', 'b_addr', 'b_phone', 'finish_value', 'discount', 'value'],
-    head: [['Hợp đồng', 4], ['Thông tin bên mua nhà', 6], ['Giá trị hoàn thiện', 3]],   // bên mua: dữ liệu chung với HĐ mua bán cùng căn
-    label: { stt: 'STT', number: 'Số HĐ', contract_on: 'Ngày ký', unit_id: 'Mã căn', b_name: 'Họ và tên', b_id_no: 'Số CMND', b_id_date: 'Ngày cấp', b_id_place: 'Nơi cấp', b_addr: 'Địa chỉ', b_phone: 'Điện thoại', finish_value: 'Giá trị trước giảm giá', discount: 'Số giảm giá', value: 'Giá trị sau giảm giá' } },
-    can_ho: { cols: ['number', 'kind', 'contract_on', 'unit_id', 'area_tt', 'area_floor', 'base_price', 'pretax', 'vat_pct', 'vat_amt', 'after_tax', 'maint_fee', 'value', 'b_name', 'b_id_no', 'b_id_date', 'b_id_place', 'b_addr', 'b_phone', 'status'],
-    head: [['Hợp đồng', 3], ['Thông tin chi tiết', 10], ['Thông tin bên mua nhà', 6], ['', 1]],
-    label: { contract_on: 'Ngày ký HĐMB', unit_id: 'Mã căn', area_tt: 'Diện tích nền (T.thủy)', area_floor: 'Diện tích sàn', base_price: 'Giá nền (chưa VAT)', value: 'Tổng tiền cả VAT', b_id_no: 'Số CMND', b_addr: 'Địa chỉ', b_phone: 'Điện thoại', status: 'Tình trạng' } } },
+    thue: secList([['Hợp đồng', ['number', 'contract_on', 'unit_id']], ['Bên thuê nhà', ['b_name', 'b_id_no', 'b_id_date', 'b_id_place', 'b_addr', 'b_phone', 'b_email'], 'Xem thông tin khách hàng'],
+      ['Thông tin căn hộ', ['area_floor', 'area_tt']], ['Thời hạn thuê', ['eff_on', 'exp_on', 'term_months', 'pay_times']], ['Tiền thuê', ['rent_house', 'rent_furn', 'rent'], 'Xem tiền thuê'], ['Giá trị HĐ thuê', ['value']],
+      ['Giá trị HĐMB', ['unit_total', 'discount'], 'Xem giá trị HĐMB'], ['', ['nature', 'status']]],
+      { dates: [['contract_on', 'Ngày ký'], ['eff_on', 'Ngày bắt đầu thuê'], ['exp_on', 'Ngày kết thúc thuê']], label: { contract_on: 'Ngày ký', unit_id: 'Mã căn hộ', b_name: 'Họ và tên', b_id_no: 'Số CMND / CCCD', b_id_date: 'Ngày cấp', b_id_place: 'Nơi cấp', b_addr: 'Địa chỉ', b_phone: 'Điện thoại', b_email: 'Email', area_floor: 'Diện tích sàn', area_tt: 'Diện tích nền (T.thủy)', value: 'Giá trị HĐ thuê' } }),
+    vay: secList([['Hợp đồng', ['number', 'contract_on', 'unit_id']], ['Bên cho vay (khách hàng)', ['b_name', 'b_id_no', 'b_phone'], 'Xem thông tin khách hàng'], ['Khoản vay', ['value', 'paid', 'loan_recv_on']],
+      ['Lãi & gốc', ['eff_on', 'exp_on', 'term_months', 'int_mode', 'loan_rate', 'rent', 'int_period', 'principal_method'], 'Xem lãi & gốc'], ['Liên kết', ['nature', 'link_ids'], 'Xem liên kết', false], ['', ['status']]],
+      { dates: [['contract_on', 'Ngày ký'], ['loan_recv_on', 'Ngày nhận tiền vay'], ['exp_on', 'Ngày đáo hạn']], label: { contract_on: 'Ngày ký', unit_id: 'Mã căn hộ', b_name: 'Họ và tên', b_id_no: 'Số CMND / CCCD', b_phone: 'Điện thoại', value: 'Số tiền vay', paid: 'Gốc đã nhận', eff_on: 'Bắt đầu tính lãi', exp_on: 'Ngày đáo hạn', term_months: 'Thời hạn vay (tháng)', rent: 'Tiền thuê/tháng (trả lãi)' } }),
+    hoan_thien: secList([['Hợp đồng', ['stt', 'number', 'contract_on', 'unit_id']], ['Thông tin bên mua nhà', ['b_name', 'b_id_no', 'b_id_date', 'b_id_place', 'b_addr', 'b_phone'], 'Xem thông tin khách hàng'],
+      ['Giá trị hoàn thiện', ['finish_value', 'discount', 'value']]],   // bên mua: dữ liệu chung với HĐ mua bán cùng căn
+      { dates: [['contract_on', 'Ngày ký']], label: { stt: 'STT', number: 'Số HĐ', contract_on: 'Ngày ký', unit_id: 'Mã căn', b_name: 'Họ và tên', b_id_no: 'Số CMND', b_id_date: 'Ngày cấp', b_id_place: 'Nơi cấp', b_addr: 'Địa chỉ', b_phone: 'Điện thoại', finish_value: 'Giá trị trước giảm giá', discount: 'Số giảm giá', value: 'Giá trị sau giảm giá' } }),
+    can_ho: secList([['Hợp đồng', ['number', 'kind', 'contract_on']], ['Căn hộ', ['unit_id', 'area_tt', 'area_floor']], ['Tiền nhà', ['base_price', 'pretax', 'vat_pct', 'vat_amt', 'after_tax'], 'Xem tiền nhà'],
+      ['Hoàn thiện', ['finish_value'], 'Xem tiền hoàn thiện', false], ['Hệ số góc', ['corner_pct', 'corner_amt'], 'Xem tiền hệ số góc', false], ['Phí bảo trì', ['maint_fee'], 'Xem phí bảo trì'],
+      ['Giảm giá', ['discount'], 'Xem tiền giảm giá', false], ['Tổng', ['value']], ['Thông tin bên mua nhà', ['b_name', 'b_id_no', 'b_id_date', 'b_id_place', 'b_addr', 'b_phone'], 'Xem thông tin khách hàng'],
+      ['Hoa hồng', ['commission_amt', 'commission_pct'], 'Xem tiền hoa hồng', false], ['', ['status']]],
+      { dates: [['contract_on', 'Ngày ký HĐMB'], ['signed_on', 'Ngày ký thực tế']], label: { contract_on: 'Ngày ký HĐMB', unit_id: 'Mã căn', area_tt: 'Diện tích nền (T.thủy)', area_floor: 'Diện tích sàn', base_price: 'Giá nền (chưa VAT)', value: 'Tổng tiền cả VAT', b_id_no: 'Số CMND', b_addr: 'Địa chỉ', b_phone: 'Điện thoại', status: 'Tình trạng' } }) },
   fields: [
     { k: 'code', l: 'Mã hồ sơ', t: 'code', prefix: 'HS-{Y}-', pad: 4 },
     { k: 'ptype', l: 'Phân loại', t: 'sel', o: HD_PTYPE, def: 'can_ho', sec: 'Chi tiết hợp đồng', help: 'Tự lấy theo loại căn khi chọn căn' },
@@ -555,7 +561,7 @@ def('contract', {
   softLock: { st: ['cho_duyet', 'cho_ky'], keep: ['sign_status', 'sign_place', 'plan_sign', 'new_schedule', 'loan_status', 'loan_bank', 'loan_doc3'], boss: MGR },
   flow: { field: 'status', submit: ['du_thao', 'tu_choi'], approve: { ok: 'da_ky' }, submitLabel: 'Gửi trình duyệt' },
   acts: [
-    { k: 'schedule', l: 'Lập lịch thanh toán', icon: 'fa-calendar-days', from: ['du_thao', 'tu_choi'], roles: ['ho_so', 'cong_no', 'truong_phong'] },
+    { k: 'schedule', l: 'Lập lịch thanh toán', icon: 'fa-calendar-days', from: ['du_thao', 'tu_choi'], roles: ['ho_so', 'cong_no', 'truong_phong'], noBtn: 1 },   // bỏ nút 04/11/2026: lịch thanh toán soạn ở «Lần thanh toán» trong form hợp đồng (Sửa)
     { k: 'liquidate', l: 'Thanh lý', icon: 'fa-box-archive', from: ['da_ky'], roles: MGR, ask: [{ k: 'liquidated_on', l: 'Ngày thanh lý', t: 'date', req: 1, def: 'today' }, { k: 'liquidate_reason', l: 'Lý do', t: 'sel', o: LIQ_REASON, req: 1 }, { k: 'liquidate_note', l: 'Ghi chú', t: 'long' }] },
     { k: 'print', l: 'In theo mẫu', icon: 'fa-print', from: '*', roles: ALL },
   ],

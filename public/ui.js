@@ -1100,7 +1100,7 @@ async function openDetail(ent, id, tab, plain) {   // plain: chỉ xem (mở t�
   const r = g.row, p = g.perm, st = E.fields.find(f => f.k === 'status');
   const title = r.code || r.number || r.voucher_no || r.title || r.full_name || r[E.fields[0].k + '__l'] || `${E.one} #${r.id}`;
   const unitId = ent === 'unit' ? r.id : r.unit_id;
-  const acts = (E.acts || []).filter(a => p.acts.includes(a.k));   // phiếu đăng ký thuê: ẩn nút In bản đăng ký (các mẫu in hiện có đều là đơn đăng ký mua)
+  const acts = (E.acts || []).filter(a => p.acts.includes(a.k) && !a.noBtn);   // noBtn: thao tác không hiện thành nút (VD Lập lịch thanh toán — soạn ở form)   // phiếu đăng ký thuê: ẩn nút In bản đăng ký (các mẫu in hiện có đều là đơn đăng ký mua)
   const tabs = [['info', 'Thông tin'], ...(ent === 'contract' ? [['debt', 'Lịch thanh toán & công nợ']] : []), ...(ent === 'notice' && r.recipient_list ? [['rcp', `Danh sách nhận (${r.recipients})`]] : []), ...(ent === 'report' && r.data ? [['rep', 'Số liệu báo cáo']] : []), ...(ent === 'price_policy' ? [['sheet', 'Chi tiết bảng giá']] : []),
     ['files', `Tệp (${g.files.length})`], ['notes', `Trao đổi (${g.notes.length})`], ...(E.flow ? [['appr', `Phê duyệt (${g.approvals.length})`]] : []), ['hist', 'Lịch sử']];
   el.innerHTML = `<div class="dh"><div class="t1">${E.code ? `<span class="tag">${E.code}</span>` : ''}<h2>${esc(title)}</h2>${st ? show(st, r) : ''}${r.is_demo ? '<span class="tag demo">dữ liệu thử</span>' : ''}<button class="btn ghost sm" style="margin-left:auto" id="dClose" aria-label="Đóng">${ico('fa-xmark')}</button></div>
@@ -1219,6 +1219,13 @@ async function listView(main, ent, params = {}) {
   const hdKinds = ent === 'contract' && S.group === 'can_ho';   // 2 loại hợp đồng, mỗi loại danh sách và trạng thái riêng
   const rsKinds = ent === 'reservation';   // phiếu đăng ký: Đăng ký mua / Đăng ký thuê
   const grp = () => rsKinds ? (S.ht === 't' ? 'thue' : 'mua') : hdKinds && S.ht ? ({ t: 'thue', v: 'vay' }[S.ht] || 'hoan_thien') : S.group;
+  // Điều kiện lọc (như BRAVO) ở danh sách Hợp đồng căn hộ chung cư: lọc ngày theo ô chọn, dự án, phân loại (tòa); «Xem …» bật / tắt nhóm cột — theo từng loại HĐ
+  const FV = 'ctg-kd-hd-xem';
+  if (hdKinds && !S.flt) { let view = {}; try { view = JSON.parse(localStorage.getItem(FV) || '{}') || {}; } catch { } S.flt = { fr: '', to: '', by: {}, bld: [], view, hide: false }; }
+  const optOn = x => { const v = S.flt?.view[grp()]?.[x.opt]; return v == null ? x.def : !!v; };
+  const visSecs = () => { const L = E.lists?.[grp()]; return hdKinds && L?.secs ? L.secs.filter(x => !x.opt || optOn(x)) : null; };
+  const dateBy = () => { const ds = E.lists?.[grp()]?.dates || [['contract_on', 'Ngày ký']], b = S.flt?.by[grp()]; return ds.some(d => d[0] === b) ? b : ds[0][0]; };
+  const fltParams = p => { if (!hdKinds) return; const by = dateBy(); if (S.flt.fr) p.set('fr_' + by, S.flt.fr); if (S.flt.to) p.set('to_' + by, S.flt.to); if (S.flt.bld.length) p.set('building', S.flt.bld.join(',')); };
   const projFilter = ['unit', 'building', 'price_policy', 'reservation', 'contract', 'collect_plan', 'handover', 'defect', 'pinkbook', 'debt_call', 'receipt', 'installment', 'noxh_check', 'ticket', 'contract_change', 'commission', 'target', 'agent_alloc', 'refund'].includes(ent);
   const extra = { collect_plan: `<button class="btn" data-x="suggest">${ico('fa-wand-magic-sparkles')} Gợi ý từ công nợ & cam kết</button>`, commission: `<button class="btn" data-x="calc">${ico('fa-calculator')} Tính / cập nhật hoa hồng</button>`,
     receipt: (M.imports.misa ? `<button class="btn amb" data-x="imp" data-k="misa">${ico('fa-file-import')} Nhập phiếu thu MISA</button>` : '') + (M.imports.receipts ? `<button class="btn" data-x="imp" data-k="receipts">${ico('fa-file-import')} Nhập chứng từ Bravo</button>` : ''), unit: M.imports.units ? `<button class="btn" data-x="imp" data-k="units">${ico('fa-file-import')} Nhập bảng hàng</button>` : '',
@@ -1226,18 +1233,18 @@ async function listView(main, ent, params = {}) {
     contact_log: `${M.imports.leads ? `<button class="btn" data-x="imp" data-k="leads">${ico('fa-file-import')} Nhập Excel khách</button>` : ''}${E.perm.c ? `<button class="btn amb" data-x="lead">${ico('fa-user-plus')} Thêm khách trực tiếp / Hotline</button>` : ''}`, contract: M.imports.contracts ? `<button class="btn" data-x="imp" data-k="contracts">${ico('fa-file-import')} Nhập HĐ cũ</button>` : '' }[ent] || '';
   main.innerHTML = `<div class="page"><div class="ph"><div>${eyebrow(E)}<h1>${ico(E.icon)} ${esc(S.group === 'tiem_nang' ? E.title + ' tiềm năng' : E.groups?.[S.group] || E.title)}</h1></div><div class="acts">${E.purpose ? `<button class="btn ghost" id="infoBtn">${ico('fa-circle-info')} Quy trình</button>` : ''}${extra}${E.perm.x ? `<button class="btn" id="xls">${ico('fa-file-excel')} Xuất Excel</button>` : ''}<button class="btn" onclick="print()">${ico('fa-print')} In / PDF</button>${E.perm.c ? `<button class="btn pri" id="newBtn">${ico('fa-plus')} ${ent === 'reservation' ? 'Tạo phiếu đăng ký' : `Tạo ${esc(E.one)}`}</button>` : ''}</div></div>${infoBox(E)}
     <div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="q" placeholder="Tìm mã, tên, mã căn, khách hàng…" value="${esc(S.q)}"></div>
-      ${projFilter ? `<select id="pj"><option value="">Tất cả dự án</option>${M.projects.map(p => `<option value="${p.id}" ${+S.project === p.id ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select>` : ''}
+      ${hdKinds ? `<button class="btn sm" id="fltT">${ico('fa-filter')} Điều kiện lọc</button>` : ''}${projFilter && !hdKinds ? `<select id="pj"><option value="">Tất cả dự án</option>${M.projects.map(p => `<option value="${p.id}" ${+S.project === p.id ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select>` : ''}
       ${E.fields.some(f => ['owner_id', 'assignee_id'].includes(f.k)) ? `<label class="chk"><input type="checkbox" id="mine" ${S.mine ? 'checked' : ''}> Của tôi</label>` : ''}
       <span class="grow"></span><span class="small muted" id="cnt"></span></div>
-      ${hdKinds ? `<div class="tabs hd-tabs hd-kinds" id="hdK"><button data-ck="" class="${S.ht ? '' : 'on'}">${ico('fa-file-contract')} HĐ mua bán</button><button data-ck="1" class="${S.ht === '1' ? 'on' : ''}">${ico('fa-couch')} HĐ hoàn thiện căn hộ</button><button data-ck="t" class="${S.ht === 't' ? 'on' : ''}">${ico('fa-key')} HĐ thuê</button><button data-ck="v" class="${S.ht === 'v' ? 'on' : ''}">${ico('fa-hand-holding-dollar')} HĐ vay</button></div>` : ''}${rsKinds ? `<div class="tabs hd-tabs hd-kinds" id="hdK"><button data-ck="" class="${S.ht ? '' : 'on'}">${ico('fa-hand-holding-hand')} Đăng ký mua</button><button data-ck="t" class="${S.ht === 't' ? 'on' : ''}">${ico('fa-key')} Đăng ký thuê</button></div>` : ''}${st ? `<div class="tabs" id="stTabs"></div>` : ''}<div id="bulk"></div><div class="tbl-wrap" id="tb"><div class="empty">Đang tải…</div></div><div class="more" id="more"></div></div></div>`;
+      ${hdKinds ? `<div class="tabs hd-tabs hd-kinds" id="hdK"><button data-ck="" class="${S.ht ? '' : 'on'}">${ico('fa-file-contract')} HĐ mua bán</button><button data-ck="1" class="${S.ht === '1' ? 'on' : ''}">${ico('fa-couch')} HĐ hoàn thiện căn hộ</button><button data-ck="t" class="${S.ht === 't' ? 'on' : ''}">${ico('fa-key')} HĐ thuê</button><button data-ck="v" class="${S.ht === 'v' ? 'on' : ''}">${ico('fa-hand-holding-dollar')} HĐ vay</button></div>` : ''}${rsKinds ? `<div class="tabs hd-tabs hd-kinds" id="hdK"><button data-ck="" class="${S.ht ? '' : 'on'}">${ico('fa-hand-holding-hand')} Đăng ký mua</button><button data-ck="t" class="${S.ht === 't' ? 'on' : ''}">${ico('fa-key')} Đăng ký thuê</button></div>` : ''}${st ? `<div class="tabs" id="stTabs"></div>` : ''}${hdKinds ? `<div class="flt-wrap ${S.flt.hide ? 'flt-off' : ''}"><aside class="flt" id="flt"></aside><div class="flt-main">` : ''}<div id="bulk"></div><div class="tbl-wrap" id="tb"><div class="empty">Đang tải…</div></div><div class="more" id="more"></div>${hdKinds ? '</div></div>' : ''}</div></div>`;
   const load = async () => {
-    const p = new URLSearchParams(); if (S.q) p.set('q', S.q); if (S.status) p.set('status', S.status); if (S.project) p.set('project', S.project); if (S.mine) p.set('mine', '1'); if (S.sort) p.set('sort', S.sort); p.set('limit', S.limit); if (grp()) p.set('group', grp());
+    const p = new URLSearchParams(); if (S.q) p.set('q', S.q); if (S.status) p.set('status', S.status); if (S.project) p.set('project', S.project); if (S.mine) p.set('mine', '1'); if (S.sort) p.set('sort', S.sort); p.set('limit', S.limit); if (grp()) p.set('group', grp()); fltParams(p);
     for (const [k, v] of Object.entries(S)) if (k.startsWith('f_') && v) p.set(k, v);
     const d = await api('GET', `/api/e/${ent}?${p}`);
     S.rowSt = new Map(d.rows.map(r => [r.id, r.status]));   // trạng thái từng dòng: nút Xóa hàng loạt chỉ cho bản dự thảo
     $('#cnt', main).textContent = `${d.rows.length < d.total ? `${d.rows.length} / ` : ''}${d.total} ${E.one}`;
     if (st) { const all = Object.values(d.counts || {}).reduce((a, b) => a + b, 0); $('#stTabs', main).innerHTML = `<button data-s="" class="${!S.status ? 'on' : ''}">Tất cả<span class="c">${all}</span></button>` + st.o.filter(o => !({ contract: ['cho_duyet'], reservation: ['da_coc'] })[ent]?.includes(o[0]) && (d.counts?.[o[0]] || S.status === o[0] || (hdKinds && ['du_thao', 'da_ky'].includes(o[0])) || (ent === 'reservation' && o[0] === 'huy'))).map(o => `<button data-s="${o[0]}" class="${S.status === o[0] ? 'on' : ''}">${esc(o[1])}<span class="c">${d.counts?.[o[0]] || 0}</span></button>`).join(''); }
-    const LV = E.lists?.[grp()], { cols: cols0, head } = liqCols(LV?.cols || E.list, LV?.head, S.status), headL = k => LV?.label?.[k] || colLabel(ent, k);
+    const LV = E.lists?.[grp()], vs = visSecs(), { cols: cols0, head } = liqCols(vs ? vs.flatMap(x => x.cols) : LV?.cols || E.list, vs ? vs.map(x => [x.h, x.cols.length]) : LV?.head, S.status), headL = k => LV?.label?.[k] || colLabel(ent, k);
     const cols = ent === 'reservation' && S.status === 'huy' ? [...cols0, 'doc_ret', 'doc_ret_on', 'ret_files'] : cols0;
     const bulk = E.bulk || (E.flow && (E.perm.a || E.perm.d));
     $('#tb', main).innerHTML = d.rows.length ? `<table class="t ${LV ? 'grid-bravo hd2' : ''}"><thead>${head ? `<tr class="h1">${bulk ? '<th></th>' : ''}${head.map(([t, n]) => `<th colspan="${n}">${esc(t)}</th>`).join('')}</tr>` : ''}<tr>${bulk ? '<th style="width:30px"><input type="checkbox" id="selAll"></th>' : ''}${cols.map(k => { const f = E.fields.find(x => x.k === k); const s = S.sort.replace('-', '') === k ? (S.sort[0] === '-' ? ' ↓' : ' ↑') : ''; return `<th class="${f ? 'sort' : ''} ${f && ['money', 'num', 'int'].includes(f.t) || VIRT_MONEY.has(k) ? 'num' : ''}" data-k="${f ? k : ''}">${esc(headL(k))}${s}</th>`; }).join('')}</tr></thead>
@@ -1252,6 +1259,33 @@ async function listView(main, ent, params = {}) {
     const n = S.sel.size, b = $('#bulk', main);
     b.innerHTML = n ? `<div class="bulk"><b>Đã chọn ${n}</b>${E.flow ? `<button class="btn sm amb" data-b="submit">${ico('fa-paper-plane')} Trình duyệt</button>` : ''}${E.flow && E.perm.a ? `<button class="btn sm ok" data-b="ok">${ico('fa-check')} Duyệt</button><button class="btn sm danger" data-b="no">${ico('fa-xmark')} Từ chối</button>` : ''}${E.perm.d ? `<button class="btn sm danger" data-b="del">${ico('fa-trash')} Xóa</button>` : ''}<button class="btn sm ghost" data-b="clr">Bỏ chọn</button></div>` : '';
   };
+  const drawFlt = () => {
+    const box = $('#flt', main); if (!box) return;
+    const L = E.lists?.[grp()], ds = L?.dates || [['contract_on', 'Ngày ký']], by = dateBy(), bs = M.buildings.filter(b => !S.project || b.project_id === +S.project);
+    const pc = id => M.projects.find(x => x.id === id)?.code || '';
+    const n = s => `<span class="n">${s}.</span>`;
+    box.innerHTML = `<div class="flt-hd"><b>${ico('fa-filter')} Điều kiện lọc</b><button type="button" class="btn ghost sm" data-fx="hide" title="Ẩn ô lọc">${ico('fa-xmark')}</button></div>
+      <div class="flt-f"><label>${n(1)} Lọc theo</label><select data-fx-by>${ds.map(([k, l]) => `<option value="${k}" ${k === by ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>
+      <div class="flt-f"><label>${n(2)} Từ ngày</label>${segDate('fltFr', S.flt.fr)}</div>
+      <div class="flt-f"><label>${n(3)} Đến ngày</label>${segDate('fltTo', S.flt.to)}</div>
+      <div class="flt-f"><label>${n(4)} Dự án</label><select data-fx-pj><option value="">Tất cả dự án</option>${M.projects.map(x => `<option value="${x.id}" ${+S.project === x.id ? 'selected' : ''}>${esc(x.code)} · ${esc(x.name)}</option>`).join('')}</select></div>
+      <div class="flt-f"><label>${n(5)} Phân loại (tòa)${S.flt.bld.length ? ` <span class="muted small">— đã chọn ${S.flt.bld.length}</span>` : ''}</label><div class="flt-list">${bs.map(b => `<label class="chk"><input type="checkbox" data-fb="${b.id}" ${S.flt.bld.includes(b.id) ? 'checked' : ''}> ${S.project ? '' : `<span class="muted">${esc(pc(b.project_id))}</span> `}${esc(b.name || b.code)}</label>`).join('') || '<span class="small muted">Chưa có tòa</span>'}</div></div>
+      ${(L?.secs || []).some(x => x.opt) ? `<div class="flt-sec">Hiển thị cột</div>${L.secs.filter(x => x.opt).map((x, i) => `<label class="chk flt-v"><input type="checkbox" data-fv="${esc(x.opt)}" ${optOn(x) ? 'checked' : ''}> ${n(String.fromCharCode(97 + i))} ${esc(x.opt)}</label>`).join('')}` : ''}
+      <div class="flt-ft"><button type="button" class="btn sm" data-fx="clr">${ico('fa-eraser')} Bỏ lọc</button></div>`;
+    wireSegDate(box);
+  };
+  if (hdKinds) {
+    drawFlt();
+    const box = $('#flt', main), saveView = () => { try { localStorage.setItem(FV, JSON.stringify(S.flt.view)); } catch { } };
+    box.addEventListener('change', run(async e => {
+      const t = e.target;
+      if (t.matches('[data-fx-by]')) { S.flt.by[grp()] = t.value; if (S.flt.fr || S.flt.to) await load(); return; }
+      if (t.matches('[data-fx-pj]')) { S.project = t.value; const ok = new Set(M.buildings.filter(b => !S.project || b.project_id === +S.project).map(b => b.id)); S.flt.bld = S.flt.bld.filter(id => ok.has(id)); drawFlt(); return load(); }
+      if (t.dataset.fb) { const id = +t.dataset.fb; S.flt.bld = t.checked ? [...new Set([...S.flt.bld, id])] : S.flt.bld.filter(x => x !== id); drawFlt(); return load(); }
+      if (t.dataset.fv) { (S.flt.view[grp()] ||= {})[t.dataset.fv] = t.checked; saveView(); return load(); }
+    }));
+    box.addEventListener('sdchange', run(async e => { const v = segVal(e.target); if (v === null) return; if (e.target.id === 'fltFr') S.flt.fr = v; else S.flt.to = v; await load(); }));
+  }
   ST.reload = load;
   main.oncontextmenu = e => { const tr = e.target.closest('tbody tr[data-id]'); if (!tr || ent !== 'customer') return; e.preventDefault(); rowMenu(ent, +tr.dataset.id, e.clientX, e.clientY); };
   main.onclick = run(async e => {
@@ -1260,13 +1294,15 @@ async function listView(main, ent, params = {}) {
       return openForm('reservation', { title: S.ht === 't' ? `${ico('fa-key')} Phiếu đăng ký thuê căn hộ` : `${ico('fa-hand-holding-hand')} Phiếu đăng ký căn hộ`, preset: S.ht === 't' ? { deal: 'thue' } : undefined, onSaved: row => { load(); updateBadges(); openDetail('reservation', row.id); } });
     if (t.id === 'newBtn' || t.closest('#newBtn')) return openForm(ent, { tab: hdKinds && S.ht ? ({ t: 'thue', v: 'vay' }[S.ht] || 'ht') : undefined, preset: { ...(hdKinds && S.ht === 't' ? { kind: 'thue' } : hdKinds && S.ht === 'v' ? { kind: 'vay', nature: 'ban' } : {}), ...(S.project && E.fields.some(f => f.k === 'project_id') ? { project_id: +S.project } : {}), ...(E.groups?.[S.group] ? { ptype: S.group } : {}) } });
     if (t.closest('#infoBtn')) return $('#infoBox', main)?.classList.toggle('hidden');
-    if (t.closest('#xls')) { const p = new URLSearchParams(); if (S.q) p.set('q', S.q); if (S.status) p.set('status', S.status); if (S.project) p.set('project', S.project); if (S.mine) p.set('mine', '1'); if (grp()) p.set('group', grp()); return download(`/api/export/${ent}?${p}`); }
+    if (t.closest('#xls')) { const p = new URLSearchParams(); if (S.q) p.set('q', S.q); if (S.status) p.set('status', S.status); if (S.project) p.set('project', S.project); if (S.mine) p.set('mine', '1'); if (grp()) p.set('group', grp()); fltParams(p); const vs = visSecs(); if (vs) p.set('cols', vs.flatMap(x => x.cols).join(',')); return download(`/api/export/${ent}?${p}`); }
     const xb = t.closest('[data-x]');
     if (xb?.dataset.x === 'suggest') return suggestModal();
     if (xb?.dataset.x === 'calc') { const r = await api('POST', '/api/commission/calc', {}); toast(`Đã rà soát ${r.checked} hợp đồng có đại lý / CTV`); return load(); }
     if (xb?.dataset.x === 'imp') return importModal(xb.dataset.k, load);
     if (xb?.dataset.x === 'lead') return leadModal(load);
-    const ck = t.closest('[data-ck]'); if (ck) { S.ht = ck.dataset.ck; S.status = ''; S.sort = ''; S.sel.clear(); $$('button', ck.parentElement).forEach(b => b.classList.toggle('on', b === ck)); return load(); }
+    const ck = t.closest('[data-ck]'); if (ck) { S.ht = ck.dataset.ck; S.status = ''; S.sort = ''; S.sel.clear(); $$('button', ck.parentElement).forEach(b => b.classList.toggle('on', b === ck)); drawFlt(); return load(); }
+    if (t.closest('#fltT') || t.closest('[data-fx=hide]')) { S.flt.hide = !S.flt.hide; $('.flt-wrap', main)?.classList.toggle('flt-off', S.flt.hide); return; }
+    if (t.closest('[data-fx=clr]')) { Object.assign(S.flt, { fr: '', to: '', bld: [] }); S.project = ''; drawFlt(); return load(); }
     const tab = t.closest('[data-s]'); if (tab) { S.status = tab.dataset.s; S.sel.clear(); return load(); }
     const th = t.closest('th[data-k]'); if (th?.dataset.k) { const k = th.dataset.k; S.sort = S.sort === k ? '-' + k : k; return load(); }
     if (t.id === 'selAll') { $$('[data-sel]', main).forEach(c => { c.checked = t.checked; t.checked ? S.sel.add(+c.dataset.sel) : S.sel.delete(+c.dataset.sel); c.closest('tr').classList.toggle('sel', t.checked); }); return drawBulk(); }

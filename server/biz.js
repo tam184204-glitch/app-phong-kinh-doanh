@@ -956,7 +956,7 @@ H.contract = {
   },
   async onSubmit(r, { db }) {
     const n = await db.one('SELECT count(*) n, coalesce(sum(amount),0) s FROM kd_installment WHERE contract_id = $1 AND active', [r.id]);
-    if (r.kind !== 'thue' && !n.n) bad('Chưa lập lịch thanh toán — bấm «Lập lịch thanh toán» trước khi gửi trình duyệt');
+    if (r.kind !== 'thue' && !n.n) bad('Chưa có lịch thanh toán — bấm «Sửa», nhập «Lần thanh toán» rồi lưu trước khi gửi trình duyệt');
     if (n.n && n.s !== r.value) bad(`Tổng lịch thanh toán ${fmtMoney(n.s)} khác giá trị hợp đồng ${fmtMoney(r.value)}`);
   },
   async afterSave(r, old, { db, user, demo, sched }) {
