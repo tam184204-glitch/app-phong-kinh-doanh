@@ -568,7 +568,7 @@ def('contract', {
   ],
 });
 def('installment', {
-  title: 'Lịch thanh toán hợp đồng', one: 'kỳ thu', code: 'CN-02', mod: '06', icon: 'fa-calendar-check', disp: "t.name",
+  title: 'Lịch thanh toán hợp đồng', one: 'kỳ thu', code: 'CN-02', mod: '06', icon: 'fa-calendar-check', disp: "coalesce(t.name, 'Kỳ '||t.seq)||' · hạn '||to_char(t.due_on,'DD/MM/YYYY')||' · '||replace(to_char(t.amount,'FM999,999,999,999'),',','.')",
   purpose: 'Quản lý từng kỳ phải thu', users: 'Nhân viên hợp đồng / công nợ',
   how: 'Tạo từ điều khoản → kiểm tra tổng kỳ → phát hành → đối soát thực thu',
   rules: 'Tổng các kỳ khớp nghĩa vụ phải thu; xử lý ngày nghỉ và phụ lục theo quy tắc được duyệt',
@@ -585,7 +585,7 @@ def('installment', {
   ], list: ['contract_id', 'seq', 'name', 'due_on', 'pct', 'amount', 'paid', 'pay_status', 'src'],
 });
 def('loan_pay', {
-  title: 'Lịch trả lãi & gốc HĐ vay', one: 'kỳ trả', code: 'CN-07', mod: '06', icon: 'fa-hand-holding-dollar', disp: "CASE WHEN t.kind = 'goc' THEN 'Trả gốc' ELSE 'Lãi kỳ '||t.seq END||' · hạn '||to_char(t.due_on,'DD/MM/YYYY')||' · '||to_char(t.amount,'FM999G999G999G999')",
+  title: 'Lịch trả lãi & gốc HĐ vay', one: 'kỳ trả', code: 'CN-07', mod: '06', icon: 'fa-hand-holding-dollar', disp: "CASE WHEN t.kind = 'goc' THEN 'Trả gốc' ELSE 'Lãi kỳ '||t.seq END||' · hạn '||to_char(t.due_on,'DD/MM/YYYY')||' · '||replace(to_char(t.amount,'FM999,999,999,999'),',','.')",
   purpose: 'Theo dõi tiền lãi, tiền gốc công ty phải trả khách theo HĐ vay', users: 'Kế toán / trưởng phòng',
   how: 'Lưu HĐ vay → máy lập lịch theo kỳ trả lãi → đến hạn trả thì ghi nhận ngày trả, số tiền đã trả',
   rules: 'Lãi = 1 tháng tiền thuê / tháng (hoặc theo lãi suất); kỳ đã ghi nhận trả không bị lập lại. Số đã trả lấy từ Phiếu chi (trả lãi / trả gốc) — không ghi tay',
@@ -627,21 +627,29 @@ def('contract_change', {
 });
 
 // ===================== 06. CÔNG NỢ =====================
+// nhóm thu của phiếu thu (06/11/2026) — gợi ý theo loại hợp đồng / đợt thu
+const RC_GRP = [['tien_can', 'Tiền căn hộ (HĐMB)', 'b'], ['phi_bao_tri', 'Phí bảo trì', 'v'], ['hoan_thien', 'Tiền hoàn thiện', 'a'], ['tien_thue', 'Tiền thuê', 't'], ['dat_coc', 'Tiền đặt cọc', 's'], ['goc_vay', 'Tiền gốc HĐ vay', 'g'], ['khac', 'Khác', 's']];
 def('receipt', {
   title: 'Phiếu thu', one: 'phiếu thu', code: 'CN-09', mod: '06', icon: 'fa-receipt', disp: 't.voucher_no',
   note: 'Phòng Kinh doanh tự ghi để theo dõi tiến độ thu tiền theo hợp đồng (không phải chứng từ kế toán): khách đã nộp bao nhiêu, ngày nào, cho đợt nào. HĐ vay: phiếu thu = tiền gốc khách chuyển cho công ty. Có thể nhập tệp Excel. Ghi sai thì hủy phiếu có lý do rồi lập lại.',
   c: ['cong_no', 'ho_so', 'ban_hang', 'truong_phong', 'ke_toan'], u: ['cong_no', 'ho_so', 'truong_phong'], d: [], order: 't.voucher_date desc', search: ['voucher_no', 'content'], fields: [
     { k: 'voucher_no', l: 'Số phiếu thu', t: 'code', prefix: 'PT-{Y}-', pad: 4, manual: 1, help: 'Để trống → tự cấp (PT-2026-0001…)' },
     { k: 'voucher_date', l: 'Ngày thu', t: 'date', req: 1, def: 'today' },
-    { k: 'contract_id', l: 'Hợp đồng', t: 'ref', ref: 'contract', req: 1 },
+    { k: 'contract_id', l: 'Mã hợp đồng', t: 'ref', ref: 'contract', req: 1, sec: '1. Hợp đồng – khách hàng', help: 'Chọn hợp đồng (hoặc mã căn) → tự điền mã căn, khách hàng, dự án, loại hợp đồng' },
+    { k: 'unit_id', l: 'Mã căn hộ', t: 'ref', ref: 'unit', help: 'Chọn căn → tự lấy hợp đồng của căn' },
+    { k: 'cust_code', l: 'Mã khách hàng', t: 'text', help: 'Tự lấy theo hợp đồng' },
+    { k: 'cust_name', l: 'Họ tên khách hàng', t: 'text', help: 'Tự lấy theo hợp đồng' },
+    { k: 'project_name', l: 'Dự án', t: 'text', help: 'Tự lấy theo hợp đồng' },
+    { k: 'ct_kind', l: 'Loại hợp đồng', t: 'sel', o: HD_KIND, help: 'Tự lấy theo hợp đồng' },
+    { k: 'grp', l: 'Nhóm thu', t: 'sel', sec: '2. Nội dung thu', o: RC_GRP, help: 'Tự gợi ý theo loại hợp đồng / đợt thu — sửa được' },
+    { k: 'installment_id', l: 'Đợt thu', t: 'ref', ref: 'installment', dep: 'contract_id', help: 'Chọn đợt → tự điền số tiền còn phải thu của đợt. Để trống = tự phân bổ vào đợt đến hạn sớm nhất' },
     money('amount', 'Số tiền', { req: 1 }),
     { k: 'content', l: 'Nội dung thanh toán', t: 'text' },
-    { k: 'installment_id', l: 'Khoản phải thu', t: 'ref', ref: 'installment', help: 'Để trống = tự phân bổ vào kỳ đến hạn sớm nhất' },
     { k: 'src', l: 'Nguồn', t: 'sel', ro: 1, def: 'thu_cong', o: [['bravo', 'Bravo', 'b'], ['misa', 'MISA', 'v'], ['thu_cong', 'Phòng KD nhập', 's']] },
     { k: 'synced_at', l: 'Ngày chốt dữ liệu', t: 'dt', ro: 1 },
     { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'hop_le', o: [['hop_le', 'Hợp lệ', 'g'], ['huy', 'Đã hủy', 'r']] },
     { k: 'void_reason', l: 'Lý do hủy', t: 'text', ro: 1 },
-  ], list: ['voucher_no', 'voucher_date', 'contract_id', 'amount', 'content', 'src', 'synced_at', 'status'],
+  ], list: ['voucher_no', 'voucher_date', 'contract_id', 'unit_id', 'cust_code', 'cust_name', 'grp', 'installment_id', 'amount', 'content', 'status'],
   acts: [{ k: 'void', l: 'Hủy phiếu thu', icon: 'fa-ban', from: ['hop_le'], roles: ['cong_no', 'ho_so', 'truong_phong'], danger: 1, ask: [{ k: 'reason', l: 'Lý do hủy', t: 'long', req: 1 }] }],
 });
 // Phiếu chi (06/11/2026): tiền công ty chi ra theo hợp đồng → Theo dõi hợp đồng tự cập nhật
@@ -652,9 +660,14 @@ def('payment', {
   c: ['cong_no', 'ho_so', 'ban_hang', 'truong_phong', 'ke_toan'], u: ['cong_no', 'ho_so', 'truong_phong'], d: [], order: 't.voucher_date desc, t.id desc', search: ['voucher_no', 'content', 'receiver'], fields: [
     { k: 'voucher_no', l: 'Số phiếu chi', t: 'code', prefix: 'PC-{Y}-', pad: 4, manual: 1, help: 'Để trống → tự cấp (PC-2026-0001…)' },
     { k: 'voucher_date', l: 'Ngày chi', t: 'date', req: 1, def: 'today' },
-    { k: 'contract_id', l: 'Hợp đồng', t: 'ref', ref: 'contract', req: 1 },
-    { k: 'kind', l: 'Nội dung chi', t: 'sel', req: 1, o: [['tra_lai', 'Trả lãi HĐ vay', 'b'], ['tra_goc', 'Trả gốc HĐ vay', 'v'], ['hoan_tien', 'Hoàn tiền khách', 'a'], ['hoan_coc', 'Hoàn tiền đặt cọc HĐ thuê', 't'], ['khac', 'Khác', 's']] },
-    { k: 'loan_pay_id', l: 'Kỳ trả (HĐ vay)', t: 'ref', ref: 'loan_pay', dep: 'contract_id', show: { kind: ['tra_lai', 'tra_goc'] }, help: 'Để trống = tự trừ vào kỳ chưa trả sớm nhất; trả nhiều hơn 1 kỳ thì phần dư sang kỳ sau' },
+    { k: 'contract_id', l: 'Mã hợp đồng', t: 'ref', ref: 'contract', req: 1, sec: '1. Hợp đồng – khách hàng', help: 'Chọn hợp đồng (hoặc mã căn) → tự điền mã căn, khách hàng, dự án, loại hợp đồng' },
+    { k: 'unit_id', l: 'Mã căn hộ', t: 'ref', ref: 'unit', help: 'Chọn căn → tự lấy hợp đồng của căn' },
+    { k: 'cust_code', l: 'Mã khách hàng', t: 'text', help: 'Tự lấy theo hợp đồng' },
+    { k: 'cust_name', l: 'Họ tên khách hàng', t: 'text', help: 'Tự lấy theo hợp đồng' },
+    { k: 'project_name', l: 'Dự án', t: 'text', help: 'Tự lấy theo hợp đồng' },
+    { k: 'ct_kind', l: 'Loại hợp đồng', t: 'sel', o: HD_KIND, help: 'Tự lấy theo hợp đồng' },
+    { k: 'kind', l: 'Nhóm chi', t: 'sel', req: 1, sec: '2. Nội dung chi', o: [['tra_lai', 'Trả lãi HĐ vay', 'b'], ['tra_goc', 'Trả gốc HĐ vay', 'v'], ['hoan_tien', 'Hoàn tiền khách', 'a'], ['hoan_coc', 'Hoàn tiền đặt cọc HĐ thuê', 't'], ['khac', 'Khác', 's']] },
+    { k: 'loan_pay_id', l: 'Đợt chi (kỳ trả HĐ vay)', t: 'ref', ref: 'loan_pay', dep: 'contract_id', show: { kind: ['tra_lai', 'tra_goc'] }, help: 'Chọn kỳ → tự điền số tiền còn phải trả. Để trống = tự trừ vào kỳ chưa trả sớm nhất; trả nhiều hơn 1 kỳ thì phần dư sang kỳ sau' },
     { k: 'refund_id', l: 'Đề xuất hoàn tiền', t: 'ref', ref: 'refund', dep: 'contract_id', filter: 'da_duyet', show: { kind: ['hoan_tien'] }, help: 'Không bắt buộc. Chọn đề xuất đã duyệt thì đề xuất tự chuyển «Đã thực hiện»' },
     money('amount', 'Số tiền', { req: 1 }),
     { k: 'receiver', l: 'Người nhận', t: 'text' },
@@ -663,7 +676,7 @@ def('payment', {
     { k: 'src', l: 'Nguồn', t: 'sel', ro: 1, def: 'thu_cong', o: [['bravo', 'Bravo', 'b'], ['misa', 'MISA', 'v'], ['thu_cong', 'Phòng KD nhập', 's']] },
     { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'hop_le', o: [['hop_le', 'Hợp lệ', 'g'], ['huy', 'Đã hủy', 'r']] },
     { k: 'void_reason', l: 'Lý do hủy', t: 'text', ro: 1 },
-  ], list: ['voucher_no', 'voucher_date', 'contract_id', 'kind', 'loan_pay_id', 'amount', 'receiver', 'method', 'content', 'status'],
+  ], list: ['voucher_no', 'voucher_date', 'contract_id', 'unit_id', 'cust_code', 'cust_name', 'kind', 'loan_pay_id', 'amount', 'receiver', 'content', 'status'],
   acts: [{ k: 'void', l: 'Hủy phiếu chi', icon: 'fa-ban', from: ['hop_le'], roles: ['cong_no', 'ho_so', 'truong_phong'], danger: 1, ask: [{ k: 'reason', l: 'Lý do hủy', t: 'long', req: 1 }] }],
 });
 def('collect_plan', {

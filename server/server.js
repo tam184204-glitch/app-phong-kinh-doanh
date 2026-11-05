@@ -268,7 +268,7 @@ R('GET', '/api/opts/:ent', async (req, res, u, p, qs) => {
   if (qs.filter && C.F[p.ent].status) { params.push(qs.filter.split(',')); w.push(`t.status = ANY($${params.length})`); }
   if (C.own(u, e)) { params.push(u.id); w.push(`(t.${C.F[p.ent].owner_id ? 'owner_id' : 'created_by'} = $${params.length} OR t.created_by = $${params.length})`); }
   const extra = p.ent === 'unit' ? ", t.status, (SELECT code FROM kd_building b WHERE b.id = t.building_id) sub" : p.ent === 'customer' ? ", '…' || right(t.phone, 3) sub" : p.ent === 'contract' ? ", (SELECT code FROM kd_unit u WHERE u.id = t.unit_id) || ' · ' || (SELECT full_name FROM kd_customer k WHERE k.id = t.customer_id) sub" : p.ent === 'reservation' ? ", (SELECT code FROM kd_unit u WHERE u.id = t.unit_id) sub" : '';
-  send(res, 200, await q(`SELECT t.id, ${e.disp} AS label ${extra} FROM ${e.table} t ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY ${p.ent === 'unit' ? 't.code' : 't.id DESC'} LIMIT ${qs.id ? 1 : 30}`, params));
+  send(res, 200, await q(`SELECT t.id, ${e.disp} AS label ${extra} FROM ${e.table} t ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY ${p.ent === 'unit' ? 't.code' : p.ent === 'installment' && qs.dep ? 't.active DESC, t.seq' : p.ent === 'loan_pay' && qs.dep ? 't.due_on, t.kind DESC, t.seq' : 't.id DESC'} LIMIT ${qs.id ? 1 : 30}`, params));
 });
 R('GET', '/api/export/:ent', async (req, res, u, p, qs) => { const x = await IO.exportList(p.ent, u, qs); sendFile(res, x.buf, x.name, MIME['.xlsx']); });
 R('POST', '/api/export-rows', async (req, res, u) => {
@@ -527,6 +527,7 @@ R('GET', '/print/reservation/:id', async (req, res, u, p, qs) => send(res, 200, 
 R('GET', '/api/handover-templates', async (req, res, u, p, qs) => send(res, 200, await M4.handoverTemplates(qs)));
 R('GET', '/print/handover/:kind/:id', async (req, res, u, p, qs) => send(res, 200, await M4.printHandover(p.kind, p.id, u, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 // phiếu đề nghị hủy / đổi: tự điền theo hợp đồng / phiếu giữ chỗ
+R('GET', '/api/voucher-prefill', async (req, res, u, p, qs) => { if (!can(u, M.E.receipt, 'c') && !can(u, M.E.payment, 'c')) C.deny(); send(res, 200, await B.voucherPrefill({ q, one }, qs)); });
 R('GET', '/api/cancel_prefill', async (req, res, u, p, qs) => { if (!can(u, M.E.cancel_req, 'c') && !can(u, M.E.cancel_req, 'u')) C.deny(); send(res, 200, await B.cancelPrefill({ q, one }, qs)); });
 // bên bán theo tên (Bên A): thông tin mặc định + ô đã ghi ở hợp đồng gần nhất cùng Bên A
 // thông tin bên bán: ghi nhớ theo từng Bên A ngay khi nhập (kd_setting.seller_info_v2), không phụ thuộc hợp đồng có lưu được hay không; chưa nhập thì lấy giá trị gần nhất trên hợp đồng
@@ -600,7 +601,8 @@ async function start() {
   await require('./seed').ensureTemplates();
   await B.fixLiquidated({ q, one }).catch(e => console.error('fixLiquidated', e.message));
   await tx(db => B.fixBaseDiscount(db)).catch(e => console.error('fixBaseDiscount', e.message));
-  await tx(db => B.loanPayVouchers(db)).catch(e => console.error('loanPayVouchers', e.message));   // kỳ HĐ vay ghi nhận tay cũ → phiếu chi (1 lần)
+  await tx(db => B.loanPayVouchers(db)).catch(e => console.error('loanPayVouchers', e.message));
+  await tx(db => B.fillVoucherInfo(db)).catch(e => console.error('fillVoucherInfo', e.message));   // phiếu thu / chi cũ: điền mã căn, khách hàng… theo hợp đồng   // kỳ HĐ vay ghi nhận tay cũ → phiếu chi (1 lần)
   await tx(async db => B.fixRentValue(db, await db.one("SELECT * FROM kd_user WHERE role = 'admin' ORDER BY id LIMIT 1"))).catch(e => console.error('fixRentValue', e.message));
   const srv = http.createServer(handle);
   srv.listen(PORT, HOST, () => console.log(`App Phòng Kinh doanh: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`));

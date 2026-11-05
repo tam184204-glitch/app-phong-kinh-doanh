@@ -1119,9 +1119,47 @@ H.installment = {
   where: qs => qs.active === 'all' ? null : { sql: 't.active' },
 };
 
+// phiếu thu / phiếu chi: thông tin hợp đồng – khách hàng lấy theo hợp đồng, ghi kèm phiếu để tra cứu, lọc, xuất Excel (06/11/2026)
+const RC_GRP_OF = { hdmb: 'tien_can', thue: 'tien_thue', thue_mua: 'tien_thue', vay: 'goc_vay', hoan_thien: 'hoan_thien' };
+const VINFO = `SELECT c.id contract_id, c.number, c.kind ct_kind, c.status, c.unit_id, u.code unit_code, k.code cust_code, k.full_name cust_name, pr.name project_name
+  FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_project pr ON pr.id = u.project_id JOIN kd_customer k ON k.id = c.customer_id`;
+async function fillVoucher(db, r, rc) {
+  const v = await db.one(VINFO + ' WHERE c.id = $1', [+r.contract_id]); if (!v) bad('Không tìm thấy hợp đồng');
+  Object.assign(r, { unit_id: v.unit_id, cust_code: v.cust_code, cust_name: v.cust_name, project_name: v.project_name, ct_kind: v.ct_kind });
+  if (rc && !r.grp) r.grp = r.installment_id && (await raw(db, 'installment', r.installment_id))?.is_maint ? 'phi_bao_tri' : RC_GRP_OF[v.ct_kind] || 'khac';
+}
+// form phiếu: chọn mã căn / mã hợp đồng / đợt → các ô tự điền
+async function voucherPrefill(db, { contract_id, unit_id, installment_id, loan_pay_id }) {
+  let n = 0;
+  if (!contract_id && unit_id) {
+    const cs = await db.q("SELECT id FROM kd_contract WHERE unit_id = $1 AND status <> 'huy' ORDER BY (status = 'da_ky') DESC, (kind = 'hdmb') DESC, id DESC", [+unit_id]);
+    n = cs.length; contract_id = cs[0]?.id;
+    if (!contract_id) { const u = await raw(db, 'unit', +unit_id); return { contract_id: null, unit_id: u?.id ?? null, unit_label: u?.code || '', n: 0 }; }
+  }
+  const v = await db.one(VINFO + ' WHERE c.id = $1', [+contract_id]); if (!v) bad('Không tìm thấy hợp đồng');
+  const out = { ...v, contract_label: v.number, unit_label: v.unit_code, grp: RC_GRP_OF[v.ct_kind] || 'khac', n };
+  if (installment_id) {
+    const i = (await debtOf(db, [v.contract_id])).get(v.contract_id)?.inst.find(x => x.id === +installment_id), r = await raw(db, 'installment', +installment_id);
+    if (i) { out.inst_rem = i.rem; out.inst_name = i.name; }
+    if (r?.is_maint) out.grp = 'phi_bao_tri';
+  }
+  if (loan_pay_id) { const l = await raw(db, 'loan_pay', +loan_pay_id); if (l) { out.lp_rem = Math.max(0, +l.amount - (+l.paid_amt || 0)); out.lp_name = l.kind === 'lai' ? 'Trả lãi kỳ ' + l.seq : 'Trả gốc'; } }
+  return out;
+}
+// phiếu cũ (trước khi có các ô này): điền theo hợp đồng — chạy mỗi lần khởi động, chỉ dòng còn trống
+async function fillVoucherInfo(db) {
+  const set = `unit_id = c.unit_id, cust_code = k.code, cust_name = k.full_name, project_name = pr.name, ct_kind = c.kind`, from = `FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_project pr ON pr.id = u.project_id JOIN kd_customer k ON k.id = c.customer_id`;
+  const a = await db.q(`UPDATE kd_receipt t SET ${set}, grp = coalesce(t.grp, CASE WHEN (SELECT i.is_maint FROM kd_installment i WHERE i.id = t.installment_id) THEN 'phi_bao_tri'
+      WHEN c.kind = 'hdmb' THEN 'tien_can' WHEN c.kind IN ('thue', 'thue_mua') THEN 'tien_thue' WHEN c.kind = 'vay' THEN 'goc_vay' WHEN c.kind = 'hoan_thien' THEN 'hoan_thien' ELSE 'khac' END)
+    ${from} WHERE c.id = t.contract_id AND t.cust_name IS NULL RETURNING t.id`);
+  const b = await db.q(`UPDATE kd_payment t SET ${set} ${from} WHERE c.id = t.contract_id AND t.cust_name IS NULL RETURNING t.id`);
+  return a.length + b.length;
+}
+
 H.receipt = {
   async beforeSave(r, old, { db }) {
     const c = await raw(db, 'contract', r.contract_id);
+    await fillVoucher(db, r, true);
     if (c.status === 'huy') bad('Hợp đồng đã hủy');
     if (r.installment_id) { const i = await raw(db, 'installment', r.installment_id); if (i.contract_id !== r.contract_id) bad('Khoản phải thu không thuộc hợp đồng này'); }
     r.voucher_no = r.voucher_no?.trim().toUpperCase();
@@ -1135,6 +1173,7 @@ H.receipt = {
 H.payment = {
   async beforeSave(r, old, { db }) {
     const c = await raw(db, 'contract', r.contract_id);
+    await fillVoucher(db, r);
     if (!old || old.contract_id !== r.contract_id) { if (c.status === 'huy') bad('Hợp đồng đã hủy'); }
     if (r.voucher_date > today()) bad('Ngày chi không được sau hôm nay');
     if (r.voucher_no) r.voucher_no = r.voucher_no.trim().toUpperCase();
@@ -1444,4 +1483,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { fixBaseDiscount, loanPayVouchers, loanPaySync, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

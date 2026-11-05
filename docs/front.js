@@ -914,6 +914,35 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     form.addEventListener('change', e => { if (/^s_/.test(e.target.name) && e.target.name !== 's_name' && form.elements.s_name.value.trim()) api('PUT', '/api/seller', { name: form.elements.s_name.value, k: e.target.name, v: e.target.value }).catch(() => {}); });
     form.addEventListener('change', e => { if (e.target.name === 'contract_on') sch?._redraw?.(); if (e.target.name === 'building_id' && form.elements.unit_id.value) { form.elements.unit_id.value = ''; const t = form.elements.unit_id.closest('.combo')?.querySelector('[data-combo]'); if (t) t.value = ''; }   /* đổi tòa → chọn lại căn */ if (['contract_on', 'ptype'].includes(e.target.name)) contractNo(); if (e.target.name === 's_name') fillSeller().catch(er => toast(er.message, true)); if (e.target.name === 'seller_unit') { const s = (M.sellers || []).find(x => x.unit === e.target.value); if (s) { form.elements.s_name.value = s.name; fillSeller().catch(er => toast(er.message, true)); } } });
   }
+  // phiếu thu / phiếu chi (06/11/2026): chọn mã hợp đồng hoặc mã căn → mã căn, mã KH, họ tên KH, dự án, loại HĐ, nhóm thu;
+  // chọn đợt thu / kỳ trả → số tiền còn phải thu / phải trả của đợt
+  if (ent === 'receipt' || ent === 'payment') {
+    const inst = ent === 'receipt' ? 'installment_id' : 'loan_pay_id';
+    const setRef = (k, v, label) => { const h = form.elements[k]; if (!h) return; h.value = v ?? ''; const t = h.closest('.combo')?.querySelector('[data-combo]'); if (t) t.value = v ? label : ''; };
+    const set = (k, v) => { const el = form.elements[k]; if (el && v != null) el.value = v; };
+    const empty = k => !form.elements[k] || !String(form.elements[k].value || '').trim();
+    form.addEventListener('change', async e => {
+      const k = e.target.name; if (!['contract_id', 'unit_id', inst].includes(k) || !e.target.value) return;
+      try {
+        const q = new URLSearchParams({ [k]: e.target.value }); if (k === inst && form.elements.contract_id.value) q.set('contract_id', form.elements.contract_id.value);
+        const d = await api('GET', '/api/voucher-prefill?' + q);
+        if (k !== inst) {
+          if (k === 'unit_id') { if (!d.contract_id) return toast('Căn chưa có hợp đồng', true); setRef('contract_id', d.contract_id, d.contract_label); if (d.n > 1) toast(`Căn có ${d.n} hợp đồng — đã chọn ${d.contract_label}, kiểm tra lại ô Mã hợp đồng`); }
+          else setRef('unit_id', d.unit_id, d.unit_label);
+          set('cust_code', d.cust_code); set('cust_name', d.cust_name); set('project_name', d.project_name); set('ct_kind', d.ct_kind);
+          if (ent === 'receipt') set('grp', d.grp);
+          if (ent === 'payment' && empty('receiver')) set('receiver', d.cust_name);
+          if (!e._init) setRef(inst, null, '');   // đổi hợp đồng: bỏ đợt của hợp đồng cũ
+        } else {
+          if (ent === 'receipt' && d.grp) set('grp', d.grp);
+          const rem = ent === 'receipt' ? d.inst_rem : d.lp_rem; if (rem > 0 && empty('amount')) form.elements.amount.value = moneyStr(rem); else if (rem === 0) toast(ent === 'receipt' ? 'Đợt này đã thu đủ' : 'Kỳ này đã trả đủ');
+          if (empty('content')) set('content', ent === 'receipt' ? `Thu tiền ${d.inst_name || ''} căn ${d.unit_code}` : `${d.lp_name} — HĐ ${d.number}`);
+        }
+      } catch (er) { toast(er.message, true); }
+    });
+    // mở form đã có sẵn hợp đồng (từ Theo dõi hợp đồng): điền luôn thông tin khách hàng
+    if (!id && form.elements.contract_id?.value && empty('cust_name')) { const ev = new Event('change', { bubbles: true }); ev._init = true; form.elements.contract_id.dispatchEvent(ev); }
+  }
   // phiếu đề nghị hủy / đổi: chọn hợp đồng hoặc phiếu giữ chỗ → khách hàng, SĐT, dự án, mã căn, số tiền khách đã nộp
   if (ent === 'cancel_req') form.addEventListener('change', async e => {
     if (!['unit_id', 'contract_id', 'reservation_id'].includes(e.target.name) || !e.target.value) return;

@@ -123,7 +123,8 @@ async function boot(pgliteUrl) {
     if (cs.length) await tx(async db => { for (const c of cs) await B.syncContractValue(db, c.id, u); });
     await tx(db => B.fixRentValue(db, u));
     await tx(db => B.fixBaseDiscount(db));   // giá nền chia lại theo tiền giảm giá (1 lần)
-    await tx(db => B.loanPayVouchers(db));   // kỳ HĐ vay đã ghi nhận trả tay → phiếu chi (1 lần, 06/11/2026)   // HĐ thuê đã bị ghi giá bán ở bản trước
+    await tx(db => B.loanPayVouchers(db));
+    await tx(db => B.fillVoucherInfo(db));   // phiếu thu / chi cũ: điền mã căn, khách hàng theo hợp đồng (06/11/2026)   // kỳ HĐ vay đã ghi nhận trả tay → phiếu chi (1 lần, 06/11/2026)   // HĐ thuê đã bị ghi giá bán ở bản trước
   } catch (e) { console.warn('đồng bộ giá phiếu', e); }
   // mẫu in đơn đăng ký chuẩn (thêm 27/10/2026) — giống máy thật: nạp mẫu còn thiếu, tắt mẫu khung cũ
   try { await require('../server/seed').ensureTemplates(); } catch (e) { console.warn('mẫu in', e); }
