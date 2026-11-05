@@ -2869,7 +2869,7 @@ const ctTrack = async (main, kind) => {
     $('#ctT', main).innerHTML = rowsTable(cols, shown(), SUM, rent ? { no: 'STT' } : hdmb ? { no: 'STT', groups, cell: rateIn } : undefined);
     if (hdmb) $('#ctNote', main).innerHTML = `Giá trị hợp đồng = tiền sau thuế; phí bảo trì tính riêng. <b>Số phải thu theo tiến độ</b> = các đợt thu tiền của hợp đồng có hạn ${period()} (để trống «Từ ngày» = từ đầu hợp đồng).
       Số đã thu = phiếu thu đã lập${d.from ? ` từ ${dmy(d.from)}` : ''} đến ${dmy(d.asof)} (phiếu ghi đợt phí bảo trì vào cột phí bảo trì, còn lại vào tiền nhà). Còn lại theo tiến độ = phải thu theo tiến độ − đã thu (âm = khách trả trước);
-      còn lại theo hợp đồng = giá trị − tổng đã thu đến ${dmy(d.asof)}. Tổng cộng = tiền nhà + phí bảo trì. Số ngày quá hạn = từ hạn của đợt nợ sớm nhất đến ${dmy(d.asof)}.
+      còn lại theo hợp đồng = giá trị − tổng đã thu đến ${dmy(d.asof)}. <b>Phí bảo trì</b>: số phải thu = phí bảo trì, còn lại = phí bảo trì − số đã thu. Tổng cộng = tiền nhà + phí bảo trì (cộng từng cột). Số ngày quá hạn = từ hạn của đợt nợ sớm nhất đến ${dmy(d.asof)}.
       Số tiền quá hạn = cộng dồn (lũy kế) phần còn lại chưa thanh toán của các đợt đã quá hạn. Lãi quá hạn = số tiền quá hạn lũy kế × số ngày × lãi suất (%/năm) / 365, tính từng khoảng từ hạn đợt này đến hạn đợt sau (đợt quá hạn cuối: đến ${dmy(d.asof)}) rồi cộng lại${d.can_rate ? ' — gõ lãi suất vào cột «Lãi suất quá hạn» của từng hợp đồng' : ''}. Bấm 1 dòng để xem công nợ từng đợt, phiếu thu / phiếu chi của hợp đồng.`;
   };
   const load = async () => { d = await api('GET', '/api/contract-track?' + qsOf({ kind, project: f.project, ...(hdmb ? { from: s.from, to: s.to } : {}) })); draw(); };

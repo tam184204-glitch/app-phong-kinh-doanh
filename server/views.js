@@ -455,15 +455,15 @@ async function contractTrack(db, user, f = {}) {
       next_name: d.next?.name || '', next_on: d.next?.due_on || null, next_amt: d.next?.rem ?? null, last_receipt: d.last_receipt, state, state_l: CT_ST[state] };
     row.chi = +(PC.get(c.id)?.s || 0); row.net = row.paid - row.chi;   // đã chi trả lại khách · thực giữ = đã thu − đã chi
     if (hd) {
-      // theo mẫu «Bảng theo dõi hợp đồng mua bán» + công thức phòng KD (05/11/2026), Tiền nhà và Phí bảo trì tính như nhau, Tổng cộng = cộng lại:
-      //  giá trị = tiền sau thuế (+ hoàn thiện nếu gộp HĐMB) / phí bảo trì · phải thu theo tiến độ = các đợt có hạn trong khoảng ngày · đã thu = phiếu thu (có «Từ ngày»: thu trong khoảng)
-      //  còn lại theo tiến độ = phải thu − đã thu · còn lại theo hợp đồng = giá trị − tổng đã thu đến t
+      // theo mẫu «Bảng theo dõi hợp đồng mua bán» + công thức phòng KD (05/11/2026), Tổng cộng = Tiền nhà + Phí bảo trì (cộng từng cột):
+      //  tiền nhà: giá trị = tiền sau thuế (+ hoàn thiện nếu gộp HĐMB) · phải thu theo tiến độ = các đợt có hạn trong khoảng ngày · đã thu = phiếu thu (có «Từ ngày»: thu trong khoảng)
+      //            còn lại theo tiến độ = phải thu − đã thu · còn lại theo hợp đồng = giá trị − tổng đã thu đến t
+      //  phí bảo trì: số phải thu = phí bảo trì (không theo hạn đợt) · còn lại = phí bảo trì − tổng đã thu phí bảo trì đến t
       const x = RC.get(c.id) || {}, n = k => +x[k] || 0, from_ = k => from ? n(k + 'w') : n(k), win = i => i.due_on <= to && (!from || i.due_on >= from);
-      const due = m => d.inst.filter(i => !!i.is_maint === m && win(i)).reduce((a, i) => a + +i.amount, 0);
-      const hv = c.after_tax != null ? +c.after_tax + (+c.finish_value || 0) : row.value - (+c.maint_fee || 0), mv = +c.maint_fee || 0;
-      const h = { due: due(false), paid: from_('h') }, m = { due: due(true), paid: from_('m') }, rate = c.late_rate != null ? +c.late_rate : null;
-      Object.assign(row, { h_value: hv, h_due: h.due, h_paid: h.paid, h_left_due: h.due - h.paid, h_left: hv - n('h'), m_value: mv, m_due: m.due, m_paid: m.paid, m_left_due: m.due - m.paid, m_left: mv - n('m'),
-        t_due: h.due + m.due, t_paid: h.paid + m.paid, t_left_due: h.due + m.due - h.paid - m.paid, t_left: hv + mv - n('h') - n('m'),
+      const hDue = d.inst.filter(i => !i.is_maint && win(i)).reduce((a, i) => a + +i.amount, 0), hPaid = from_('h'), mPaid = from_('m');
+      const hv = c.after_tax != null ? +c.after_tax + (+c.finish_value || 0) : row.value - (+c.maint_fee || 0), mv = +c.maint_fee || 0, mLeft = mv - n('m'), rate = c.late_rate != null ? +c.late_rate : null;
+      Object.assign(row, { h_value: hv, h_due: hDue, h_paid: hPaid, h_left_due: hDue - hPaid, h_left: hv - n('h'), m_value: mv, m_paid: mPaid, m_left_due: mLeft,
+        t_due: hDue + mv, t_paid: hPaid + mPaid, t_left_due: hDue - hPaid + mLeft, t_left: hv + mv - n('h') - n('m'),
         late_rate: rate, late_int: rate ? instDebt(d, t, rate).reduce((a, i) => a + i.late, 0) : null });
     }
     if (rent) {
