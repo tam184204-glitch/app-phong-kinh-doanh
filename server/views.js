@@ -484,14 +484,21 @@ async function contractTrack(db, user, f = {}) {
   });
   return { rows: from ? rows.filter(r => r.t_due > 0 || r.t_paid > 0) : rows, states: CT_ST, from, to, asof: t, can_rate: hd && canRate(user) };   // có «Từ ngày»: chỉ HĐ có đợt phải thu / có thu trong khoảng
 }
-// công nợ từng đợt (đã thu chia vào đợt theo B.debtOf): còn lại = phải thu − đã thu của đợt; quá hạn = hạn trước ngày t mà còn nợ, số ngày = t − hạn;
-// lãi quá hạn = còn lại × số ngày quá hạn × lãi suất (%/năm) / 365
+// công nợ từng đợt (đã thu chia vào đợt theo B.debtOf, các đợt xếp theo hạn): còn lại = phải thu − đã thu của đợt; số ngày quá hạn = t − hạn (đợt còn nợ)
+// số tiền quá hạn lũy kế = cộng dồn phần còn lại chưa thanh toán của các đợt đã quá hạn tới đợt này;
+// lãi quá hạn của đợt = số tiền quá hạn lũy kế × số ngày tính lãi (từ hạn đợt này đến hạn đợt sau, đợt quá hạn cuối: đến t) × lãi suất (%/năm) / 365
+// → cộng các đợt = Σ còn lại từng đợt × số ngày quá hạn của đợt đó × lãi suất / 365
 function instDebt(d, t, rate) {
-  let no = 0;
-  return d.inst.map(i => {
-    const rem = Math.max(0, i.rem), days = rem > 0 && i.due_on < t ? dayDiff(i.due_on, t) : 0;
+  let no = 0, cum = 0;
+  const I = d.inst;
+  return I.map((i, k) => {
+    const rem = Math.max(0, i.rem), over = i.due_on < t, days = rem > 0 && over ? dayDiff(i.due_on, t) : 0;
+    if (over) cum += rem;
+    const nx = I[k + 1], same = nx && nx.due_on === i.due_on;   // nhiều đợt cùng hạn: tính lãi 1 lần ở đợt cuối của nhóm
+    const end = over && cum > 0 && !same ? (nx && nx.due_on < t ? nx.due_on : t) : null, ldays = end ? dayDiff(i.due_on, end) : 0;
     return { id: i.id, no: i.is_maint ? null : ++no, name: i.name, due_on: i.due_on, is_maint: !!i.is_maint, amount: +i.amount, paid: +i.paid, rem, days: days || null,
-      rate: rate || null, late: rate && days ? Math.round(rem * days * rate / 100 / 365) : 0, st: i.st, st_l: B.PAY_ST[i.st] };
+      od: over && cum > 0 ? cum : null, l_from: end ? i.due_on : null, l_to: end, ldays: ldays || null,
+      rate: rate || null, late: rate && ldays ? Math.round(cum * ldays * rate / 100 / 365) : 0, st: i.st, st_l: B.PAY_ST[i.st] };
   });
 }
 // lãi suất quá hạn (%/năm) điền theo từng hợp đồng ở Theo dõi hợp đồng › HĐ mua bán
