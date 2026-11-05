@@ -354,7 +354,7 @@ const LP_ST = { qua_han: 'Quá hạn trả lãi', sap_toi: 'Đến hạn trong 7
 async function loanTrack(db, user, f = {}) {
   if (!can(user, E.installment, 'r')) deny();
   const p = [], t = today(), t7 = addDays(t, 7), t30 = addDays(t, 30);
-  const cs = await db.q(`SELECT c.id, c.number, c.status, c.value, c.contract_on, c.loan_recv_on, c.eff_on, c.exp_on, c.term_months, c.int_mode, c.loan_rate, c.rent, c.int_period, c.principal_method, c.nature, c.next_id, c.link_ids,
+  const cs = await db.q(`SELECT c.id, c.number, c.status, c.value, c.contract_on, c.signed_on, pr.name project_name, c.loan_recv_on, c.eff_on, c.exp_on, c.term_months, c.int_mode, c.loan_rate, c.rent, c.int_period, c.principal_method, c.nature, c.next_id, c.link_ids,
       u.code unit, pr.code project, b.code building, k.full_name customer, coalesce(c.b_phone, k.phone) phone,
       (SELECT string_agg(x.number, ', ') FROM kd_contract x WHERE x.id = ANY(c.link_ids)) links
     FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_project pr ON pr.id = u.project_id JOIN kd_building b ON b.id = u.building_id JOIN kd_customer k ON k.id = c.customer_id
@@ -369,7 +369,9 @@ async function loanTrack(db, user, f = {}) {
     const state = !ls.length ? 'dang' : !left ? 'xong' : laiQH > 0 ? 'qua_han' : next && next.due_on <= t7 ? 'sap_toi' : c.exp_on && c.exp_on <= t30 ? 'dao_han' : 'dang';
     return { contract_id: c.id, project: c.project, building: c.building, unit: c.unit, customer: c.customer, phone: c.phone, number: c.number, links: c.links || '', nature_l: c.nature === 'ban' ? 'Bán căn hộ' : 'Cho thuê',
       goc_hd: +c.value, goc_nhan: d.paid, goc_cho: d.left, eff_on: c.eff_on, exp_on: c.exp_on, term_months: c.term_months, mode_l: c.int_mode === 'lai_suat' ? `${ML.lai_suat} ${c.loan_rate ?? ''}%/năm` : ML.tien_thue, rent: c.int_mode === 'tien_thue' ? +c.rent : null, period_l: PL[c.int_period] || '',
-      lai_tong: sum(lai, x => +x.amount), lai_tra: sum(lai, x => +x.paid_amt || 0), lai_con: sum(lai, rem), lai_qua_han: laiQH, goc_tra_con: sum(goc, rem),
+      project_name: c.project_name, signed_on: c.signed_on || c.contract_on, term_l: c.term_months ? `${c.term_months} tháng` : '',
+      rate_l: c.int_mode === 'lai_suat' ? (c.loan_rate != null ? `${String(c.loan_rate).replace('.', ',')}%/năm` : '') : c.rent ? `Bằng tiền thuê ${fmtMoney(+c.rent)}/tháng` : 'Bằng tiền thuê',
+      lai_tong: sum(lai, x => +x.amount), lai_tra: sum(lai, x => +x.paid_amt || 0), lai_con: sum(lai, rem), lai_qua_han: laiQH, goc_tra: sum(goc, x => +x.paid_amt || 0), goc_tra_con: sum(goc, rem),
       next_on: next?.due_on || null, next_amt: next ? rem(next) : null, next_l: next ? (next.kind === 'lai' ? `Lãi kỳ ${next.seq}` : 'Trả gốc') : '', state, state_l: LP_ST[state] };
   });
   return { rows, states: LP_ST };

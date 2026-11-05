@@ -1649,12 +1649,12 @@ async function drill(key, f = {}) {
   } catch (e) { m.body.innerHTML = `<div class="errbar">${esc(e.message)}</div>`; }
 }
 function openRow(r) { if (r._ent) openDetail(r._ent[0], r._ent[1]); else if (r.contract_id) openDetail('contract', r.contract_id, 'debt'); else if (r.unit_id) location.hash = `#/v/unit360?id=${r.unit_id}`; else if (r.ent) openDetail(r.ent, r.id); }
-function rowsTable(cols, rows, sum, { click = true } = {}) {
+function rowsTable(cols, rows, sum, { click = true, no = '#' } = {}) {
   if (!rows.length) return '<div class="empty">Không có dữ liệu</div>';
   const f = (c, v) => c[2] === 'money' ? fm(v) : c[2] === 'num' ? fnum(v) : c[2] === 'int' ? (v ?? '') : c[2] === 'date' ? dmy(v) : c[2] === 'dt' ? dmyhm(v) : esc(v ?? '');
   const isN = c => ['money', 'num', 'int'].includes(c[2]);
   const WRAP = new Set(['text', 'content', 'reason', 'note', 'extra', 'title', 'descr', 'promise', 'status']);
-  return `<div class="tbl-wrap"><table class="t compact ${click ? '' : 'noclick'}"><thead><tr><th>#</th>${cols.map(c => `<th class="${isN(c) ? 'num' : ''}">${esc(c[1])}</th>`).join('')}</tr></thead><tbody>${rows.map((r, i) => `<tr data-i="${i}"><td class="muted">${i + 1}</td>${cols.map(c => `<td class="${isN(c) ? 'num' : ''} ${WRAP.has(c[0]) ? 'wrap' : ''} ${c[2] === 'money' && c[0] === 'gap' ? (r[c[0]] < 0 ? 'neg' : 'pos') : ''}">${f(c, r[c[0]])}</td>`).join('')}</tr>`).join('')}</tbody>
+  return `<div class="tbl-wrap"><table class="t compact ${click ? '' : 'noclick'}"><thead><tr><th>${esc(no)}</th>${cols.map(c => `<th class="${isN(c) ? 'num' : ''}">${esc(c[1])}</th>`).join('')}</tr></thead><tbody>${rows.map((r, i) => `<tr data-i="${i}"><td class="muted">${i + 1}</td>${cols.map(c => `<td class="${isN(c) ? 'num' : ''} ${WRAP.has(c[0]) ? 'wrap' : ''} ${c[2] === 'money' && c[0] === 'gap' ? (r[c[0]] < 0 ? 'neg' : 'pos') : ''}">${f(c, r[c[0]])}</td>`).join('')}</tr>`).join('')}</tbody>
     ${sum?.length ? `<tfoot><tr><td></td>${cols.map((c, i) => `<td class="${isN(c) ? 'num' : ''}">${sum.includes(c[0]) ? (c[2] === 'money' ? fm(rows.reduce((s, r) => s + (+r[c[0]] || 0), 0)) : rows.reduce((s, r) => s + (+r[c[0]] || 0), 0)) : i === 0 ? 'Tổng' : ''}</td>`).join('')}</tr></tfoot>` : ''}</table></div>`;
 }
 
@@ -2723,10 +2723,11 @@ V.loantrack = async main => { const k = (ST.ctkind ||= { kind: 'vay' }).kind; re
 // HĐ vay: gốc khách đã chuyển, lãi / gốc công ty phải trả khách, ghi nhận đã trả từng kỳ
 const loanView = async main => {
   const f = filt(), s = ST.loantrack ||= { state: '', q: '' };
-  const cols = [['project', 'Dự án'], ['unit', 'Mã căn'], ['customer', 'Bên cho vay (khách)'], ['number', 'Số HĐ vay'], ['links', 'HĐ thuê đi kèm'], ['nature_l', 'Bản chất'], ['goc_hd', 'Số tiền vay', 'money'], ['goc_nhan', 'Gốc đã nhận', 'money'],
-    ['mode_l', 'Lãi trả bằng'], ['rent', 'Tiền thuê/tháng', 'money'], ['period_l', 'Kỳ trả lãi'], ['eff_on', 'Bắt đầu tính lãi', 'date'], ['exp_on', 'Ngày đáo hạn', 'date'], ['lai_tong', 'Lãi cả kỳ', 'money'], ['lai_tra', 'Đã trả lãi', 'money'],
-    ['lai_con', 'Lãi còn phải trả', 'money'], ['lai_qua_han', 'Lãi quá hạn', 'money'], ['goc_tra_con', 'Gốc còn phải trả', 'money'], ['next_l', 'Kỳ tới'], ['next_on', 'Hạn kỳ tới', 'date'], ['next_amt', 'Số tiền kỳ tới', 'money'], ['state_l', 'Tình trạng']];
-  const SUM = ['goc_hd', 'goc_nhan', 'lai_tong', 'lai_tra', 'lai_con', 'lai_qua_han', 'goc_tra_con', 'next_amt'];
+  // cột theo mẫu theo dõi HĐ vay của phòng Kinh doanh (05/11/2026)
+  const cols = [['project_name', 'Tên dự án'], ['unit', 'Mã căn hộ'], ['customer', 'Tên khách hàng'], ['phone', 'Số điện thoại'], ['signed_on', 'Ngày ký HĐ', 'date'], ['exp_on', 'Ngày đáo hạn', 'date'], ['term_l', 'Thời hạn vay'], ['rate_l', 'Lãi suất'],
+    ['goc_hd', 'Số tiền phải vay', 'money'], ['goc_nhan', 'Số tiền gốc đã nhận', 'money'], ['goc_cho', 'Còn lại gốc phải thu', 'money'], ['lai_con', 'Lãi phải trả', 'money'], ['goc_tra', 'Số tiền gốc đã trả', 'money'], ['goc_tra_con', 'Còn lại gốc phải trả', 'money'],
+    ['number', 'Số hợp đồng vay'], ['links', 'Số hợp đồng thuê']];
+  const SUM = ['goc_hd', 'goc_nhan', 'goc_cho', 'lai_con', 'goc_tra', 'goc_tra_con'];
   const TABS = [['', 'Tất cả'], ['qua_han', 'Quá hạn trả lãi'], ['sap_toi', 'Đến hạn trong 7 ngày'], ['dao_han', 'Đáo hạn trong 30 ngày'], ['dang', 'Đang vay'], ['xong', 'Đã trả hết']];
   let d = { rows: [] };
   const shown = () => { const q = s.q.trim().toLowerCase(); return d.rows.filter(r => (!s.state || r.state === s.state) && (!q || [r.unit, r.customer, r.number, r.links, r.phone].some(x => String(x || '').toLowerCase().includes(q)))); };
@@ -2736,7 +2737,7 @@ const loanView = async main => {
       + tile('Lãi quá hạn chưa trả', fm(sum('lai_qua_han')), `${n('qua_han')} hợp đồng`, sum('lai_qua_han') > 0) + tile('Gốc còn phải trả khách', fm(sum('goc_tra_con')), `${n('dao_han')} HĐ đáo hạn trong 30 ngày`);
     $('#ltTabs', main).innerHTML = TABS.map(([k, l]) => `<button data-st="${k}" class="${s.state === k ? 'on' : ''}">${l} <span class="n">${n(k)}</span></button>`).join('');
     $('#ltN', main).textContent = `${shown().length} hợp đồng`;
-    $('#ltT', main).innerHTML = rowsTable(cols, shown(), SUM);
+    $('#ltT', main).innerHTML = rowsTable(cols, shown(), SUM, { no: 'STT' });
   };
   const load = async () => { d = await api('GET', '/api/loan-track?' + qsOf({ project: f.project })); draw(); };
   // bấm 1 HĐ vay: các kỳ trả lãi / gốc, ghi nhận đã trả
