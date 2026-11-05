@@ -386,31 +386,34 @@ async function loanItems(db, user, id) {
   if (!c) bad('Không tìm thấy HĐ vay');
   await B.loanRebase(db, [c.id]);
   if (C.own(user, E.customer) && !(await db.one('SELECT 1 FROM kd_contract WHERE id = $1 AND (owner_id = $2 OR created_by = $2)', [c.id, user.id]))) deny();
-  return { contract: c, items: await db.q('SELECT * FROM kd_loan_pay WHERE contract_id = $1 ORDER BY due_on, kind DESC, seq', [c.id]), can_pay: can(user, E.loan_pay, 'u') };
+  const items = await db.q('SELECT * FROM kd_loan_pay WHERE contract_id = $1 ORDER BY due_on, kind DESC, seq', [c.id]);
+  const pv = await db.q("SELECT loan_pay_id, string_agg(voucher_no, ', ' ORDER BY voucher_date, id) nos FROM kd_payment WHERE contract_id = $1 AND status = 'hop_le' AND loan_pay_id IS NOT NULL GROUP BY 1", [c.id]);
+  const m = new Map(pv.map(x => [x.loan_pay_id, x.nos])); for (const x of items) x.vouchers = m.get(x.id) || '';
+  return { contract: c, items, can_pay: can(user, E.payment, 'c') };
 }
 
 // Theo dõi hợp đồng — bấm 1 dòng: sổ ra phiếu thu (tiền vào công ty) và phiếu chi (tiền công ty trả ra) của hợp đồng (06/11/2026)
-// Phiếu thu = kd_receipt (MISA / Bravo / kế toán nhập). Phiếu chi = đề xuất hoàn tiền (kd_refund, loại Hoàn tiền) + HĐ vay: các kỳ lãi / gốc đã trả (kd_loan_pay).
+// Phiếu thu = kd_receipt, phiếu chi = kd_payment — phòng KD tự ghi để theo dõi tiến độ (không phải chứng từ kế toán).
 async function contractVouchers(db, user, id) {
   if (!can(user, E.installment, 'r')) deny();
   const c = await db.one('SELECT c.id, c.number, c.kind, c.owner_id, c.created_by, u.code unit, k.full_name customer FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id WHERE c.id = $1', [+id]);
   if (!c) bad('Không tìm thấy hợp đồng');
   if (C.own(user, E.customer) && c.owner_id !== user.id && c.created_by !== user.id) deny();
-  const SRC = { bravo: 'Bravo', misa: 'MISA', thu_cong: 'Kế toán nhập' };
+  const SRC = { bravo: 'Bravo', misa: 'MISA', thu_cong: 'Phòng KD nhập' };
   const thu = (await db.q(`SELECT r.id, r.voucher_no, r.voucher_date, r.amount, r.content, r.src, r.status, r.void_reason, i.name inst
       FROM kd_receipt r LEFT JOIN kd_installment i ON i.id = r.installment_id WHERE r.contract_id = $1 ORDER BY r.voucher_date, r.id`, [c.id]))
     .map(r => ({ ent: 'receipt', id: r.id, no: r.voucher_no, on: r.voucher_date, amount: +r.amount, content: r.content || (r.inst ? 'Thu ' + r.inst : ''), src: SRC[r.src] || r.src, ok: r.status === 'hop_le',
       st: r.status === 'hop_le' ? ['Hợp lệ', 'g'] : ['Đã hủy' + (r.void_reason ? ': ' + r.void_reason : ''), 'r'] }));
-  const RST = { nhap: ['Nháp', 's'], cho_duyet: ['Chờ duyệt', 'a'], tu_choi: ['Từ chối', 'r'], da_duyet: ['Đã duyệt — chờ kế toán chi', 'b'], da_thuc_hien: ['Đã chi', 'g'] };
-  const chi = (await db.q("SELECT id, code, done_voucher, done_on, amount, reason, status, created_at FROM kd_refund WHERE contract_id = $1 AND kind = 'hoan_tien' ORDER BY coalesce(done_on, created_at::date), id", [c.id]))
-    .map(r => ({ ent: 'refund', id: r.id, no: r.done_voucher || r.code, on: r.done_on || String(r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at).slice(0, 10), amount: +r.amount,
-      content: 'Hoàn tiền: ' + (r.reason || ''), src: 'Đề xuất ' + r.code, ok: r.status === 'da_thuc_hien', st: RST[r.status] || [r.status, 's'] }));
-  if (c.kind === 'vay') for (const r of await db.q('SELECT id, seq, kind, period_from, period_to, paid_on, paid_amt, note FROM kd_loan_pay WHERE contract_id = $1 AND paid_amt > 0 ORDER BY paid_on, id', [c.id]))
-    chi.push({ ent: 'loan_pay', id: r.id, no: r.kind === 'lai' ? `Lãi kỳ ${r.seq}` : 'Trả gốc', on: r.paid_on, amount: +r.paid_amt, content: (r.kind === 'lai' ? 'Trả lãi' : 'Trả gốc vay') + (r.note ? ' — ' + r.note : ''), src: 'Lịch trả lãi & gốc', ok: true, st: ['Đã chi', 'g'] });
+  const KND = Object.fromEntries(E.payment.fields.find(f => f.k === 'kind').o.map(o => [o[0], o[1]]));
+  const chi = (await db.q(`SELECT p.id, p.voucher_no, p.voucher_date, p.amount, p.kind, p.content, p.receiver, p.status, p.void_reason, l.kind lk, l.seq
+      FROM kd_payment p LEFT JOIN kd_loan_pay l ON l.id = p.loan_pay_id WHERE p.contract_id = $1 ORDER BY p.voucher_date, p.id`, [c.id]))
+    .map(r => ({ ent: 'payment', id: r.id, no: r.voucher_no, on: r.voucher_date, amount: +r.amount, ok: r.status === 'hop_le',
+      content: [KND[r.kind] + (r.lk === 'lai' ? ` kỳ ${r.seq}` : ''), r.content, r.receiver ? 'người nhận: ' + r.receiver : ''].filter(Boolean).join(' — '), src: KND[r.kind],
+      st: r.status === 'hop_le' ? ['Hợp lệ', 'g'] : ['Đã hủy' + (r.void_reason ? ': ' + r.void_reason : ''), 'r'] }));
   chi.sort((a, b) => String(a.on).localeCompare(String(b.on)) || a.id - b.id);
   const s = a => a.filter(x => x.ok).reduce((t, x) => t + x.amount, 0);
   return { contract: { id: c.id, number: c.number, kind: c.kind, unit: c.unit, customer: c.customer }, thu, chi, thu_sum: s(thu), chi_sum: s(chi),
-    can_thu: can(user, E.receipt, 'c'), can_chi: can(user, E.refund, 'c') && c.kind !== 'vay', can_pay: c.kind === 'vay' && can(user, E.loan_pay, 'u') };
+    can_thu: can(user, E.receipt, 'c'), can_chi: can(user, E.payment, 'c') };
 }
 
 // ======================= THEO DÕI HỢP ĐỒNG THUÊ / MUA BÁN / HOÀN THIỆN (CN-07) =======================
@@ -428,6 +431,8 @@ async function contractTrack(db, user, f = {}) {
       LEFT JOIN kd_user own ON own.id = c.owner_id
     WHERE c.kind = ANY($1) AND c.status <> 'huy' ${uf(f, p)}${mine(user, 'c')} ORDER BY pr.code, u.code, c.id`, p);
   const D = await B.debtOf(db, cs.map(c => c.id));
+  // phiếu chi hợp lệ (hoàn tiền / hoàn cọc / khác) — số công ty đã trả lại khách
+  const PC = new Map((await db.q("SELECT contract_id, sum(amount) s, count(*) n FROM kd_payment WHERE status = 'hop_le' AND contract_id = ANY($1) GROUP BY 1", [cs.map(c => c.id)])).map(x => [x.contract_id, x]));
   const opt = k => Object.fromEntries(E.contract.fields.find(x => x.k === k).o.map(o => [o[0], o[1]])), KL = opt('kind'), SL = opt('status'), t7 = addDays(t, 7);
   const rows = cs.map(c => {
     const d = D.get(c.id), rent = c.kind === 'thue' || c.kind === 'thue_mua';
@@ -436,6 +441,7 @@ async function contractTrack(db, user, f = {}) {
       signed_on: c.signed_on || c.contract_on, rent: rent ? +c.rent || null : null, eff_on: c.eff_on, exp_on: c.exp_on, value: +c.value || 0,
       total: d.total, paid: d.paid, paid_pct: d.paid_pct, left: d.left, overdue: d.overdue, overdue_days: d.overdue_days || null, due7: d.due7,
       next_name: d.next?.name || '', next_on: d.next?.due_on || null, next_amt: d.next?.rem ?? null, last_receipt: d.last_receipt, state, state_l: CT_ST[state] };
+    row.chi = +(PC.get(c.id)?.s || 0); row.net = row.paid - row.chi;   // đã chi trả lại khách · thực giữ = đã thu − đã chi
     if (rent) {
       // theo mẫu «Bảng theo dõi hợp đồng thuê căn hộ» (05/11/2026): phải thu theo tiến độ = các kỳ đến hạn tới hôm nay; còn phải thu = phải thu − đã thu (âm = thu thừa)
       const n = +c.term_months || 0, k = +c.pay_times || 0, per = n && k ? n / k : 0;

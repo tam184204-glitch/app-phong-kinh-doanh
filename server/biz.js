@@ -194,10 +194,10 @@ function loanPlan(r) {
 // lập lại lịch khi lưu HĐ vay — kỳ đã ghi nhận trả giữ nguyên
 async function loanSchedule(db, r, user, demo) {
   const plan = r.kind === 'vay' && r.status !== 'huy' ? loanPlan(r) : [];
-  const kept = await db.q("SELECT kind, seq, paid_amt FROM kd_loan_pay WHERE contract_id = $1 AND (coalesce(paid_amt, 0) > 0 OR paid_on IS NOT NULL OR coalesce(note, '') <> '')", [r.id]), keep = new Set(kept.map(x => x.kind + x.seq));
+  const kept = await db.q("SELECT kind, seq, paid_amt FROM kd_loan_pay l WHERE contract_id = $1 AND (coalesce(paid_amt, 0) > 0 OR paid_on IS NOT NULL OR coalesce(note, '') <> '' OR EXISTS (SELECT 1 FROM kd_payment p WHERE p.loan_pay_id = l.id))", [r.id]), keep = new Set(kept.map(x => x.kind + x.seq));
   const gocPaid = kept.filter(x => x.kind === 'goc').reduce((s, x) => s + (+x.paid_amt || 0), 0);
   if (r.principal_method === 'dao_han') for (const x of plan) if (x.kind === 'goc') x.amount = Math.max(0, x.amount - gocPaid);   // đã trả gốc trước (đổi phương thức) → kỳ đáo hạn trả phần còn lại
-  await db.q("DELETE FROM kd_loan_pay WHERE contract_id = $1 AND coalesce(paid_amt, 0) = 0 AND paid_on IS NULL AND coalesce(note, '') = ''", [r.id]);
+  await db.q("DELETE FROM kd_loan_pay l WHERE contract_id = $1 AND coalesce(paid_amt, 0) = 0 AND paid_on IS NULL AND coalesce(note, '') = '' AND NOT EXISTS (SELECT 1 FROM kd_payment p WHERE p.loan_pay_id = l.id)", [r.id]);
   for (const x of plan) if (!keep.has(x.kind + x.seq))
     await db.q('INSERT INTO kd_loan_pay (contract_id, seq, kind, period_from, period_to, due_on, amount, created_by, is_demo) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [r.id, x.seq, x.kind, x.period_from, x.period_to, x.due_on, x.amount, user?.id ?? null, !!(demo || r.is_demo)]);
   await loanRebase(db, [r.id]);   // lãi theo gốc đã nhận thực tế
@@ -233,6 +233,42 @@ async function loanRebase(db, ids) {
       if (amt !== +x.amount) await db.q('UPDATE kd_loan_pay SET amount = $2 WHERE id = $1', [x.id, amt]);
     }
   }
+}
+// Phiếu chi trả lãi / gốc HĐ vay → số đã trả của từng kỳ (06/11/2026). Phiếu gắn kỳ trừ vào kỳ đó trước; phần dư / phiếu không gắn kỳ
+// trừ dần kỳ chưa trả sớm nhất cùng loại (lãi / gốc); trả thừa dồn vào kỳ cuối. Ngày đã trả = ngày phiếu chi cuối cùng của kỳ.
+async function loanPaySync(db, ids) {
+  ids = [...new Set((ids || []).filter(Boolean).map(Number))];
+  if (!ids.length) return;
+  for (const c of await db.q("SELECT id FROM kd_contract WHERE id = ANY($1) AND kind = 'vay'", [ids])) {
+    const pays = await db.q("SELECT id, kind, loan_pay_id, amount, voucher_date FROM kd_payment WHERE contract_id = $1 AND status = 'hop_le' AND kind IN ('tra_lai', 'tra_goc') ORDER BY voucher_date, id", [c.id]);
+    const ls = await db.q('SELECT id, kind, amount, paid_amt, paid_on FROM kd_loan_pay WHERE contract_id = $1 ORDER BY due_on, seq', [c.id]);
+    const st = new Map(ls.map(x => [x.id, { paid: 0, on: null }]));
+    const put = (x, a, d) => { const s = st.get(x.id); s.paid += a; if (!s.on || d > s.on) s.on = d; };
+    for (const p of pays) {
+      const k = p.kind === 'tra_lai' ? 'lai' : 'goc', rows = ls.filter(x => x.kind === k);
+      let a = +p.amount;
+      const own = rows.find(x => x.id === p.loan_pay_id);
+      if (own) { const t = Math.min(a, Math.max(0, +own.amount - st.get(own.id).paid)) || 0; if (t) { put(own, t, p.voucher_date); a -= t; } }
+      for (const x of rows) { if (a <= 0) break; const room = Math.max(0, +x.amount - st.get(x.id).paid); if (!room) continue; const t = Math.min(room, a); put(x, t, p.voucher_date); a -= t; }
+      if (a > 0 && (own || rows.length)) put(own || rows[rows.length - 1], a, p.voucher_date);
+    }
+    for (const x of ls) {
+      const s = st.get(x.id), pa = s.paid || null, on = s.paid ? s.on : null;
+      if ((+x.paid_amt || null) !== pa || (x.paid_on || null) !== on) await db.q('UPDATE kd_loan_pay SET paid_amt = $2, paid_on = $3 WHERE id = $1', [x.id, pa, on]);
+    }
+  }
+  await loanRebase(db, ids);
+}
+// 1 lần: kỳ HĐ vay đã «ghi nhận đã trả» tay (trước khi có Phiếu chi) → lập phiếu chi tương ứng (PC-CU-<id kỳ>) để số đã trả lấy theo phiếu chi
+async function loanPayVouchers(db) {
+  if (await db.one("SELECT 1 FROM kd_setting WHERE key = 'loan_pay_vouchers'")) return 0;
+  const rows = await db.q("SELECT l.*, c.is_demo c_demo FROM kd_loan_pay l JOIN kd_contract c ON c.id = l.contract_id WHERE c.kind = 'vay' AND coalesce(l.paid_amt, 0) > 0 AND NOT EXISTS (SELECT 1 FROM kd_payment p WHERE p.loan_pay_id = l.id)");
+  for (const l of rows) await db.q(`INSERT INTO kd_payment (voucher_no, voucher_date, contract_id, kind, loan_pay_id, amount, content, method, src, status, is_demo)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'chuyen_khoan', 'thu_cong', 'hop_le', $8) ON CONFLICT DO NOTHING`,
+    ['PC-CU-' + l.id, l.paid_on || l.due_on, l.contract_id, l.kind === 'lai' ? 'tra_lai' : 'tra_goc', l.id, l.paid_amt, l.note || 'Chuyển từ ghi nhận đã trả (trước khi có phiếu chi)', !!(l.is_demo || l.c_demo)]);
+  await loanPaySync(db, rows.map(r => r.contract_id));
+  await db.q("INSERT INTO kd_setting (key, value) VALUES ('loan_pay_vouchers', $1) ON CONFLICT (key) DO NOTHING", [JSON.stringify({ at: new Date().toISOString(), n: rows.length })]);
+  return rows.length;
 }
 // 1 lần: HĐ căn hộ cũ có tiền giảm giá (giá nền gốc, giảm trừ riêng) → giá nền chia lại = giá nền − giảm giá / DT thông thủy (tổng tiền không đổi)
 async function fixBaseDiscount(db) {
@@ -1096,6 +1132,42 @@ H.receipt = {
   acts: { async void(r, d) { return { patch: { status: 'huy', void_reason: d.reason } }; } },
 };
 
+H.payment = {
+  async beforeSave(r, old, { db }) {
+    const c = await raw(db, 'contract', r.contract_id);
+    if (!old || old.contract_id !== r.contract_id) { if (c.status === 'huy') bad('Hợp đồng đã hủy'); }
+    if (r.voucher_date > today()) bad('Ngày chi không được sau hôm nay');
+    if (r.voucher_no) r.voucher_no = r.voucher_no.trim().toUpperCase();
+    if (!old) { r.src = r.src || 'thu_cong'; r.status = 'hop_le'; }
+    const vay = ['tra_lai', 'tra_goc'].includes(r.kind), lk = r.kind === 'tra_lai' ? 'lai' : 'goc';
+    if (vay && c.kind !== 'vay') bad('«Trả lãi / trả gốc» chỉ dùng cho HĐ vay');
+    if (!vay && c.kind === 'vay' && r.kind !== 'khac') bad('HĐ vay: chọn «Trả lãi HĐ vay» hoặc «Trả gốc HĐ vay»');
+    if (r.kind === 'hoan_coc' && !['thue', 'thue_mua'].includes(c.kind)) bad('«Hoàn tiền đặt cọc» chỉ dùng cho HĐ thuê');
+    if (r.kind === 'hoan_coc' && c.deposit != null && r.amount > +c.deposit) bad(`Số hoàn cọc ${fmtMoney(r.amount)} lớn hơn tiền đặt cọc ${fmtMoney(c.deposit)}`);
+    if (!vay) r.loan_pay_id = null;
+    if (r.kind !== 'hoan_tien') r.refund_id = null;
+    if (vay) {
+      if (r.loan_pay_id) { const x = await raw(db, 'loan_pay', r.loan_pay_id); if (x.contract_id !== c.id) bad('Kỳ trả không thuộc hợp đồng này'); if (x.kind !== lk) bad(r.kind === 'tra_lai' ? 'Kỳ đã chọn là kỳ trả gốc' : 'Kỳ đã chọn là kỳ trả lãi'); }
+      else r.loan_pay_id = (await db.one('SELECT id FROM kd_loan_pay WHERE contract_id = $1 AND kind = $2 AND coalesce(paid_amt, 0) < amount ORDER BY due_on, seq LIMIT 1', [c.id, lk]))?.id ?? null;
+      if (!r.loan_pay_id && !(await db.one('SELECT 1 FROM kd_loan_pay WHERE contract_id = $1 AND kind = $2', [c.id, lk]))) bad(`HĐ vay chưa có lịch ${lk === 'lai' ? 'trả lãi' : 'trả gốc'} — mở HĐ vay, nhập ngày tính lãi / thời hạn / kỳ trả rồi lưu`);
+    }
+    if (r.kind === 'hoan_tien' && r.refund_id) {
+      const f = await raw(db, 'refund', r.refund_id);
+      if (f.contract_id !== c.id) bad('Đề xuất hoàn tiền không thuộc hợp đồng này');
+      if (f.kind !== 'hoan_tien') bad('Đề xuất đã chọn không phải loại «Hoàn tiền»');
+      if ((!old || old.refund_id !== r.refund_id) && f.status !== 'da_duyet') bad('Đề xuất hoàn tiền chưa được duyệt hoặc đã chi');
+      if (r.amount > +f.amount) bad(`Số chi ${fmtMoney(r.amount)} lớn hơn số đề xuất ${fmtMoney(f.amount)}`);
+    }
+  },
+  async afterSave(r, old, { db, user }) {
+    await loanPaySync(db, [r.contract_id, old?.contract_id]);
+    const ok = r.status === 'hop_le';
+    if (old?.refund_id && (old.refund_id !== r.refund_id || !ok)) await sys(db, 'refund', old.refund_id, { status: 'da_duyet', done_voucher: null, done_on: null }, user, 'huy_phieu_chi', `Phiếu chi ${r.voucher_no} ${ok ? 'đổi đề xuất' : 'đã hủy'}`);
+    if (r.refund_id && ok && (!old || old.refund_id !== r.refund_id)) await sys(db, 'refund', r.refund_id, { status: 'da_thuc_hien', done_voucher: r.voucher_no, done_on: r.voucher_date }, user, 'phieu_chi', `Phiếu chi ${r.voucher_no}`);
+  },
+  acts: { async void(r, d) { return { patch: { status: 'huy', void_reason: d.reason } }; } },
+};
+
 H.contract_change = {
   async beforeSave(r, old, { db }) {
     const c = await raw(db, 'contract', r.contract_id);
@@ -1372,4 +1444,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { fixBaseDiscount, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { fixBaseDiscount, loanPayVouchers, loanPaySync, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
