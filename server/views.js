@@ -359,7 +359,9 @@ async function loanTrack(db, user, f = {}) {
       (SELECT string_agg(x.number, ', ') FROM kd_contract x WHERE x.id = ANY(c.link_ids)) links
     FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_project pr ON pr.id = u.project_id JOIN kd_building b ON b.id = u.building_id JOIN kd_customer k ON k.id = c.customer_id
     WHERE c.kind = 'vay' AND c.status <> 'huy' ${uf(f, p)}${mine(user, 'c')} ORDER BY c.exp_on NULLS LAST, u.code`, p);
-  const ids = cs.map(c => c.id), D = await B.debtOf(db, ids);
+  const ids = cs.map(c => c.id);
+  await B.loanRebase(db, ids);   // lãi theo gốc khách đã chuyển (phiếu thu mới / đã hủy)
+  const D = await B.debtOf(db, ids);
   const L = await db.q('SELECT * FROM kd_loan_pay WHERE contract_id = ANY($1) ORDER BY due_on, kind DESC, seq', [ids]);
   const rem = x => Math.max(0, +x.amount - (+x.paid_amt || 0)), sum = (xs, fn) => xs.reduce((a, x) => a + fn(x), 0);
   // lãi dồn tích đến hết hôm nay: kỳ đã kết thúc tính đủ, kỳ đang chạy tính theo số ngày đã qua / số ngày của kỳ, kỳ chưa tới = 0
@@ -368,7 +370,7 @@ async function loanTrack(db, user, f = {}) {
   const rows = cs.map(c => {
     const ls = L.filter(x => x.contract_id === c.id), lai = ls.filter(x => x.kind === 'lai'), goc = ls.filter(x => x.kind === 'goc'), next = ls.find(x => rem(x) > 0), d = D.get(c.id);
     const laiQH = sum(lai.filter(x => x.due_on < t), rem), left = sum(ls, rem);
-    const state = !ls.length ? 'dang' : !left ? 'xong' : laiQH > 0 ? 'qua_han' : next && next.due_on <= t7 ? 'sap_toi' : c.exp_on && c.exp_on <= t30 ? 'dao_han' : 'dang';
+    const state = !ls.length ? 'dang' : !left && d.paid > 0 ? 'xong' : laiQH > 0 ? 'qua_han' : next && next.due_on <= t7 ? 'sap_toi' : c.exp_on && c.exp_on <= t30 ? 'dao_han' : 'dang';
     return { contract_id: c.id, project: c.project, building: c.building, unit: c.unit, customer: c.customer, phone: c.phone, number: c.number, links: c.links || '', nature_l: c.nature === 'ban' ? 'Bán căn hộ' : 'Cho thuê',
       goc_hd: +c.value, goc_nhan: d.paid, goc_cho: d.left, eff_on: c.eff_on, exp_on: c.exp_on, term_months: c.term_months, mode_l: c.int_mode === 'lai_suat' ? `${ML.lai_suat} ${c.loan_rate ?? ''}%/năm` : ML.tien_thue, rent: c.int_mode === 'tien_thue' ? +c.rent : null, period_l: PL[c.int_period] || '',
       project_name: c.project_name, signed_on: c.signed_on || c.contract_on, term_l: c.term_months ? `${c.term_months} tháng` : '',
@@ -382,6 +384,7 @@ async function loanItems(db, user, id) {
   if (!can(user, E.installment, 'r')) deny();
   const c = await db.one("SELECT c.id, c.number, c.value, c.int_mode, c.rent, c.loan_rate, u.code unit, k.full_name customer FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id WHERE c.id = $1 AND c.kind = 'vay'", [+id]);
   if (!c) bad('Không tìm thấy HĐ vay');
+  await B.loanRebase(db, [c.id]);
   if (C.own(user, E.customer) && !(await db.one('SELECT 1 FROM kd_contract WHERE id = $1 AND (owner_id = $2 OR created_by = $2)', [c.id, user.id]))) deny();
   return { contract: c, items: await db.q('SELECT * FROM kd_loan_pay WHERE contract_id = $1 ORDER BY due_on, kind DESC, seq', [c.id]), can_pay: can(user, E.loan_pay, 'u') };
 }

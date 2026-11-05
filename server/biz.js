@@ -200,6 +200,39 @@ async function loanSchedule(db, r, user, demo) {
   await db.q("DELETE FROM kd_loan_pay WHERE contract_id = $1 AND coalesce(paid_amt, 0) = 0 AND paid_on IS NULL AND coalesce(note, '') = ''", [r.id]);
   for (const x of plan) if (!keep.has(x.kind + x.seq))
     await db.q('INSERT INTO kd_loan_pay (contract_id, seq, kind, period_from, period_to, due_on, amount, created_by, is_demo) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [r.id, x.seq, x.kind, x.period_from, x.period_to, x.due_on, x.amount, user?.id ?? null, !!(demo || r.is_demo)]);
+  await loanRebase(db, [r.id]);   // lãi theo gốc đã nhận thực tế
+}
+// HĐ vay lãi theo lãi suất: lãi mỗi kỳ = gốc khách ĐÃ CHUYỂN thực tế (phiếu thu hợp lệ của HĐ vay, trừ gốc công ty đã trả lại) × lãi suất × số tháng của kỳ / 12;
+// khoản chuyển / trả giữa kỳ tính theo số ngày còn lại của kỳ. Kỳ trả gốc khi đáo hạn = gốc đã nhận − gốc đã trả. Kỳ đã ghi nhận trả giữ nguyên.
+// Gọi sau khi lập lịch, khi lưu phiếu thu, và khi mở màn theo dõi (hủy phiếu thu không qua afterSave).
+async function loanRebase(db, ids) {
+  ids = [...new Set((ids || []).filter(Boolean).map(Number))];
+  if (!ids.length) return;
+  const cs = await db.q("SELECT id, loan_rate, principal_method FROM kd_contract WHERE id = ANY($1) AND kind = 'vay' AND int_mode = 'lai_suat' AND status <> 'huy'", [ids]);
+  if (!cs.length) return;
+  const cids = cs.map(c => c.id);
+  const rc = await db.q("SELECT contract_id, voucher_date, amount FROM kd_receipt WHERE status = 'hop_le' AND contract_id = ANY($1)", [cids]);
+  const lp = await db.q('SELECT id, contract_id, kind, seq, period_from, period_to, amount, paid_amt, paid_on FROM kd_loan_pay WHERE contract_id = ANY($1) ORDER BY due_on, seq', [cids]);
+  for (const c of cs) {
+    const ls = lp.filter(x => x.contract_id === c.id), rate = +c.loan_rate || 0;
+    const ev = [...rc.filter(x => x.contract_id === c.id).map(x => ({ d: x.voucher_date, a: +x.amount })),
+      ...ls.filter(x => x.kind === 'goc' && +x.paid_amt > 0 && x.paid_on).map(x => ({ d: x.paid_on, a: -x.paid_amt }))];
+    const got = ev.filter(e => e.a > 0).reduce((s, e) => s + e.a, 0), back = ls.filter(x => x.kind === 'goc').reduce((s, x) => s + (+x.paid_amt || 0), 0);
+    for (const x of ls) {
+      if (+x.paid_amt > 0 || x.paid_on) continue;
+      let amt;
+      if (x.kind === 'lai') {
+        if (!x.period_from || !x.period_to) continue;
+        const end = addDays(x.period_to, 1), len = dayDiff(x.period_from, end);
+        let m = 0; while (addMonths(x.period_from, m + 1) <= end) m++;   // số tháng tròn của kỳ + phần lẻ theo ngày
+        if (addMonths(x.period_from, m) < end) { const a = addMonths(x.period_from, m); m += dayDiff(a, end) / dayDiff(a, addMonths(x.period_from, m + 1)); }
+        const base = ev.filter(e => e.d <= x.period_to).reduce((s, e) => s + e.a * Math.min(1, dayDiff(e.d > x.period_from ? e.d : x.period_from, end) / len), 0);
+        amt = Math.max(0, Math.round(base * rate / 100 * m / 12));
+      } else if (c.principal_method === 'dao_han') amt = Math.max(0, got - back);
+      else continue;
+      if (amt !== +x.amount) await db.q('UPDATE kd_loan_pay SET amount = $2 WHERE id = $1', [x.id, amt]);
+    }
+  }
 }
 // 1 lần: HĐ căn hộ cũ có tiền giảm giá (giá nền gốc, giảm trừ riêng) → giá nền chia lại = giá nền − giảm giá / DT thông thủy (tổng tiền không đổi)
 async function fixBaseDiscount(db) {
@@ -1059,7 +1092,7 @@ H.receipt = {
     if (!old) { r.synced_at = r.synced_at || new Date().toISOString(); r.src = r.src || 'thu_cong'; }
     if (r.voucher_date > today()) bad('Ngày thu không được sau hôm nay');
   },
-  async afterSave(r, old, { db, user }) { await refreshCommission(db, r.contract_id, user); },
+  async afterSave(r, old, { db, user }) { await refreshCommission(db, r.contract_id, user); await loanRebase(db, [r.contract_id, old?.contract_id]); },
   acts: { async void(r, d) { return { patch: { status: 'huy', void_reason: d.reason } }; } },
 };
 
@@ -1339,4 +1372,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { fixBaseDiscount, LIVE_CT, rentWord, loanPlan, loanSchedule, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { fixBaseDiscount, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
