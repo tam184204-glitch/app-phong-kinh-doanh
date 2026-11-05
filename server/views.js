@@ -685,7 +685,10 @@ async function signing(db, user, f) {
     FROM kd_noxh_check n JOIN kd_customer k ON k.id = n.customer_id LEFT JOIN kd_unit u ON u.id = n.unit_id LEFT JOIN kd_project pj ON pj.id = coalesce(u.project_id, n.project_id) LEFT JOIN kd_user own ON own.id = n.owner_id
     WHERE n.plan_sign IS NOT NULL AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.customer_id = n.customer_id AND c.status NOT IN ('huy', 'thanh_ly')) ${nxw(w)} ${mine(user, 'n')}`, p)));
   const recent = await db.q(`SELECT c.id, c.number, c.signed_on, u.code unit, k.full_name customer FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id WHERE c.kind <> 'hoan_thien' AND c.status = 'da_ky' AND c.signed_on >= $${p.length + 1}::date - 30 ${w} ${mine(user, 'c')} ORDER BY c.signed_on DESC`, [...p, today()]);
-  const signed = await db.q(`SELECT c.id, c.number, c.plan_sign, c.signed_on, c.status, u.code unit, pj.code project, pj.name project_name, k.full_name customer, own.full_name owner, c.sign_place FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_project pj ON pj.id = u.project_id JOIN kd_customer k ON k.id = c.customer_id LEFT JOIN kd_user own ON own.id = c.owner_id WHERE c.kind <> 'hoan_thien' AND c.status = 'da_ky' AND c.signed_on IS NOT NULL ${w} ${mine(user, 'c')}`, p);
+  const signed = await db.q(`SELECT c.id, c.number, c.kind, c.plan_sign, c.signed_on, c.status, u.code unit, pj.code project, pj.name project_name, k.full_name customer, own.full_name owner, c.sign_place FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_project pj ON pj.id = u.project_id JOIN kd_customer k ON k.id = c.customer_id LEFT JOIN kd_user own ON own.id = c.owner_id WHERE c.kind <> 'hoan_thien' AND c.status = 'da_ky' AND c.signed_on IS NOT NULL ${w} ${mine(user, 'c')}`, p);
+  // nhãn loại hợp đồng (HĐ mua bán / thuê / thuê mua…) cho cột «Loại hợp đồng»
+  const KL = Object.fromEntries(E.contract.fields.find(x => x.k === 'kind').o.map(o => [o[0], o[1]]));
+  for (const r of [...rows, ...signed]) r.kind_l = r.kind ? KL[r.kind] || r.kind : '';
   return { rows, recent, signed };
 }
 
