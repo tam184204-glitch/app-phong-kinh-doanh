@@ -389,6 +389,30 @@ async function loanItems(db, user, id) {
   return { contract: c, items: await db.q('SELECT * FROM kd_loan_pay WHERE contract_id = $1 ORDER BY due_on, kind DESC, seq', [c.id]), can_pay: can(user, E.loan_pay, 'u') };
 }
 
+// Theo dõi hợp đồng — bấm 1 dòng: sổ ra phiếu thu (tiền vào công ty) và phiếu chi (tiền công ty trả ra) của hợp đồng (06/11/2026)
+// Phiếu thu = kd_receipt (MISA / Bravo / kế toán nhập). Phiếu chi = đề xuất hoàn tiền (kd_refund, loại Hoàn tiền) + HĐ vay: các kỳ lãi / gốc đã trả (kd_loan_pay).
+async function contractVouchers(db, user, id) {
+  if (!can(user, E.installment, 'r')) deny();
+  const c = await db.one('SELECT c.id, c.number, c.kind, c.owner_id, c.created_by, u.code unit, k.full_name customer FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id WHERE c.id = $1', [+id]);
+  if (!c) bad('Không tìm thấy hợp đồng');
+  if (C.own(user, E.customer) && c.owner_id !== user.id && c.created_by !== user.id) deny();
+  const SRC = { bravo: 'Bravo', misa: 'MISA', thu_cong: 'Kế toán nhập' };
+  const thu = (await db.q(`SELECT r.id, r.voucher_no, r.voucher_date, r.amount, r.content, r.src, r.status, r.void_reason, i.name inst
+      FROM kd_receipt r LEFT JOIN kd_installment i ON i.id = r.installment_id WHERE r.contract_id = $1 ORDER BY r.voucher_date, r.id`, [c.id]))
+    .map(r => ({ ent: 'receipt', id: r.id, no: r.voucher_no, on: r.voucher_date, amount: +r.amount, content: r.content || (r.inst ? 'Thu ' + r.inst : ''), src: SRC[r.src] || r.src, ok: r.status === 'hop_le',
+      st: r.status === 'hop_le' ? ['Hợp lệ', 'g'] : ['Đã hủy' + (r.void_reason ? ': ' + r.void_reason : ''), 'r'] }));
+  const RST = { nhap: ['Nháp', 's'], cho_duyet: ['Chờ duyệt', 'a'], tu_choi: ['Từ chối', 'r'], da_duyet: ['Đã duyệt — chờ kế toán chi', 'b'], da_thuc_hien: ['Đã chi', 'g'] };
+  const chi = (await db.q("SELECT id, code, done_voucher, done_on, amount, reason, status, created_at FROM kd_refund WHERE contract_id = $1 AND kind = 'hoan_tien' ORDER BY coalesce(done_on, created_at::date), id", [c.id]))
+    .map(r => ({ ent: 'refund', id: r.id, no: r.done_voucher || r.code, on: r.done_on || String(r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at).slice(0, 10), amount: +r.amount,
+      content: 'Hoàn tiền: ' + (r.reason || ''), src: 'Đề xuất ' + r.code, ok: r.status === 'da_thuc_hien', st: RST[r.status] || [r.status, 's'] }));
+  if (c.kind === 'vay') for (const r of await db.q('SELECT id, seq, kind, period_from, period_to, paid_on, paid_amt, note FROM kd_loan_pay WHERE contract_id = $1 AND paid_amt > 0 ORDER BY paid_on, id', [c.id]))
+    chi.push({ ent: 'loan_pay', id: r.id, no: r.kind === 'lai' ? `Lãi kỳ ${r.seq}` : 'Trả gốc', on: r.paid_on, amount: +r.paid_amt, content: (r.kind === 'lai' ? 'Trả lãi' : 'Trả gốc vay') + (r.note ? ' — ' + r.note : ''), src: 'Lịch trả lãi & gốc', ok: true, st: ['Đã chi', 'g'] });
+  chi.sort((a, b) => String(a.on).localeCompare(String(b.on)) || a.id - b.id);
+  const s = a => a.filter(x => x.ok).reduce((t, x) => t + x.amount, 0);
+  return { contract: { id: c.id, number: c.number, kind: c.kind, unit: c.unit, customer: c.customer }, thu, chi, thu_sum: s(thu), chi_sum: s(chi),
+    can_thu: can(user, E.receipt, 'c'), can_chi: can(user, E.refund, 'c') && c.kind !== 'vay', can_pay: c.kind === 'vay' && can(user, E.loan_pay, 'u') };
+}
+
 // ======================= THEO DÕI HỢP ĐỒNG THUÊ / MUA BÁN / HOÀN THIỆN (CN-07) =======================
 // công nợ khách phải trả công ty theo lịch thu (kd_installment) + phiếu thu hợp lệ (kd_receipt); HĐ vay xem loanTrack
 const CT_KIND = { thue: ['thue', 'thue_mua'], hdmb: ['hdmb'], hoan_thien: ['hoan_thien'] };
@@ -893,4 +917,4 @@ async function monthly(db, period, projectId) {
   };
 }
 
-module.exports = { debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractTrack, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
+module.exports = { debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, contractTrack, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };

@@ -1100,3 +1100,11 @@ html[data-theme=dark] img, html[data-theme=dark] video, html[data-theme=dark] ca
 html[data-theme=dark] .side { filter: invert(1) hue-rotate(180deg); }   /* menu trái vốn đã nền tối: giữ nguyên màu */
 html[data-theme=dark] .pf-cover img, html[data-theme=dark] .pf-cover .btn { filter: none; }
 @media print { html[data-theme=dark] { filter: none; } html[data-theme=dark] img { filter: none; } }
+/* Theo dõi hợp đồng: dòng sổ ra phiếu thu / phiếu chi (06/11/2026) */
+table.t tr.vch-on > td { background: #fff7e6; }
+table.t tr.vch > td { padding: 0; background: #fbfcfe; white-space: normal; cursor: default; }
+.vch-box { position: sticky; left: 0; width: min(1500px, calc(100vw - 340px)); padding: 12px 14px 14px; border-left: 3px solid var(--acc, #f0a020); }
+.vch-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.vch-t { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 6px; } .vch-t .n { background: #eef2f6; border-radius: 9px; padding: 0 7px; font-size: 12px; } .vch-t .btn:first-of-type { margin-left: auto; }
+.vch-box table.t { background: #fff; } .vch-box tr.muted td { color: #98a2b3; }
+@media (max-width: 900px) { .vch-box { width: calc(100vw - 40px); } .vch-box .g2 { grid-template-columns: 1fr; } }
