@@ -426,7 +426,7 @@ def('contract', {
   lists: {
     // HĐ thuê (tab riêng ở danh sách chung cư): cột theo BRAVO
     thue: secList([['Hợp đồng', ['number', 'contract_on', 'unit_id']], ['Bên thuê nhà', ['b_name', 'b_id_no', 'b_id_date', 'b_id_place', 'b_addr', 'b_phone', 'b_email'], 'Xem thông tin khách hàng'],
-      ['Thông tin căn hộ', ['area_floor', 'area_tt']], ['Thời hạn thuê', ['eff_on', 'exp_on', 'term_months', 'pay_times']], ['Tiền thuê', ['rent_house', 'rent_furn', 'rent'], 'Xem tiền thuê'], ['Giá trị HĐ thuê', ['value']],
+      ['Thông tin căn hộ', ['area_floor', 'area_tt']], ['Thời hạn thuê', ['eff_on', 'exp_on', 'term_months', 'pay_times']], ['Tiền thuê', ['rent_house', 'rent_furn', 'rent'], 'Xem tiền thuê'], ['Giá trị HĐ thuê', ['value', 'deposit']],
       ['Giá trị HĐMB', ['unit_total', 'discount'], 'Xem giá trị HĐMB'], ['', ['nature', 'status']]],
       { dates: [['contract_on', 'Ngày ký'], ['eff_on', 'Ngày bắt đầu thuê'], ['exp_on', 'Ngày kết thúc thuê']], label: { contract_on: 'Ngày ký', unit_id: 'Mã căn hộ', b_name: 'Họ và tên', b_id_no: 'Số CMND / CCCD', b_id_date: 'Ngày cấp', b_id_place: 'Nơi cấp', b_addr: 'Địa chỉ', b_phone: 'Điện thoại', b_email: 'Email', area_floor: 'Diện tích sàn', area_tt: 'Diện tích nền (T.thủy)', value: 'Giá trị HĐ thuê', rent: 'Tổng giá thuê/tháng' } }),
     vay: secList([['Hợp đồng', ['number', 'contract_on', 'unit_id']], ['Bên cho vay (khách hàng)', ['b_name', 'b_id_no', 'b_phone'], 'Xem thông tin khách hàng'], ['Khoản vay', ['value', 'paid', 'loan_recv_on']],
@@ -516,7 +516,8 @@ def('contract', {
     // HĐ thuê (04/11/2026): tiền thuê tách tiền thuê nhà + tiền thuê nội thất; Tổng giá thuê/tháng (rent) = 2 khoản cộng lại → tổng tiền thuê = rent × số tháng
     money('rent_house', 'Tiền thuê nhà/tháng', { show: RENT_ONLY }),
     money('rent_furn', 'Tiền thuê nội thất/tháng', { show: RENT_ONLY }),
-    money('rent', 'Tiền thuê/tháng', { show: RENT_ONLY, help: 'Giá trị HĐ thuê = tổng giá thuê/tháng × thời hạn thuê' }),   // HĐ vay bỏ ô này khỏi form 04/11/2026: lãi theo tiền thuê/tháng của HĐ thuê đi kèm (tick chọn)
+    money('rent', 'Tiền thuê/tháng', { show: RENT_ONLY, help: 'Giá trị HĐ thuê = tổng giá thuê/tháng × thời hạn thuê' }),
+    money('deposit', 'Tiền đặt cọc', { show: RENT_ONLY, help: 'Tiền đặt cọc thuê theo hợp đồng — không cộng vào Giá trị HĐ thuê' }),   // 05/11/2026   // HĐ vay bỏ ô này khỏi form 04/11/2026: lãi theo tiền thuê/tháng của HĐ thuê đi kèm (tick chọn)
     // HĐ vay (công ty vay tiền của khách, bản chất thường là bán căn): giải ngân gốc = các đợt ở bảng Lần thanh toán; lãi trả cho khách theo lịch kd_loan_pay
     { k: 'loan_recv_on', l: 'Ngày nhận tiền vay', t: 'date', show: VAY_ONLY },
     { k: 'loan_tranches', l: 'Số đợt giải ngân gốc', t: 'int', show: VAY_ONLY, help: 'Các đợt khách chuyển tiền gốc nhập ở bảng «Các đợt giải ngân gốc» bên dưới' },

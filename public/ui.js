@@ -437,7 +437,7 @@ const HD_LAYOUT = [
     ['loan_recv_on', 'loan_tranches', 'int_mode', 'loan_rate'],   // HĐ vay
     ['eff_on', 'exp_on', 'term_months', 'pay_times'],   // HĐ thuê (BRAVO) · HĐ vay: bắt đầu tính lãi / đáo hạn / thời hạn vay
     ['int_period', 'principal_method', 'int_note'], ['link_ids'],
-    ['rent_house', 'rent_furn', 'rent', 'value', 'cn', 'vbtt_hold'], ['sale_price', 'plan_hdmb', 'prev_id', 'next_id']] },   // bán qua HĐ vay / HĐ thuê; HĐMB nối tiếp   // HĐ thuê: tiền thuê/tháng cạnh tổng tiền thuê; mua bán không có ô tiền thuê
+    ['rent_house', 'rent_furn', 'rent', 'value', 'deposit', 'cn', 'vbtt_hold'], ['sale_price', 'plan_hdmb', 'prev_id', 'next_id']] },   // bán qua HĐ vay / HĐ thuê; HĐMB nối tiếp   // HĐ thuê: tiền thuê/tháng cạnh tổng tiền thuê; mua bán không có ô tiền thuê
   { t: 'Lần thanh toán', rows: [['new_schedule'], ['pay_method']] },
   { t: 'Lịch ký', cols: 4, rows: [['plan_sign', 'sign_place', 'sign_status', 'signed_on']] },
   { t: 'Tình trạng vay vốn', cols: 4, rows: [['loan_status', 'loan_bank', 'loan_doc3']] },
