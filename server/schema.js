@@ -153,7 +153,25 @@ const CHECKS = {
   commission_policy: ["rate IS NULL OR (rate >= 0 AND rate <= 100)"],
 };
 
+// CSDL chung Khối Home: app KHÔNG tự đổi cấu trúc (quy tắc repo app-khoi-home — chỉ đổi bằng migration mới trong db/migrations/).
+// Chỉ đối chiếu meta.js với CSDL; thiếu bảng / cột thì dừng và nêu rõ để viết migration.
+async function verifyShared(db) {
+  const cols = new Map();
+  for (const r of await db.q("SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name LIKE 'kd\\_%'"))
+    (cols.get(r.table_name) || cols.set(r.table_name, new Set()).get(r.table_name)).add(r.column_name);
+  const miss = [];
+  for (const t of ['kd_user', 'kd_session', 'kd_lookup', 'kd_setting', 'kd_counter', 'kd_file', 'kd_file_star', 'kd_note', 'kd_audit', 'kd_approval', 'kd_import'])
+    if (!cols.has(t)) miss.push(t);
+  for (const e of Object.values(E)) {
+    const have = cols.get(e.table);
+    if (!have) { miss.push(e.table); continue; }
+    for (const f of e.fields) if (!have.has(f.k)) miss.push(`${e.table}.${f.k}`);
+  }
+  if (miss.length) throw new Error(`CSDL chung thiếu ${miss.length} bảng/cột so với meta.js — viết migration mới (V…__kd_…sql) rồi áp: ${miss.join(', ')}`);
+}
+
 async function migrate(db) {
+  if (require('./db').shared) return verifyShared(db);
   await db.q(BASE);
   const cols = new Map();
   for (const r of await db.q("SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name LIKE 'kd\\_%'"))
