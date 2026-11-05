@@ -397,19 +397,37 @@ async function contractTrack(db, user, f = {}) {
   if (!can(user, E.installment, 'r')) deny();
   const kinds = CT_KIND[f.kind]; if (!kinds) bad('Loại hợp đồng không hợp lệ');
   const p = [kinds], t = today(), t30 = addDays(t, 30);
-  const cs = await db.q(`SELECT c.id, c.number, c.kind, c.status, c.value, c.rent, c.contract_on, c.signed_on, c.eff_on, c.exp_on,
-      u.code unit, pr.code project, b.code building, k.full_name customer, coalesce(c.b_phone, k.phone) phone
+  const cs = await db.q(`SELECT c.id, c.number, c.kind, c.status, c.value, c.rent, c.deposit, c.term_months, c.pay_times, c.contract_on, c.signed_on, c.eff_on, c.exp_on,
+      u.code unit, pr.code project, pr.name project_name, b.code building, b.name building_name, k.full_name customer, coalesce(c.b_phone, k.phone) phone, own.full_name owner,
+      (SELECT n.body FROM kd_note n WHERE n.ent = 'contract' AND n.rec_id = c.id ORDER BY n.at DESC, n.id DESC LIMIT 1) note
     FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_project pr ON pr.id = u.project_id JOIN kd_building b ON b.id = u.building_id JOIN kd_customer k ON k.id = c.customer_id
+      LEFT JOIN kd_user own ON own.id = c.owner_id
     WHERE c.kind = ANY($1) AND c.status <> 'huy' ${uf(f, p)}${mine(user, 'c')} ORDER BY pr.code, u.code, c.id`, p);
   const D = await B.debtOf(db, cs.map(c => c.id));
-  const opt = k => Object.fromEntries(E.contract.fields.find(x => x.k === k).o.map(o => [o[0], o[1]])), KL = opt('kind'), SL = opt('status');
+  const opt = k => Object.fromEntries(E.contract.fields.find(x => x.k === k).o.map(o => [o[0], o[1]])), KL = opt('kind'), SL = opt('status'), t7 = addDays(t, 7);
   const rows = cs.map(c => {
     const d = D.get(c.id), rent = c.kind === 'thue' || c.kind === 'thue_mua';
     const state = !d.inst.length ? 'chua_lich' : d.overdue > 0 ? 'qua_han' : d.left <= 0 ? 'xong' : d.due7 > 0 ? 'sap_toi' : rent && c.exp_on && c.exp_on >= t && c.exp_on <= t30 ? 'het_han' : 'dang';
-    return { contract_id: c.id, project: c.project, building: c.building, unit: c.unit, customer: c.customer, phone: c.phone, number: c.number, kind_l: KL[c.kind] || c.kind, status_l: SL[c.status] || c.status,
+    const row = { contract_id: c.id, project: c.project, building: c.building, unit: c.unit, customer: c.customer, phone: c.phone, number: c.number, kind_l: KL[c.kind] || c.kind, status_l: SL[c.status] || c.status,
       signed_on: c.signed_on || c.contract_on, rent: rent ? +c.rent || null : null, eff_on: c.eff_on, exp_on: c.exp_on, value: +c.value || 0,
       total: d.total, paid: d.paid, paid_pct: d.paid_pct, left: d.left, overdue: d.overdue, overdue_days: d.overdue_days || null, due7: d.due7,
       next_name: d.next?.name || '', next_on: d.next?.due_on || null, next_amt: d.next?.rem ?? null, last_receipt: d.last_receipt, state, state_l: CT_ST[state] };
+    if (rent) {
+      // theo mẫu «Bảng theo dõi hợp đồng thuê căn hộ» (05/11/2026): phải thu theo tiến độ = các kỳ đến hạn tới hôm nay; còn phải thu = phải thu − đã thu (âm = thu thừa)
+      const n = +c.term_months || 0, k = +c.pay_times || 0, per = n && k ? n / k : 0;
+      const due = d.inst.filter(i => i.due_on <= t).reduce((s, i) => s + +i.amount, 0), left = due - d.paid;
+      const open = d.inst.filter(i => i.rem > 0), cur = open.find(i => i.due_on <= t) || open[0];   // kỳ đang nợ sớm nhất, không thì kỳ tới
+      const seq = cur ? d.inst.indexOf(cur) + 1 : 0, han = cur?.due_on || null;
+      const thanhLy = c.status === 'thanh_ly';
+      const pay = thanhLy ? 'Đã thanh lý' : !d.inst.length || (left > 0 && !han) ? 'Thiếu thông tin thu tiền'
+        : left > 0 ? (han < t ? 'Quá hạn thanh toán' : han <= t7 ? 'Sắp đến hạn thanh toán' : 'Chưa đến hạn') : left < 0 ? 'Thu thừa - kiểm tra' : open.length && han && han <= t7 ? 'Sắp đến hạn thanh toán' : 'Đã thu đủ';
+      const exp = thanhLy ? '' : !c.exp_on ? ' | Thiếu ngày hết hạn' : c.exp_on < t ? ' | Đã hết hạn thuê' : c.exp_on <= t30 ? ' | Sắp hết hạn thuê' : '';
+      Object.assign(row, { project_name: c.project_name, building_l: c.building_name || c.building, term_l: n ? `${n} tháng` : '',
+        period_l: !per ? (d.inst.length ? `${d.inst.length} kỳ` : '') : per === 1 ? 'Hàng tháng' : per === n ? 'Một lần' : Number.isInteger(per) ? `${per} tháng/kỳ` : `${k} kỳ`,
+        deposit: c.deposit != null ? +c.deposit : null, due_sched: due, paid_sched: d.paid, left_sched: left,
+        cur_l: cur ? `${cur.name || 'Kỳ ' + seq}${d.inst.length > 1 ? ` (${seq}/${d.inst.length})` : ''}` : '', han_on: han, remind: pay + exp, owner: c.owner || '', note: c.note || '' });
+    }
+    return row;
   });
   return { rows, states: CT_ST };
 }
