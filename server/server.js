@@ -275,7 +275,7 @@ R('POST', '/api/export-rows', async (req, res, u) => {
   const b = await readJson(req);
   if (!EXPORT_ROLES.includes(u.role)) deny();
   await C.audit({ q }, 'view', null, 'xuat_du_lieu', null, null, u, b.title);
-  sendFile(res, IO.sheet(String(b.title || 'Bao cao').slice(0, 80), b.cols || [], b.rows || [], { sum: b.sum, note: b.note }), `${safeName(b.file || 'bao-cao')}_${C.today()}.xlsx`, MIME['.xlsx']);
+  sendFile(res, IO.sheet(String(b.title || 'Bao cao').slice(0, 80), b.cols || [], b.rows || [], { sum: b.sum, note: b.note, groups: b.groups }), `${safeName(b.file || 'bao-cao')}_${C.today()}.xlsx`, MIME['.xlsx']);
 });
 
 // --- tệp ---

@@ -423,16 +423,21 @@ const CT_ST = { qua_han: 'Quá hạn thu', sap_toi: 'Đến hạn trong 7 ngày'
 async function contractTrack(db, user, f = {}) {
   if (!can(user, E.installment, 'r')) deny();
   const kinds = CT_KIND[f.kind]; if (!kinds) bad('Loại hợp đồng không hợp lệ');
-  const p = [kinds], t = today(), t30 = addDays(t, 30);
+  // HĐ mua bán: chọn «Từ ngày – Đến ngày» — phải thu theo tiến độ = các kỳ có hạn trong khoảng; đã thu / quá hạn chốt đến «Đến ngày» (ngày tương lai thì tới hôm nay)
+  const hd = f.kind === 'hdmb', to = (hd && isoDay(f.to)) || today(), from = (hd && isoDay(f.from)) || null;
+  if (from && from > to) bad('«Từ ngày» sau «Đến ngày»');
+  const p = [kinds], t = to < today() ? to : today(), t30 = addDays(t, 30);
   const cs = await db.q(`SELECT c.id, c.number, c.kind, c.status, c.value, c.rent, c.deposit, c.term_months, c.pay_times, c.contract_on, c.signed_on, c.eff_on, c.exp_on,
+      c.vat_pct, c.maint_fee, c.finish_value, c.corner_amt, c.maint_dot,
       u.code unit, pr.code project, pr.name project_name, b.code building, b.name building_name, k.full_name customer, coalesce(c.b_phone, k.phone) phone, own.full_name owner,
       (SELECT n.body FROM kd_note n WHERE n.ent = 'contract' AND n.rec_id = c.id ORDER BY n.at DESC, n.id DESC LIMIT 1) note
     FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_project pr ON pr.id = u.project_id JOIN kd_building b ON b.id = u.building_id JOIN kd_customer k ON k.id = c.customer_id
       LEFT JOIN kd_user own ON own.id = c.owner_id
     WHERE c.kind = ANY($1) AND c.status <> 'huy' ${uf(f, p)}${mine(user, 'c')} ORDER BY pr.code, u.code, c.id`, p);
-  const D = await B.debtOf(db, cs.map(c => c.id));
+  const D = await B.debtOf(db, cs.map(c => c.id), t);
   // phiếu chi hợp lệ (hoàn tiền / hoàn cọc / khác) — số công ty đã trả lại khách
-  const PC = new Map((await db.q("SELECT contract_id, sum(amount) s, count(*) n FROM kd_payment WHERE status = 'hop_le' AND contract_id = ANY($1) GROUP BY 1", [cs.map(c => c.id)])).map(x => [x.contract_id, x]));
+  const PC = new Map((await db.q("SELECT contract_id, sum(amount) s, count(*) n FROM kd_payment WHERE status = 'hop_le' AND contract_id = ANY($1) AND voucher_date <= $2 GROUP BY 1", [cs.map(c => c.id), t])).map(x => [x.contract_id, x]));
+  const rate = hd ? +(await C.setting('late_rate', db)) || 0 : 0;   // lãi suất chậm thanh toán HĐMB (%/ngày) — Danh mục dùng chung; chưa cài thì không tính
   const opt = k => Object.fromEntries(E.contract.fields.find(x => x.k === k).o.map(o => [o[0], o[1]])), KL = opt('kind'), SL = opt('status'), t7 = addDays(t, 7);
   const rows = cs.map(c => {
     const d = D.get(c.id), rent = c.kind === 'thue' || c.kind === 'thue_mua';
@@ -442,6 +447,16 @@ async function contractTrack(db, user, f = {}) {
       total: d.total, paid: d.paid, paid_pct: d.paid_pct, left: d.left, overdue: d.overdue, overdue_days: d.overdue_days || null, due7: d.due7,
       next_name: d.next?.name || '', next_on: d.next?.due_on || null, next_amt: d.next?.rem ?? null, last_receipt: d.last_receipt, state, state_l: CT_ST[state] };
     row.chi = +(PC.get(c.id)?.s || 0); row.net = row.paid - row.chi;   // đã chi trả lại khách · thực giữ = đã thu − đã chi
+    if (hd) {
+      // theo mẫu «Bảng theo dõi hợp đồng mua bán» (05/11/2026): Tiền nhà (giá trị HĐ không gồm phí bảo trì) · Phí bảo trì · Tổng cộng
+      // Số đã thu = phiếu thu − phiếu chi trả lại khách, lũy kế đến t: phiếu chi trừ trước vào phần khách nộp thừa, phần còn lại trừ vào tiền nhà
+      const o = debtParts(c, { ...d, credit: Math.max(0, d.credit - row.chi) }, to, from), s = x => ['n', 'g', 'p'].reduce((a, k) => a + o[k][x], 0);
+      o.n.paid -= Math.max(0, row.chi - d.credit);
+      const h = { value: s('total'), due: s('due'), paid: s('paid'), rem: s('rem') };
+      const late = d.inst.reduce((a, i) => a + (i.rem > 0 && i.due_on < t ? i.rem * dayDiff(i.due_on, t) : 0), 0);   // Σ số quá hạn từng kỳ × số ngày quá hạn của kỳ
+      Object.assign(row, { h_value: h.value, h_due: h.due, h_paid: h.paid, h_left_due: h.rem, h_left: h.value - h.paid, m_value: o.b.total, m_paid: o.b.paid, m_left_due: o.b.rem,
+        t_due: h.due + o.b.due, t_paid: h.paid + o.b.paid, t_left_due: h.rem + o.b.rem, t_left: h.value + o.b.total - h.paid - o.b.paid, late_int: rate && late ? Math.round(late * rate / 100) : null });
+    }
     if (rent) {
       // theo mẫu «Bảng theo dõi hợp đồng thuê căn hộ» (05/11/2026): phải thu theo tiến độ = các kỳ đến hạn tới hôm nay; còn phải thu = phải thu − đã thu (âm = thu thừa)
       const n = +c.term_months || 0, k = +c.pay_times || 0, per = n && k ? n / k : 0;
@@ -459,7 +474,7 @@ async function contractTrack(db, user, f = {}) {
     }
     return row;
   });
-  return { rows, states: CT_ST };
+  return { rows: from ? rows.filter(r => r.t_due > 0) : rows, states: CT_ST, from, to, asof: t, late_rate: rate || null };   // có «Từ ngày»: chỉ HĐ có kỳ phải thu trong khoảng
 }
 
 // ======================= CHI TIẾT BẢNG GIÁ THEO CĂN =======================
@@ -640,6 +655,29 @@ const DS_HEAD = [
 const DS_COLS = DS_HEAD.flatMap(([, cs]) => cs);
 const DS_SUM = DS_COLS.filter(c => ['money', 'num'].includes(c[2]) && !['base_price', 'build_price'].includes(c[0])).map(c => c[0]);
 const isoDay = v => v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+// chia 1 hợp đồng ra các khoản: { n tiền nhà, g hệ số góc, p phát sinh, b bảo trì } × { total, due, paid, rem } (d = 1 phần tử của B.debtOf)
+// due = phải thu theo tiến độ: các kỳ có hạn từ «from» (trống = từ đầu) đến «to»; rem = phần chưa thu của chính các kỳ đó
+function debtParts(c, d, to, from) {
+  const Z = () => ({ total: 0, due: 0, paid: 0, rem: 0 }), o = { n: Z(), g: Z(), p: Z(), b: Z() };
+  const value = +c.value || 0, inWin = i => i.due_on <= to && (!from || i.due_on >= from);
+  if (c.kind === 'hoan_thien') { const w = d.inst.filter(inWin); o.p.total = value; o.p.due = w.reduce((s, i) => s + +i.amount, 0); o.p.rem = w.reduce((s, i) => s + Math.max(0, i.rem), 0); o.p.paid = d.paid; return o; }
+  const vat = c.vat_pct ?? 5, maint = +c.maint_fee || 0, fin = +c.finish_value || 0, corner = c.corner_amt ? Math.round(+c.corner_amt * (1 + vat / 100)) : 0;
+  const house = Math.max(0, value - maint - fin - corner), nonM = house + corner + fin || 1;
+  o.n.total = house; o.g.total = corner; o.p.total = fin; o.b.total = maint;
+  const inst = [...d.inst].sort((a, b) => a.seq - b.seq), mo = inst.findIndex(i => i.is_maint), mi = maint > 0 && inst.length ? (mo >= 0 ? mo : Math.min(Math.max(1, +c.maint_dot || 3), inst.length) - 1) : -1;   // dòng phí bảo trì riêng (is_maint); lịch cũ: đợt maint_dot
+  inst.forEach((i, ix) => {
+    const amt = +i.amount || 0, m = ix === mi ? Math.min(maint, amt) : 0, rest = amt - m, due = inWin(i), pr = amt ? (+i.paid || 0) / amt : 0;
+    const parts = { b: m, n: rest * house / nonM, g: rest * corner / nonM, p: rest * fin / nonM };
+    for (const k in parts) { if (due) { o[k].due += parts[k]; o[k].rem += parts[k] * (1 - pr); } o[k].paid += parts[k] * pr; }
+  });
+  if (d.credit > 0) { const tot = value || 1; for (const [k, v] of [['n', house], ['g', corner], ['p', fin], ['b', maint]]) o[k].paid += d.credit * v / tot; }   // thu chưa có kỳ (chưa lập lịch / thu trước)
+  for (const x of ['due', 'paid', 'rem']) {   // làm tròn từng khoản, phần lệch dồn vào tiền nhà để tổng khớp số thật
+    const exact = Math.round(Object.values(o).reduce((s, v) => s + v[x], 0));
+    for (const k in o) o[k][x] = Math.round(o[k][x]);
+    o.n[x] += exact - Object.values(o).reduce((s, v) => s + v[x], 0);
+  }
+  return o;
+}
 async function debtSummary(db, user, f = {}) {
   if (!can(user, E.installment, 'r')) deny();
   const t = today(), to = isoDay(f.to) || t, from = isoDay(f.from) || to.slice(0, 7) + '-01';
@@ -662,28 +700,7 @@ async function debtSummary(db, user, f = {}) {
   const HDV = new Map(); for (const v of vays) HDV.set(v.unit_id, (HDV.get(v.unit_id) || 0) + (DV.get(v.id)?.paid || 0) - (GT.get(v.id) || 0));
   const pii = PII_ROLES.includes(user.role), mask = v => v == null || v === '' ? '' : pii ? v : '•••••' + String(v).slice(-3);
   const ST_L = Object.fromEntries(C.F.contract.status.o.map(o => [o[0], o[1]]));
-  // chia 1 hợp đồng ra các khoản: { n, g, p, b } × { total, due, paid }
-  const split = c => {
-    const d = D.get(c.id), Z = () => ({ total: 0, due: 0, paid: 0 }), o = { n: Z(), g: Z(), p: Z(), b: Z() };
-    const value = +c.value || 0;
-    if (c.kind === 'hoan_thien') { o.p.total = value; o.p.due = d.inst.filter(i => i.due_on <= to).reduce((s, i) => s + +i.amount, 0); o.p.paid = d.paid; return o; }
-    const vat = c.vat_pct ?? 5, maint = +c.maint_fee || 0, fin = +c.finish_value || 0, corner = c.corner_amt ? Math.round(+c.corner_amt * (1 + vat / 100)) : 0;
-    const house = Math.max(0, value - maint - fin - corner), nonM = house + corner + fin || 1;
-    o.n.total = house; o.g.total = corner; o.p.total = fin; o.b.total = maint;
-    const inst = [...d.inst].sort((a, b) => a.seq - b.seq), mo = inst.findIndex(i => i.is_maint), mi = maint > 0 && inst.length ? (mo >= 0 ? mo : Math.min(Math.max(1, +c.maint_dot || 3), inst.length) - 1) : -1;   // dòng phí bảo trì riêng (is_maint); lịch cũ: đợt maint_dot
-    inst.forEach((i, ix) => {
-      const amt = +i.amount || 0, m = ix === mi ? Math.min(maint, amt) : 0, rest = amt - m, due = i.due_on <= to, pr = amt ? (+i.paid || 0) / amt : 0;
-      const parts = { b: m, n: rest * house / nonM, g: rest * corner / nonM, p: rest * fin / nonM };
-      for (const k in parts) { if (due) o[k].due += parts[k]; o[k].paid += parts[k] * pr; }
-    });
-    if (d.credit > 0) { const tot = value || 1; for (const [k, v] of [['n', house], ['g', corner], ['p', fin], ['b', maint]]) o[k].paid += d.credit * v / tot; }   // thu chưa có kỳ (chưa lập lịch / thu trước)
-    for (const x of ['due', 'paid']) {   // làm tròn từng khoản, phần lệch dồn vào tiền nhà để tổng khớp số thật
-      const exact = Math.round(Object.values(o).reduce((s, v) => s + v[x], 0));
-      for (const k in o) o[k][x] = Math.round(o[k][x]);
-      o.n[x] += exact - Object.values(o).reduce((s, v) => s + v[x], 0);
-    }
-    return o;
-  };
+  const split = c => debtParts(c, D.get(c.id), to);
   // gom theo căn: HĐMB / thuê mua là dòng chính, HĐ hoàn thiện riêng cộng vào «Phát sinh»
   const byU = new Map();
   for (const c of cs) { const g = byU.get(c.unit_id) || byU.set(c.unit_id, { main: null, fin: [] }).get(c.unit_id); if (c.kind === 'hoan_thien') g.fin.push(c); else if (!g.main) g.main = c; else g.fin.push(c); }

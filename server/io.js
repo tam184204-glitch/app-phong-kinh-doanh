@@ -12,11 +12,23 @@ const { bad, deny, can, fmtMoney, dmy } = C;
 
 // ---------- xuất ----------
 const cellOf = (v, t) => v == null || v === '' ? '' : t === 'money' || t === 'num' || t === 'int' ? +v : t === 'date' ? dmy(v) : t === 'dt' ? new Date(v).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : t === 'bool' ? (v ? 'Có' : '') : typeof v === 'object' ? JSON.stringify(v) : v;
-function sheet(title, cols, rows, { sum, note } = {}) {
-  const out = [[title], note ? [note] : [`Xuất lúc ${new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`], [], ['STT', ...cols.map(c => c[1])]];
+// groups: nhãn nhóm của từng cột (cùng thứ tự cols, '' = không nhóm) → 2 tầng tiêu đề: cột cùng nhóm liền nhau gộp ô nhóm, cột không nhóm gộp dọc 2 dòng
+function sheet(title, cols, rows, { sum, note, groups } = {}) {
+  const g2 = groups?.some(Boolean), merges = [], L = i => { let s = ''; i++; while (i) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = (i - m - 1) / 26; } return s; };
+  const out = [[title], note ? [note] : [`Xuất lúc ${new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`], []];
+  if (g2) {
+    out.push(['STT', ...cols.map((c, i) => groups[i] ? (groups[i] !== groups[i - 1] ? groups[i] : '') : c[1])], ['', ...cols.map((c, i) => groups[i] ? c[1] : '')]);
+    merges.push('A4:A5');
+    cols.forEach((c, i) => {
+      if (!groups[i]) merges.push(`${L(i + 1)}4:${L(i + 1)}5`);
+      else if (groups[i] !== groups[i - 1]) { let j = i; while (groups[j + 1] === groups[i]) j++; if (j > i) merges.push(`${L(i + 1)}4:${L(j + 1)}4`); }
+    });
+  } else out.push(['STT', ...cols.map(c => c[1])]);
+  const h = out.length;
   rows.forEach((r, i) => out.push([i + 1, ...cols.map(c => cellOf(r[c[0]], c[2]))]));
   if (sum?.length) out.push(['Tổng', ...cols.map(c => sum.includes(c[0]) ? rows.reduce((s, r) => s + (+r[c[0]] || 0), 0) : '')]);
-  return buildXlsx({ sheet: title.slice(0, 31), rows: out, boldRows: [0, 3, ...(sum?.length ? [out.length - 1] : [])], widths: [6, ...cols.map(c => c[2] === 'money' ? 16 : c[2] ? 12 : 22)] });
+  return buildXlsx({ sheet: title.slice(0, 31), rows: out, merges, boldRows: [0, h - 1, ...(sum?.length ? [out.length - 1] : [])], widths: [6, ...cols.map(c => c[2] === 'money' ? 16 : c[2] ? 12 : 22)],
+    ...(g2 ? { styleOf: (ri, ci) => ri === 3 || ri === 4 ? 4 : null, heights: { 4: 45 } } : {}) });
 }
 async function exportList(entKey, user, qs) {
   const e = E[entKey] || bad('Loại dữ liệu không hợp lệ');
