@@ -412,8 +412,8 @@ async function contractVouchers(db, user, id, qs = {}) {
       st: r.status === 'hop_le' ? ['Hợp lệ', 'g'] : ['Đã hủy' + (r.void_reason ? ': ' + r.void_reason : ''), 'r'] }));
   chi.sort((a, b) => String(a.on).localeCompare(String(b.on)) || a.id - b.id);
   const s = a => a.filter(x => x.ok).reduce((t, x) => t + x.amount, 0);
-  // công nợ từng đợt (trừ HĐ vay — xem lịch trả lãi & gốc): tính đến «Đến ngày» đang xem (ngày tương lai thì tới hôm nay)
-  const asof = isoDay(qs.to) && qs.to < today() ? qs.to : today(), rate = c.late_rate != null ? +c.late_rate : null;
+  // công nợ từng đợt (trừ HĐ vay — xem lịch trả lãi & gốc): tính đến «Đến ngày» đang xem (ngày tương lai: tính như khách chưa trả thêm đến ngày đó)
+  const asof = isoDay(qs.to) || today(), rate = c.late_rate != null ? +c.late_rate : null;
   const inst = c.kind === 'vay' ? null : instDebt((await B.debtOf(db, [c.id], asof)).get(c.id), asof, rate);
   return { contract: { id: c.id, number: c.number, kind: c.kind, unit: c.unit, customer: c.customer }, thu, chi, thu_sum: s(thu), chi_sum: s(chi), inst, asof, late_rate: rate,
     can_thu: can(user, E.receipt, 'c'), can_chi: can(user, E.payment, 'c') };
@@ -426,10 +426,11 @@ const CT_ST = { qua_han: 'Quá hạn thu', sap_toi: 'Đến hạn trong 7 ngày'
 async function contractTrack(db, user, f = {}) {
   if (!can(user, E.installment, 'r')) deny();
   const kinds = CT_KIND[f.kind]; if (!kinds) bad('Loại hợp đồng không hợp lệ');
-  // HĐ mua bán: chọn «Từ ngày – Đến ngày» — phải thu theo tiến độ = các kỳ có hạn trong khoảng; đã thu / quá hạn chốt đến «Đến ngày» (ngày tương lai thì tới hôm nay)
+  // HĐ mua bán: chọn «Từ ngày – Đến ngày» — phải thu theo tiến độ = các kỳ có hạn trong khoảng; đã thu / số ngày quá hạn / lãi quá hạn tính đến «Đến ngày»
+  // (ngày tương lai: tính như khách chưa trả thêm đến ngày đó)
   const hd = f.kind === 'hdmb', to = (hd && isoDay(f.to)) || today(), from = (hd && isoDay(f.from)) || null;
   if (from && from > to) bad('«Từ ngày» sau «Đến ngày»');
-  const p = [kinds], t = to < today() ? to : today(), t30 = addDays(t, 30);
+  const p = [kinds], t = to, t30 = addDays(t, 30);
   const cs = await db.q(`SELECT c.id, c.number, c.kind, c.status, c.value, c.rent, c.deposit, c.term_months, c.pay_times, c.contract_on, c.signed_on, c.eff_on, c.exp_on,
       c.maint_fee, c.after_tax, c.finish_value, c.late_rate,
       u.code unit, pr.code project, pr.name project_name, b.code building, b.name building_name, k.full_name customer, coalesce(c.b_phone, k.phone) phone, own.full_name owner,
