@@ -318,7 +318,8 @@ R('GET', '/api/board', async (req, res, u, p, qs) => send(res, 200, await V.boar
 R('GET', '/api/payouts', async (req, res, u, p, qs) => send(res, 200, await V.payouts({ q, one }, u, qs)));
 R('GET', '/api/loan-track', async (req, res, u, p, qs) => send(res, 200, await V.loanTrack({ q, one }, u, qs)));
 R('GET', '/api/loan-track/:id', async (req, res, u, p) => send(res, 200, await V.loanItems({ q, one }, u, p.id)));
-R('GET', '/api/contract-track/:id/vouchers', async (req, res, u, p) => send(res, 200, await V.contractVouchers({ q, one }, u, p.id)));
+R('GET', '/api/contract-track/:id/vouchers', async (req, res, u, p, qs) => send(res, 200, await V.contractVouchers({ q, one }, u, p.id, qs)));
+R('PUT', '/api/contract-track/:id/late-rate', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await tx(db => V.setLateRate(db, u, p.id, b.rate))); });
 R('GET', '/api/contract-track', async (req, res, u, p, qs) => send(res, 200, await V.contractTrack({ q, one }, u, qs)));
 // HĐ vay ↔ HĐ thuê: danh sách để tick chọn (cùng căn hoặc cùng khách, kèm các hợp đồng đang chọn)
 R('GET', '/api/contract-links', async (req, res, u, p, qs) => {

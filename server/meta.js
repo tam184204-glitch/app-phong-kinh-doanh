@@ -507,6 +507,7 @@ def('contract', {
     money('maint_fee', 'Phí bảo trì', { show: SALE_ONLY }),
     // bỏ khỏi form 03/11/2026: phí bảo trì thu ở dòng riêng cố định trong Lần thanh toán (có hạn riêng); chỉ còn dùng cho lịch cũ cộng phí bảo trì vào đợt (mặc định đợt 3)
     { k: 'maint_dot', l: 'Đợt thu phí bảo trì', t: 'int', def: 3, hide: 1, show: { kind: ['hdmb', 'thue_mua'] } },
+    { k: 'late_rate', l: 'Lãi suất quá hạn (%/năm)', t: 'num', noForm: 1 },   // điền ở Theo dõi hợp đồng › HĐ mua bán; lãi quá hạn = còn lại × số ngày quá hạn × lãi suất / 365
     { k: 'corner_pct', l: 'Hệ số góc %', t: 'num', show: SALE_ONLY },
     money('corner_amt', 'Tiền hệ số góc', { show: SALE_ONLY }),
     { k: 'eff_on', l: 'Ngày bắt đầu thuê', t: 'date', show: RENT_VAY },   // HĐ vay: ngày bắt đầu tính lãi (bắt buộc với HĐ thuê — kiểm ở biz)
@@ -1028,7 +1029,6 @@ const SETTINGS = {
   checklist_ban_giao: ['Biên bản bàn giao (bắt buộc)', 'Phiếu kiểm tra hiện trạng (bắt buộc)', 'Tài liệu hướng dẫn sử dụng', 'Chìa khóa', 'Thẻ từ / thẻ cư dân', 'Khách ký xác nhận hoàn tất (bắt buộc)'],
   sla_hours: { khan: 24, cao: 48, thuong: 72 },
   handover_pay_pct: 95,
-  late_rate: null,   // lãi suất chậm thanh toán HĐMB (%/ngày) — cột «Lãi suất quá hạn» ở Theo dõi hợp đồng › HĐ mua bán; trống = không tính
   // nội dung các đợt thanh toán theo hợp đồng mua bán: chọn đợt ở form → gợi ý nội dung, tỷ lệ, hạn (sửa được). days = số ngày sau ngày ký; null = theo sự kiện, người nhập tự ghi ngày dự kiến
   schedule_contents: [
     { dot: 'Đợt 1', pct: 30, days: 0, name: 'Sau khi ký hợp đồng, Bên Mua thanh toán cho Bên Bán 30% giá trị căn hộ' },
