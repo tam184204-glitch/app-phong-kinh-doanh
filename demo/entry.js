@@ -191,6 +191,31 @@ async function boot(pgliteUrl) {
       localStorage.setItem('ctg-kd-demo-5bo', '1');
     }
   } catch (e) { console.warn('5 bộ dữ liệu thử', e); }
+  // bộ thử HĐ vay lãi suất 1%/năm (05/11/2026): 1 tỷ, 12 tháng, trả lãi hàng tháng, gốc trả khi đáo hạn; khách đã chuyển gốc đợt 1 (50%),
+  // công ty đã trả lãi 2 kỳ đầu. Tạo 1 lần / trình duyệt (cả trình duyệt đã có dữ liệu); ngày tính theo ngày mở lần đầu
+  try {
+    if (!localStorage.getItem('ctg-kd-demo-vay1pt')) {
+      const C = require('../server/core'), B = require('../server/biz'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1");
+      const day = n => C.addDays(C.today(), n);
+      const un = await one(`SELECT u.id, u.code FROM kd_unit u JOIN kd_building b ON b.id = u.building_id JOIN kd_project p ON p.id = u.project_id
+        WHERE p.code = 'CTS' AND u.status = 'con_ban' AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.status <> 'huy') ORDER BY b.code = 'K' DESC, u.code LIMIT 1`);
+      if (un && u) {
+        say('Đang dựng HĐ vay thử (lãi 1%/năm)…');
+        const k = (await C.create('customer', { full_name: 'Đặng Thu Hà (khách thử)', phone: '0988000077', source: 'truc_tiep', note: 'Dữ liệu thử: HĐ vay lãi suất 1%/năm' }, u, { demo: true })).row;
+        const on = day(-90);
+        const c = (await C.create('contract', { kind: 'vay', ptype: 'can_ho', unit_id: un.id, customer_id: k.id, contract_on: on, loan_recv_on: on, eff_on: on, term_months: 12, value: 1000000000,
+          int_mode: 'lai_suat', loan_rate: 1, int_period: '1', principal_method: 'dao_han', loan_tranches: 2, note: 'Dữ liệu thử: HĐ vay lãi suất 1%/năm, trả lãi hàng tháng, trả gốc khi đáo hạn',
+          new_schedule: [{ name: 'Giải ngân gốc đợt 1', due_on: on, pct: 50 }, { name: 'Giải ngân gốc đợt 2', due_on: day(-30), pct: 50 }] }, u, { demo: true })).row;
+        await tx(async db => { await C.sys(db, 'contract', c.id, { status: 'da_ky', sign_status: 'da_ky', signed_on: on }, u, 'nhap_lich_su', 'Dữ liệu thử'); await B.recomputeUnit(db, un.id, u); });
+        const it = await one('SELECT id, amount FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq LIMIT 1', [c.id]);
+        if (it) await C.create('receipt', { voucher_no: `PT-VAY-${un.code.slice(-4)}-1`, voucher_date: on, contract_id: c.id, amount: +it.amount, installment_id: it.id,
+          content: `Khách chuyển gốc vay đợt 1 căn ${un.code}`, src: 'misa', synced_at: new Date().toISOString() }, u, { system: true, demo: true });
+        for (const x of await q("SELECT id, amount, due_on FROM kd_loan_pay WHERE contract_id = $1 AND kind = 'lai' ORDER BY seq LIMIT 2", [c.id]))
+          await q('UPDATE kd_loan_pay SET paid_amt = $2, paid_on = $3, note = $4 WHERE id = $1', [x.id, x.amount, x.due_on, 'Chuyển khoản (dữ liệu thử)']);
+      }
+      localStorage.setItem('ctg-kd-demo-vay1pt', '1');
+    }
+  } catch (e) { console.warn('HĐ vay thử 1%', e); }
   const job = async () => { try { await tx(db => biz.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.warn('job', e.message); } };
   await job(); setInterval(job, 2 * 60e3);
 
