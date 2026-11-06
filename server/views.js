@@ -589,27 +589,33 @@ function payTimeline(inst, rcp, c = {}) {
 //   mỗi phần tiền của đợt trả sau hạn: số tiền × (ngày trả − hạn); phần còn nợ: số tiền × (t − hạn); lãi = Σ × lãi suất (%/năm) / 365
 function instDebt(inst, rcp, c, t, rate) {
   const { I, extra } = payTimeline(inst, rcp, c), t7 = addDays(t, 7);
-  let no = 0, cum = 0;
-  const out = I.map(i => {
+  let k0 = 0;
+  const LB = I.map(i => i.is_maint ? 'Phí bảo trì' : 'Đợt ' + (++k0));
+  // Lãi chậm trả theo SỐ TIỀN QUÁ HẠN LŨY KẾ của cả hợp đồng (phòng KD 06/11/2026):
+  //  mốc = ngày hạn của các đợt đã quá hạn + ngày khách trả (sau hạn); giữa 2 mốc liên tiếp số tiền quá hạn lũy kế không đổi
+  //  = Σ phần còn nợ (sau các lần trả đến hết ngày đầu khoảng) của mọi đợt có hạn ≤ ngày đầu khoảng. Mỗi khoảng: lũy kế × số ngày × lãi suất %/năm / 365.
+  //  Khoảng xếp vào dòng của đợt có hạn gần nhất trước nó. Tổng = cộng lãi riêng từng đợt (cùng kết quả), chỉ trình bày theo lũy kế.
+  const dues = I.map((i, k) => ({ i, k })).filter(x => x.i.due_on && x.i.due_on < t);
+  const owe = (i, d) => i.amount - i.pcs.filter(p => p.on <= d).reduce((a, p) => a + p.amt, 0);
+  const pts = new Set(dues.map(x => x.i.due_on));
+  for (const { i } of dues) for (const p of i.pcs) if (p.on > i.due_on && p.on < t) pts.add(p.on);
+  const P = [...pts].sort(), ivs = [];
+  P.forEach((d, n) => {
+    const e = P[n + 1] || t, parts = dues.filter(x => x.i.due_on <= d).map(x => ({ lbl: LB[x.k], rem: owe(x.i, d) })).filter(x => x.rem > 0), amt = parts.reduce((a, x) => a + x.rem, 0);
+    if (amt <= 0 || e <= d) return;
+    const days = dayDiff(d, e), pay = dues.reduce((a, x) => a + x.i.pcs.filter(q => q.on === d).reduce((s2, q) => s2 + q.amt, 0), 0);
+    const ev = [...dues.filter(x => x.i.due_on === d).map(x => LB[x.k] + ' đến hạn'), pay ? 'khách trả ' + fmtMoney(pay) : ''].filter(Boolean).join(' · ');
+    const own = dues.filter(x => x.i.due_on <= d).reduce((m, x) => Math.max(m, x.k), -1);
+    ivs.push({ own, from: d, to: e, days, amt, parts, ev, open: e === t, late: rate ? Math.round(amt * days * rate / 100 / 365) : 0 });
+  });
+  let cum = 0;
+  const out = I.map((i, k) => {
     const rem = Math.max(0, i.rem), over = !!i.due_on && i.due_on < t, days = rem > 0 && over ? dayDiff(i.due_on, t) : 0;
     if (over) cum += rem;
-    // lãi chậm trả theo từng khoảng thời gian (06/11/2026, phòng KD): từ hạn đợt, số tiền quá hạn = phần còn nợ của đợt; mỗi lần khách trả
-    // thì số tiền quá hạn giảm từ ngày trả. Mỗi khoảng: số tiền quá hạn × số ngày × lãi suất (%/năm) / 365; lãi đợt = tổng các khoảng
-    const segs = [];
-    if (over) {
-      const P = [...i.pcs].sort((a, b) => String(a.on).localeCompare(String(b.on)));
-      let bal = i.amount - P.filter(p => p.on <= i.due_on).reduce((a, p) => a + p.amt, 0), from = i.due_on;
-      for (const p of P.filter(p => p.on > i.due_on)) {
-        if (bal > 0 && p.on > from) segs.push({ from, to: p.on, amt: bal, paid: true, pay: 0 });
-        if (segs.length && segs[segs.length - 1].to === p.on) segs[segs.length - 1].pay += p.amt;
-        bal -= p.amt; if (p.on > from) from = p.on;
-      }
-      if (bal > 0 && t > from) segs.push({ from, to: t, amt: bal, paid: false });
-      segs.forEach(x => { x.days = dayDiff(x.from, x.to); x.late = rate ? Math.round(x.amt * x.days * rate / 100 / 365) : 0; });
-    }
+    const segs = ivs.filter(v => v.own === k);
     const st = rem <= 0 ? 'da_thu' : over ? 'qua_han' : i.due_on === t ? 'den_han' : i.due_on && i.due_on <= t7 ? 'sap_den_han' : i.paid > 0 ? 'mot_phan' : 'chua_den_han';
-    const n = i.is_maint ? null : ++no, lastOn = i.pcs.reduce((m, p) => (!m || p.on > m ? p.on : m), null), paidLate = rem <= 0 && lastOn && lastOn > i.due_on ? dayDiff(i.due_on, lastOn) : 0;
-    return { id: i.id, no: n, lbl: n ? 'Đợt ' + n : 'Phí bảo trì', name: i.name, due_on: i.due_on, is_maint: i.is_maint, amount: i.amount, paid: i.paid, rem, days: days || null,
+    const lastOn = i.pcs.reduce((m, p) => (!m || p.on > m ? p.on : m), null), paidLate = rem <= 0 && lastOn && lastOn > i.due_on ? dayDiff(i.due_on, lastOn) : 0;
+    return { id: i.id, no: i.is_maint ? null : +LB[k].slice(4), lbl: LB[k], name: i.name, due_on: i.due_on, is_maint: i.is_maint, amount: i.amount, paid: i.paid, rem, days: days || null,
       od: over && cum > 0 ? cum : null, segs, rate: rate || null, late: segs.reduce((a, x) => a + x.late, 0), st, st_l: B.PAY_ST[st],
       paid_on: lastOn, late_paid_days: paidLate || null, pcs: i.pcs, cut: i.cut || null, orig: i.orig || null, virt: !!i.virt, in_no: i.in_no || null };
   });

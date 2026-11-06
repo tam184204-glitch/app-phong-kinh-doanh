@@ -1565,8 +1565,8 @@ V.ctdebt = async (main, params = {}) => {
       if (!S.length) return `<td class="num ad-g1">${dash}</td><td class="num">${dash}</td><td class="num">${dash}</td>`;
       const dm = d => d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : '';   // ngày gọn dd/mm
       const col = f => S.map(y => `<div class="ad-seg">${f(y)}</div>`).join('') + (S.length > 1 ? `<div class="ad-seg ad-seg-sum">${f(null)}</div>` : '');
-      return `<td class="num ad-g1">${col(y => y ? `${y.days} ngày<small title="${dmy(y.from)} → ${dmy(y.to)}">${dm(y.from)} → ${dm(y.to)}</small>` : '&nbsp;')}</td>
-        <td class="num">${col(y => y ? `${fm(y.amt)}<small>${y.paid ? 'đến khi trả ' + fm(y.pay) : 'còn nợ'}</small>` : '&nbsp;')}</td>
+      return `<td class="num ad-g1">${col(y => y ? `${y.days} ngày<small title="${esc(y.ev || '')}">${dm(y.from)} → ${dm(y.to)}</small>` : '&nbsp;')}</td>
+        <td class="num">${col(y => y ? `${fm(y.amt)}<small>${y.parts.length > 1 ? y.parts.map((q, n) => `${n ? '+ ' : ''}${esc(q.lbl)} ${fm(q.rem)}`).join('<br>') : 'còn nợ ' + esc(y.parts[0]?.lbl || '')}</small>` : '&nbsp;')}</td>
         <td class="num">${col(y => R == null ? (y ? dash + '<small>&nbsp;</small>' : dash) : y ? `${fm(y.late)}<small>&nbsp;</small>` : `<span class="ad-muted">Cộng</span> <b>${fm(x.late)}</b>`)}</td>`;
     };
     main.innerHTML = `<div class="page cd ad">
@@ -1592,7 +1592,7 @@ V.ctdebt = async (main, params = {}) => {
         <table class="ad-desc"><tbody>${[0, 3, 6].map(i => `<tr>${desc.slice(i, i + 3).map(([l, v]) => `<th>${l}</th><td>${v || '—'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
       ${vay ? '' : `<div class="ad-card"><div class="ad-card-head">Tiến độ thanh toán<span class="ad-card-extra">${I.length} đợt</span></div>
         ${I.length ? `<div class="ad-table-wrap"><table class="ad-table"><thead><tr><th rowspan="2">Đợt</th><th rowspan="2">Nội dung</th><th rowspan="2" class="num">Phải thu</th><th rowspan="2" class="num">Đã thu</th><th rowspan="2" class="num">Còn lại</th><th rowspan="2">Tình trạng</th><th colspan="3" class="ad-grp">Lãi chậm trả · ${g.late_rate != null ? fnum(g.late_rate) + ' %/năm' : '<span class="ad-muted">chưa điền lãi suất</span>'}</th></tr>
-          <tr><th class="num ad-g1">Số ngày quá hạn</th><th class="num">Số tiền quá hạn</th><th class="num">Tiền lãi</th></tr></thead>
+          <tr><th class="num ad-g1">Số ngày quá hạn</th><th class="num">Số tiền quá hạn lũy kế</th><th class="num">Tiền lãi</th></tr></thead>
         <tbody>${I.map(x => { const txt = x.virt ? `Phí bảo trì (nằm trong Đợt ${x.in_no} của lịch)` : String(x.name || '').replace(/^\s*(đợt|kỳ|lần)\s*\d+\s*[–—:-]?\s*/i, ''); return `<tr class="${stOf(x) === 'error' ? 'ad-row-error' : ''}">
           <td class="nowrap"><b>${esc(x.lbl)}</b><small>hạn ${dmy(x.due_on)}</small></td>
           <td class="ad-cell-txt"><div class="cd-txt" title="${esc(txt)}">${esc(txt) || '<span class="ad-muted">—</span>'}</div>${x.cut ? `<small>đã tách ${fm(x.cut)} phí bảo trì (theo lịch ${fm(x.orig)})</small>` : ''}${x.pcs?.length ? `<small>${x.pcs.map(p => `thu ${fm(p.amt)} ngày ${dmy(p.on)}`).join(' · ')}</small>` : ''}</td>
@@ -1607,7 +1607,7 @@ V.ctdebt = async (main, params = {}) => {
       <details class="ad-collapse"><summary>${ico('fa-chevron-right')} Cách tính</summary><ul>
         <li>Phiếu thu có chọn «Đợt thu» thì trừ vào đúng đợt đó; tiền dư hoặc phiếu không chọn đợt trừ vào đợt có hạn sớm nhất còn nợ (cột «Đã trừ vào»).</li>
         <li>Còn lại = phải thu − đã thu của đợt. Quá hạn = đợt đã qua hạn mà còn nợ.</li>
-        <li>Lãi chậm trả tính theo từng khoảng thời gian: từ ngày hạn, số tiền quá hạn là phần còn nợ của đợt; mỗi lần khách trả thì số tiền quá hạn giảm từ ngày trả. Mỗi khoảng = số tiền quá hạn × số ngày × lãi suất %/năm ÷ 365; lãi của đợt = cộng các khoảng (khoảng cuối tính đến ${dmy(T)}).</li>
+        <li>Lãi chậm trả tính trên <b>số tiền quá hạn lũy kế</b> của cả hợp đồng = cộng phần còn nợ của mọi đợt đã quá hạn. Mỗi khi có đợt mới đến hạn hoặc khách trả tiền thì sang khoảng mới; mỗi khoảng = số tiền quá hạn lũy kế × số ngày × lãi suất %/năm ÷ 365, ghi ở dòng của đợt đến hạn gần nhất (khoảng cuối tính đến ${dmy(T)}).</li>
         ${I.some(x => x.virt) ? '<li>Lịch thanh toán của hợp đồng này không có dòng phí bảo trì riêng nên phí bảo trì được tách khỏi đợt chứa nó để theo dõi riêng; tổng phải thu không đổi.</li>' : ''}
         <li>Phiếu chi (hoàn tiền, hoàn cọc, thanh lý…) là tiền công ty trả lại khách, không làm giảm số khách đã nộp theo từng đợt.</li></ul></details></div>`;
     wireSegDate(main);
