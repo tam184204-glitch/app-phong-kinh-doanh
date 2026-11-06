@@ -725,11 +725,52 @@ async function customer360(db, user, id) {
   const get = async (ent, cond, pp, order = 't.id DESC') => can(user, E[ent], 'r') ? await db.q(`SELECT t.*, ${C.labelCols(E[ent]).join(', ')} FROM ${E[ent].table} t WHERE ${cond} ORDER BY ${order}`, pp) : null;
   const contracts = await get('contract', 't.customer_id = $1', [c.id]);
   const D = await B.debtOf(db, (contracts || []).map(x => x.id));
-  (contracts || []).forEach(x => { x._debt = D.get(x.id); });
+  (contracts || []).forEach(x => { x._debt = D.get(x.id); x.paid = x._debt?.paid ?? null; });
   const out = { customer: c, contracts, reservations: await get('reservation', 't.customer_id = $1', [c.id]), logs: await get('contact_log', 't.customer_id = $1', [c.id], 't.at DESC'),
     tickets: await get('ticket', 't.customer_id = $1', [c.id]), noxh: await get('noxh_check', 't.customer_id = $1', [c.id]), pinkbook: await get('pinkbook', 't.customer_id = $1', [c.id]) };
   if (out.reservations) await B.H.reservation.decorate(out.reservations, { db });
   return out;
+}
+
+// Sổ chi tiết công nợ của khách hàng (06/11/2026) — mọi hợp đồng khách phải trả (trừ HĐ vay, HĐ đã hủy), theo ngày:
+//  Phát sinh Nợ = đợt thu đến hạn (theo lịch thanh toán) + phiếu chi trả lại khách (hoàn tiền / hoàn cọc / thanh lý)
+//  Phát sinh Có = phiếu thu hợp lệ · Số dư = Nợ − Có (dương: khách còn nợ đến hạn; âm: khách trả trước)
+//  có «Từ ngày»: phát sinh trước đó gộp thành số dư đầu kỳ; các đợt hạn sau «Đến ngày» = chưa đến hạn (không vào số dư)
+async function customerLedger(db, user, id, f = {}) {
+  if (!can(user, E.customer, 'r') || !can(user, E.installment, 'r')) deny();
+  const k = (await C.get('customer', id, user, { db })).row;
+  const to = isoDay(f.to) || today(), from = isoDay(f.from) || null;
+  if (from && from > to) bad('«Từ ngày» sau «Đến ngày»');
+  const cs = await db.q(`SELECT c.id, c.number, c.kind, c.value, u.code unit FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id
+    WHERE c.customer_id = $1 AND c.kind <> 'vay' AND c.status <> 'huy' ORDER BY c.id`, [k.id]);
+  const ids = cs.map(c => c.id), CM = new Map(cs.map(c => [c.id, c])), ev = [];
+  const KL = Object.fromEntries(E.contract.fields.find(x => x.k === 'kind').o.map(o => [o[0], o[1]])), PK = Object.fromEntries(E.payment.fields.find(x => x.k === 'kind').o.map(o => [o[0], o[1]]));
+  let notDue = 0;
+  // đợt thu: đánh số Đợt n như lịch (dòng phí bảo trì riêng: «Phí bảo trì»)
+  const inst = await db.q('SELECT id, contract_id, seq, name, due_on, amount, is_maint FROM kd_installment WHERE active AND contract_id = ANY($1) ORDER BY contract_id, seq', [ids]);
+  const no = new Map();
+  for (const i of inst) {
+    const n = i.is_maint ? null : (no.set(i.contract_id, (no.get(i.contract_id) || 0) + 1), no.get(i.contract_id));
+    if (i.due_on > to) { notDue += +i.amount; continue; }
+    ev.push({ on: i.due_on, ord: 0, cid: i.contract_id, doc: '', what: `Phải thu ${n ? 'Đợt ' + n : 'Phí bảo trì'}${i.name && !/^\s*(đợt|kỳ|lần)\s*\d/i.test(i.name) ? ' — ' + i.name : ''}`, no_: +i.amount, co: 0, ent: 'contract', rid: i.contract_id });
+  }
+  for (const r of await db.q("SELECT r.id, r.contract_id, r.voucher_no, r.voucher_date, r.amount, r.content, i.name inst FROM kd_receipt r LEFT JOIN kd_installment i ON i.id = r.installment_id WHERE r.status = 'hop_le' AND r.contract_id = ANY($1) AND r.voucher_date <= $2", [ids, to]))
+    ev.push({ on: r.voucher_date, ord: 1, cid: r.contract_id, doc: r.voucher_no, what: r.content || `Thu tiền${r.inst ? ' ' + r.inst : ''}`, no_: 0, co: +r.amount, ent: 'receipt', rid: r.id });
+  for (const p of await db.q("SELECT p.id, p.contract_id, p.voucher_no, p.voucher_date, p.amount, p.kind, p.content FROM kd_payment p WHERE p.status = 'hop_le' AND p.contract_id = ANY($1) AND p.voucher_date <= $2", [ids, to]))
+    ev.push({ on: p.voucher_date, ord: 2, cid: p.contract_id, doc: p.voucher_no, what: [PK[p.kind] || 'Chi trả khách', p.content].filter(Boolean).join(' — '), no_: +p.amount, co: 0, ent: 'payment', rid: p.id });
+  ev.sort((a, b) => String(a.on).localeCompare(String(b.on)) || a.ord - b.ord || a.cid - b.cid);
+  let open = 0, bal = 0;
+  const rows = [];
+  for (const e of ev) {
+    if (from && e.on < from) { open += e.no_ - e.co; continue; }
+    if (!rows.length) bal = open;
+    bal += e.no_ - e.co;
+    const c = CM.get(e.cid);
+    rows.push({ on: e.on, doc: e.doc, contract: c.number, unit: c.unit, what: e.what, no_: e.no_ || null, co: e.co || null, bal, ent: e.ent, id: e.rid, contract_id: e.cid });
+  }
+  const sum = k2 => rows.reduce((t, r) => t + (+r[k2] || 0), 0);
+  return { customer: { id: k.id, code: k.code, name: k.full_name }, from, to, open, rows, no_sum: sum('no_'), co_sum: sum('co'), close: open + sum('no_') - sum('co'), not_due: notDue,
+    contracts: cs.map(c => ({ id: c.id, number: c.number, unit: c.unit, kind_l: KL[c.kind] || c.kind, value: +c.value || 0 })) };
 }
 
 // tìm kiếm toàn hệ thống (theo quyền)
@@ -1081,4 +1122,4 @@ async function monthly(db, period, projectId) {
   };
 }
 
-module.exports = { myDay, debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, voucherList, contractTrack, setLateRate, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
+module.exports = { customerLedger, myDay, debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, voucherList, contractTrack, setLateRate, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };

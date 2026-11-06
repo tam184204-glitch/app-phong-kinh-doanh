@@ -1168,3 +1168,14 @@ table.t tr.vch > td { padding: 0; background: #fbfcfe; white-space: normal; curs
 [data-theme="dark"] .cd-info b { color: var(--text); }
 @media (max-width: 1100px) { .cd-info { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media print { .cd .acts, .cd-asof .muted { display: none; } }
+
+/* ===== Sổ chi tiết công nợ khách hàng (06/11/2026) ===== */
+.kl-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 10px; }
+.kl-t { font-size: 14px; }
+.kl-t th small { font-weight: 500; color: var(--muted); }
+.kl-t tbody tr[data-kl] { cursor: pointer; }
+.kl-t tr.kl-open td { background: var(--cobalt-50); }
+.kl-t tr.kl-doc td:nth-child(2) b { color: var(--cobalt); }
+.kl-t td.wrap { min-width: 150px; white-space: normal; }
+.kl-t td.num, .kl-t td:first-child { white-space: nowrap; }
+.kl-t tfoot td { font-weight: 600; }

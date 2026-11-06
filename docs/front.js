@@ -2178,13 +2178,40 @@ V.cust360 = async (main, params) => {
     <div class="box360"><div class="card unit-card"><div class="small muted">${esc(k.code)}</div><div class="big" style="font-size:21px">${esc(k.full_name)}</div><div class="mb">${show(cf.find(f => f.k === 'kind'), k)} ${show(cf.find(f => f.k === 'stage'), k)}</div>
       <dl class="kv" style="grid-template-columns:1fr">${['phone', 'email', 'address', 'source', 'id_no', 'owner_id', 'need'].map(x => cf.find(f => f.k === x)).map(f => `<div><dt>${esc(f.l)}</dt><dd>${show(f, k)}</dd></div>`).join('')}</dl></div>
     <div class="card pad">${sec('Hợp đồng', 'contract', d.contracts, ['number', 'unit_id', 'value', 'paid', 'signed_on', 'status'], 'fa-file-contract')}
-      ${(d.contracts || []).filter(c => c._debt?.total).map(c => `<div class="small mt">${esc(c.number)}: đã thu ${fm(c._debt.paid)} / ${fm(c._debt.total)} (${fnum(c._debt.paid_pct)}%)${c._debt.overdue ? ` · <span class="neg">quá hạn ${fm(c._debt.overdue)}</span>` : ''}</div>`).join('')}
+      ${(d.contracts || []).filter(c => c._debt?.total).map(c => `<div class="small mt">${esc(c.number)}: đã thu ${fm(c._debt.paid)} / ${fm(c._debt.total)} (${fnum(c._debt.paid_pct)}%)${c._debt.overdue ? ` · <span class="neg">quá hạn ${fm(c._debt.overdue)}</span>` : ''}${c.kind !== 'vay' ? ` · <a href="#/v/ctdebt?id=${c.id}">xem công nợ hợp đồng ›</a>` : ''}</div>`).join('')}
+      ${(d.contracts || []).length && M.ents.installment?.perm.r ? `<div class="sec-title">${ico('fa-book-open')} Sổ chi tiết công nợ</div><div id="kLed"><div class="empty">Đang tải…</div></div>` : ''}
       ${sec('Giao dịch – giữ chỗ', 'reservation', d.reservations, ['code', 'unit_id', 'reg_at', 'price', 'reg_state', 'progress'], 'fa-hand-holding-hand')}
       ${sec('Lịch sử tư vấn – liên hệ', 'contact_log', d.logs, ['at', 'channel', 'content', 'result', 'next_at', 'owner_id'], 'fa-comments')}
       ${sec('Hồ sơ NOXH', 'noxh_check', d.noxh, ['unit_id', 'grp', 'items', 'result', 'status'], 'fa-list-check')}
       ${sec('Cấp sổ hồng', 'pinkbook', d.pinkbook, ['unit_id', 'items', 'submit_on', 'status'], 'fa-book')}
       ${sec('CSKH', 'ticket', d.tickets, ['code', 'kind', 'content', 'status'], 'fa-headset')}</div></div></div>`;
   wireMini(main);
+  // sổ chi tiết công nợ của khách (06/11/2026): Nợ = đợt đến hạn + phiếu chi trả khách · Có = phiếu thu · số dư lũy kế
+  const ls = ST.kled ||= { from: '', to: '' };
+  const led = async () => {
+    const box = $('#kLed', main); if (!box) return;
+    const L = await api('GET', `/api/customer360/${k.id}/ledger?${qsOf({ from: ls.from, to: ls.to })}`);
+    const many = L.contracts.length > 1, hc = many ? '<th>Hợp đồng · căn</th>' : '', ec = many ? '<td></td>' : '';   // 1 hợp đồng: bỏ cột hợp đồng cho gọn
+    const balTxt = v => v > 0 ? `<b class="neg">${fm(v)}</b>` : v < 0 ? `<b class="pos">${fm(v)}</b>` : '<b>0</b>';
+    box.innerHTML = `<div class="kl-bar"><span class="small muted">Từ ngày</span>${segDate('klFr', ls.from)}<span class="small muted">Đến ngày</span>${segDate('klTo', ls.to || L.to)}<span class="grow"></span>
+        ${M.exportRoles.includes(M.me.role) ? `<button class="btn sm" id="klX">${ico('fa-file-excel')} Xuất Excel</button>` : ''}</div>
+      <div class="tbl-wrap"><table class="t compact kl-t"><thead><tr><th>Ngày</th><th>Số chứng từ</th>${hc}<th>Diễn giải</th><th class="num">Phát sinh Nợ<br><small>(phải thu)</small></th><th class="num">Phát sinh Có<br><small>(đã thu)</small></th><th class="num">Số dư</th></tr></thead>
+      <tbody><tr class="kl-open"><td>${L.from ? dmy(L.from) : ''}</td><td></td>${ec}<td><b>Số dư đầu kỳ</b></td><td></td><td></td><td class="num">${balTxt(L.open)}</td></tr>
+        ${L.rows.map((r, i) => `<tr data-kl="${i}" class="${r.ent === 'contract' ? '' : 'kl-doc'}"><td>${dmy(r.on)}</td><td>${r.doc ? `<b>${esc(r.doc)}</b>` : '<span class="muted small">theo lịch</span>'}</td>${many ? `<td>${esc(r.contract)}<div class="small muted">${esc(r.unit)}</div></td>` : ''}
+          <td class="wrap">${esc(r.what)}</td><td class="num">${r.no_ ? fm(r.no_) : ''}</td><td class="num">${r.co ? fm(r.co) : ''}</td><td class="num">${balTxt(r.bal)}</td></tr>`).join('') || '<tr><td colspan="' + (many ? 7 : 6) + '" class="empty">Không có phát sinh trong khoảng ngày này</td></tr>'}</tbody>
+      <tfoot><tr><td></td><td></td>${ec}<td>Cộng phát sinh</td><td class="num">${fm(L.no_sum)}</td><td class="num">${fm(L.co_sum)}</td><td></td></tr>
+        <tr><td></td><td></td>${ec}<td><b>Số dư cuối kỳ</b> (đến ${dmy(L.to)})</td><td></td><td></td><td class="num">${balTxt(L.close)}</td></tr>
+        ${L.not_due ? `<tr><td></td><td></td>${ec}<td>Các đợt chưa đến hạn (sau ${dmy(L.to)})</td><td class="num muted">${fm(L.not_due)}</td><td></td><td class="num muted">${fm(L.close + L.not_due)}</td></tr>` : ''}</tfoot></table></div>
+      <div class="small muted mt">Phát sinh Nợ = đợt thu đến hạn theo lịch thanh toán + phiếu chi trả lại khách (hoàn tiền, hoàn cọc, thanh lý). Phát sinh Có = phiếu thu hợp lệ. Số dư = Nợ − Có: <span class="neg">đỏ</span> = khách còn nợ đến hạn, <span class="pos">xanh</span> = khách trả trước. Dòng cuối = số dư nếu tính cả các đợt chưa đến hạn (= còn phải trả theo hợp đồng). Không gồm HĐ vay và hợp đồng đã hủy. Bấm 1 dòng để mở chứng từ / hợp đồng.</div>`;
+    wireSegDate(box);
+    $('.kl-bar', box).addEventListener('sdchange', run(async e => { const v = segVal(e.target); if (v === null) return; if (e.target.id === 'klFr') ls.from = v; else ls.to = v; await led(); }));
+    $('#klX', box) && ($('#klX', box).onclick = () => download('/api/export-rows', { title: `SỔ CHI TIẾT CÔNG NỢ — ${k.code} ${k.full_name}`, file: `So_cong_no_${k.code}`,
+      cols: [['on', 'Ngày', 'date'], ['doc', 'Số chứng từ'], ['contract', 'Hợp đồng'], ['unit', 'Căn hộ'], ['what', 'Diễn giải'], ['no_', 'Phát sinh Nợ (phải thu)', 'money'], ['co', 'Phát sinh Có (đã thu)', 'money'], ['bal', 'Số dư', 'money']],
+      rows: [{ what: 'Số dư đầu kỳ', bal: L.open, on: L.from }, ...L.rows, { what: `Số dư cuối kỳ (đến ${dmy(L.to)})`, bal: L.close }], sum: ['no_', 'co'],
+      note: `Đơn vị tiền: đồng • ${L.from ? 'Từ ' + dmy(L.from) + ' ' : ''}đến ${dmy(L.to)} • Nợ = đợt thu đến hạn + phiếu chi trả khách; Có = phiếu thu; Số dư dương = khách còn nợ${L.not_due ? ` • Chưa đến hạn: ${fm(L.not_due)}` : ''}` }));
+    box.onclick = e => { const tr = e.target.closest('tr[data-kl]'); if (!tr) return; const r = L.rows[+tr.dataset.kl]; if (r.ent === 'contract') location.hash = `#/v/ctdebt?id=${r.contract_id}`; else openDetail(r.ent, r.id); };
+  };
+  led().catch(e => { const b = $('#kLed', main); if (b) b.innerHTML = `<div class="errbar">${esc(e.message)}</div>`; });
   $('#kEdit', main).onclick = () => openDetail('customer', k.id);
   $('#kLog', main).onclick = () => openForm('contact_log', { preset: { customer_id: k.id, customer_id__l: `${k.code} · ${k.full_name}` }, onSaved: () => route() });
 };
