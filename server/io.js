@@ -14,6 +14,7 @@ const { bad, deny, can, fmtMoney, dmy } = C;
 const cellOf = (v, t) => v == null || v === '' ? '' : t === 'money' || t === 'num' || t === 'int' ? +v : t === 'date' ? dmy(v) : t === 'dt' ? new Date(v).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : t === 'bool' ? (v ? 'Có' : '') : typeof v === 'object' ? JSON.stringify(v) : v;
 // groups: nhãn nhóm của từng cột (cùng thứ tự cols, '' = không nhóm) → 2 tầng tiêu đề: cột cùng nhóm liền nhau gộp ô nhóm, cột không nhóm gộp dọc 2 dòng
 function sheet(title, cols, rows, { sum, note, groups } = {}) {
+  groups = Array.isArray(groups) ? cols.map((c, i) => String(groups[i] || '')) : null;
   const g2 = groups?.some(Boolean), merges = [], L = i => { let s = ''; i++; while (i) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = (i - m - 1) / 26; } return s; };
   const out = [[title], note ? [note] : [`Xuất lúc ${new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`], []];
   if (g2) {

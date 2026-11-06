@@ -396,7 +396,7 @@ async function loanItems(db, user, id) {
 // Phiếu thu = kd_receipt, phiếu chi = kd_payment — phòng KD tự ghi để theo dõi tiến độ (không phải chứng từ kế toán).
 async function contractVouchers(db, user, id, qs = {}) {
   if (!can(user, E.installment, 'r')) deny();
-  const c = await db.one('SELECT c.id, c.number, c.kind, c.owner_id, c.created_by, c.late_rate, u.code unit, k.full_name customer FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id WHERE c.id = $1', [+id]);
+  const c = await db.one('SELECT c.id, c.number, c.kind, c.owner_id, c.created_by, c.late_rate, c.maint_fee, c.after_tax, c.finish_value, c.maint_dot, u.code unit, k.full_name customer FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id WHERE c.id = $1', [+id]);
   if (!c) bad('Không tìm thấy hợp đồng');
   if (C.own(user, E.customer) && c.owner_id !== user.id && c.created_by !== user.id) deny();
   const SRC = { bravo: 'Bravo', misa: 'MISA', thu_cong: 'Phòng KD nhập' };
@@ -414,7 +414,7 @@ async function contractVouchers(db, user, id, qs = {}) {
   const s = a => a.filter(x => x.ok).reduce((t, x) => t + x.amount, 0);
   // công nợ từng đợt (trừ HĐ vay — xem lịch trả lãi & gốc): tính đến «Đến ngày» đang xem (ngày tương lai: tính như khách chưa trả thêm đến ngày đó)
   const asof = isoDay(qs.to) || today(), rate = c.late_rate != null ? +c.late_rate : null;
-  const inst = c.kind === 'vay' ? null : instDebt((await B.debtOf(db, [c.id], asof)).get(c.id), asof, rate);
+  const inst = c.kind === 'vay' ? null : instDebt((await B.debtOf(db, [c.id], asof)).get(c.id).inst, (await rcpOf(db, [c.id], asof)).get(c.id) || [], c, asof, rate);
   return { contract: { id: c.id, number: c.number, kind: c.kind, unit: c.unit, customer: c.customer }, thu, chi, thu_sum: s(thu), chi_sum: s(chi), inst, asof, late_rate: rate,
     can_thu: can(user, E.receipt, 'c'), can_chi: can(user, E.payment, 'c') };
 }
@@ -432,19 +432,17 @@ async function contractTrack(db, user, f = {}) {
   if (from && from > to) bad('«Từ ngày» sau «Đến ngày»');
   const p = [kinds], t = to, t30 = addDays(t, 30);
   const cs = await db.q(`SELECT c.id, c.number, c.kind, c.status, c.value, c.rent, c.deposit, c.term_months, c.pay_times, c.contract_on, c.signed_on, c.eff_on, c.exp_on,
-      c.maint_fee, c.after_tax, c.finish_value, c.late_rate,
+      c.maint_fee, c.after_tax, c.finish_value, c.late_rate, c.maint_dot,
       u.code unit, pr.code project, pr.name project_name, b.code building, b.name building_name, k.full_name customer, coalesce(c.b_phone, k.phone) phone, own.full_name owner,
       (SELECT n.body FROM kd_note n WHERE n.ent = 'contract' AND n.rec_id = c.id ORDER BY n.at DESC, n.id DESC LIMIT 1) note
     FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_project pr ON pr.id = u.project_id JOIN kd_building b ON b.id = u.building_id JOIN kd_customer k ON k.id = c.customer_id
       LEFT JOIN kd_user own ON own.id = c.owner_id
     WHERE c.kind = ANY($1) AND c.status <> 'huy' ${uf(f, p)}${mine(user, 'c')} ORDER BY pr.code, u.code, c.id`, p);
-  const D = await B.debtOf(db, cs.map(c => c.id), t);
+  const D = await B.debtOf(db, cs.map(c => c.id), hd ? t : undefined);   // HĐ thuê / hoàn thiện: như màn công nợ của hợp đồng (mọi phiếu thu)
   // phiếu chi hợp lệ (hoàn tiền / hoàn cọc / khác) — số công ty đã trả lại khách
-  const PC = new Map((await db.q("SELECT contract_id, sum(amount) s, count(*) n FROM kd_payment WHERE status = 'hop_le' AND contract_id = ANY($1) AND voucher_date <= $2 GROUP BY 1", [cs.map(c => c.id), t])).map(x => [x.contract_id, x]));
-  // HĐ mua bán: phiếu thu hợp lệ đến t — tách tiền nhà / phí bảo trì theo đợt thu ghi trên phiếu (đợt phí bảo trì → phí bảo trì, còn lại → tiền nhà); *w = thu trong khoảng «Từ ngày»
-  const RC = new Map(hd ? (await db.q(`SELECT r.contract_id, sum(r.amount) FILTER (WHERE NOT coalesce(i.is_maint, false)) h, sum(r.amount) FILTER (WHERE i.is_maint) m,
-      sum(r.amount) FILTER (WHERE NOT coalesce(i.is_maint, false) AND r.voucher_date >= $3) hw, sum(r.amount) FILTER (WHERE i.is_maint AND r.voucher_date >= $3) mw
-    FROM kd_receipt r LEFT JOIN kd_installment i ON i.id = r.installment_id WHERE r.status = 'hop_le' AND r.contract_id = ANY($1) AND r.voucher_date <= $2 GROUP BY 1`, [cs.map(c => c.id), t, from || '1900-01-01'])).map(x => [x.contract_id, x]) : []);
+  const PC = new Map((await db.q("SELECT contract_id, sum(amount) s, count(*) n FROM kd_payment WHERE status = 'hop_le' AND contract_id = ANY($1) AND ($2::date IS NULL OR voucher_date <= $2) GROUP BY 1", [cs.map(c => c.id), hd ? t : null])).map(x => [x.contract_id, x]));
+  // HĐ mua bán: phiếu thu hợp lệ đến t (theo ngày) — chia vào từng đợt đúng như B.debtOf để tách tiền nhà / phí bảo trì và tính lãi chậm trả
+  const RC = hd ? await rcpOf(db, cs.map(c => c.id), t) : new Map();
   const opt = k => Object.fromEntries(E.contract.fields.find(x => x.k === k).o.map(o => [o[0], o[1]])), KL = opt('kind'), SL = opt('status'), t7 = addDays(t, 7);
   const rows = cs.map(c => {
     const d = D.get(c.id), rent = c.kind === 'thue' || c.kind === 'thue_mua';
@@ -459,12 +457,17 @@ async function contractTrack(db, user, f = {}) {
       //  tiền nhà: giá trị = tiền sau thuế (+ hoàn thiện nếu gộp HĐMB) · phải thu theo tiến độ = các đợt có hạn trong khoảng ngày · đã thu = phiếu thu (có «Từ ngày»: thu trong khoảng)
       //            còn lại theo tiến độ = phải thu − đã thu · còn lại theo hợp đồng = giá trị − tổng đã thu đến t
       //  phí bảo trì: số phải thu = phí bảo trì (không theo hạn đợt) · còn lại = phí bảo trì − tổng đã thu phí bảo trì đến t
-      const x = RC.get(c.id) || {}, n = k => +x[k] || 0, from_ = k => from ? n(k + 'w') : n(k), win = i => i.due_on <= to && (!from || i.due_on >= from);
-      const hDue = d.inst.filter(i => !i.is_maint && win(i)).reduce((a, i) => a + +i.amount, 0), hPaid = from_('h'), mPaid = from_('m');
-      const hv = c.after_tax != null ? +c.after_tax + (+c.finish_value || 0) : row.value - (+c.maint_fee || 0), mv = +c.maint_fee || 0, mLeft = mv - n('m'), rate = c.late_rate != null ? +c.late_rate : null;
-      Object.assign(row, { h_value: hv, h_due: hDue, h_paid: hPaid, h_left_due: hDue - hPaid, h_left: hv - n('h'), m_value: mv, m_paid: mPaid, m_left_due: mLeft,
-        t_value: hv + mv, t_due: hDue + mv, t_paid: hPaid + mPaid, t_left_due: hDue - hPaid + mLeft, t_left: hv + mv - n('h') - n('m'),
-        late_rate: rate, late_int: rate ? instDebt(d, t, rate).reduce((a, i) => a + i.late, 0) : null });
+      // phiếu thu chia vào đợt theo ngày (payTimeline): phần vào dòng phí bảo trì → phí bảo trì, còn lại (kể cả thu thừa) → tiền nhà
+      //  lịch không có dòng phí bảo trì riêng (nhập file / lịch cũ) → tách phí bảo trì khỏi đợt chứa nó, không cộng 2 lần (06/11/2026)
+      const tl = payTimeline(d.inst, RC.get(c.id) || [], c), inW = on => !from || on >= from, win = i => i.due_on <= to && (!from || i.due_on >= from);
+      const sumP = (xs, w) => xs.reduce((a, p) => a + (!w || inW(p.on) ? p.amt : 0), 0);
+      const pcs = m => tl.I.filter(i => i.is_maint === m).flatMap(i => i.pcs), hP = [...pcs(false), ...tl.extra], mP = pcs(true);
+      const hDue = tl.I.filter(i => !i.is_maint && win(i)).reduce((a, i) => a + i.amount, 0), hPaid = sumP(hP, true), hAll = sumP(hP), mAll = sumP(mP), mPaidW = sumP(mP, true);
+      const hv = c.after_tax != null ? +c.after_tax + (+c.finish_value || 0) : row.value - (+c.maint_fee || 0), mv = +c.maint_fee || 0, mLeft = mv - mAll, rate = c.late_rate != null ? +c.late_rate : null;
+      //  phí bảo trì: số phải thu = phí bảo trì (không theo hạn đợt) nên số đã thu = tổng đã thu phí bảo trì đến t (không lọc «Từ ngày») → phải thu − đã thu = còn lại
+      Object.assign(row, { h_value: hv, h_due: hDue, h_paid: hPaid, h_left_due: hDue - hPaid, h_left: hv - hAll, m_value: mv, m_paid: mAll, m_left_due: mLeft,
+        t_value: hv + mv, t_due: hDue + mv, t_paid: hPaid + mAll, t_left_due: hDue - hPaid + mLeft, t_left: hv + mv - hAll - mAll,
+        late_rate: rate, late_int: rate ? instDebt(d.inst, RC.get(c.id) || [], c, t, rate).reduce((a, i) => a + i.late, 0) : null, _act: hDue > 0 || hPaid > 0 || mPaidW > 0 });
     }
     if (rent) {
       // theo mẫu «Bảng theo dõi hợp đồng thuê căn hộ» (05/11/2026): phải thu theo tiến độ = các kỳ đến hạn tới hôm nay; còn phải thu = phải thu − đã thu (âm = thu thừa)
@@ -483,34 +486,70 @@ async function contractTrack(db, user, f = {}) {
     }
     return row;
   });
-  return { rows: from ? rows.filter(r => r.t_due > 0 || r.t_paid > 0) : rows, states: CT_ST, from, to, asof: t, can_rate: hd && canRate(user) };   // có «Từ ngày»: chỉ HĐ có đợt phải thu / có thu trong khoảng
+  rows.forEach(r => { r._keep = r._act; delete r._act; });
+  return { rows: (from ? rows.filter(r => r._keep) : rows).map(({ _keep, ...r }) => r), states: CT_ST, from, to, asof: t, can_rate: hd && canRate(user) };   // có «Từ ngày»: chỉ HĐ có đợt phải thu / có thu trong khoảng
 }
-// công nợ từng đợt (đã thu chia vào đợt theo B.debtOf, các đợt xếp theo hạn): còn lại = phải thu − đã thu của đợt; số ngày quá hạn = t − hạn (đợt còn nợ)
-// số tiền quá hạn lũy kế = cộng dồn phần còn lại chưa thanh toán của các đợt đã quá hạn tới đợt này;
-// lãi quá hạn của đợt = số tiền quá hạn lũy kế × số ngày tính lãi (từ hạn đợt này đến hạn đợt sau, đợt quá hạn cuối: đến t) × lãi suất (%/năm) / 365
-// → cộng các đợt = Σ còn lại từng đợt × số ngày quá hạn của đợt đó × lãi suất / 365
-function instDebt(d, t, rate) {
+// phiếu thu hợp lệ đến t của các hợp đồng, theo thứ tự ngày (như B.debtOf)
+async function rcpOf(db, ids, t) {
+  const M = new Map();
+  for (const r of await db.q("SELECT contract_id, installment_id, amount, voucher_date FROM kd_receipt WHERE status = 'hop_le' AND contract_id = ANY($1) AND voucher_date <= $2 ORDER BY voucher_date, id", [ids, t]))
+    (M.get(r.contract_id) || M.set(r.contract_id, []).get(r.contract_id)).push(r);
+  return M;
+}
+// chia phiếu thu vào từng đợt, giữ ngày của từng phần tiền — cùng quy tắc B.debtOf (phiếu chọn đợt → vào đợt đó trước; phần dư + phiếu không chọn đợt
+// → đợt có hạn sớm nhất còn nợ) nên số đã thu từng đợt khớp B.debtOf. extra = tiền thu thừa ngoài lịch.
+// Lịch không có dòng phí bảo trì riêng mà tổng lịch đã gồm phí bảo trì (lịch nhập file / lịch cũ): tách phần phí bảo trì khỏi đợt «Đợt thu phí bảo trì»
+// (mặc định 3) thành dòng phí bảo trì cùng hạn — để không tính phí bảo trì 2 lần và chia đúng tiền nhà / phí bảo trì (06/11/2026)
+function payTimeline(inst, rcp, c = {}) {
+  const I = inst.map(i => ({ id: i.id, name: i.name, due_on: i.due_on, is_maint: !!i.is_maint, amount: +i.amount, paid: 0, pcs: [] }));
+  const mv = +c.maint_fee || 0, hv = c.after_tax != null ? +c.after_tax + (+c.finish_value || 0) : null;
+  if (mv > 0 && hv != null && I.length && !I.some(i => i.is_maint) && Math.abs(I.reduce((a, i) => a + i.amount, 0) - hv - mv) <= 1000 * I.length) {
+    let k = Math.min(Math.max(1, +c.maint_dot || 3), I.length) - 1;
+    if (I[k].amount < mv) k = I.findIndex(i => i.amount >= mv);
+    if (k >= 0) { const o = I[k]; I.splice(k, 1, { ...o, amount: o.amount - mv, pcs: [] }, { ...o, name: `Phí bảo trì (trong ${o.name || 'đợt ' + (k + 1)})`, is_maint: true, amount: mv, pcs: [], virt: true }); }
+  }
+  const put = (i, amt, on) => { const take = Math.min(amt, i.amount - i.paid); if (take > 0) { i.paid += take; i.pcs.push({ on, amt: take }); return amt - take; } return amt; };
+  const pool = [], extra = [];
+  for (const r of rcp) {
+    let rest = +r.amount;
+    if (r.installment_id) for (const i of I.filter(x => x.id === r.installment_id && !x.is_maint).concat(I.filter(x => x.id === r.installment_id && x.is_maint))) rest = put(i, rest, r.voucher_date);
+    if (rest > 0) pool.push({ on: r.voucher_date, amt: rest });
+  }
+  for (const p of pool) { let rest = p.amt; for (const i of I) { if (rest <= 0) break; rest = put(i, rest, p.on); } if (rest > 0) extra.push({ on: p.on, amt: rest }); }
+  I.forEach(i => { i.rem = i.amount - i.paid; });
+  return { I, extra };
+}
+// công nợ từng đợt tính đến t: còn lại = phải thu − đã thu của đợt; số ngày quá hạn = t − hạn (đợt còn nợ);
+// số tiền quá hạn lũy kế = cộng dồn phần còn lại chưa thanh toán của các đợt đã quá hạn tới đợt này.
+// Lãi chậm trả (phòng KD chốt 06/11/2026: tính cả những ngày đã trễ trước khi khách trả):
+//   mỗi phần tiền của đợt trả sau hạn: số tiền × (ngày trả − hạn); phần còn nợ: số tiền × (t − hạn); lãi = Σ × lãi suất (%/năm) / 365
+function instDebt(inst, rcp, c, t, rate) {
+  const { I } = payTimeline(inst, rcp, c), t7 = addDays(t, 7);
   let no = 0, cum = 0;
-  const I = d.inst;
-  return I.map((i, k) => {
-    const rem = Math.max(0, i.rem), over = i.due_on < t, days = rem > 0 && over ? dayDiff(i.due_on, t) : 0;
+  return I.map(i => {
+    const rem = Math.max(0, i.rem), over = !!i.due_on && i.due_on < t, days = rem > 0 && over ? dayDiff(i.due_on, t) : 0;
     if (over) cum += rem;
-    const nx = I[k + 1], same = nx && nx.due_on === i.due_on;   // nhiều đợt cùng hạn: tính lãi 1 lần ở đợt cuối của nhóm
-    const end = over && cum > 0 && !same ? (nx && nx.due_on < t ? nx.due_on : t) : null, ldays = end ? dayDiff(i.due_on, end) : 0;
-    return { id: i.id, no: i.is_maint ? null : ++no, name: i.name, due_on: i.due_on, is_maint: !!i.is_maint, amount: +i.amount, paid: +i.paid, rem, days: days || null,
-      od: over && cum > 0 ? cum : null, l_from: end ? i.due_on : null, l_to: end, ldays: ldays || null,
-      rate: rate || null, late: rate && ldays ? Math.round(cum * ldays * rate / 100 / 365) : 0, st: i.st, st_l: B.PAY_ST[i.st] };
+    const segs = !over ? [] : [...i.pcs.filter(p => p.on > i.due_on).map(p => ({ amt: p.amt, to: p.on, paid: true })), ...(rem > 0 ? [{ amt: rem, to: t, paid: false }] : [])]
+      .map(x => ({ ...x, days: dayDiff(i.due_on, x.to) })).filter(x => x.days > 0);
+    const st = rem <= 0 ? 'da_thu' : over ? 'qua_han' : i.due_on === t ? 'den_han' : i.due_on && i.due_on <= t7 ? 'sap_den_han' : i.paid > 0 ? 'mot_phan' : 'chua_den_han';
+    return { id: i.id, no: i.is_maint ? null : ++no, name: i.name, due_on: i.due_on, is_maint: i.is_maint, amount: i.amount, paid: i.paid, rem, days: days || null,
+      od: over && cum > 0 ? cum : null, segs, rate: rate || null, late: rate && segs.length ? Math.round(segs.reduce((a, x) => a + x.amt * x.days, 0) * rate / 100 / 365) : 0, st, st_l: B.PAY_ST[st] };
   });
 }
 // lãi suất quá hạn (%/năm) điền theo từng hợp đồng ở Theo dõi hợp đồng › HĐ mua bán
 const canRate = u => can(u, E.contract, 'u') || can(u, E.receipt, 'u');
 async function setLateRate(db, user, id, v) {   // db: trong giao dịch (tx)
   if (!canRate(user)) deny();
-  const rate = v === '' || v == null ? null : +String(v).replace(',', '.');
+  if (v != null && typeof v !== 'string' && typeof v !== 'number') bad('Lãi suất quá hạn không hợp lệ');
+  const sv = v == null ? '' : String(v).trim(), rate = sv === '' ? null : +sv.replace(',', '.');
   if (rate != null && !(rate >= 0 && rate <= 100)) bad('Lãi suất quá hạn phải từ 0 đến 100 (%/năm)');
-  const c = await db.one('SELECT id, owner_id, created_by, late_rate FROM kd_contract WHERE id = $1', [+id]); if (!c) bad('Không tìm thấy hợp đồng');
+  const c = await db.one('SELECT id, kind, status, owner_id, created_by, late_rate, is_demo FROM kd_contract WHERE id = $1 FOR UPDATE', [+id]); if (!c) bad('Không tìm thấy hợp đồng');
   if (C.own(user, E.customer) && c.owner_id !== user.id && c.created_by !== user.id) deny();
-  await C.sys(db, 'contract', c.id, { late_rate: rate }, user, 'sua_lai_suat_qua_han', `Lãi suất quá hạn: ${c.late_rate ?? 'trống'} → ${rate ?? 'trống'} %/năm`);
+  if (c.kind !== 'hdmb' || c.status === 'huy') bad('Chỉ điền lãi suất quá hạn cho HĐ mua bán chưa hủy');
+  // ghi thẳng 1 cột + nhật ký — KHÔNG qua C.sys (sẽ chạy toàn bộ kiểm tra / tự điền khi lưu hợp đồng, có thể báo lỗi không liên quan hoặc sửa ô khác)
+  await db.q('UPDATE kd_contract SET late_rate = $1, updated_by = $2, updated_at = now() WHERE id = $3', [rate, user.id ?? null, c.id]);
+  await C.audit(db, 'contract', c.id, 'sua_lai_suat_qua_han', { late_rate: c.late_rate == null ? null : +c.late_rate }, { late_rate: rate }, user,
+    `Lãi suất quá hạn: ${c.late_rate ?? 'trống'} → ${rate ?? 'trống'} %/năm`, c.is_demo);
   return { ok: true, late_rate: rate };
 }
 
@@ -691,7 +730,7 @@ const DS_HEAD = [
 ];
 const DS_COLS = DS_HEAD.flatMap(([, cs]) => cs);
 const DS_SUM = DS_COLS.filter(c => ['money', 'num'].includes(c[2]) && !['base_price', 'build_price'].includes(c[0])).map(c => c[0]);
-const isoDay = v => v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+const isoDay = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && (d => !isNaN(d) && d.toISOString().slice(0, 10) === v)(new Date(v + 'T00:00:00Z')) ? v : null;
 async function debtSummary(db, user, f = {}) {
   if (!can(user, E.installment, 'r')) deny();
   const t = today(), to = isoDay(f.to) || t, from = isoDay(f.from) || to.slice(0, 7) + '-01';
