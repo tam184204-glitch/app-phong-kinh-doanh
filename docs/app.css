@@ -1108,3 +1108,34 @@ table.t tr.vch > td { padding: 0; background: #fbfcfe; white-space: normal; curs
 .vch-t { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 6px; } .vch-t .n { background: #eef2f6; border-radius: 9px; padding: 0 7px; font-size: 12px; } .vch-t .btn:first-of-type { margin-left: auto; }
 .vch-box table.t { background: #fff; } .vch-box tr.muted td { color: #98a2b3; }
 @media (max-width: 900px) { .vch-box { width: calc(100vw - 40px); } .vch-box .g2 { grid-template-columns: 1fr; } }
+
+/* ===== Việc của tôi (06/11/2026) ===== */
+.md-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 520px); gap: 22px; padding: 22px 24px; background: linear-gradient(135deg, var(--cobalt-50), var(--card) 60%), var(--card); }
+.md-hero h1 { font-size: 30px; margin: 6px 0 8px; color: var(--cobalt-d); }
+.md-hero .md-sub { color: var(--text); font-size: 15px; line-height: 1.55; }
+.md-wx { border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; background: var(--card); }
+.wx-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.wx-head select { max-width: 170px; padding: 4px 8px; }
+.wx-now { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.wx-ic { font-size: 42px; color: var(--amber); }
+.wx-t { font-size: 38px; font-weight: 800; line-height: 1; color: var(--ink); }
+.wx-d { color: var(--muted); font-weight: 600; }
+.wx-meta { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--text); margin-left: auto; }
+.wx-hrs { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-top: 12px; text-align: center; }
+.wx-hrs > div { background: var(--cobalt-50); border-radius: 10px; padding: 6px 2px; display: flex; flex-direction: column; gap: 2px; }
+.wx-hrs i { color: var(--cobalt-l); }
+.wx-hrs small { color: var(--muted); font-size: 11px; }
+.wx-hrs .wx-p { color: var(--cobalt-l); font-weight: 700; }
+.wx-tips { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.wx-tips > div { background: var(--amber-50); color: var(--a); border-radius: 8px; padding: 6px 10px; }
+.wx-src { margin-top: 8px; font-size: 11px; color: var(--muted2); text-align: right; }
+.md-cols { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.md-todo { max-height: 560px; overflow: auto; }
+.md-todo .alert-row .pill { margin-left: auto; flex: none; }
+.md-quick { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; padding: 12px 14px 14px; }
+.md-quick a { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; color: var(--text); text-decoration: none; font-weight: 600; font-size: 13px; }
+.md-quick a:hover { border-color: var(--cobalt-l); background: var(--cobalt-50); }
+.md-quick a i { color: var(--cobalt); width: 18px; text-align: center; }
+[data-theme="dark"] .md-hero { background: var(--card); }
+[data-theme="dark"] .md-hero h1, [data-theme="dark"] .wx-t { color: var(--text); }
+@media (max-width: 1100px) { .md-hero, .md-cols { grid-template-columns: 1fr; } .wx-meta { margin-left: 0; } }

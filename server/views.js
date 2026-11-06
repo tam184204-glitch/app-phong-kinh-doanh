@@ -275,6 +275,17 @@ async function alerts(db, user, f = {}) {
   return out.sort((a, b) => order[a.lvl] - order[b.lvl] || String(a.due || '9').localeCompare(String(b.due || '9')));
 }
 
+// ======================= VIỆC CỦA TÔI (màn mở đầu, 06/11/2026) =======================
+// việc cần làm = cảnh báo nhắc việc của người dùng (nhân viên: việc mình phụ trách; trưởng phòng / lãnh đạo: toàn phòng) + lịch ký 7 ngày tới
+async function myDay(db, user) {
+  const t = today(), t7 = addDays(t, 7);
+  const al = await alerts(db, user, {});
+  const sg = (await signing(db, user, {})).rows.filter(r => r.plan_sign && r.plan_sign >= t && r.plan_sign <= t7)
+    .map(r => ({ ent: r.ent || 'contract', id: r.id, number: r.number, plan_sign: r.plan_sign, sign_place: r.sign_place, unit: r.unit, customer: r.customer, project: r.project, owner: r.owner, kind_l: r.kind_l }))
+    .sort((a, b) => String(a.plan_sign).localeCompare(String(b.plan_sign)));
+  return { today: t, alerts: al, signing: sg, approvals: al.filter(a => a.cat === 'phe_duyet').length };
+}
+
 // ======================= PHÊ DUYỆT =======================
 async function approvalsFor(db, user) {
   return db.q(`SELECT a.*, r.full_name requested_by_l FROM kd_approval a LEFT JOIN kd_user r ON r.id = a.requested_by
@@ -1051,4 +1062,4 @@ async function monthly(db, period, projectId) {
   };
 }
 
-module.exports = { debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, voucherList, contractTrack, setLateRate, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
+module.exports = { myDay, debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, voucherList, contractTrack, setLateRate, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };

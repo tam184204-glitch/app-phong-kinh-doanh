@@ -312,6 +312,7 @@ R('POST', '/api/file/:id/star', async (req, res, u, p) => {
 // --- màn tổng hợp ---
 R('GET', '/api/dashboard', async (req, res, u, p, qs) => send(res, 200, await V.dashboard({ q, one }, u, qs)));
 R('GET', '/api/drill/:key', async (req, res, u, p, qs) => send(res, 200, await V.drill({ q, one }, u, decodeURIComponent(p.key), qs)));
+R('GET', '/api/my-day', async (req, res, u) => send(res, 200, await V.myDay({ q, one }, u)));   // màn Việc của tôi
 R('GET', '/api/alerts', async (req, res, u, p, qs) => send(res, 200, await V.alerts({ q, one }, u, { all: qs.all === '1' && (mgr(u)), project: qs.project })));
 R('GET', '/api/approvals', async (req, res, u) => send(res, 200, await V.approvals({ q, one }, u)));
 R('GET', '/api/board', async (req, res, u, p, qs) => send(res, 200, await V.board({ q, one }, u, qs)));

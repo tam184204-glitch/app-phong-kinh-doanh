@@ -5,7 +5,7 @@ const filt = () => ST.filt ||= { project: '', building: '', from: '', to: '' };
 
 // ---------- đăng nhập ----------
 async function loginView() {
-  try { const i = await (await fetch('/api/login-info')).json(); if (i.noLogin) { location.hash = '#/v/dashboard'; return boot(); } } catch {}
+  try { const i = await (await fetch('/api/login-info')).json(); if (i.noLogin) { history.replaceState(null, '', location.pathname + location.search); return boot(); } } catch {}
   document.body.innerHTML = `<div class="login"><div class="hero"><img src="/logo.png" alt=""><div class="k">CAT TUONG GROUP</div><h1>Quản lý <span>Phòng Kinh doanh</span></h1><p>Một mã căn — một hồ sơ xuyên suốt: giỏ hàng, khách hàng, giao dịch, hợp đồng, công nợ, bàn giao và cấp sổ hồng.</p></div>
     <div class="box"><form id="lf"><h2>Đăng nhập</h2><p class="muted" style="margin-top:0">Tài khoản nhân viên do Quản trị hệ thống cấp.</p><div id="lerr"></div>
       <div class="fld mb"><label for="lu">Tên đăng nhập</label><input id="lu" autocomplete="username" required></div>
@@ -13,7 +13,7 @@ async function loginView() {
       <button class="btn pri" style="width:100%;height:42px;justify-content:center">${ico('fa-right-to-bracket')} Đăng nhập</button><div class="trial" id="trial"></div></form></div></div>`;
   $('#lf').onsubmit = async e => {
     e.preventDefault();
-    try { const r = await api('POST', '/api/login', { username: $('#lu').value.trim(), password: $('#lp').value }); location.hash = '#/v/dashboard'; await boot(r.must_change); }
+    try { const r = await api('POST', '/api/login', { username: $('#lu').value.trim(), password: $('#lp').value }); history.replaceState(null, '', location.pathname + location.search); await boot(r.must_change); }
     catch (er) { $('#lerr').innerHTML = `<div class="errbar">${esc(er.message)}</div>`; }
   };
   try {
@@ -264,6 +264,96 @@ V.dashboard = async main => {
 };
 
 // ======================= CẢNH BÁO / PHÊ DUYỆT =======================
+// ===== Việc của tôi (06/11/2026): lời chào theo buổi, thời tiết hôm nay, việc cần làm — trang mở đầu mặc định khi mở app =====
+const WX_CITY = [['bac_ninh', 'Bắc Ninh', 21.186, 106.076], ['ha_noi', 'Hà Nội', 21.028, 105.854], ['hung_yen', 'Hưng Yên', 20.646, 106.051], ['hai_phong', 'Hải Phòng', 20.845, 106.688],
+  ['thai_nguyen', 'Thái Nguyên', 21.594, 105.848], ['vinh_phuc', 'Vĩnh Phúc', 21.309, 105.605], ['da_nang', 'Đà Nẵng', 16.054, 108.202], ['hcm', 'TP Hồ Chí Minh', 10.776, 106.701]];
+// mã thời tiết WMO → [mô tả, icon ban ngày, icon ban đêm]
+const wxOf = c => c === 0 ? ['Trời quang', 'fa-sun', 'fa-moon'] : c <= 2 ? ['Ít mây', 'fa-cloud-sun', 'fa-cloud-moon'] : c === 3 ? ['Nhiều mây', 'fa-cloud', 'fa-cloud'] : c <= 48 ? ['Sương mù', 'fa-smog', 'fa-smog']
+  : c <= 57 ? ['Mưa phùn', 'fa-cloud-rain', 'fa-cloud-rain'] : c <= 65 ? [c >= 65 ? 'Mưa to' : 'Mưa', 'fa-cloud-rain', 'fa-cloud-rain'] : c <= 67 ? ['Mưa lạnh', 'fa-cloud-rain', 'fa-cloud-rain']
+  : c <= 77 ? ['Tuyết / mưa đá', 'fa-snowflake', 'fa-snowflake'] : c <= 82 ? [c >= 81 ? 'Mưa rào to' : 'Mưa rào', 'fa-cloud-showers-heavy', 'fa-cloud-showers-heavy'] : c <= 86 ? ['Mưa tuyết', 'fa-snowflake', 'fa-snowflake'] : ['Dông, sét', 'fa-cloud-bolt', 'fa-cloud-bolt'];
+const lsGet = k => { try { return localStorage.getItem(k); } catch { return null; } }, lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch { } };
+async function wxLoad(force) {
+  const key = lsGet('ctg-kd-wx-city') || 'bac_ninh';
+  let at = WX_CITY.find(c => c[0] === key);
+  if (key === 'gps') { const g = JSON.parse(lsGet('ctg-kd-wx-gps') || 'null'); at = g ? ['gps', 'Vị trí hiện tại', g[0], g[1]] : WX_CITY[0]; }
+  at ||= WX_CITY[0];
+  const ck = 'ctg-kd-wx:' + at[0] + ':' + at[2] + ',' + at[3];
+  try { const c = JSON.parse(sessionStorage.getItem(ck) || 'null'); if (!force && c && Date.now() - c.t < 30 * 60e3) return { at, d: c.d }; } catch { }
+  const u = `https://api.open-meteo.com/v1/forecast?latitude=${at[2]}&longitude=${at[3]}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,is_day`
+    + `&hourly=temperature_2m,weather_code,precipitation_probability&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max,sunrise,sunset&timezone=Asia%2FBangkok&forecast_days=2`;
+  const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 8000);
+  try { const r = await fetch(u, { signal: ctl.signal }); if (!r.ok) throw new Error('HTTP ' + r.status); const d = await r.json(); try { sessionStorage.setItem(ck, JSON.stringify({ t: Date.now(), d })); } catch { } return { at, d }; }
+  finally { clearTimeout(tm); }
+}
+const wxHtml = ({ at, d }) => {
+  const c = d.current, dl = d.daily, [desc, iD, iN] = wxOf(c.weather_code), now = c.time.slice(0, 13);
+  const hrs = d.hourly.time.map((t, i) => ({ t, temp: d.hourly.temperature_2m[i], code: d.hourly.weather_code[i], p: d.hourly.precipitation_probability[i] })).filter(h => h.t.slice(0, 13) >= now).filter((h, i) => i % 3 === 0).slice(0, 6);
+  const rain = dl.precipitation_probability_max[0] ?? 0, tmax = dl.temperature_2m_max[0], tmin = dl.temperature_2m_min[0], uv = dl.uv_index_max[0];
+  const tips = [rain >= 60 ? [`Khả năng mưa ${rain}% — nhớ mang ô khi đi gặp khách / ra dự án`, 'fa-umbrella'] : rain >= 30 ? [`Có thể có mưa (${rain}%)`, 'fa-umbrella'] : null,
+    tmax >= 35 ? ['Nắng nóng — uống đủ nước, hạn chế ra công trường buổi trưa', 'fa-temperature-half'] : tmin <= 15 ? ['Trời lạnh — mặc ấm khi ra ngoài', 'fa-temperature-half'] : null,
+    uv >= 8 ? [`Chỉ số UV cao (${Math.round(uv)}) — che nắng khi dẫn khách xem nhà mẫu`, 'fa-sun'] : null].filter(Boolean);
+  return `<div class="wx-now"><i class="fa-solid ${c.is_day ? iD : iN} wx-ic"></i><div><div class="wx-t">${Math.round(c.temperature_2m)}°</div><div class="wx-d">${esc(desc)}</div></div>
+      <div class="wx-meta"><span>${ico('fa-temperature-half')} Cao ${Math.round(tmax)}° · Thấp ${Math.round(tmin)}°</span><span>${ico('fa-droplet')} Độ ẩm ${c.relative_humidity_2m}% · Mưa ${rain}%</span><span>${ico('fa-wind')} Gió ${Math.round(c.wind_speed_10m)} km/h · Cảm giác ${Math.round(c.apparent_temperature)}°</span></div></div>
+    <div class="wx-hrs">${hrs.map(h => `<div><small>${h.t.slice(11, 13)}h</small><i class="fa-solid ${wxOf(h.code)[+h.t.slice(11, 13) >= 6 && +h.t.slice(11, 13) < 18 ? 1 : 2]}"></i><b>${Math.round(h.temp)}°</b>${h.p >= 30 ? `<small class="wx-p">${h.p}%</small>` : '<small>&nbsp;</small>'}</div>`).join('')}</div>
+    ${tips.length ? `<div class="wx-tips">${tips.map(([t, i]) => `<div>${ico(i)} ${esc(t)}</div>`).join('')}</div>` : ''}
+    <div class="wx-src">Nguồn: Open-Meteo · ${esc(at[1])}</div>`;
+};
+V.myday = async main => {
+  const me = M.me, first = String(me.full_name || '').split(/\s[–-]\s/)[0].trim().split(/\s+/).slice(-1)[0] || '';   // «Nguyễn Thị Thư» → Thư; bỏ phần sau « – »
+  const DOW = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+  const greet = () => { const h = new Date().getHours(); return h < 11 ? ['Chào buổi sáng', 'fa-mug-hot'] : h < 13 ? ['Chào buổi trưa', 'fa-sun'] : h < 18 ? ['Chào buổi chiều', 'fa-cloud-sun'] : ['Chào buổi tối', 'fa-moon']; };
+  const clock = () => { const d = new Date(); return `${DOW[d.getDay()]}, ${dmy(today())} · ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+  const city = lsGet('ctg-kd-wx-city') || 'bac_ninh';
+  const [g, gi] = greet();
+  main.innerHTML = `<div class="page">
+    <div class="md-hero card mb"><div class="md-hi"><div class="eyebrow">${ico(gi)} <span id="mdClock">${clock()}</span></div><h1 id="mdGreet">${g}${first ? ', ' + esc(first) : ''}!</h1>
+        <div class="md-sub" id="mdSub">Đang tổng hợp việc hôm nay…</div></div>
+      <div class="md-wx"><div class="wx-head"><b>${ico('fa-cloud-sun')} Thời tiết hôm nay</b><span class="grow"></span>
+          <select id="wxCity" class="inp sm">${WX_CITY.map(c => `<option value="${c[0]}" ${city === c[0] ? 'selected' : ''}>${esc(c[1])}</option>`).join('')}<option value="gps" ${city === 'gps' ? 'selected' : ''}>Vị trí hiện tại</option></select></div>
+        <div id="wxBox"><div class="empty">Đang lấy thời tiết…</div></div></div></div>
+    <div class="grid g4 mb" id="mdK"></div>
+    <div class="grid md-cols"><div class="card"><div class="hd"><h3>${ico('fa-list-check')} Việc cần làm</h3><span class="grow"></span><a href="#/v/alerts" class="small">Xem tất cả ›</a></div><div id="mdTodo"><div class="empty">Đang tải…</div></div></div>
+      <div><div class="card mb"><div class="hd"><h3>${ico('fa-calendar-check')} Lịch ký 7 ngày tới</h3><span class="grow"></span><a href="#/v/signing" class="small">Lịch ký ›</a></div><div id="mdSign"><div class="empty">Đang tải…</div></div></div>
+        <div class="card"><div class="hd"><h3>${ico('fa-bolt')} Mở nhanh</h3></div><div class="md-quick" id="mdQuick"></div></div></div></div></div>`;
+  // đồng hồ + lời chào tự đổi theo giờ; dừng khi rời màn
+  const tick = setInterval(() => { const el = $('#mdClock'); if (!el || !document.body.contains(el)) return clearInterval(tick); el.textContent = clock(); const [g2] = greet(); $('#mdGreet').textContent = `${g2}${first ? ', ' + first : ''}!`; }, 30e3);
+  const wx = async force => { const box = $('#wxBox', main); try { box.innerHTML = wxHtml(await wxLoad(force)); } catch (e) { box.innerHTML = `<div class="empty">Chưa lấy được thời tiết (cần kết nối Internet). <a href="#" id="wxRe">Thử lại</a></div>`; } };
+  $('#wxCity', main).onchange = async e => {
+    const v = e.target.value;
+    if (v === 'gps') {
+      if (!navigator.geolocation) { toast('Trình duyệt không hỗ trợ lấy vị trí', true); return; }
+      navigator.geolocation.getCurrentPosition(p => { lsSet('ctg-kd-wx-gps', JSON.stringify([+p.coords.latitude.toFixed(3), +p.coords.longitude.toFixed(3)])); lsSet('ctg-kd-wx-city', 'gps'); wx(true); },
+        () => { toast('Không lấy được vị trí — chọn tỉnh / thành trong danh sách', true); e.target.value = lsGet('ctg-kd-wx-city') || 'bac_ninh'; }, { timeout: 10000 });
+      return;
+    }
+    lsSet('ctg-kd-wx-city', v); await wx(true);
+  };
+  const QUICK = [['vouchers', 'Phiếu thu – Phiếu chi', 'fa-file-invoice-dollar'], ['loantrack', 'Theo dõi hợp đồng', 'fa-file-contract'], ['board', 'Bảng hàng', 'fa-table-cells'], ['signing', 'Lịch ký', 'fa-calendar-check'],
+    ['approvals', 'Hộp phê duyệt', 'fa-inbox'], ['debtsum', 'Tổng hợp công nợ', 'fa-sack-dollar'], ['dashboard', 'Dashboard', 'fa-gauge-high'], ['e:customer', 'Khách hàng', 'fa-users']];
+  const okNav = new Set(M.menu.flatMap(m => m[3].map(x => x[0])));
+  $('#mdQuick', main).innerHTML = QUICK.filter(q => okNav.has(q[0])).map(([id, l, ic]) => `<a href="${id.startsWith('e:') ? '#/e/' + id.slice(2) : '#/v/' + id}">${ico(ic)}<span>${esc(l)}</span></a>`).join('') || '<div class="empty">—</div>';
+  let al = [];
+  main.onclick = e => {
+    if (e.target.closest('#wxRe')) { e.preventDefault(); return wx(true); }
+    const r = e.target.closest('[data-ai]'); if (r) { const a = al[+r.dataset.ai]; if (a.ent) openDetail(a.ent, a.id); else if (a.unit_id) location.hash = `#/v/unit360?id=${a.unit_id}`; else if (a.cat === 'ke_hoach') location.hash = '#/e/collect_plan'; return; }
+    const s = e.target.closest('[data-sg]'); if (s) openDetail(s.dataset.sg.split(':')[0], +s.dataset.sg.split(':')[1]);
+  };
+  wx();
+  const d = await api('GET', '/api/my-day'); al = d.alerts;
+  const n = l => al.filter(a => a.lvl === l).length, todaySign = d.signing.filter(x => x.plan_sign === d.today).length;
+  $('#mdSub', main).innerHTML = !al.length && !d.signing.length ? 'Hôm nay chưa có việc tồn đọng nào — chúc một ngày làm việc hiệu quả!'
+    : `Hôm nay có <b>${n('r')}</b> việc gấp, <b>${n('a')}</b> việc cần làm${d.approvals ? `, <b>${d.approvals}</b> hồ sơ chờ bạn duyệt` : ''}${todaySign ? `, <b>${todaySign}</b> lịch ký hợp đồng` : ''}.`;
+  const tile = (l, v, sub, href, red) => `<a class="card kpi ${red ? 'red' : ''}" href="${href}" style="text-decoration:none;color:inherit"><div class="l">${l}</div><div class="v" style="font-size:22px">${v}</div><div class="s">${sub}</div></a>`;
+  $('#mdK', main).innerHTML = tile('Việc gấp', n('r'), 'quá hạn, cần xử lý ngay', '#/v/alerts', n('r') > 0) + tile('Việc cần làm', n('a'), 'sắp đến hạn', '#/v/alerts')
+    + tile('Chờ tôi duyệt', d.approvals, 'trong Hộp phê duyệt', '#/v/approvals') + tile('Lịch ký 7 ngày', d.signing.length, todaySign ? `${todaySign} lịch hôm nay` : 'không có lịch hôm nay', '#/v/signing');
+  const LV = { r: 'Gấp', a: 'Cần làm', b: 'Theo dõi' };
+  $('#mdTodo', main).innerHTML = al.length ? `<div class="md-todo">${al.slice(0, 30).map((a, i) => `<div class="alert-row" data-ai="${i}"><span class="lv ${a.lvl}"></span><div class="tx"><div>${esc(a.text)}</div>
+      <div class="small muted">${esc(M.alertCat[a.cat] || '')}${a.due ? ' · ' + dmy(a.due) : ''}${a.who ? ' · ' + esc(a.who) : ''}</div></div><span class="pill ${a.lvl === 'r' ? 'r' : a.lvl === 'a' ? 'a' : 'b'}">${LV[a.lvl]}</span></div>`).join('')}</div>
+      ${al.length > 30 ? `<div class="small muted mt">Còn ${al.length - 30} việc nữa — <a href="#/v/alerts">xem tất cả</a></div>` : ''}` : `<div class="empty">${ico('fa-circle-check')} Không có việc tồn đọng</div>`;
+  $('#mdSign', main).innerHTML = d.signing.length ? d.signing.map(x => `<div class="alert-row" data-sg="${x.ent}:${x.id}"><span class="lv ${x.plan_sign === d.today ? 'a' : 'b'}"></span><div class="tx">
+      <div><b>${x.plan_sign === d.today ? 'Hôm nay' : dmy(x.plan_sign)}</b> · ${esc(x.unit || '')} · ${esc(x.customer || '')}</div><div class="small muted">${esc([x.number, x.kind_l, x.sign_place, x.owner].filter(Boolean).join(' · '))}</div></div></div>`).join('')
+    : '<div class="empty">Không có lịch ký trong 7 ngày tới</div>';
+};
 V.alerts = async (main, params) => {
   const mgr = ['truong_phong', 'lanh_dao', 'admin'].includes(M.me.role);
   let all = mgr && params.all !== '0';
@@ -1555,12 +1645,12 @@ if (location.hash.startsWith('#/login')) loginView(); else boot();
 // ---------- tài khoản cá nhân (04/11/2026): đổi tên, ảnh đại diện, ảnh bìa, trạng thái, cài đặt giao diện riêng ----------
 const STATUS = [['lam_viec', 'Đang làm việc', 'g', 'fa-circle-check'], ['ban', 'Bận – không làm phiền', 'r', 'fa-circle-minus'], ['hop', 'Đang họp', 'a', 'fa-people-group'],
   ['cong_tac', 'Đi công tác / công trình', 'b', 'fa-car-side'], ['vang', 'Tạm vắng', 'v', 'fa-mug-hot'], ['nghi', 'Nghỉ phép', 's', 'fa-umbrella-beach']];
-const PREF0 = { theme: 'light', accent: 'cobalt', zoom: 1, dense: false, anim: true, deco: true, home: 'dashboard', badgeApr: true, badgeAl: true, refresh: 2 };
+const PREF0 = { theme: 'light', accent: 'cobalt', zoom: 1, dense: false, anim: true, deco: true, home: 'myday', badgeApr: true, badgeAl: true, refresh: 2 };
 const ACCENTS = { cobalt: ['Xanh Cát Tường', '#1E4E8C', '#143866', '#2D7DD2', '#EEF4FB', '#DCE8F6'], teal: ['Xanh ngọc', '#0F766E', '#0B5550', '#14A39A', '#E6F6F4', '#C9ECE8'],
   sage: ['Xanh lá', '#2F6B3A', '#1F4D28', '#4E9A5B', '#EDF6EE', '#D4EAD6'], violet: ['Tím', '#5B3FA8', '#412C7C', '#7C5CD6', '#F2EEFC', '#E0D7F7'],
   wine: ['Đỏ rượu', '#9B2C3A', '#6F1E29', '#C2465A', '#FBEFF1', '#F3D6DB'], slate: ['Xám than', '#334155', '#1E293B', '#56657A', '#F1F4F8', '#DFE5EE'] };
 const prefs = () => ({ ...PREF0, ...(M?.me?.prefs || {}) });
-const homeHash = () => { const h = prefs().home || 'dashboard'; return h.startsWith('e:') ? '#/e/' + h.slice(2) : '#/v/' + h; };
+const homeHash = () => { const h = prefs().home || 'myday'; return h.startsWith('e:') ? '#/e/' + h.slice(2) : '#/v/' + h; };
 const initials = n => esc(String(n || '?').trim().split(/\s+/).slice(-1)[0].slice(0, 2).toUpperCase());
 const avHtml = (u, cls = 'av') => `<span class="${cls}">${u.avatar ? `<img src="${u.avatar}" alt="">` : initials(u.full_name)}<i class="sdot s-${u.status || 'lam_viec'}" title="${esc(STATUS.find(s => s[0] === (u.status || 'lam_viec'))[1])}"></i></span>`;
 const meInner = () => `${avHtml(M.me)}<div><b>${esc(M.me.full_name)}</b><small>${M.me.status_msg ? esc(M.me.status_msg) : esc(roleName(M.me.role))}</small></div>`;
