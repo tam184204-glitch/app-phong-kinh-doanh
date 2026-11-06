@@ -1182,6 +1182,7 @@ H.payment = {
     if (vay && c.kind !== 'vay') bad('«Trả lãi / trả gốc» chỉ dùng cho HĐ vay');
     if (!vay && c.kind === 'vay' && r.kind !== 'khac') bad('HĐ vay: chọn «Trả lãi HĐ vay» hoặc «Trả gốc HĐ vay»');
     if (r.kind === 'hoan_coc' && !['thue', 'thue_mua'].includes(c.kind)) bad('«Hoàn tiền đặt cọc» chỉ dùng cho HĐ thuê');
+    if (r.kind === 'thanh_ly' && c.kind !== 'hdmb') bad('«Thanh lý HĐMB» chỉ dùng cho hợp đồng mua bán');
     if (r.kind === 'hoan_coc' && c.deposit != null && r.amount > +c.deposit) bad(`Số hoàn cọc ${fmtMoney(r.amount)} lớn hơn tiền đặt cọc ${fmtMoney(c.deposit)}`);
     if (!vay) r.loan_pay_id = null;
     if (r.kind !== 'hoan_tien') r.refund_id = null;

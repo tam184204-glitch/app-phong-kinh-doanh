@@ -419,6 +419,43 @@ async function contractVouchers(db, user, id, qs = {}) {
     can_thu: can(user, E.receipt, 'c'), can_chi: can(user, E.payment, 'c') };
 }
 
+// ======================= PHIẾU THU – PHIẾU CHI (1 màn, 06/11/2026) =======================
+// gộp kd_receipt (thu) + kd_payment (chi) theo ngày; lọc dự án / tòa, khoảng ngày, loại, trạng thái, tìm số phiếu / HĐ / căn / khách / nội dung
+async function voucherList(db, user, f = {}) {
+  const rc = can(user, E.receipt, 'r'), pc = can(user, E.payment, 'r');
+  if (!rc && !pc) deny();
+  const from = isoDay(f.from), to = isoDay(f.to); if (from && to && from > to) bad('«Từ ngày» sau «Đến ngày»');
+  const type = ['thu', 'chi'].includes(f.type) ? f.type : '', st = ['hop_le', 'huy'].includes(f.status) ? f.status : '';
+  const p = [];
+  const w = a => {
+    let s = uf(f, p) + mine(user, 'c');
+    if (from) { p.push(from); s += ` AND ${a}.voucher_date >= $${p.length}`; }
+    if (to) { p.push(to); s += ` AND ${a}.voucher_date <= $${p.length}`; }
+    if (st) { p.push(st); s += ` AND ${a}.status = $${p.length}`; }
+    const q = String(f.q || '').trim().slice(0, 100);
+    if (q) { p.push(`%${q}%`); const n = p.length; s += ` AND (${a}.voucher_no ILIKE $${n} OR c.number ILIKE $${n} OR u.code ILIKE $${n} OR k.full_name ILIKE $${n} OR coalesce(${a}.content, '') ILIKE $${n})`; }
+    return s;
+  };
+  const J = a => `FROM ${a === 'r' ? 'kd_receipt' : 'kd_payment'} ${a} JOIN kd_contract c ON c.id = ${a}.contract_id JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id JOIN kd_project pr ON pr.id = u.project_id`;
+  const parts = [];
+  if (rc && type !== 'chi') parts.push(`SELECT 'receipt' ent, 'thu' typ, r.id, r.voucher_no, r.voucher_date, r.amount, r.content, r.src, r.status, r.void_reason, r.grp grp, i.name item, NULL receiver,
+      c.id contract_id, c.number, c.kind ct_kind, u.code unit, k.full_name customer, pr.code project ${J('r')} LEFT JOIN kd_installment i ON i.id = r.installment_id WHERE true ${w('r')}`);
+  if (pc && type !== 'thu') parts.push(`SELECT 'payment' ent, 'chi' typ, t.id, t.voucher_no, t.voucher_date, t.amount, t.content, t.src, t.status, t.void_reason, t.kind grp, CASE WHEN l.id IS NULL THEN NULL WHEN l.kind = 'lai' THEN 'Lãi kỳ ' || l.seq ELSE 'Trả gốc' END item, t.receiver,
+      c.id contract_id, c.number, c.kind ct_kind, u.code unit, k.full_name customer, pr.code project ${J('t')} LEFT JOIN kd_loan_pay l ON l.id = t.loan_pay_id WHERE true ${w('t')}`);
+  if (!parts.length) return { rows: [], can: { thu: rc && can(user, E.receipt, 'c'), chi: pc && can(user, E.payment, 'c') }, see: { thu: rc, chi: pc } };
+  const lim = 3000, list = await db.q(`${parts.join(' UNION ALL ')} ORDER BY voucher_date DESC, ent, id DESC LIMIT ${lim + 1}`, p);
+  const opt = (e, k) => Object.fromEntries((E[e].fields.find(x => x.k === k)?.o || []).map(o => [o[0], o[1]])), RG = opt('receipt', 'grp'), PK = opt('payment', 'kind'), CK = opt('contract', 'kind');
+  const SRC = { bravo: 'Bravo', misa: 'MISA', thu_cong: 'Phòng KD nhập' };
+  const rows = list.slice(0, lim).map(r => {
+    const ok = r.status === 'hop_le', amt = +r.amount || 0;
+    return { ent: r.ent, id: r.id, type_l: r.typ === 'thu' ? 'Phiếu thu' : 'Phiếu chi', typ: r.typ, voucher_no: r.voucher_no, voucher_date: r.voucher_date, contract_id: r.contract_id, number: r.number, ct_kind_l: CK[r.ct_kind] || r.ct_kind,
+      unit: r.unit, customer: r.customer, project: r.project, grp_l: (r.typ === 'thu' ? RG[r.grp] : PK[r.grp]) || '', item: r.item || '', receiver: r.receiver || '',
+      thu: r.typ === 'thu' && ok ? amt : null, chi: r.typ === 'chi' && ok ? amt : null, amount: amt, ok, content: r.content || '', src_l: SRC[r.src] || r.src || '',
+      status_l: ok ? 'Hợp lệ' : 'Đã hủy' + (r.void_reason ? ': ' + r.void_reason : '') };
+  });
+  return { rows, more: list.length > lim, can: { thu: rc && can(user, E.receipt, 'c'), chi: pc && can(user, E.payment, 'c') }, see: { thu: rc, chi: pc } };
+}
+
 // ======================= THEO DÕI HỢP ĐỒNG THUÊ / MUA BÁN / HOÀN THIỆN (CN-07) =======================
 // công nợ khách phải trả công ty theo lịch thu (kd_installment) + phiếu thu hợp lệ (kd_receipt); HĐ vay xem loanTrack
 const CT_KIND = { thue: ['thue', 'thue_mua'], hdmb: ['hdmb'], hoan_thien: ['hoan_thien'] };
@@ -1014,4 +1051,4 @@ async function monthly(db, period, projectId) {
   };
 }
 
-module.exports = { debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, contractTrack, setLateRate, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
+module.exports = { debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, voucherList, contractTrack, setLateRate, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };

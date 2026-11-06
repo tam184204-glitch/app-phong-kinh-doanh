@@ -667,7 +667,7 @@ def('payment', {
     { k: 'cust_name', l: 'Họ tên khách hàng', t: 'text', help: 'Tự lấy theo hợp đồng' },
     { k: 'project_name', l: 'Dự án', t: 'text', help: 'Tự lấy theo hợp đồng' },
     { k: 'ct_kind', l: 'Loại hợp đồng', t: 'sel', o: HD_KIND, help: 'Tự lấy theo hợp đồng' },
-    { k: 'kind', l: 'Nhóm chi', t: 'sel', req: 1, sec: '2. Nội dung chi', o: [['tra_lai', 'Trả lãi HĐ vay', 'b'], ['tra_goc', 'Trả gốc HĐ vay', 'v'], ['hoan_tien', 'Hoàn tiền khách', 'a'], ['hoan_coc', 'Hoàn tiền đặt cọc HĐ thuê', 't'], ['khac', 'Khác', 's']] },
+    { k: 'kind', l: 'Nhóm chi', t: 'sel', req: 1, sec: '2. Nội dung chi', o: [['tra_lai', 'Trả lãi HĐ vay', 'b'], ['tra_goc', 'Trả gốc HĐ vay', 'v'], ['hoan_tien', 'Hoàn tiền khách', 'a'], ['hoan_coc', 'Hoàn tiền đặt cọc HĐ thuê', 't'], ['thanh_ly', 'Thanh lý HĐMB', 'r'], ['khac', 'Khác', 's']] },
     { k: 'loan_pay_id', l: 'Đợt chi (kỳ trả HĐ vay)', t: 'ref', ref: 'loan_pay', dep: 'contract_id', show: { kind: ['tra_lai', 'tra_goc'] }, help: 'Chọn kỳ → tự điền số tiền còn phải trả. Để trống = tự trừ vào kỳ chưa trả sớm nhất; trả nhiều hơn 1 kỳ thì phần dư sang kỳ sau' },
     { k: 'refund_id', l: 'Đề xuất hoàn tiền', t: 'ref', ref: 'refund', dep: 'contract_id', filter: 'da_duyet', show: { kind: ['hoan_tien'] }, help: 'Không bắt buộc. Chọn đề xuất đã duyệt thì đề xuất tự chuyển «Đã thực hiện»' },
     money('amount', 'Số tiền', { req: 1 }),
@@ -999,7 +999,7 @@ const MENU = [
   ['03', 'Khách hàng tiềm năng', 'fa-users', [['e:contact_log']]],   // hồ sơ khách tự sinh từ kênh liên hệ (Website, Messenger, Zalo, Hotline, trực tiếp)
   ['04', 'Giao dịch bán hàng', 'fa-handshake-angle', [['e:sale_notice'], ['e:reservation'], ['e:noxh_check'], ['signing', 'Lịch ký hợp đồng'], ['payouts', 'Theo dõi thanh lý & chi trả', 'GD-04']]],
   ['05', 'Hồ sơ & hợp đồng', 'fa-file-contract', [['e:contract?group=can_ho', 'Hợp đồng căn hộ chung cư'], ['e:contract?group=lien_ke', 'Hợp đồng nhà liền kề'], ['loans', 'Theo dõi hợp đồng 3 bên', 'HD-05'], ['e:contract_change'], ['vault', 'Lưu trữ hồ sơ pháp lý']]],
-  ['06', 'Công nợ & kế hoạch thu', 'fa-sack-dollar', [['e:receipt'], ['e:payment'], ['loantrack', 'Theo dõi hợp đồng', 'CN-07'], ['debtsum', 'Bảng tổng hợp công nợ', 'CN-08'], ['unitstatus', 'Tình trạng căn hộ & công nợ', 'CN-06'], ['ledger', 'Sổ công nợ căn hộ'], ['finishpay', 'Tiến độ thu tiền hoàn thiện', 'CN-05'], ['e:installment'], ['e:collect_plan'], ['e:debt_call'], ['e:refund']]],
+  ['06', 'Công nợ & kế hoạch thu', 'fa-sack-dollar', [['vouchers', 'Phiếu thu – Phiếu chi', 'CN-09'], ['loantrack', 'Theo dõi hợp đồng', 'CN-07'], ['debtsum', 'Bảng tổng hợp công nợ', 'CN-08'], ['unitstatus', 'Tình trạng căn hộ & công nợ', 'CN-06'], ['ledger', 'Sổ công nợ căn hộ'], ['finishpay', 'Tiến độ thu tiền hoàn thiện', 'CN-05'], ['e:installment'], ['e:collect_plan'], ['e:debt_call'], ['e:refund']]],
   ['07', 'Bàn giao căn hộ', 'fa-key', [['ready', 'Căn đủ điều kiện'], ['e:handover'], ['e:defect']]],
   ['08', 'Cấp sổ hồng', 'fa-book', [['e:pinkbook']]],
   ['09', 'Chăm sóc khách hàng', 'fa-headset', [['e:ticket'], ['e:notice']]],

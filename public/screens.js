@@ -131,12 +131,13 @@ async function route() {
   const [, kind, name] = p.split('/');
   const main = $('#main'); if (!main) return;
   main.onclick = main.onchange = main.onkeydown = null; main.innerHTML = '<div class="empty">Đang tải…</div>';
-  const navId = kind === 'e' ? ({ project: 'projects', building: 'projects', unit: 'products', cancel_req: 'payouts' }[name] || 'e:' + name + (params.group ? '?group=' + params.group : '')) : name === 'unit360' || name === 'cust360' ? 'lookup' : name === 'pricesheet' ? 'e:price_policy' : name;
+  const navId = kind === 'e' ? ({ project: 'projects', building: 'projects', unit: 'products', cancel_req: 'payouts', receipt: 'vouchers', payment: 'vouchers' }[name] || 'e:' + name + (params.group ? '?group=' + params.group : '')) : name === 'unit360' || name === 'cust360' ? 'lookup' : name === 'pricesheet' ? 'e:price_policy' : name;
   $$('[data-nav]').forEach(a => a.classList.toggle('on', a.dataset.nav === navId));
   const on = $(`[data-nav="${navId}"]`); $$('.mod').forEach(m => m.classList.remove('cur'));
   if (on) { on.closest('.mod').classList.add('open', 'cur'); }
   try {
     if (kind === 'e' && name === 'noxh_check' && M.piiRoles.includes(M.me.role)) await V.mau4(main, params);
+    else if (kind === 'e' && (name === 'receipt' || name === 'payment')) await V.vouchers(main, { ...params, tab: name });   // gộp 1 màn Phiếu thu – Phiếu chi (06/11/2026)
     else if (kind === 'e' && name === 'cancel_req') await V.payouts(main, params);   // bỏ màn «Hủy giao dịch – đổi căn» 28/10/2026 — đề nghị hủy / đổi căn xem ở Theo dõi thanh lý & chi trả   // Hồ sơ mua NOXH hiện theo bảng tổng hợp Mẫu 4
     else if (kind === 'e' && M.ents[name]) await listView(main, name, params);
     else if (kind === 'v' && V[name]) await V[name](main, params);
@@ -1355,6 +1356,60 @@ const loanView = async main => {
   ST.reload = async () => { if ($('#ltT', main)) await load(); };
   await load();
 };
+// ===== Phiếu thu – Phiếu chi: 1 màn (06/11/2026) — tab Tất cả (thu + chi chung 1 bảng) · Phiếu thu · Phiếu chi (danh sách đầy đủ: lọc, nhập tệp, hủy phiếu…)
+V.vouchers = async (main, params = {}) => {
+  const s = ST.vch ||= { tab: '', q: '', type: '', status: '', from: '', to: '' };
+  if (params.tab) s.tab = params.tab;
+  const E1 = M.ents.receipt, E2 = M.ents.payment, see = { receipt: E1?.perm.r, payment: E2?.perm.r };
+  if (s.tab && !see[s.tab]) s.tab = '';
+  const TABS = [['', 'Tất cả', 'fa-layer-group'], ...(see.receipt ? [['receipt', 'Phiếu thu', 'fa-arrow-down']] : []), ...(see.payment ? [['payment', 'Phiếu chi', 'fa-arrow-up']] : [])];
+  const bar = `<div class="card mb"><div class="tabs" id="vcTabs" style="border-bottom:0">${TABS.map(([k, l, ic]) => `<button data-vt="${k}" class="${s.tab === k ? 'on' : ''}">${ico(ic)} ${l}</button>`).join('')}</div></div>`;
+  const goTab = k => { s.tab = k; if (location.hash.startsWith('#/e/')) location.hash = '#/v/vouchers'; else V.vouchers(main); };
+  if (s.tab) {   // tab Phiếu thu / Phiếu chi = danh sách cũ, đầy đủ chức năng
+    main.innerHTML = `<div class="page">${bar}<div id="vcBody"></div></div>`;
+    $('#vcTabs', main).onclick = e => { const b = e.target.closest('[data-vt]'); if (b) goTab(b.dataset.vt); };
+    return listView($('#vcBody', main), s.tab, params);
+  }
+  const f = filt();
+  const cols = [['type_l', 'Loại'], ['voucher_no', 'Số phiếu'], ['voucher_date', 'Ngày', 'date'], ['number', 'Mã hợp đồng'], ['unit', 'Mã căn'], ['customer', 'Khách hàng'], ['ct_kind_l', 'Loại HĐ'],
+    ['grp_l', 'Nhóm thu / chi'], ['item', 'Đợt thu / kỳ trả'], ['thu', 'Số tiền thu', 'money'], ['chi', 'Số tiền chi', 'money'], ['content', 'Nội dung'], ['receiver', 'Người nhận'], ['src_l', 'Nguồn'], ['status_l', 'Trạng thái']];
+  let d = { rows: [] };
+  const draw = () => {
+    const sum = k => d.rows.reduce((t, r) => t + (+r[k] || 0), 0), n = t => d.rows.filter(r => r.typ === t).length, nh = d.rows.filter(r => !r.ok).length;
+    const tile = (l, v, sub, cls) => `<div class="card kpi" style="cursor:default"><div class="l">${l}</div><div class="v ${cls || ''}" style="font-size:18px">${v}</div><div class="s">${sub || '&nbsp;'}</div></div>`;
+    $('#vcK', main).innerHTML = tile('Tổng thu', fm(sum('thu')), `${n('thu')} phiếu thu`, 'pos') + tile('Tổng chi', fm(sum('chi')), `${n('chi')} phiếu chi`, 'neg')
+      + tile('Thu − chi', fm(sum('thu') - sum('chi')), 'chỉ tính phiếu hợp lệ') + tile('Phiếu đã hủy', String(nh), 'không cộng vào tổng');
+    $('#vcN', main).textContent = `${d.rows.length} phiếu${d.more ? ' (hiện 3.000 phiếu mới nhất — lọc ngày để xem thêm)' : ''}`;
+    $('#vcT', main).innerHTML = rowsTable(cols, d.rows, ['thu', 'chi'], { no: 'STT' });
+    $$('#vcT tbody tr', main).forEach(tr => { const r = d.rows[+tr.dataset.i]; if (r && !r.ok) tr.classList.add('muted'); });
+  };
+  const load = async () => { d = await api('GET', '/api/vouchers?' + qsOf({ project: f.project, building: f.building, q: s.q, type: s.type, status: s.status, from: s.from, to: s.to })); draw(); };
+  const sel = (id, v, o) => `<select id="${id}">${o.map(([k, l]) => `<option value="${k}" ${v === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+  const newBtns = `${E1?.perm.c ? `<button class="btn" data-vn="receipt">${ico('fa-plus')} Phiếu thu</button>` : ''}${E2?.perm.c ? `<button class="btn" data-vn="payment">${ico('fa-plus')} Phiếu chi</button>` : ''}`;
+  main.innerHTML = `<div class="page">${head('06', 'Phiếu thu – Phiếu chi', 'fa-file-invoice-dollar', `${newBtns}${M.exportRoles.includes(M.me.role) ? `<button class="btn" id="vcX">${ico('fa-file-excel')} Xuất Excel</button>` : ''}`, 'CN-09')}${bar}${filterBar(f, { period: false })}
+    <div class="grid g4 mb" id="vcK"></div>
+    <div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="vcQ" placeholder="Tìm số phiếu, mã HĐ, mã căn, khách hàng, nội dung…" value="${esc(s.q)}"></div>
+      ${sel('vcTy', s.type, [['', 'Thu và chi'], ['thu', 'Chỉ phiếu thu'], ['chi', 'Chỉ phiếu chi']])}${sel('vcSt', s.status, [['', 'Mọi trạng thái'], ['hop_le', 'Hợp lệ'], ['huy', 'Đã hủy']])}
+      <span id="vcDates" style="display:contents"><span class="small muted">Từ ngày</span>${segDate('vcFr', s.from)}<span class="small muted">Đến ngày</span>${segDate('vcTo', s.to)}</span>
+      <span class="grow"></span><span class="small muted" id="vcN"></span></div>
+      <div id="vcT"><div class="empty">Đang tải…</div></div>
+      <div class="small muted mt">Phòng KD tự ghi để theo dõi tiến độ thu / chi theo hợp đồng (không phải chứng từ kế toán). Phiếu thu = tiền khách nộp (HĐ vay: tiền gốc khách chuyển); phiếu chi = tiền công ty trả khách (lãi / gốc HĐ vay, hoàn tiền, hoàn cọc). Tổng chỉ cộng phiếu hợp lệ. Bấm 1 dòng để xem / hủy phiếu; nhập tệp Excel / MISA ở tab Phiếu thu.</div></div></div>`;
+  wireFilter(main, f, load); wireSegDate(main);
+  $('#vcDates', main).addEventListener('sdchange', run(async e => { const v = segVal(e.target); if (v === null) return; if (e.target.id === 'vcFr') s.from = v; else s.to = v; await load(); }));
+  $('#vcQ', main).oninput = debounce(async e => { s.q = e.target.value; await load().catch(er => toast(er.message, true)); }, 300);
+  $('#vcTy', main).onchange = run(async e => { s.type = e.target.value; await load(); });
+  $('#vcSt', main).onchange = run(async e => { s.status = e.target.value; await load(); });
+  $('#vcX', main) && ($('#vcX', main).onclick = () => download('/api/export-rows', { title: 'PHIẾU THU – PHIẾU CHI', cols, rows: d.rows, sum: ['thu', 'chi'], file: 'Phieu_thu_phieu_chi',
+    note: `Đơn vị tiền: đồng${s.from || s.to ? ` • Ngày ${s.from ? 'từ ' + dmy(s.from) + ' ' : ''}${s.to ? 'đến ' + dmy(s.to) : ''}` : ''} • Tổng chỉ cộng phiếu hợp lệ` }));
+  main.onclick = run(async e => {
+    const t = e.target.closest('[data-vt]'); if (t) return goTab(t.dataset.vt);
+    const nb = e.target.closest('[data-vn]'); if (nb) return openForm(nb.dataset.vn, { preset: { voucher_date: today() }, onSaved: async () => { await load(); } });
+    const tr = e.target.closest('#vcT tr[data-i]'); if (tr) { const r = d.rows[+tr.dataset.i]; if (r) openDetail(r.ent, r.id); }
+  });
+  ST.reload = async () => { if ($('#vcT', main)) await load(); };
+  await load();
+};
+
 // HĐ thuê / mua bán / hoàn thiện: khách phải trả công ty theo lịch thu, thực thu theo phiếu thu hợp lệ
 const ctTrack = async (main, kind) => {
   const f = filt(), s = (ST.cttrack ||= {})[kind] ||= { state: '', q: '', from: '', to: '' }, rent = kind === 'thue', hdmb = kind === 'hdmb', KL = Object.fromEntries(CT_KINDS.map(x => [x[0], x[1]]));
