@@ -975,6 +975,7 @@ H.contract = {
     else { r.liquidated_on = null; r.liquidate_reason = null; r.liquidate_note = null; }
     if (r.loan_status === 'co_vay' && !String(r.loan_bank || '').trim()) bad('Có vay: ghi ngân hàng cho vay');
     if (r.loan_status !== 'co_vay') { r.loan_bank = null; r.loan_doc3 = null; }
+    if (r.late_rate != null && r.late_rate !== '' && !(+r.late_rate >= 0 && +r.late_rate <= 100)) bad('Lãi suất quá hạn phải từ 0 đến 100 (%/năm)', { fields: ['late_rate'] });
     if (['hdmb', 'thue_mua'].includes(r.kind)) { if (+r.maint_fee > 0 && r.maint_dot == null) r.maint_dot = 3; if (r.maint_dot != null && !(+r.maint_dot >= 1)) bad('Đợt thu phí bảo trì phải từ 1 trở lên', { fields: ['maint_dot'] }); } else r.maint_dot = null;
     // bảng «Lần thanh toán» trên form: kiểm tra khớp Tổng tiền (ghi thành lịch thu ở afterSave)
     // không lưu vào cột (lịch thu nằm ở kd_installment) — chuyển sang afterSave qua ctx

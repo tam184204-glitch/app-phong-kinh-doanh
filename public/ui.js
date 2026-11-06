@@ -433,7 +433,7 @@ const HD_LAYOUT = [
     { t: 'Bên bán nhà ở', rows: [['s_name'], ['s_addr'], ['s_phone', 's_tax'], ['s_bank_acc'], ['s_bank_name'], ['s_rep'], ['s_title'], ['s_poa'], ['owner_id'], ['commission_amt', 'commission_pct'], ['common_area_amt', 'all_signed']] }] },
   { t: 'Thông tin chi tiết', cols: 4, rows: [['number', 'contract_on'], ['ptype', 'building_id', 'kind', 'nature'], ['base_price', 'area_tt', 'area_floor'], ['area_land', 'land_price', 'land_amt'], ['area_build', 'build_price', 'build_amt'],
     ['pretax', 'vat_pct', 'vat_amt', 'after_tax'], ['finish_value', 'maint_fee', 'corner_pct', 'corner_amt'],
-    ['unit_total', 'discount'],   // giảm giá cạnh tổng tiền: HĐMB ô Tổng tiền (value) được đưa về cạnh ô này (hdPair.view); HĐ thuê: Tổng tiền (giá trị căn hộ) − giảm giá
+    ['unit_total', 'discount', 'late_rate'],   // late_rate: lãi suất quá hạn HĐMB (sau ô Tổng tiền) · giảm giá cạnh tổng tiền: HĐMB ô Tổng tiền (value) được đưa về cạnh ô này (hdPair.view); HĐ thuê: Tổng tiền (giá trị căn hộ) − giảm giá
     ['loan_recv_on', 'loan_tranches', 'int_mode', 'loan_rate'],   // HĐ vay
     ['eff_on', 'exp_on', 'term_months', 'pay_times'],   // HĐ thuê (BRAVO) · HĐ vay: bắt đầu tính lãi / đáo hạn / thời hạn vay
     ['int_period', 'principal_method', 'int_note'], ['link_ids'],

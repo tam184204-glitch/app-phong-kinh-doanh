@@ -1267,6 +1267,11 @@ table.t tr.vch > td { padding: 0; background: #fbfcfe; white-space: normal; curs
 .ad-step-t { font-weight: 600; }
 .ad-step-s { font-weight: 600; }
 .ad-btn { font-weight: 600; }
+/* lãi chậm trả tách từng phần tiền */
+.ad-seg { line-height: 1.45; }
+.ad-seg + .ad-seg { margin-top: 6px; }
+.ad-seg small { display: block; font-size: 12px; color: var(--ad-text3); }
+.ad-seg-sum { border-top: 1px dashed var(--ad-border); padding-top: 6px; font-weight: 600; }
 @media (max-width: 1100px) { .ad-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 24px; } .ad-stat:nth-child(3) { border-left: 0; } .ad-desc th { width: auto; } }
 @media (max-width: 640px) { .ad-stats { grid-template-columns: 1fr; } .ad-stat { border-left: 0; } .ad-desc, .ad-desc tbody, .ad-desc tr, .ad-desc th, .ad-desc td { display: block; width: auto; border-right: 0; } }
 @media print { .ad-head-extra, .ad-back, .ad-collapse, .ad-crumb { display: none; } .ad-card { box-shadow: none; } }

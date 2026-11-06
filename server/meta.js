@@ -507,7 +507,7 @@ def('contract', {
     money('maint_fee', 'Phí bảo trì', { show: SALE_ONLY }),
     // bỏ khỏi form 03/11/2026: phí bảo trì thu ở dòng riêng cố định trong Lần thanh toán (có hạn riêng); chỉ còn dùng cho lịch cũ cộng phí bảo trì vào đợt (mặc định đợt 3)
     { k: 'maint_dot', l: 'Đợt thu phí bảo trì', t: 'int', def: 3, hide: 1, show: { kind: ['hdmb', 'thue_mua'] } },
-    { k: 'late_rate', l: 'Lãi suất quá hạn (%/năm)', t: 'num', noForm: 1 },   // điền ở Theo dõi hợp đồng › HĐ mua bán; lãi quá hạn = còn lại × số ngày quá hạn × lãi suất / 365
+    { k: 'late_rate', l: 'Lãi suất quá hạn (%/năm)', t: 'num', show: { kind: ['hdmb'] }, help: 'Lãi chậm thanh toán theo hợp đồng — dùng tính lãi quá hạn ở Theo dõi công nợ. Sửa được cả khi hợp đồng đã ký' },   // điền ở Theo dõi hợp đồng › HĐ mua bán; lãi quá hạn = còn lại × số ngày quá hạn × lãi suất / 365
     { k: 'corner_pct', l: 'Hệ số góc %', t: 'num', show: SALE_ONLY },
     money('corner_amt', 'Tiền hệ số góc', { show: SALE_ONLY }),
     { k: 'eff_on', l: 'Ngày bắt đầu thuê', t: 'date', show: RENT_VAY },   // HĐ vay: ngày bắt đầu tính lãi (bắt buộc với HĐ thuê — kiểm ở biz)
@@ -558,7 +558,7 @@ def('contract', {
     owner('Nhân viên KD'),
     { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'du_thao', o: [['du_thao', 'Dự thảo', 's'], ['cho_duyet', 'Đang rà soát', 'a'], ['cho_ky', 'Chờ ký', 'b'], ['tu_choi', 'Trả lại dự thảo', 'r'], ['da_ky', 'Đã ký', 'g'], ['thanh_ly', 'Đã thanh lý', 't'], ['huy', 'Đã hủy', 's']] },
   ], list: ['number', 'contract_on', 'kind', 'unit_id', 'customer_id', 'value', 'plan_sign', 'sign_status', 'signed_on', 'status'],
-  lock: ['da_ky', 'thanh_ly', 'huy'], lockKeep: ['sign_status', 'sign_place', 'plan_sign', 'owner_id', 'loan_status', 'loan_bank', 'loan_doc3', 'liquidated_on', 'liquidate_reason', 'liquidate_note'],
+  lock: ['da_ky', 'thanh_ly', 'huy'], lockKeep: ['sign_status', 'sign_place', 'plan_sign', 'owner_id', 'late_rate', 'loan_status', 'loan_bank', 'loan_doc3', 'liquidated_on', 'liquidate_reason', 'liquidate_note'],
   // đã trình duyệt / chờ ký: nhân viên chỉ sửa được lần thanh toán (+ lockKeep); quản lý vẫn sửa được
   softLock: { st: ['cho_duyet', 'cho_ky'], keep: ['sign_status', 'sign_place', 'plan_sign', 'new_schedule', 'loan_status', 'loan_bank', 'loan_doc3'], boss: MGR },
   flow: { field: 'status', submit: ['du_thao', 'tu_choi'], approve: { ok: 'da_ky' }, submitLabel: 'Gửi trình duyệt' },

@@ -593,13 +593,25 @@ function instDebt(inst, rcp, c, t, rate) {
   const out = I.map(i => {
     const rem = Math.max(0, i.rem), over = !!i.due_on && i.due_on < t, days = rem > 0 && over ? dayDiff(i.due_on, t) : 0;
     if (over) cum += rem;
-    const segs = !over ? [] : [...i.pcs.filter(p => p.on > i.due_on).map(p => ({ amt: p.amt, to: p.on, paid: true })), ...(rem > 0 ? [{ amt: rem, to: t, paid: false }] : [])]
-      .map(x => ({ ...x, days: dayDiff(i.due_on, x.to) })).filter(x => x.days > 0);
+    // lãi chậm trả theo từng khoảng thời gian (06/11/2026, phòng KD): từ hạn đợt, số tiền quá hạn = phần còn nợ của đợt; mỗi lần khách trả
+    // thì số tiền quá hạn giảm từ ngày trả. Mỗi khoảng: số tiền quá hạn × số ngày × lãi suất (%/năm) / 365; lãi đợt = tổng các khoảng
+    const segs = [];
+    if (over) {
+      const P = [...i.pcs].sort((a, b) => String(a.on).localeCompare(String(b.on)));
+      let bal = i.amount - P.filter(p => p.on <= i.due_on).reduce((a, p) => a + p.amt, 0), from = i.due_on;
+      for (const p of P.filter(p => p.on > i.due_on)) {
+        if (bal > 0 && p.on > from) segs.push({ from, to: p.on, amt: bal, paid: true, pay: 0 });
+        if (segs.length && segs[segs.length - 1].to === p.on) segs[segs.length - 1].pay += p.amt;
+        bal -= p.amt; if (p.on > from) from = p.on;
+      }
+      if (bal > 0 && t > from) segs.push({ from, to: t, amt: bal, paid: false });
+      segs.forEach(x => { x.days = dayDiff(x.from, x.to); x.late = rate ? Math.round(x.amt * x.days * rate / 100 / 365) : 0; });
+    }
     const st = rem <= 0 ? 'da_thu' : over ? 'qua_han' : i.due_on === t ? 'den_han' : i.due_on && i.due_on <= t7 ? 'sap_den_han' : i.paid > 0 ? 'mot_phan' : 'chua_den_han';
-    const n = i.is_maint ? null : ++no, paidLate = segs.filter(x => x.paid).reduce((m, x) => Math.max(m, x.days), 0);
+    const n = i.is_maint ? null : ++no, lastOn = i.pcs.reduce((m, p) => (!m || p.on > m ? p.on : m), null), paidLate = rem <= 0 && lastOn && lastOn > i.due_on ? dayDiff(i.due_on, lastOn) : 0;
     return { id: i.id, no: n, lbl: n ? 'Đợt ' + n : 'Phí bảo trì', name: i.name, due_on: i.due_on, is_maint: i.is_maint, amount: i.amount, paid: i.paid, rem, days: days || null,
-      od: over && cum > 0 ? cum : null, segs, rate: rate || null, late: rate && segs.length ? Math.round(segs.reduce((a, x) => a + x.amt * x.days, 0) * rate / 100 / 365) : 0, st, st_l: B.PAY_ST[st],
-      paid_on: i.pcs.length ? i.pcs[i.pcs.length - 1].on : null, late_paid_days: paidLate || null, pcs: i.pcs, cut: i.cut || null, orig: i.orig || null, virt: !!i.virt, in_no: i.in_no || null };
+      od: over && cum > 0 ? cum : null, segs, rate: rate || null, late: segs.reduce((a, x) => a + x.late, 0), st, st_l: B.PAY_ST[st],
+      paid_on: lastOn, late_paid_days: paidLate || null, pcs: i.pcs, cut: i.cut || null, orig: i.orig || null, virt: !!i.virt, in_no: i.in_no || null };
   });
   out.extra = extra;
   return out;
