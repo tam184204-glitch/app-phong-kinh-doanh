@@ -1607,7 +1607,7 @@ async function route() {
   const [, kind, name] = p.split('/');
   const main = $('#main'); if (!main) return;
   main.onclick = main.onchange = main.onkeydown = null; main.innerHTML = '<div class="empty">Đang tải…</div>';
-  const navId = kind === 'e' ? ({ project: 'projects', building: 'projects', unit: 'products', cancel_req: 'payouts', receipt: 'vouchers', payment: 'vouchers' }[name] || 'e:' + name + (params.group ? '?group=' + params.group : '')) : name === 'unit360' || name === 'cust360' ? 'lookup' : name === 'pricesheet' ? 'e:price_policy' : name === 'debtsum' ? 'loantrack' : name;
+  const navId = kind === 'e' ? ({ project: 'projects', building: 'projects', unit: 'products', cancel_req: 'payouts', receipt: 'vouchers', payment: 'vouchers' }[name] || 'e:' + name + (params.group ? '?group=' + params.group : '')) : name === 'unit360' || name === 'cust360' ? 'lookup' : name === 'pricesheet' ? 'e:price_policy' : name === 'debtsum' || name === 'ctdebt' ? 'loantrack' : name;
   $$('[data-nav]').forEach(a => a.classList.toggle('on', a.dataset.nav === navId));
   const on = $(`[data-nav="${navId}"]`); $$('.mod').forEach(m => m.classList.remove('cur'));
   if (on) { on.closest('.mod').classList.add('open', 'cur'); }
@@ -2978,6 +2978,73 @@ V.vouchers = async (main, params = {}) => {
   await load();
 };
 
+// ===== Công nợ hợp đồng — màn riêng khi bấm 1 hợp đồng ở Theo dõi công nợ (06/11/2026): to, rõ, dễ hiểu =====
+// thông tin HĐ · ô tổng · tiến độ từng đợt (tình trạng viết thành câu) · lịch sử thu – chi (mỗi phiếu ghi rõ đã trừ vào đợt nào) · cách tính
+V.ctdebt = async (main, params = {}) => {
+  const id = +params.id; if (!id) { main.innerHTML = '<div class="page"><div class="errbar">Thiếu mã hợp đồng</div></div>'; return; }
+  let to = params.to || '';
+  const back = () => history.length > 1 ? history.back() : (location.hash = '#/v/loantrack');
+  const dd = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5);
+  const draw = async () => {
+    const g = await api('GET', `/api/contract-track/${id}/vouchers${to ? '?to=' + to : ''}`), c = g.contract, I = g.inst || [], T = g.asof;
+    const sum = k => I.reduce((t, x) => t + (+x[k] || 0), 0), total = sum('amount'), paid = sum('paid'), rem = sum('rem'), late = sum('late'), pct = total ? Math.min(100, Math.round(paid / total * 1000) / 10) : 0;
+    const overRows = I.filter(x => x.rem > 0 && x.due_on < T), overdue = overRows.reduce((t, x) => t + x.rem, 0), overDays = overRows.length ? dd(overRows[0].due_on, T) : 0;
+    const next = I.find(x => x.rem > 0 && x.due_on >= T), vay = c.kind === 'vay';
+    const stTxt = x => {   // tình trạng từng đợt viết thành câu
+      if (x.rem <= 0) return [x.late_paid_days ? `Đã thu đủ ngày ${dmy(x.paid_on)} — trễ ${x.late_paid_days} ngày` : `Đã thu đủ${x.paid_on ? ' ngày ' + dmy(x.paid_on) : ''}`, x.late_paid_days ? 'a' : 'g'];
+      if (x.due_on < T) return [`Quá hạn ${dd(x.due_on, T)} ngày — còn nợ ${fm(x.rem)}${x.paid > 0 ? ` (đã thu ${fm(x.paid)})` : ''}`, 'r'];
+      if (x.due_on === T) return [`Đến hạn hôm nay — cần thu ${fm(x.rem)}`, 'a'];
+      return [`Còn ${dd(T, x.due_on)} ngày nữa đến hạn${x.paid > 0 ? ` · đã thu trước ${fm(x.paid)}` : ''}`, x.paid > 0 ? 'b' : 's'];
+    };
+    const tile = (l, v, sub, cls = '') => `<div class="card kpi cd-tile ${cls}"><div class="l">${l}</div><div class="v">${v}</div><div class="s">${sub || '&nbsp;'}</div></div>`;
+    const info = (l, v) => `<div><span>${l}</span><b>${v || '—'}</b></div>`;
+    const acts = `<button class="btn ghost" id="cdBack">${ico('fa-arrow-left')} Quay lại</button>${g.can_thu ? `<button class="btn" data-vnew="receipt">${ico('fa-plus')} Phiếu thu</button>` : ''}${g.can_chi ? `<button class="btn" data-vnew="payment">${ico('fa-plus')} Phiếu chi</button>` : ''}<button class="btn" id="cdOpen">${ico('fa-file-contract')} Mở hợp đồng</button><button class="btn" onclick="print()">${ico('fa-print')} In</button>`;
+    const allV = [...g.thu.map(x => ({ ...x, typ: 'thu' })), ...g.chi.map(x => ({ ...x, typ: 'chi' }))].sort((a, b) => String(a.on).localeCompare(String(b.on)) || (a.typ === b.typ ? a.id - b.id : a.typ === 'thu' ? -1 : 1));
+    main.innerHTML = `<div class="page cd">${head('06', `Công nợ hợp đồng ${esc(c.number || '')}`, 'fa-file-invoice-dollar', acts)}
+      <div class="card mb cd-info">${info('Khách hàng', `${esc(c.customer || '')}${c.cust_code ? ` <small>${esc(c.cust_code)}</small>` : ''}`)}${info('Số điện thoại', esc(c.phone || ''))}${info('Căn hộ', esc(c.unit || ''))}${info('Dự án', esc(c.project || ''))}
+        ${info('Loại hợp đồng', esc(c.kind_l))}${info('Ngày ký', dmy(c.signed_on))}${info('Trạng thái', esc(c.status_l))}${info('Người phụ trách', esc(c.owner || ''))}
+        ${c.after_tax != null ? info('Giá trị căn hộ (sau thuế)', fm(c.after_tax + c.finish_value)) : info('Giá trị hợp đồng', fm(c.value))}${c.maint_fee ? info('Phí bảo trì', fm(c.maint_fee)) : ''}${c.deposit != null ? info('Tiền đặt cọc', fm(c.deposit)) : ''}${!vay ? info('Lãi suất chậm trả', g.late_rate != null ? fnum(g.late_rate) + ' %/năm' : '<span class="muted">chưa điền</span>') : ''}</div>
+      <div class="card mb cd-asof"><span>${ico('fa-calendar-day')} Số liệu tính đến ngày</span>${segDate('cdTo', to || T)}<span class="muted small">Đổi ngày để xem công nợ tại một thời điểm (ngày trong tương lai: tính như khách chưa trả thêm).</span></div>
+      ${vay ? `<div class="card mb"><div class="bd">HĐ vay: xem lịch trả lãi &amp; gốc ở <a href="#/v/loantrack">Theo dõi công nợ › HĐ vay</a>. Dưới đây là phiếu thu / phiếu chi của hợp đồng.</div></div>` : `
+      <div class="grid g4 mb">${tile('Tổng phải thu theo hợp đồng', fm(total), `${I.length} đợt thu${c.maint_fee ? ` · gồm phí bảo trì ${fm(c.maint_fee)}` : ''}`)}
+        ${tile('Đã thu', fm(paid), `${pct}% · đến ${dmy(T)}${g.extra ? ` · thu thừa ${fm(g.extra)}` : ''}`, 'cd-g')}
+        ${tile('Còn phải thu', fm(rem), next ? `Đợt tới: ${esc(next.lbl)} — ${fm(next.rem)}, hạn ${dmy(next.due_on)}` : rem > 0 ? 'các đợt còn nợ đều đã quá hạn' : 'đã thu đủ cả hợp đồng')}
+        ${tile('Quá hạn chưa thu', fm(overdue), overdue ? `${overRows.length} đợt · lâu nhất ${overDays} ngày${late ? ` · lãi chậm trả ${fm(late)}` : ''}` : late ? `lãi chậm trả ${fm(late)}` : 'không có', overdue ? 'red' : '')}</div>
+      <div class="card mb cd-prog"><div class="cd-bar"><i style="width:${pct}%"></i></div><span><b>${pct}%</b> đã thu</span></div>
+      <div class="card mb"><div class="hd"><h3>${ico('fa-list-ol')} Tiến độ thanh toán</h3><span class="grow"></span><span class="small muted">tính đến ${dmy(T)}</span></div>
+        ${I.length ? `<div class="tbl-wrap"><table class="t cd-t noclick"><thead><tr><th>Đợt</th><th>Nội dung theo hợp đồng</th><th>Hạn thanh toán</th><th class="num">Phải thu</th><th class="num">Đã thu</th><th class="num">Còn lại</th><th>Tình trạng</th><th class="num">Lãi chậm trả</th></tr></thead>
+        <tbody>${I.map(x => { const [st, cl] = stTxt(x); return `<tr class="${x.rem > 0 && x.due_on < T ? 'cd-over' : ''}"><td><b>${esc(x.lbl)}</b></td>
+          <td class="wrap">${esc(x.virt ? `Phí bảo trì nằm trong Đợt ${x.in_no} của lịch thanh toán — tách riêng để theo dõi` : x.name || '')}${x.cut ? `<div class="small muted">Đợt này theo lịch là ${fm(x.orig)}, đã tách ${fm(x.cut)} phí bảo trì sang dòng riêng</div>` : ''}${x.pcs?.length ? `<div class="small muted">${x.pcs.map(p => `${fm(p.amt)} ngày ${dmy(p.on)}${p.no ? ' (' + esc(p.no) + ')' : ''}`).join(' · ')}</div>` : ''}</td>
+          <td class="nowrap">${dmy(x.due_on)}</td><td class="num">${fm(x.amount)}</td><td class="num">${x.paid ? fm(x.paid) : '—'}</td><td class="num"><b>${x.rem > 0 ? fm(x.rem) : '0'}</b></td>
+          <td>${pill(st, cl)}</td><td class="num">${x.late ? `<b>${fm(x.late)}</b>` : x.segs?.length ? '<span class="muted small">chưa có lãi suất</span>' : ''}${x.segs?.length ? `<div class="small muted">${x.segs.map(y => `${fm(y.amt)} × ${y.days} ngày`).join('<br>')}</div>` : ''}</td></tr>`; }).join('')}</tbody>
+        <tfoot><tr><td></td><td>Cộng</td><td></td><td class="num">${fm(total)}</td><td class="num">${fm(paid)}</td><td class="num">${fm(rem)}</td><td></td><td class="num">${late ? fm(late) : ''}</td></tr></tfoot></table></div>` : '<div class="empty">Hợp đồng chưa có lịch thanh toán — mở hợp đồng để lập lịch</div>'}</div>`}
+      <div class="card mb"><div class="hd"><h3>${ico('fa-receipt')} Lịch sử thu – chi</h3><span class="grow"></span><span class="small">Thu <b class="pos">${fm(g.thu_asof)}</b> · Chi <b class="neg">${fm(g.chi_asof)}</b> · Thu − chi <b>${fm(g.thu_asof - g.chi_asof)}</b> <span class="muted">(phiếu hợp lệ đến ${dmy(T)})</span></span></div>
+        ${allV.length ? `<div class="tbl-wrap"><table class="t cd-t"><thead><tr><th>Ngày</th><th>Số phiếu</th><th>Loại</th><th class="num">Số tiền</th><th>Đã trừ vào</th><th>Nội dung</th><th>Nguồn</th><th>Trạng thái</th></tr></thead>
+        <tbody>${allV.map(x => `<tr class="${!x.ok || x.after ? 'muted' : ''}" data-vo="${x.ent}:${x.id}"><td class="nowrap">${dmy(x.on)}</td><td><b>${esc(x.no || '')}</b></td><td>${x.typ === 'thu' ? pill('Phiếu thu', 'g') : pill('Phiếu chi', 'r')}</td>
+          <td class="num">${x.ok ? `<b class="${x.typ === 'thu' ? 'pos' : 'neg'}">${x.typ === 'chi' ? '−' : ''}${fm(x.amount)}</b>` : `<s>${fm(x.amount)}</s>`}</td>
+          <td class="wrap">${x.typ === 'thu' ? (!x.ok ? '<span class="muted">phiếu đã hủy — không tính</span>' : x.after ? '<span class="muted">sau ngày đang xem — chưa tính</span>' : vay ? '<span class="muted">tiền gốc vay</span>' : (x.alloc || []).map(a => `${esc(a.lbl)}: <b>${fm(a.amt)}</b>`).join('<br>') || '—') : esc(x.src || '')}</td>
+          <td class="wrap">${esc(x.content || '')}</td><td>${x.typ === 'thu' ? esc(x.src || '') : ''}</td><td>${pill(x.st[0], x.st[1])}</td></tr>`).join('')}</tbody></table></div>`
+          : '<div class="empty">Chưa có phiếu thu / phiếu chi</div>'}</div>
+      <div class="card cd-how"><div class="hd"><h3>${ico('fa-circle-info')} Cách tính</h3></div><div class="bd"><ul>
+        <li><b>Phiếu thu chọn «Đợt thu»</b> thì trừ vào đúng đợt đó; tiền dư hoặc phiếu không chọn đợt thì trừ vào đợt có hạn sớm nhất còn nợ. Cột «Đã trừ vào» cho biết từng phiếu đã vào đợt nào.</li>
+        <li><b>Còn lại</b> = phải thu − đã thu của đợt. <b>Quá hạn</b> = đợt đã qua hạn mà còn nợ.</li>
+        <li><b>Lãi chậm trả</b> = số tiền trả sau hạn × số ngày trễ (đến ngày trả) + số tiền còn nợ × số ngày từ hạn đến ${dmy(T)}, nhân lãi suất %/năm, chia 365 — tính cả những ngày đã trễ trước khi khách trả. Lãi suất điền ở Theo dõi công nợ › HĐ mua bán.</li>
+        ${I.some(x => x.virt) ? '<li><b>Phí bảo trì</b>: lịch thanh toán của hợp đồng này không có dòng phí bảo trì riêng nên phí bảo trì được tách khỏi đợt chứa nó để theo dõi riêng; tổng phải thu không đổi.</li>' : ''}
+        <li>Phiếu chi (hoàn tiền, hoàn cọc…) là tiền công ty trả lại khách — không làm giảm số khách đã nộp theo từng đợt.</li></ul></div></div></div>`;
+    wireSegDate(main);
+    $('#cdTo', main).closest('.cd-asof').addEventListener('sdchange', run(async e => { const v = segVal(e.target); if (v === null || !v) return; to = v; await draw(); }));
+    $('#cdBack', main).onclick = back;
+    $('#cdOpen', main).onclick = () => openDetail('contract', id, vay ? undefined : 'debt');
+    main.onclick = run(async e => {
+      const n = e.target.closest('[data-vnew]');
+      if (n) return openForm(n.dataset.vnew, { preset: { contract_id: id, contract_id__l: c.number, voucher_date: today(), ...(n.dataset.vnew === 'payment' ? { kind: vay ? 'tra_lai' : ['thue', 'thue_mua'].includes(c.kind) ? 'hoan_coc' : 'hoan_tien' } : {}) }, onSaved: async () => { await draw(); } });
+      const o = e.target.closest('[data-vo]'); if (o) { const [ent, vid] = o.dataset.vo.split(':'); return openDetail(ent, +vid); }
+    });
+  };
+  ST.reload = async () => { if ($('.cd', main)) await draw(); };
+  await draw();
+};
+
 // HĐ thuê / mua bán / hoàn thiện: khách phải trả công ty theo lịch thu, thực thu theo phiếu thu hợp lệ
 const ctTrack = async (main, kind) => {
   const f = filt(), s = (ST.cttrack ||= {})[kind] ||= { state: '', q: '', from: '', to: '' }, rent = kind === 'thue', hdmb = kind === 'hdmb', KL = Object.fromEntries(CT_KINDS.map(x => [x[0], x[1]]));
@@ -3026,7 +3093,7 @@ const ctTrack = async (main, kind) => {
   $('#ctQ', main).oninput = debounce(e => { s.q = e.target.value; draw(); }, 200);
   $('#ctX', main).onclick = () => download('/api/export-rows', hdmb ? { title: 'BẢNG THEO DÕI HỢP ĐỒNG MUA BÁN', cols, groups, rows: shown(), sum: SUM, file: 'Bang_theo_doi_hop_dong_mua_ban',
     note: `Đơn vị tiền: đồng • Số phải thu theo tiến độ = các đợt có hạn ${period()} • Số đã thu = phiếu thu ${d.from ? 'từ ' + dmy(d.from) + ' ' : ''}đến ${dmy(d.asof)} • Số tiền quá hạn = cộng dồn phần còn lại chưa thanh toán của các đợt đã quá hạn • Lãi quá hạn = Σ số tiền trả trễ × số ngày trễ (đến ngày trả; phần còn nợ đến ${dmy(d.asof)}) × lãi suất %/năm / 365` } : rent ? { title: 'BẢNG THEO DÕI HỢP ĐỒNG THUÊ CĂN HỘ', cols, rows: shown(), sum: SUM, note: 'Đơn vị tiền: đồng • Số phải thu theo tiến độ = các kỳ đến hạn tới hôm nay • Tiền đặt cọc theo dõi riêng, chưa tính vào tiền thuê', file: 'Bang_theo_doi_hop_dong_thue_can_ho' } : { title: `CN-07 Theo dõi công nợ — ${KL[kind]}`, cols, rows: shown(), sum: SUM, note: 'Phải thu theo lịch thanh toán; đã thu theo phiếu thu hợp lệ', file: `Theo_doi_${kind}` });
-  main.onclick = run(async e => { if (ctKindClick(e, main)) return; const t = e.target.closest('[data-st]'); if (t) { s.state = t.dataset.st; return draw(); } if (e.target.closest('[data-lr]')) return; const tr = e.target.closest('#ctT tr[data-i]'); if (tr) { const r = shown()[+tr.dataset.i]; if (r) await vchToggle(tr, r.contract_id, { reload: load, to: hdmb ? s.to : '' }); } });
+  main.onclick = run(async e => { if (ctKindClick(e, main)) return; const t = e.target.closest('[data-st]'); if (t) { s.state = t.dataset.st; return draw(); } if (e.target.closest('[data-lr]')) return; const tr = e.target.closest('#ctT tr[data-i]'); if (tr) { const r = shown()[+tr.dataset.i]; if (r) location.hash = `#/v/ctdebt?id=${r.contract_id}${hdmb && s.to ? '&to=' + s.to : ''}`; } });   // màn riêng Công nợ hợp đồng (06/11/2026)
   main.onchange = run(async e => {
     const el = e.target.closest('[data-lr]'); if (!el) return;
     const r = await api('PUT', `/api/contract-track/${el.dataset.lr}/late-rate`, { rate: el.value.trim() });

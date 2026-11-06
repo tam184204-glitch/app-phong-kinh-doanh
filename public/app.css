@@ -1139,3 +1139,32 @@ table.t tr.vch > td { padding: 0; background: #fbfcfe; white-space: normal; curs
 [data-theme="dark"] .md-hero { background: var(--card); }
 [data-theme="dark"] .md-hero h1, [data-theme="dark"] .wx-t { color: var(--text); }
 @media (max-width: 1100px) { .md-hero, .md-cols { grid-template-columns: 1fr; } .wx-meta { margin-left: 0; } }
+
+/* ===== Công nợ hợp đồng (06/11/2026): chữ to, rõ ===== */
+.cd .ph h1 { font-size: 26px; }
+.cd-info { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 20px; padding: 16px 20px; }
+.cd-info > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.cd-info span { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+.cd-info b { font-size: 16px; color: var(--ink); overflow-wrap: anywhere; }
+.cd-info small { color: var(--muted); font-weight: 600; }
+.cd-asof { display: flex; align-items: center; gap: 12px; padding: 12px 20px; flex-wrap: wrap; font-weight: 600; }
+.cd-tile { cursor: default; }
+.cd-tile .v { font-size: 26px; }
+.cd-tile.cd-g .v { color: var(--g); }
+.cd-tile.red .v { color: var(--r-c); }
+.cd-tile .s { font-size: 13px; line-height: 1.45; }
+.cd-prog { display: flex; align-items: center; gap: 14px; padding: 14px 20px; }
+.cd-bar { flex: 1; height: 14px; border-radius: 999px; background: var(--line2); overflow: hidden; }
+.cd-bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--sage-d), var(--sage)); }
+.cd-t { font-size: 14.5px; }
+.cd-t th { font-size: 13px; }
+.cd-t td { padding-top: 11px; padding-bottom: 11px; vertical-align: top; }
+.cd-t td.wrap { min-width: 260px; max-width: 460px; white-space: normal; }
+.cd-t .pill { white-space: normal; text-align: left; line-height: 1.35; font-size: 13px; }
+.cd-t tbody tr.cd-over td, .cd-t tbody tr.cd-over:nth-child(even) td { background: var(--r-bg); }
+.cd-t .nowrap { white-space: nowrap; }
+.cd-t tbody tr[data-vo] { cursor: pointer; }
+.cd-how ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; line-height: 1.55; }
+[data-theme="dark"] .cd-info b { color: var(--text); }
+@media (max-width: 1100px) { .cd-info { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media print { .cd .acts, .cd-asof .muted { display: none; } }
