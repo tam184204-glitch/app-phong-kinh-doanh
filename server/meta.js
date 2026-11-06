@@ -569,7 +569,7 @@ def('contract', {
   ],
 });
 def('installment', {
-  title: 'Lịch thanh toán hợp đồng', one: 'kỳ thu', code: 'CN-02', mod: '06', icon: 'fa-calendar-check', disp: "coalesce(t.name, 'Kỳ '||t.seq)||' · hạn '||to_char(t.due_on,'DD/MM/YYYY')||' · '||replace(to_char(t.amount,'FM999,999,999,999'),',','.')",
+  title: 'Lịch thanh toán hợp đồng', one: 'kỳ thu', code: 'CN-02', mod: '06', icon: 'fa-calendar-check', disp: "CASE WHEN coalesce(t.is_maint, false) THEN 'Phí bảo trì' || coalesce(' — ' || nullif(t.name, 'Phí bảo trì'), '') WHEN t.name ~ '^[[:space:]]*(Đợt|đợt|ĐỢT|Kỳ|kỳ|KỲ|Lần|lần|LẦN)[[:space:]]*[0-9]' THEN t.name ELSE 'Đợt ' || (SELECT count(*) FROM kd_installment ix_ WHERE ix_.contract_id = t.contract_id AND ix_.active = t.active AND NOT coalesce(ix_.is_maint, false) AND ix_.seq <= t.seq) || coalesce(' — ' || nullif(t.name, ''), '') END||' · hạn '||to_char(t.due_on,'DD/MM/YYYY')||' · '||replace(to_char(t.amount,'FM999,999,999,999'),',','.')",   // «Đợt 1 — diễn giải · hạn · số tiền» (06/11/2026); tên đã có «Đợt n» thì giữ nguyên
   purpose: 'Quản lý từng kỳ phải thu', users: 'Nhân viên hợp đồng / công nợ',
   how: 'Tạo từ điều khoản → kiểm tra tổng kỳ → phát hành → đối soát thực thu',
   rules: 'Tổng các kỳ khớp nghĩa vụ phải thu; xử lý ngày nghỉ và phụ lục theo quy tắc được duyệt',
