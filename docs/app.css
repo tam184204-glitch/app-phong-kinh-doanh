@@ -1143,7 +1143,7 @@ table.t tr.vch > td { padding: 0; background: #fbfcfe; white-space: normal; curs
 /* ===== Công nợ hợp đồng — ngôn ngữ thiết kế Ant Design (06/11/2026) =====
    token theo ant.design: chữ rgba(0,0,0,.88/.65/.45), viền #f0f0f0 / #d9d9d9, nền nhạt #fafafa, bo góc 6/8, chữ 14, tiêu đề 24, Statistic 14/24, khoảng 8/12/16/24
    màu chính giữ xanh Cát Tường (--cobalt) thay #1677ff để đồng bộ toàn app */
-.ad { --ad-text: rgba(0,0,0,.88); --ad-text2: rgba(0,0,0,.65); --ad-text3: rgba(0,0,0,.45); --ad-border: #d9d9d9; --ad-split: #f0f0f0; --ad-fill: #fafafa; --ad-bg: #fff;
+.ad { --ad-text: rgba(0,0,0,.92); --ad-text2: rgba(0,0,0,.78); --ad-text3: rgba(0,0,0,.6); --ad-border: #d9d9d9; --ad-split: #f0f0f0; --ad-fill: #fafafa; --ad-bg: #fff;
   --ad-primary: var(--cobalt); --ad-primary-bg: #e6f4ff; --ad-success: #52c41a; --ad-success-t: #389e0d; --ad-error: #ff4d4f; --ad-error-t: #cf1322; --ad-warning: #faad14;
   --ad-shadow: 0 1px 2px 0 rgba(0,0,0,.03), 0 1px 6px -1px rgba(0,0,0,.02), 0 2px 4px 0 rgba(0,0,0,.02); max-width: 1320px; color: var(--ad-text); font-size: 14px; line-height: 1.5714; }
 .ad-muted { color: var(--ad-text3); }
@@ -1250,6 +1250,23 @@ table.t tr.vch > td { padding: 0; background: #fbfcfe; white-space: normal; curs
 .ad-collapse summary i { font-size: 12px; transition: transform .2s; color: var(--ad-text3); }
 .ad-collapse[open] summary i { transform: rotate(90deg); }
 .ad-collapse ul { margin: 0; padding: 12px 16px 16px 40px; border-top: 1px solid var(--ad-border); background: var(--ad-bg); border-radius: 0 0 8px 8px; display: flex; flex-direction: column; gap: 6px; color: var(--ad-text2); }
+/* chữ đậm hơn cho dễ nhìn (06/11/2026) */
+.ad { font-weight: 500; }
+.ad-head-title h1 { font-weight: 700; }
+.ad-head-sub, .ad-crumb span { font-weight: 500; }
+.ad-card-head { font-weight: 700; }
+.ad-stat-t { font-weight: 500; color: var(--ad-text2); }
+.ad-stat-v { font-weight: 700; }
+.ad-stat-f { font-weight: 500; }
+.ad-desc th { color: var(--ad-text2); font-weight: 500; }
+.ad-desc td { font-weight: 600; }
+.ad-table th { font-weight: 700; }
+.ad-table td { font-weight: 500; }
+.ad-table td b, .ad-table tfoot td { font-weight: 700; }
+.ad-tag { font-weight: 600; }
+.ad-step-t { font-weight: 600; }
+.ad-step-s { font-weight: 600; }
+.ad-btn { font-weight: 600; }
 @media (max-width: 1100px) { .ad-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 24px; } .ad-stat:nth-child(3) { border-left: 0; } .ad-desc th { width: auto; } }
 @media (max-width: 640px) { .ad-stats { grid-template-columns: 1fr; } .ad-stat { border-left: 0; } .ad-desc, .ad-desc tbody, .ad-desc tr, .ad-desc th, .ad-desc td { display: block; width: auto; border-right: 0; } }
 @media print { .ad-head-extra, .ad-back, .ad-collapse, .ad-crumb { display: none; } .ad-card { box-shadow: none; } }
