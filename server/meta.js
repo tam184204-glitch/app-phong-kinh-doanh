@@ -653,11 +653,11 @@ def('receipt', {
   ], list: ['voucher_no', 'voucher_date', 'contract_id', 'unit_id', 'cust_code', 'cust_name', 'grp', 'installment_id', 'amount', 'content', 'status'],
   acts: [{ k: 'void', l: 'Hủy phiếu thu', icon: 'fa-ban', from: ['hop_le'], roles: ['cong_no', 'ho_so', 'truong_phong'], danger: 1, ask: [{ k: 'reason', l: 'Lý do hủy', t: 'long', req: 1 }] }],
 });
-// Phiếu chi (06/11/2026): tiền công ty chi ra theo hợp đồng → Theo dõi hợp đồng tự cập nhật
+// Phiếu chi (06/11/2026): tiền công ty chi ra theo hợp đồng → Theo dõi công nợ tự cập nhật
 //  trả lãi / trả gốc HĐ vay → số đã trả của kỳ (kd_loan_pay); hoàn tiền → đề xuất hoàn tiền «Kế toán đã thực hiện»; hoàn cọc HĐ thuê
 def('payment', {
   title: 'Phiếu chi', one: 'phiếu chi', code: 'CN-10', mod: '06', icon: 'fa-money-bill-wave', disp: 't.voucher_no',
-  note: 'Phòng Kinh doanh tự ghi để theo dõi tiến độ (không phải chứng từ kế toán): tiền công ty đã trả khách theo hợp đồng — trả lãi / gốc HĐ vay, hoàn tiền khách, hoàn tiền đặt cọc HĐ thuê. Lưu phiếu → Theo dõi hợp đồng tự cập nhật số đã trả / đã chi. Ghi sai thì hủy phiếu có lý do rồi lập lại.',
+  note: 'Phòng Kinh doanh tự ghi để theo dõi tiến độ (không phải chứng từ kế toán): tiền công ty đã trả khách theo hợp đồng — trả lãi / gốc HĐ vay, hoàn tiền khách, hoàn tiền đặt cọc HĐ thuê. Lưu phiếu → Theo dõi công nợ tự cập nhật số đã trả / đã chi. Ghi sai thì hủy phiếu có lý do rồi lập lại.',
   c: ['cong_no', 'ho_so', 'ban_hang', 'truong_phong', 'ke_toan'], u: ['cong_no', 'ho_so', 'truong_phong'], d: [], order: 't.voucher_date desc, t.id desc', search: ['voucher_no', 'content', 'receiver'], fields: [
     { k: 'voucher_no', l: 'Số phiếu chi', t: 'code', prefix: 'PC-{Y}-', pad: 4, manual: 1, help: 'Để trống → tự cấp (PC-2026-0001…)' },
     { k: 'voucher_date', l: 'Ngày chi', t: 'date', req: 1, def: 'today' },
@@ -999,7 +999,7 @@ const MENU = [
   ['03', 'Khách hàng tiềm năng', 'fa-users', [['e:contact_log']]],   // hồ sơ khách tự sinh từ kênh liên hệ (Website, Messenger, Zalo, Hotline, trực tiếp)
   ['04', 'Giao dịch bán hàng', 'fa-handshake-angle', [['e:sale_notice'], ['e:reservation'], ['e:noxh_check'], ['signing', 'Lịch ký hợp đồng'], ['payouts', 'Theo dõi thanh lý & chi trả', 'GD-04']]],
   ['05', 'Hồ sơ & hợp đồng', 'fa-file-contract', [['e:contract?group=can_ho', 'Hợp đồng căn hộ chung cư'], ['e:contract?group=lien_ke', 'Hợp đồng nhà liền kề'], ['loans', 'Theo dõi hợp đồng 3 bên', 'HD-05'], ['e:contract_change'], ['vault', 'Lưu trữ hồ sơ pháp lý']]],
-  ['06', 'Công nợ & kế hoạch thu', 'fa-sack-dollar', [['vouchers', 'Phiếu thu – Phiếu chi', 'CN-09'], ['loantrack', 'Theo dõi hợp đồng', 'CN-07'], ['debtsum', 'Bảng tổng hợp công nợ', 'CN-08'], ['unitstatus', 'Tình trạng căn hộ & công nợ', 'CN-06'], ['ledger', 'Sổ công nợ căn hộ'], ['finishpay', 'Tiến độ thu tiền hoàn thiện', 'CN-05'], ['e:installment'], ['e:collect_plan'], ['e:debt_call'], ['e:refund']]],
+  ['06', 'Công nợ & kế hoạch thu', 'fa-sack-dollar', [['vouchers', 'Phiếu thu – Phiếu chi', 'CN-09'], ['loantrack', 'Theo dõi công nợ', 'CN-07'], ['unitstatus', 'Tình trạng căn hộ & công nợ', 'CN-06'], ['ledger', 'Sổ công nợ căn hộ'], ['e:collect_plan'], ['e:debt_call']]],
   ['07', 'Bàn giao căn hộ', 'fa-key', [['ready', 'Căn đủ điều kiện'], ['e:handover'], ['e:defect']]],
   ['08', 'Cấp sổ hồng', 'fa-book', [['e:pinkbook']]],
   ['09', 'Chăm sóc khách hàng', 'fa-headset', [['e:ticket'], ['e:notice']]],
