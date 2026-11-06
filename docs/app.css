@@ -1140,34 +1140,59 @@ table.t tr.vch > td { padding: 0; background: #fbfcfe; white-space: normal; curs
 [data-theme="dark"] .md-hero h1, [data-theme="dark"] .wx-t { color: var(--text); }
 @media (max-width: 1100px) { .md-hero, .md-cols { grid-template-columns: 1fr; } .wx-meta { margin-left: 0; } }
 
-/* ===== Công nợ hợp đồng (06/11/2026): chữ to, rõ ===== */
-.cd .ph h1 { font-size: 26px; }
-.cd-info { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 20px; padding: 16px 20px; }
-.cd-info > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.cd-info span { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
-.cd-info b { font-size: 16px; color: var(--ink); overflow-wrap: anywhere; }
-.cd-info small { color: var(--muted); font-weight: 600; }
-.cd-asof { display: flex; align-items: center; gap: 12px; padding: 12px 20px; flex-wrap: wrap; font-weight: 600; }
-.cd-tile { cursor: default; }
-.cd-tile .v { font-size: 26px; }
-.cd-tile.cd-g .v { color: var(--g); }
-.cd-tile.red .v { color: var(--r-c); }
-.cd-tile .s { font-size: 13px; line-height: 1.45; }
-.cd-prog { display: flex; align-items: center; gap: 14px; padding: 14px 20px; }
-.cd-bar { flex: 1; height: 14px; border-radius: 999px; background: var(--line2); overflow: hidden; }
-.cd-bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--sage-d), var(--sage)); }
-.cd-t { font-size: 14.5px; }
-.cd-t th { font-size: 13px; }
-.cd-t td { padding-top: 11px; padding-bottom: 11px; vertical-align: top; }
-.cd-t td.wrap { min-width: 260px; max-width: 460px; white-space: normal; }
-.cd-t .pill { white-space: normal; text-align: left; line-height: 1.35; font-size: 13px; }
-.cd-t tbody tr.cd-over td, .cd-t tbody tr.cd-over:nth-child(even) td { background: var(--r-bg); }
-.cd-t .nowrap { white-space: nowrap; }
+/* ===== Công nợ hợp đồng (06/11/2026, thiết kế gọn) ===== */
+.cd { max-width: 1280px; }
+.cd-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.cd-asof { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-left: 6px; }
+.cd-title { margin-bottom: 16px; }
+.cd-title h1 { font-size: 28px; margin: 2px 0 6px; color: var(--ink); letter-spacing: -.2px; }
+.cd-meta { color: var(--text); font-size: 14.5px; display: flex; flex-wrap: wrap; gap: 4px 0; }
+.cd-meta i { font-style: normal; color: var(--muted2); margin: 0 8px; }
+.cd-sum { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 0; padding: 0; overflow: hidden; margin-bottom: 12px; }
+.cd-main { padding: 22px 26px; }
+.cd-lbl { font-size: 13px; color: var(--muted); font-weight: 600; }
+.cd-big { font-size: 38px; font-weight: 800; color: var(--ink); line-height: 1.15; margin: 4px 0 14px; font-variant-numeric: tabular-nums; }
+.cd-bar { height: 10px; border-radius: 999px; background: var(--line2); overflow: hidden; }
+.cd-bar i { display: block; height: 100%; border-radius: 999px; background: var(--sage-d); }
+.cd-sub { margin-top: 10px; font-size: 14px; color: var(--text); }
+.cd-side { border-left: 1px solid var(--line2); display: flex; flex-direction: column; }
+.cd-side > div { padding: 14px 22px; border-bottom: 1px solid var(--line2); display: grid; grid-template-columns: 130px 1fr; column-gap: 12px; align-items: baseline; }
+.cd-side > div:last-child { border-bottom: 0; }
+.cd-side span { font-size: 13px; color: var(--muted); }
+.cd-side b { font-size: 16px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.cd-side small { grid-column: 2; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.cd-side .bad b { color: var(--r-c); }
+.cd-facts { display: flex; flex-wrap: wrap; gap: 10px 28px; padding: 4px 4px 18px; }
+.cd-facts > div { display: flex; flex-direction: column; gap: 2px; }
+.cd-facts span { font-size: 12px; color: var(--muted); }
+.cd-facts b { font-size: 14px; font-weight: 600; color: var(--text); }
+.cd-note { padding: 14px 20px; margin-bottom: 12px; }
+.cd-sec { margin-bottom: 14px; padding: 0; overflow: hidden; }
+.cd-h { display: flex; align-items: baseline; gap: 12px; padding: 16px 20px 10px; }
+.cd-h h3 { margin: 0; font-size: 17px; color: var(--ink); }
+.cd-h .small { margin-left: auto; }
+.cd-t { width: 100%; border-collapse: collapse; font-size: 14px; }
+.cd-t th { text-align: left; font-size: 12.5px; font-weight: 600; color: var(--muted); padding: 8px 14px; border-bottom: 1px solid var(--line2); white-space: nowrap; }
+.cd-t td { padding: 12px 14px; border-bottom: 1px solid var(--line2); vertical-align: top; }
+.cd-t .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cd-t td small { display: block; font-size: 12px; color: var(--muted); margin-top: 3px; font-weight: 400; }
+.cd-t td:first-child { padding-left: 20px; white-space: nowrap; }
+.cd-t tbody tr.is-over td:first-child { box-shadow: inset 3px 0 0 var(--r-c); }
+.cd-t tbody tr.is-done td { color: var(--muted); }
+.cd-t tbody tr.is-done td b { color: var(--text); }
+.cd-t tbody tr.is-off td { color: var(--muted2); }
 .cd-t tbody tr[data-vo] { cursor: pointer; }
-.cd-how ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; line-height: 1.55; }
-[data-theme="dark"] .cd-info b { color: var(--text); }
-@media (max-width: 1100px) { .cd-info { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media print { .cd .acts, .cd-asof .muted { display: none; } }
+.cd-t tbody tr[data-vo]:hover td { background: var(--cobalt-50); }
+.cd-t tfoot td { font-weight: 700; border-bottom: 0; background: var(--paper); }
+.cd-t .pill { white-space: nowrap; }
+.cd-t .nowrap { white-space: nowrap; }
+.cd-txt { max-width: 440px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.45; }
+.cd-how { margin: 4px 0 20px; color: var(--muted); font-size: 13.5px; }
+.cd-how summary { cursor: pointer; font-weight: 600; color: var(--cobalt); padding: 6px 0; }
+.cd-how ul { margin: 6px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 5px; line-height: 1.55; }
+[data-theme="dark"] .cd-title h1, [data-theme="dark"] .cd-big, [data-theme="dark"] .cd-side b, [data-theme="dark"] .cd-h h3 { color: var(--text); }
+@media (max-width: 1000px) { .cd-sum { grid-template-columns: 1fr; } .cd-side { border-left: 0; border-top: 1px solid var(--line2); } .cd-big { font-size: 30px; } }
+@media print { .cd-top .btn, .cd-how { display: none; } }
 
 /* ===== Sổ chi tiết công nợ khách hàng (06/11/2026) ===== */
 .kl-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 10px; }
