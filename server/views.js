@@ -442,6 +442,7 @@ async function contractVouchers(db, user, id, qs = {}) {
   return { contract: { id: c.id, number: c.number, kind: c.kind, kind_l: KL[c.kind] || c.kind, status_l: SL[c.status] || c.status, unit: c.unit, cust_code: c.cust_code, customer: c.customer, phone: c.phone, project: c.project, owner: c.owner,
       signed_on: c.signed_on || c.contract_on, value: +c.value || 0, after_tax: c.after_tax != null ? +c.after_tax : null, maint_fee: +c.maint_fee || 0, finish_value: +c.finish_value || 0, deposit: c.deposit != null ? +c.deposit : null },
     thu, chi, thu_sum: s(thu), chi_sum: s(chi), thu_asof: sa(thu), chi_asof: sa(chi), inst, extra: inst?.extra?.reduce((t, p) => t + p.amt, 0) || 0, asof, late_rate: rate,
+    can_rate: c.kind === 'hdmb' && c.status !== 'huy' && canRate(user),   // gõ lãi suất chậm trả ngay ở màn Công nợ hợp đồng
     can_thu: can(user, E.receipt, 'c'), can_chi: can(user, E.payment, 'c') };
 }
 

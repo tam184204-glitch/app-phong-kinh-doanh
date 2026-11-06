@@ -1540,7 +1540,7 @@ V.ctdebt = async (main, params = {}) => {
     const g = await api('GET', `/api/contract-track/${id}/vouchers${to ? '?to=' + to : ''}`), c = g.contract, I = g.inst || [], T = g.asof, vay = c.kind === 'vay';
     const sum = k => I.reduce((t, x) => t + (+x[k] || 0), 0), total = sum('amount'), paid = sum('paid'), rem = sum('rem'), late = sum('late'), pct = total ? Math.min(100, Math.round(paid / total * 1000) / 10) : 0;
     const overRows = I.filter(x => x.rem > 0 && x.due_on < T), overdue = overRows.reduce((t, x) => t + x.rem, 0), overDays = overRows.length ? dd(overRows[0].due_on, T) : 0;
-    const next = I.find(x => x.rem > 0 && x.due_on >= T), showLate = I.some(x => x.late);
+    const next = I.find(x => x.rem > 0 && x.due_on >= T), rateIn = g.can_rate ? `<input class="inp cd-rate" id="cdRate" value="${g.late_rate ?? ''}" placeholder="vd 18" inputmode="decimal" title="Lãi suất chậm trả (%/năm) — gõ rồi Enter">` : '';
     const st = x => x.rem <= 0 ? (x.late_paid_days ? [`Đã thu · trễ ${x.late_paid_days} ngày`, 'a'] : ['Đã thu đủ', 'g'])
       : x.due_on < T ? [`Quá hạn ${dd(x.due_on, T)} ngày`, 'r'] : x.due_on === T ? ['Đến hạn hôm nay', 'a'] : [`${x.paid > 0 ? 'Thu một phần · ' : ''}còn ${dd(T, x.due_on)} ngày`, x.paid > 0 ? 'b' : 's'];
     const meta = [c.customer, 'Căn ' + c.unit, c.project, c.kind_l, c.signed_on ? 'Ký ' + dmy(c.signed_on) : '', c.status_l].filter(Boolean).map(esc).join('<i>·</i>');
@@ -1548,6 +1548,9 @@ V.ctdebt = async (main, params = {}) => {
       c.after_tax != null ? ['Giá trị căn hộ (sau thuế)', fm(c.after_tax + c.finish_value)] : ['Giá trị hợp đồng', fm(c.value)], c.maint_fee ? ['Phí bảo trì', fm(c.maint_fee)] : null,
       c.deposit != null ? ['Tiền đặt cọc', fm(c.deposit)] : null, !vay ? ['Lãi suất chậm trả', g.late_rate != null ? fnum(g.late_rate) + ' %/năm' : '<span class="muted">chưa điền</span>'] : null].filter(Boolean);
     const allV = [...g.thu.map(x => ({ ...x, typ: 'thu' })), ...g.chi.map(x => ({ ...x, typ: 'chi' }))].sort((a, b) => String(a.on).localeCompare(String(b.on)) || (a.typ === b.typ ? a.id - b.id : a.typ === 'thu' ? -1 : 1));
+    const lateCells = x => { const S = x.segs || [], rows = f => S.map(f).join('<br>') || '<span class="muted">—</span>';
+      return `<td class="num cd-g1">${rows(y => `${y.days} ngày${y.paid ? `<small>trả ${dmy(y.to)}</small>` : ''}`)}</td><td class="num">${rows(y => `${fm(y.amt)}${y.paid ? '<small>&nbsp;</small>' : ''}`)}</td>
+        <td class="num">${S.length ? (g.late_rate != null ? fnum(g.late_rate) : '<span class="muted small">chưa điền</span>') : '<span class="muted">—</span>'}</td><td class="num">${S.length && g.late_rate != null ? `<b>${fm(x.late)}</b>` : '<span class="muted">—</span>'}</td>`; };
     const where = x => x.typ === 'chi' ? `<span class="muted">${esc(x.src || 'Chi trả khách')}</span>` : !x.ok ? '<span class="muted">phiếu đã hủy</span>' : x.after ? '<span class="muted">sau ngày đang xem</span>'
       : vay ? '<span class="muted">tiền gốc vay</span>' : (x.alloc || []).map(a => `${esc(a.lbl)} <b>${fm(a.amt)}</b>`).join('<br>') || '—';
     main.innerHTML = `<div class="page cd">
@@ -1563,16 +1566,17 @@ V.ctdebt = async (main, params = {}) => {
         <div class="cd-side">
           <div class="${overdue ? 'bad' : ''}"><span>Quá hạn chưa thu</span><b>${overdue ? fm(overdue) : 'Không có'}</b>${overdue ? `<small>${overRows.length} đợt · lâu nhất ${overDays} ngày</small>` : ''}</div>
           <div><span>Đợt tới</span><b>${next ? `${esc(next.lbl)} · ${fm(next.rem)}` : rem > 0 ? '—' : 'Đã thu đủ'}</b>${next ? `<small>hạn ${dmy(next.due_on)} · còn ${dd(T, next.due_on)} ngày</small>` : ''}</div>
-          <div><span>Lãi chậm trả</span><b>${g.late_rate == null ? '<span class="muted">chưa điền lãi suất</span>' : fm(late)}</b>${g.late_rate != null ? `<small>lãi suất ${fnum(g.late_rate)} %/năm</small>` : ''}</div></div></div>`}
+          <div><span>Lãi chậm trả</span><b>${g.late_rate == null ? '<span class="muted">chưa điền lãi suất</span>' : fm(late)}</b><small>${rateIn ? `Lãi suất ${rateIn} %/năm` : g.late_rate != null ? `lãi suất ${fnum(g.late_rate)} %/năm` : ''}</small></div></div></div>`}
       <div class="cd-facts">${facts.map(([l, v]) => `<div><span>${l}</span><b>${v || '—'}</b></div>`).join('')}</div>
       ${vay ? '' : `<div class="card cd-sec"><div class="cd-h"><h3>Tiến độ thanh toán</h3><span class="muted small">${I.length} đợt</span></div>
-        ${I.length ? `<div class="tbl-wrap"><table class="cd-t"><thead><tr><th>Đợt</th><th>Nội dung</th><th class="num">Phải thu</th><th class="num">Đã thu</th><th class="num">Còn lại</th><th>Tình trạng</th>${showLate ? '<th class="num">Lãi chậm trả</th>' : ''}</tr></thead>
+        ${I.length ? `<div class="tbl-wrap"><table class="cd-t cd-t2"><thead><tr><th rowspan="2">Đợt</th><th rowspan="2">Nội dung</th><th rowspan="2" class="num">Phải thu</th><th rowspan="2" class="num">Đã thu</th><th rowspan="2" class="num">Còn lại</th><th rowspan="2">Tình trạng</th><th colspan="4" class="cd-grp">Lãi chậm trả</th></tr>
+          <tr><th class="num cd-g1">Số ngày quá hạn</th><th class="num">Số tiền quá hạn</th><th class="num">Lãi suất (%/năm)</th><th class="num">Tiền lãi</th></tr></thead>
         <tbody>${I.map(x => { const [s, cl] = st(x), txt = x.virt ? `Phí bảo trì (nằm trong Đợt ${x.in_no} của lịch)` : String(x.name || '').replace(/^\s*(đợt|kỳ|lần)\s*\d+\s*[–—:-]?\s*/i, ''); return `<tr class="${cl === 'r' ? 'is-over' : ''} ${x.rem <= 0 ? 'is-done' : ''}">
           <td><b>${esc(x.lbl)}</b><small>hạn ${dmy(x.due_on)}</small></td>
           <td><div class="cd-txt" title="${esc(txt)}">${esc(txt)}</div>${x.cut ? `<small>đã tách ${fm(x.cut)} phí bảo trì (theo lịch ${fm(x.orig)})</small>` : ''}${x.pcs?.length ? `<small>${x.pcs.map(p => `thu ${fm(p.amt)} ngày ${dmy(p.on)}`).join(' · ')}</small>` : ''}</td>
           <td class="num">${fm(x.amount)}</td><td class="num">${x.paid ? fm(x.paid) : '<span class="muted">—</span>'}</td><td class="num"><b>${x.rem > 0 ? fm(x.rem) : '0'}</b></td>
-          <td>${pill(s, cl)}</td>${showLate ? `<td class="num">${x.late ? `${fm(x.late)}<small>${x.segs.map(y => `${fm(y.amt)} × ${y.days} ngày`).join('<br>')}</small>` : ''}</td>` : ''}</tr>`; }).join('')}</tbody>
-        <tfoot><tr><td></td><td>Cộng</td><td class="num">${fm(total)}</td><td class="num">${fm(paid)}</td><td class="num">${fm(rem)}</td><td></td>${showLate ? `<td class="num">${fm(late)}</td>` : ''}</tr></tfoot></table></div>`
+          <td>${pill(s, cl)}</td>${lateCells(x)}</tr>`; }).join('')}</tbody>
+        <tfoot><tr><td></td><td>Cộng</td><td class="num">${fm(total)}</td><td class="num">${fm(paid)}</td><td class="num">${fm(rem)}</td><td></td><td class="cd-g1"></td><td></td><td></td><td class="num">${g.late_rate != null ? fm(late) : '—'}</td></tr></tfoot></table></div>`
           : '<div class="empty">Hợp đồng chưa có lịch thanh toán — mở hợp đồng để lập lịch</div>'}</div>`}
       <div class="card cd-sec"><div class="cd-h"><h3>Lịch sử thu – chi</h3><span class="muted small">Thu ${fm(g.thu_asof)} · Chi ${fm(g.chi_asof)} · đến ${dmy(T)}</span></div>
         ${allV.length ? `<div class="tbl-wrap"><table class="cd-t"><thead><tr><th>Ngày</th><th>Số phiếu</th><th class="num">Thu</th><th class="num">Chi</th><th>Đã trừ vào</th><th>Nội dung</th></tr></thead>
@@ -1589,6 +1593,7 @@ V.ctdebt = async (main, params = {}) => {
     $('.cd-asof', main).addEventListener('sdchange', run(async e => { const v = segVal(e.target); if (v === null || !v) return; to = v; await draw(); }));
     $('#cdBack', main).onclick = back;
     $('#cdOpen', main).onclick = () => openDetail('contract', id, vay ? undefined : 'debt');
+    $('#cdRate', main) && ($('#cdRate', main).onchange = run(async e => { const r = await api('PUT', `/api/contract-track/${id}/late-rate`, { rate: e.target.value.trim() }); toast(r.late_rate == null ? 'Đã bỏ lãi suất chậm trả' : `Đã lưu lãi suất ${fnum(r.late_rate)} %/năm`); await draw(); }));
     main.onclick = run(async e => {
       const n = e.target.closest('[data-vnew]');
       if (n) return openForm(n.dataset.vnew, { preset: { contract_id: id, contract_id__l: c.number, voucher_date: today(), ...(n.dataset.vnew === 'payment' ? { kind: vay ? 'tra_lai' : ['thue', 'thue_mua'].includes(c.kind) ? 'hoan_coc' : 'hoan_tien' } : {}) }, onSaved: async () => { await draw(); } });

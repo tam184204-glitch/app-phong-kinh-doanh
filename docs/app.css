@@ -1186,7 +1186,7 @@ table.t tr.vch > td { padding: 0; background: #fbfcfe; white-space: normal; curs
 .cd-t tfoot td { font-weight: 700; border-bottom: 0; background: var(--paper); }
 .cd-t .pill { white-space: nowrap; }
 .cd-t .nowrap { white-space: nowrap; }
-.cd-txt { max-width: 440px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.45; }
+.cd-txt { max-width: 340px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.45; }
 .cd-how { margin: 4px 0 20px; color: var(--muted); font-size: 13.5px; }
 .cd-how summary { cursor: pointer; font-weight: 600; color: var(--cobalt); padding: 6px 0; }
 .cd-how ul { margin: 6px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 5px; line-height: 1.55; }
@@ -1204,3 +1204,13 @@ table.t tr.vch > td { padding: 0; background: #fbfcfe; white-space: normal; curs
 .kl-t td.wrap { min-width: 150px; white-space: normal; }
 .kl-t td.num, .kl-t td:first-child { white-space: nowrap; }
 .kl-t tfoot td { font-weight: 600; }
+
+/* nhóm cột Lãi chậm trả (06/11/2026) */
+.cd-t2 th.cd-grp { text-align: center; color: var(--a); border-bottom: 1px solid var(--line2); background: var(--amber-50); }
+.cd-t2 .cd-g1 { border-left: 1px solid var(--line2); }
+.cd-t2 thead tr:nth-child(2) th { background: var(--amber-50); }
+.cd-rate { width: 70px; height: 28px; padding: 2px 8px; text-align: right; display: inline-block; margin: 0 4px; }
+.cd-t2 td:nth-child(2) { min-width: 180px; }
+.cd-t2 td, .cd-t2 th { padding-left: 9px; padding-right: 9px; }
+.cd-t2 td:first-child, .cd-t2 th:first-child { padding-left: 18px; }
+.cd-t2 .pill { white-space: normal; }
