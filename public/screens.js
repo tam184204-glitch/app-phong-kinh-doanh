@@ -1365,10 +1365,10 @@ V.unitstatus = async main => {
   await load();
 };
 // CN-07 theo dõi hợp đồng: chọn loại HĐ — vay (lãi & gốc trả khách) · thuê · mua bán · hoàn thiện (công nợ khách phải trả)
-const CT_KINDS = [['vay', 'HĐ vay', 'fa-hand-holding-dollar'], ['thue', 'HĐ thuê / thuê mua', 'fa-key'], ['hdmb', 'HĐ mua bán', 'fa-file-signature'], ['hoan_thien', 'HĐ hoàn thiện căn hộ', 'fa-couch']];
+const CT_KINDS = [['hdmb', 'HĐ mua bán', 'fa-file-signature'], ['hoan_thien', 'HĐ hoàn thiện căn hộ', 'fa-couch'], ['thue', 'HĐ thuê / thuê mua', 'fa-key'], ['vay', 'HĐ vay', 'fa-hand-holding-dollar']];   // 06/11/2026: HĐMB, hoàn thiện lên đầu
 const ctKindBar = k => `<div class="card mb"><div class="tabs" style="border-bottom:0">${CT_KINDS.map(([v, l, ic]) => `<button data-kind="${v}" class="${k === v ? 'on' : ''}">${ico(ic)} ${l}</button>`).join('')}</div></div>`;
 const ctKindClick = (e, main) => { const b = e.target.closest('[data-kind]'); if (!b) return false; (ST.ctkind ||= {}).kind = b.dataset.kind; V.loantrack(main); return true; };
-V.loantrack = async main => { const k = (ST.ctkind ||= { kind: 'vay' }).kind; return k === 'vay' ? loanView(main) : ctTrack(main, k); };
+V.loantrack = async main => { const k = (ST.ctkind ||= { kind: 'hdmb' }).kind; return k === 'vay' ? loanView(main) : ctTrack(main, k); };
 // HĐ vay: gốc khách đã chuyển, lãi / gốc công ty phải trả khách, ghi nhận đã trả từng kỳ
 // bấm 1 dòng hợp đồng: sổ ra phiếu thu / phiếu chi ngay dưới dòng (bấm lại để thu gọn) — 06/11/2026
 const vchToggle = async (tr, cid, { onLoan, reload, to } = {}) => {
