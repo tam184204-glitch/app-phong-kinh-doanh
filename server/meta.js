@@ -146,7 +146,7 @@ def('customer', {
   purpose: 'Tạo một hồ sơ khách hàng thống nhất', users: 'Nhân viên kinh doanh / hồ sơ',
   how: 'Tìm khách cũ → nếu chưa có thì tạo → kiểm tra trùng → liên kết giao dịch',
   rules: 'Chỉ người có quyền được xem dữ liệu định danh; cảnh báo trùng điện thoại/giấy tờ',
-  c: ['ban_hang', 'truong_phong', 'ho_so', 'cskh'], own: ['ban_hang'], search: ['code', 'full_name', 'phone', 'phone2'], fields: [
+  c: ['ban_hang', 'truong_phong', 'ho_so', 'cskh'], own: ['ban_hang'], search: ['code', 'full_name', 'phone', 'phone2'], listPii: 1, fields: [   // listPii: danh mục hiện đủ STK, CCCD, MST… cho vai trò được xem định danh (07/11/2026)
     { k: 'code', l: 'Mã khách hàng', t: 'code', prefix: 'KH', pad: 6, manual: 1, help: 'Để trống → hệ thống tự cấp (KH000001…)' },   // hiện lại ở phiếu khách hàng 07/11/2026 (VD mã = mã căn CTS-K-101)
     { k: 'full_name', l: 'Họ tên', t: 'text', req: 1 },
     { k: 'phone', l: 'Điện thoại', t: 'text', req: 1, help: '09xxxxxxxx' },
