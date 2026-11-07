@@ -207,6 +207,7 @@ function input(f, v, rec = {}, { ro, id } = {}) {
     case 'check': return `<div class="cklist${f.qty ? ' qty' : ''}" ${nm} ${f.qty ? 'data-qty' : ''}>${checkRows(v || [], f.qty)}</div>`;
     case 'json': return f.k === 'new_schedule' ? `<div data-sched ${nm}></div>` : f.k === 'sale_sched' ? `<div data-ssched ${nm}></div>` : f.grid ? `<div class="gridin" ${nm}>${gridRows(f, v || [])}</div>` : `<div class="ro">${show(f, rec)}</div>`;
     default: if (f.choose) return `<select ${nm}>${[...new Set([...f.choose, ...(v ? [v] : [])])].map(o => `<option ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;   // ô chữ nhưng chọn trong danh sách (giữ giá trị cũ ngoài danh sách)
+      if (f.sugRef) return `<input ${nm} value="${esc(v ?? '')}" autocomplete="off" list="dl_${f.k}" placeholder="Gõ mã hoặc tên để tìm ${esc(M.ents[f.sugRef].one)} đã có…"><datalist id="dl_${f.k}"></datalist>`;   // gợi ý động: xem openForm
       return `<input ${nm} value="${esc(v ?? '')}" autocomplete="off"${f.sug ? ` list="dl_${f.k}"` : ''}>${f.sug ? sugList('dl_' + f.k, f.sug) : ''}`;
   }
 }
@@ -806,6 +807,28 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     for (const [c, x] of Object.entries(v)) { const el = tr && $(`[data-gc="${c}"]`, tr); if (el && !el.value && x && !String(x).startsWith('•')) el.value = x; }
     const ba = form.elements.bank_account; if (ba && !ba.value && k.bank_account && !String(k.bank_account).startsWith('•')) ba.value = k.bank_account;
   };
+  // ô chữ có gợi ý từ danh mục (VD Mã khách hàng trên phiếu đăng ký): gõ mã / tên → sổ các mã đã có; chọn đúng 1 mã → điền thông tin theo sugFill
+  for (const f of fields.filter(f => f.sugRef)) {
+    const el = form.elements[f.k], dl = el && $('#dl_' + f.k, form); if (!el || !dl) continue;
+    let opts = [];
+    const code = o => String(o.label || '').split(' · ')[0];
+    const load = debounce(async () => {
+      opts = await api('GET', `/api/opts/${f.sugRef}?` + new URLSearchParams(el.value.trim() ? { q: el.value.trim() } : {}));
+      dl.innerHTML = opts.map(o => `<option value="${esc(code(o))}">${esc(o.label)}${o.sub ? ' · ' + esc(o.sub) : ''}</option>`).join('');
+    }, 200);
+    el.addEventListener('focus', load); el.addEventListener('input', load);
+    el.addEventListener('change', run(async () => {
+      const o = opts.find(x => code(x).toUpperCase() === el.value.trim().toUpperCase()); if (!o) return;   // mã mới → để máy chủ tự cấp / tự khớp
+      const src = (await api('GET', `/api/e/${f.sugRef}/${o.id}`)).row;
+      if (src._masked && M.piiRoles.includes(M.me.role)) Object.assign(src, await api('GET', `/api/pii/${f.sugRef}/${src.id}`));
+      el.value = src.code || el.value;
+      for (const [to, from] of Object.entries(f.sugFill || {})) {   // đã chọn khách → lấy thông tin theo hồ sơ khách
+        const t = form.elements[to], tf = fields.find(x => x.k === to), v = src[from];
+        if (!t || !tf || v == null || v === '' || String(v).startsWith('•')) continue;
+        t.value = tf.t === 'money' ? moneyStr(v) : tf.t === 'date' ? dmy(v) : v;
+      }
+    }));
+  }
   // chọn căn / khách → tự điền các ô liên quan (giá theo danh mục sản phẩm, thông tin khách)
   for (const f of fields.filter(f => f.fill)) form.addEventListener('change', async e => {
     if (e.target.name !== f.k || !e.target.value) return;

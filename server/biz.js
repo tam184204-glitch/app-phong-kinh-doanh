@@ -661,7 +661,8 @@ async function linkCustomer(db, r, old, user, opts, demo) {
     if (c) for (const k of K) if (r[k] == null || r[k] === '') r[k] = c[CK[k] || k];
   }
   if (r.cust_code) r.cust_code = String(r.cust_code).trim().toUpperCase() || null;
-  if (!r.customer_id && r.cust_code && !opts.check) {   // gõ mã khách → dùng khách có mã đó
+  // gõ / chọn mã khách (ô Mã khách hàng có gợi ý) → dùng khách có mã đó; sửa phiếu đổi sang mã của khách khác → đổi khách
+  if (r.cust_code && !opts.check && (!r.customer_id || (old && String(old.cust_code || '').toUpperCase() !== r.cust_code))) {
     const k = await db.one('SELECT id FROM kd_customer WHERE upper(code) = $1', [r.cust_code]);
     if (k) { r.customer_id = k.id; const c = await raw(db, 'customer', k.id); for (const f of K) if (r[f] == null || r[f] === '') r[f] = c[CK[f] || f]; }
   }

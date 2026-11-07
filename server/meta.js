@@ -233,9 +233,10 @@ def('reservation', {
     { k: 'sale_check', l: 'Thông báo mở bán', t: 'text', ro: 1 },   // kiểm tra căn có trong thông báo mở bán đã duyệt gần nhất (cảnh báo, không chặn)
     { k: 'unit_id', l: 'Mã căn hộ', t: 'ref', ref: 'unit', req: 1, filter: 'con_ban,chua_mo_ban', fill: { price: 'total_price', finish_value: 'finish_value' } },
     { k: 'deal', l: 'Hình thức đăng ký', t: 'sel', req: 1, def: 'mua', o: [['mua', 'Đăng ký mua', 'b'], ['thue', 'Đăng ký thuê', 'v']] },
-    { k: 'customer_id', l: 'Khách hàng đã có', t: 'ref', ref: 'customer', help: 'Chọn khách có sẵn để điền nhanh — để trống: hệ thống tự khớp theo CCCD / SĐT hoặc tạo khách mới',
-      fill: { cust_code: 'code', cust_name: 'full_name', id_no: 'id_no', id_date: 'id_date', id_place: 'id_place', address: 'address', phone: 'phone', tax_code: 'tax_code', bank_account: 'bank_account' } },
-    { k: 'cust_code', l: 'Mã khách hàng', t: 'text', help: 'Để trống → lấy mã khách đã có (khớp CCCD / SĐT) hoặc tự cấp mã mới (KH000001…)' },
+    // 07/11/2026: bỏ ô «Khách hàng đã có» khỏi phiếu — chọn khách ngay ở ô Mã khách hàng (gõ → sổ các mã đã có); máy chủ gắn khách theo mã khi lưu
+    { k: 'customer_id', l: 'Khách hàng đã có', t: 'ref', ref: 'customer', noForm: 1 },
+    { k: 'cust_code', l: 'Mã khách hàng', t: 'text', sugRef: 'customer', help: 'Gõ mã hoặc tên → chọn khách đã có (tự điền thông tin khách). Để trống / mã mới → hệ thống tự khớp theo CCCD / SĐT hoặc tự cấp mã mới (KH000001…)',
+      sugFill: { cust_name: 'full_name', id_no: 'id_no', id_date: 'id_date', id_place: 'id_place', address: 'address', phone: 'phone', tax_code: 'tax_code', bank_account: 'bank_account' } },
     { k: 'cust_name', l: 'Họ tên khách hàng', t: 'text', req: 1 },
     { k: 'id_no', l: 'Căn cước công dân', t: 'text', pii: 1 },
     { k: 'id_date', l: 'Ngày cấp', t: 'date', pii: 1 },
