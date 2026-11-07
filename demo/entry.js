@@ -165,6 +165,35 @@ async function boot(pgliteUrl) {
       localStorage.setItem('ctg-kd-demo-xoa-thu-0711', '1');
     }
   } catch (e) { console.warn('xóa dữ liệu thử', e); }
+  // 07/11/2026: xóa hết dữ liệu các phân hệ (khách hàng, giữ chỗ, hợp đồng, thu chi, công nợ, bàn giao, CSKH, đại lý…) để test lại quy trình từ đầu —
+  // chỉ giữ danh mục sản phẩm (dự án, tòa, căn hộ, bảng giá, gói hoàn thiện), mẫu in và tài khoản. Chạy 1 lần / trình duyệt; mã chứng từ đếm lại từ 1
+  try {
+    if (!localStorage.getItem('ctg-kd-demo-chi-dmsp-0711')) {
+      say('Đang xóa dữ liệu các phân hệ (giữ danh mục sản phẩm)…');
+      const M = require('../server/meta'), B = require('../server/biz'), C = require('../server/core');
+      const KEEP = new Set(['project', 'building', 'unit', 'price_policy', 'package', 'template']);
+      const dels = Object.values(M.E).filter(e => !KEEP.has(e.key));
+      await tx(async db => {
+        await db.q('SET LOCAL session_replication_role = replica');   // tắt kiểm tra khóa ngoại trong lúc xóa (các bảng tham chiếu vòng nhau)
+        const fks = await db.q(`SELECT c.relname child, a.attname col, p.relname parent FROM pg_constraint k JOIN pg_class c ON c.oid = k.conrelid JOIN pg_class p ON p.oid = k.confrelid
+          JOIN pg_attribute a ON a.attrelid = k.conrelid AND a.attnum = k.conkey[1] WHERE k.contype = 'f'`);
+        const delT = new Set(dels.map(e => e.table));
+        for (const x of fks) if (!delT.has(x.child) && delT.has(x.parent) && x.child.startsWith('kd_') && !['kd_audit', 'kd_note', 'kd_file', 'kd_approval'].includes(x.child))
+          await db.q(`UPDATE ${x.child} SET ${x.col} = NULL WHERE ${x.col} IS NOT NULL`);   // danh mục đang trỏ tới bản ghi bị xóa → bỏ liên kết
+        for (const e of dels) await db.q(`DELETE FROM ${e.table}`);
+        const ks = dels.map(e => e.key);
+        for (const t of ['kd_audit', 'kd_note', 'kd_file', 'kd_approval']) await db.q(`DELETE FROM ${t} WHERE ent = ANY($1)`, [ks]);
+        await db.q("DELETE FROM kd_audit WHERE ent = 'unit' AND action = 'cap_nhat_trang_thai'");
+        await db.q('DELETE FROM kd_file_star WHERE file_id NOT IN (SELECT id FROM kd_file)');
+        await db.q("DELETE FROM kd_import WHERE kind <> 'units'");
+        for (const e of dels) for (const fd of e.fields.filter(fd => fd.t === 'code' && fd.prefix))
+          await db.q('DELETE FROM kd_counter WHERE prefix LIKE $1', [fd.prefix.replace('{Y}', '%')]);
+        await db.q('SET LOCAL session_replication_role = origin');
+        for (const u of await db.q('SELECT id FROM kd_unit')) await B.recomputeUnit(db, u.id, C.SYS);   // căn về «còn bán» theo bảng hàng
+      });
+      localStorage.setItem('ctg-kd-demo-chi-dmsp-0711', '1');
+    }
+  } catch (e) { console.warn('xóa dữ liệu các phân hệ', e); }
   const job = async () => { try { await tx(db => biz.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.warn('job', e.message); } };
   await job(); setInterval(job, 2 * 60e3);
 
