@@ -1411,9 +1411,9 @@ V.debtunit = async (main, params = {}) => {
     const short = k => (d.labels[k] || '').split(' · ')[0], T = today();
     const stat = (t, v, foot, cls = '') => `<div class="ad-stat ${cls}"><div class="ad-stat-t">${t}</div><div class="ad-stat-v">${v}</div><div class="ad-stat-f">${foot}</div></div>`;
     const kv = rows => `<table class="ad-desc du-kv"><tbody>${rows.filter(Boolean).map(([l, v]) => `<tr><th>${l}</th><td>${v}</td></tr>`).join('')}</tbody></table>`;
-    const pct = r.due ? Math.min(100, Math.round(r.paid / r.due * 100)) : 0;
+    const pct = r.due ? Math.min(100, Math.round(r.paid / r.due * 100)) : 0, canThu = !!M.ents.receipt?.perm?.c;   // tạo phiếu thu ngay ở màn này (07/11/2026)
     const ctRows = r.contracts.map(c => `<tr data-ct="${c.id}"><td><b>${esc(c.kind_l)}</b><small>${esc(c.number || '')}</small></td><td class="num">${fm(c.total)}</td><td class="num">${fm(c.paid)}</td><td class="num"><b>${fm(c.left)}</b></td>
-      <td class="num">${c.overdue ? `<b class="ad-c-error">${fm(c.overdue)}</b><small>${c.days} ngày</small>` : '<span class="ad-muted">—</span>'}</td><td class="num">${c.next_on ? `${fm(c.next_amt)}<small>hạn ${dmy(c.next_on)}</small>` : '<span class="ad-muted">—</span>'}</td><td>${ico('fa-chevron-right')}</td></tr>`).join('');
+      <td class="num">${c.overdue ? `<b class="ad-c-error">${fm(c.overdue)}</b><small>${c.days} ngày</small>` : '<span class="ad-muted">—</span>'}</td><td class="num">${c.next_on ? `${fm(c.next_amt)}<small>hạn ${dmy(c.next_on)}</small>` : '<span class="ad-muted">—</span>'}</td><td class="nowrap">${canThu ? `<button class="ad-btn du-thu" data-thu="${c.id}" title="Lập phiếu thu cho hợp đồng này">${ico('fa-plus')} Phiếu thu</button>` : ''} ${ico('fa-chevron-right')}</td></tr>`).join('');
     const bank = r.bank ? kv([['Vay ngân hàng', esc(r.bank.st_l)], r.bank.st === 'co_vay' && ['Ngân hàng', esc(r.bank.bank || '—')], r.bank.st === 'co_vay' && ['Chứng từ 3 bên', esc(r.bank.doc3_l || '—')]]) : '<div class="ad-empty">HĐMB chưa ghi tình trạng vay vốn</div>';
     const vay = r.vay ? kv([['Số HĐ vay', `<a href="#/v/ctdebt?id=${r.vay.id}">${esc(r.vay.number || '')}</a>`], ['Gốc theo hợp đồng', fm(r.vay.goc)], ['Khách đã chuyển', fm(r.vay.goc_nhan)], ['Gốc khách chưa chuyển', fm(r.vay.goc_cho)],
       ['Lãi', esc(r.vay.rate_l)], ['Lãi còn phải trả khách', fm(r.vay.lai_con) + (r.vay.lai_qh ? ` <span class="ad-c-error">(quá hạn ${fm(r.vay.lai_qh)})</span>` : '')], ['Đáo hạn', dmy(r.vay.exp_on) || '—']]) : '';
@@ -1423,7 +1423,7 @@ V.debtunit = async (main, params = {}) => {
       <div class="ad-head"><button class="ad-back" id="duBack" title="Quay lại">${ico('fa-arrow-left')}</button>
         <div class="ad-head-main"><div class="ad-head-title"><h1>${esc(r.unit)}</h1>${tag(esc(short(r.grp)) + (r.grp === 'n5' ? ' · Nợ khó đòi' : ''), { n1: 'success', n2: 'processing', n3: 'warning', n4: 'error', n5: 'error' }[r.grp])}${r.manual ? tag('chỉnh tay', 'default') : ''}</div>
           <div class="ad-head-sub">${[esc(r.customer), r.phone ? `<a href="tel:${esc(r.phone)}">${esc(r.phone)}</a>` : '', esc(r.project + ' · Tòa ' + r.building), r.owner ? 'NV ' + esc(r.owner) : ''].filter(Boolean).join('<i>·</i>')}</div></div>
-        <div class="ad-head-extra">${d.can_class ? `<button class="ad-btn" id="duCall">${ico('fa-phone')} Ghi nhắc nợ</button><button class="ad-btn" id="duCls">${ico('fa-tags')} Cập nhật nhóm nợ</button>` : ''}${d.can_plan && !r.plan_n ? `<button class="ad-btn ad-btn-primary" id="duPlan">${ico('fa-calendar-plus')} Lập kế hoạch thu</button>` : ''}<a class="ad-btn" href="#/v/unit360?id=${r.unit_id}">${ico('fa-cube')} Hồ sơ 360°</a></div></div>
+        <div class="ad-head-extra">${d.can_class ? `<button class="ad-btn" id="duCall">${ico('fa-phone')} Ghi nhắc nợ</button><button class="ad-btn" id="duCls">${ico('fa-tags')} Cập nhật nhóm nợ</button>` : ''}${d.can_plan && !r.plan_n ? `<button class="ad-btn ad-btn-primary" id="duPlan">${ico('fa-calendar-plus')} Lập kế hoạch thu</button>` : ''}<a class="ad-btn" href="#/v/unit360?id=${r.unit_id}">${ico('fa-cube')} Hồ sơ 360°</a>${canThu ? `<button class="ad-btn ad-btn-primary" id="duThu">${ico('fa-plus')} Phiếu thu</button>` : ''}</div></div>
       ${r.warns.length ? `<div class="du-warn">${r.warns.map(([k, t]) => `<span class="us-w us-w-${k}">${ico(k === 'r' ? 'fa-circle-exclamation' : k === 'a' ? 'fa-triangle-exclamation' : 'fa-circle-info')} ${esc(t)}</span>`).join('')}</div>` : ''}
       <div class="ad-card"><div class="ad-card-head">Tổng quan công nợ<span class="ad-card-extra">tính đến ${dmy(T)}</span></div>
         <div class="ad-stats">${stat('Phải thu đến hạn', fm(r.due), `còn theo hợp đồng ${fm(r.left)}`)}${stat('Đã thu', fm(r.paid), `<div class="ad-progress"><div class="ad-progress-rail"><i style="width:${pct}%"></i></div><span>${pct}%</span></div>`, 'ad-stat-success')}
@@ -1436,8 +1436,10 @@ V.debtunit = async (main, params = {}) => {
       <div class="ad-card"><div class="ad-card-head">Lịch sử nhắc nợ<span class="ad-card-extra">${r.calls_n} lần</span></div><div class="us-pad">${calls}</div></div></div>`;
     $('#duBack', main).onclick = back;
     main.onclick = run(async e => {
-      const ct = e.target.closest('tr[data-ct]'); if (ct) { location.hash = `#/v/ctdebt?id=${ct.dataset.ct}`; return; }
       const cid = r.contract_id;
+      const th = e.target.closest('[data-thu]') || (e.target.closest('#duThu') && { dataset: { thu: cid } });
+      if (th) { const id = +th.dataset.thu, c = r.contracts.find(x => x.id === id); return openForm('receipt', { preset: { contract_id: id, contract_id__l: c?.number || '', voucher_date: today(), ...(c?.overdue ? { amount: c.overdue } : c?.next_amt ? { amount: c.next_amt } : {}) }, onSaved: draw }); }
+      const ct = e.target.closest('tr[data-ct]'); if (ct) { location.hash = `#/v/ctdebt?id=${ct.dataset.ct}`; return; }
       if (e.target.closest('#duCall')) return openForm('debt_call', { preset: { contract_id: cid, contract_id__l: r.contracts.find(c => c.id === cid)?.number || '' }, onSaved: draw });
       if (e.target.closest('#duPlan')) return openForm('collect_plan', { preset: { month: d.month, contract_id: cid, contract_id__l: r.contracts.find(c => c.id === cid)?.number || '', expected: r.due_left || null, expected_on: today(), basis: 'lich_hd', ability: ['n4', 'n5'].includes(r.grp) ? 'thap' : 'vua' }, onSaved: draw });
       if (e.target.closest('#duCls')) {
