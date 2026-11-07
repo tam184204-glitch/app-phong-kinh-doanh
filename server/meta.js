@@ -142,7 +142,7 @@ def('package', {
 
 // ===================== 03. KHÁCH HÀNG =====================
 def('customer', {
-  title: 'Khách hàng', one: 'khách hàng', code: 'KH-01', mod: '03', icon: 'fa-user', disp: "t.full_name",
+  title: 'Khách hàng', one: 'khách hàng', code: 'KH-01', mod: '03', icon: 'fa-user', disp: "t.code||' · '||t.full_name",
   purpose: 'Tạo một hồ sơ khách hàng thống nhất', users: 'Nhân viên kinh doanh / hồ sơ',
   how: 'Tìm khách cũ → nếu chưa có thì tạo → kiểm tra trùng → liên kết giao dịch',
   rules: 'Chỉ người có quyền được xem dữ liệu định danh; cảnh báo trùng điện thoại/giấy tờ',
@@ -235,7 +235,7 @@ def('reservation', {
     { k: 'deal', l: 'Hình thức đăng ký', t: 'sel', req: 1, def: 'mua', o: [['mua', 'Đăng ký mua', 'b'], ['thue', 'Đăng ký thuê', 'v']] },
     { k: 'customer_id', l: 'Khách hàng đã có', t: 'ref', ref: 'customer', help: 'Chọn khách có sẵn để điền nhanh — để trống: hệ thống tự khớp theo CCCD / SĐT hoặc tạo khách mới',
       fill: { cust_code: 'code', cust_name: 'full_name', id_no: 'id_no', id_date: 'id_date', id_place: 'id_place', address: 'address', phone: 'phone', tax_code: 'tax_code', bank_account: 'bank_account' } },
-    { k: 'cust_code', l: 'Mã khách hàng', t: 'text', hide: 1 },   // ẩn 07/11/2026 — hệ thống tự lấy / tự cấp
+    { k: 'cust_code', l: 'Mã khách hàng', t: 'text', help: 'Để trống → lấy mã khách đã có (khớp CCCD / SĐT) hoặc tự cấp mã mới (KH000001…)' },
     { k: 'cust_name', l: 'Họ tên khách hàng', t: 'text', req: 1 },
     { k: 'id_no', l: 'Căn cước công dân', t: 'text', pii: 1 },
     { k: 'id_date', l: 'Ngày cấp', t: 'date', pii: 1 },
@@ -266,9 +266,9 @@ def('reservation', {
     // phiếu đã hủy: theo dõi trả lại hồ sơ cho khách — sửa ngay trên dòng ở tab «Đã hủy»
     { k: 'doc_ret', l: 'Trạng thái trả hồ sơ', t: 'sel', show: { status: ['huy'] }, o: [['chua_tra', 'Chưa trả hồ sơ', 'a'], ['da_tra', 'Đã trả hồ sơ', 'g']] },
     { k: 'doc_ret_on', l: 'Ngày trả hồ sơ', t: 'date', show: { status: ['huy'] } },
-  ], list: ['stt', 'unit_id', 'sale_check', 'cust_name', 'id_no', 'id_date', 'id_place', 'address', 'phone', 'unit_value', 'finish_value', 'price', 'reg_at', 'hold_until', 'reg_state', 'progress', 'source', 'agent_id', 'prints'],
+  ], list: ['stt', 'unit_id', 'sale_check', 'cust_code', 'cust_name', 'id_no', 'id_date', 'id_place', 'address', 'phone', 'unit_value', 'finish_value', 'price', 'reg_at', 'hold_until', 'reg_state', 'progress', 'source', 'agent_id', 'prints'],
   // tab «Đăng ký thuê» ở danh sách: tiền thuê thay cho giá bán
-  lists: { thue: { cols: ['stt', 'unit_id', 'sale_check', 'cust_name', 'id_no', 'id_date', 'id_place', 'address', 'phone', 'rent', 'term_months', 'reg_at', 'hold_until', 'reg_state', 'progress', 'source', 'agent_id'] } },   // chưa có mẫu in đăng ký thuê → không có cột In
+  lists: { thue: { cols: ['stt', 'unit_id', 'sale_check', 'cust_code', 'cust_name', 'id_no', 'id_date', 'id_place', 'address', 'phone', 'rent', 'term_months', 'reg_at', 'hold_until', 'reg_state', 'progress', 'source', 'agent_id'] } },   // chưa có mẫu in đăng ký thuê → không có cột In
   lock: ['chuyen_hd', 'het_han', 'huy', 'cho_duyet'], lockKeep: ['note', 'progress', 'reg_state', 'doc_ret', 'doc_ret_on'],
   files: [['tai_lieu', 'Tài liệu'], ['tra_ho_so', 'File scan trả hồ sơ']], fileKeep: ['tra_ho_so'],   // fileKeep: loại tệp vẫn xóa được khi phiếu đã khóa
   flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'giu_cho' } },
