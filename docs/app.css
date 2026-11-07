@@ -1287,3 +1287,11 @@ table.t tr.vch > td { padding: 0; background: #fbfcfe; white-space: normal; curs
 .kl-t td.num, .kl-t td:first-child { white-space: nowrap; }
 .kl-t tfoot td { font-weight: 600; }
 
+/* Tiến độ thanh toán: tiêu đề thẳng 1 hàng, nhóm Lãi chậm trả gọn (07/11/2026) */
+.ad-table thead tr:first-child th[rowspan] { vertical-align: bottom; }
+.ad-table thead th { padding-top: 10px; padding-bottom: 10px; }
+.ad-table th.ad-grp { padding: 6px 8px; font-size: 12px; font-weight: 600; color: var(--ad-text2, var(--ad-text3)); text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px dashed var(--ad-split); }
+.ad-table thead tr:first-child th:not(.ad-grp) { border-bottom: 1px solid var(--ad-split); }
+.ad-table thead tr:first-child th:not(.ad-grp):not([rowspan]) { vertical-align: bottom; }
+.ad-table td:nth-child(6), .ad-table th:nth-child(6) { padding-left: 20px; }
+.ad-table .ad-cell-txt { max-width: 300px; }
