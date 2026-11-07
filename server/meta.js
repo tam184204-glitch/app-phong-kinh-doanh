@@ -147,7 +147,7 @@ def('customer', {
   how: 'Tìm khách cũ → nếu chưa có thì tạo → kiểm tra trùng → liên kết giao dịch',
   rules: 'Chỉ người có quyền được xem dữ liệu định danh; cảnh báo trùng điện thoại/giấy tờ',
   c: ['ban_hang', 'truong_phong', 'ho_so', 'cskh'], own: ['ban_hang'], search: ['code', 'full_name', 'phone', 'phone2'], fields: [
-    { k: 'code', l: 'Mã khách hàng', t: 'code', prefix: 'KH', pad: 6, manual: 1, hide: 1 },   // ẩn khỏi mọi màn hình 07/11/2026 — vẫn tự cấp ngầm để khớp phiếu thu MISA / nhập Bravo
+    { k: 'code', l: 'Mã khách hàng', t: 'code', prefix: 'KH', pad: 6, manual: 1, help: 'Để trống → hệ thống tự cấp (KH000001…)' },   // hiện lại ở phiếu khách hàng 07/11/2026 (VD mã = mã căn CTS-K-101)
     { k: 'full_name', l: 'Họ tên', t: 'text', req: 1 },
     { k: 'phone', l: 'Điện thoại', t: 'text', req: 1, help: '09xxxxxxxx' },
     { k: 'phone2', l: 'Điện thoại khác', t: 'text' },
@@ -173,7 +173,7 @@ def('customer', {
     { k: 'noxh_group', l: 'Nhóm đối tượng NOXH', t: 'sel', opt: 'nhom_noxh', noForm: 1 },
     owner(undefined, { noForm: 1 }),   // không hiện trong form tạo / sửa — tự lấy người tạo
     { k: 'note', l: 'Ghi chú', t: 'long' },
-  ], list: ['full_name', 'address', 'phone', 'email', 'tax_code', 'stage'],
+  ], list: ['code', 'full_name', 'address', 'phone', 'email', 'tax_code', 'stage'],
 });
 def('contact_log', {
   title: 'Nhật ký tư vấn – liên hệ', one: 'nhật ký', code: 'KH-02', mod: '03', icon: 'fa-comments', disp: "to_char(t.at,'DD/MM/YYYY HH24:MI')",
