@@ -1640,3 +1640,14 @@ table.t tfoot td { background: var(--paper); border-top-color: var(--line); }
 .pf-box { max-width: none; margin-bottom: 4px; }
 .pf-box .ad-card-extra a.ad-btn { text-decoration: none; }
 .us .ph a.ad-btn { text-decoration: none; }
+
+/* chi tiết công nợ 1 căn (07/11/2026) */
+.du .du-warn { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: -8px 0 18px; padding: 12px 18px; border-radius: 16px; background: #fff; border: 1px solid var(--sf-line); }
+.du .du-kv th { width: 45%; }
+.du .du-kv th, .du .du-kv td { padding: 10px 14px; }
+.du .du-kv { border: 1px solid var(--sf-line); border-radius: 14px; border-collapse: separate; overflow: hidden; }
+.du .du-sub { margin: 16px 0 8px; font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--sf-pri); }
+.du .du-more { margin-top: 10px; font-size: 13px; color: var(--ad-text3); }
+.du .us-pad .ad-table { border: 1px solid var(--sf-line); border-radius: 14px; overflow: hidden; }
+.du .ad-head-extra a.ad-btn, .du .ad-head-sub a { text-decoration: none; }
+.du .ad-table td small { display: block; }

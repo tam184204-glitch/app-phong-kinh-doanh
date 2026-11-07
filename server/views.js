@@ -378,8 +378,9 @@ const monthAdd = (m, k) => { const d = new Date(Date.UTC(+m.slice(0, 4), +m.slic
 
 async function debtStatus(db, user, f = {}) {
   if (!can(user, E.installment, 'r')) deny();
+  if (f.unit != null && f.unit !== '' && !/^\d+$/.test(String(f.unit))) bad('Bộ lọc không hợp lệ');
   const t = today(), m = t.slice(0, 7), t30 = addDays(t, 30), cfg = await debtCfg(db), D = cfg.days, GL = debtGrpL(D);
-  const cs = await signedContracts(db, f, "AND c.status = 'da_ky'" + mine(user, 'c'));
+  const cs = await signedContracts(db, f, "AND c.status = 'da_ky'" + mine(user, 'c') + (f.unit ? ` AND c.unit_id = ${+f.unit}` : ''));   // unit: màn chi tiết 1 căn
   const ids = cs.map(c => c.id), vayIds = cs.filter(c => c.kind === 'vay').map(c => c.id);
   const KL = { hdmb: 'HĐMB', vay: 'HĐ vay', thue: 'HĐ thuê', thue_mua: 'HĐ thuê mua', hoan_thien: 'HĐ hoàn thiện' };
   // lãi / gốc công ty phải trả khách (HĐ vay) — để biết khách «cho công ty vay» thế nào và dòng chi dự kiến
