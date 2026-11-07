@@ -231,9 +231,9 @@ async function alerts(db, user, f = {}) {
   for (const r of await db.q(`SELECT c.id, c.number, c.plan_sign, c.owner_id, c.status, u.code unit, u.id unit_id, k.full_name, own.full_name who FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id LEFT JOIN kd_user own ON own.id = c.owner_id
     WHERE c.status IN ('du_thao','cho_duyet','cho_ky','tu_choi') AND c.plan_sign <= $${p.length + 1}::date + 3 ${w}`, [...p, t]))
     push('ky_hd', r.plan_sign < t ? 'r' : 'a', `${r.number} · ${r.unit} · ${r.full_name} — ${r.plan_sign < t ? 'quá ngày dự kiến ký' : 'sắp đến lịch ký'} ${C.dmy(r.plan_sign)}`, 'contract', r.id, r.plan_sign, r.who, r.unit_id, r.owner_id);
-  const cs = await signedContracts(db, f, "AND c.status = 'da_ky'");
+  const cs = await signedContracts(db, f, "AND c.status = 'da_ky'"), DK = (await debtCfg(db)).days;
   for (const c of cs) {
-    if (c.d.overdue > 0) push('no_qua_han', c.d.overdue_days > 30 ? 'r' : 'a', `${c.unit} · ${c.customer} — quá hạn ${fmtMoney(c.d.overdue)}đ (${c.d.overdue_days} ngày)`, 'contract', c.id, c.d.overdue_since, c.owner, c.unit_id, c.owner_id);
+    if (c.d.overdue > 0) push('no_qua_han', c.d.overdue_days > 30 ? 'r' : 'a', `${c.unit} · ${c.customer} — quá hạn ${fmtMoney(c.d.overdue)}đ (${c.d.overdue_days} ngày)${c.d.overdue_days > DK[2] ? ' · NỢ KHÓ ĐÒI' : ''}`, 'contract', c.id, c.d.overdue_since, c.owner, c.unit_id, c.owner_id);
     else if (c.d.due7 > 0) push('den_han', 'b', `${c.unit} · ${c.customer} — ${c.d.next?.name || 'kỳ thu'} ${fmtMoney(c.d.due7)}đ đến hạn ${C.dmy(c.d.next?.due_on)}`, 'contract', c.id, c.d.next?.due_on, c.owner, c.unit_id, c.owner_id);
   }
   const calls = await db.q(`SELECT DISTINCT ON (d.contract_id) d.*, u.code unit, u.id unit_id, k.full_name, own.full_name who FROM kd_debt_call d JOIN kd_contract c ON c.id = d.contract_id JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id LEFT JOIN kd_user own ON own.id = d.owner_id
@@ -357,6 +357,124 @@ async function unitStatus(db, user, f = {}) {
       overdue: sumOf([...(hdmb ? [hdmb] : []), ...pre, ...(rent ? [rent] : []), ...(fin ? [fin] : [])], 'overdue') };
   });
   return { rows, states: US_ST, bravo_sync: await bravoSync(db) };
+}
+
+// ======================= TÌNH TRẠNG CÔNG NỢ ĐẾN HẠN (CN-06, 07/11/2026) =======================
+// Mỗi dòng 1 mã căn: phải thu đến hạn · đã thu · nợ quá hạn của mọi HĐ đã ký trên căn (HĐMB, hoàn thiện, thuê, gốc HĐ vay khách chưa chuyển).
+// Nhóm nợ tự động theo số ngày quá hạn lâu nhất (mốc ngày chỉnh được); người dùng có quyền ghi nhắc nợ được chỉnh tay nhóm nợ từng căn (kèm lý do, giữ lịch sử).
+// Lưu ở kd_setting key 'debt_class' (không thêm bảng → không phải migrate CSDL): { days: [30, 90, 180], units: { <unit_id>: { grp, reason, by, by_l, at } }, hist: { <unit_id>: [...] } }
+const DG_DAYS = [30, 90, 180];
+const DG_KEYS = ['n1', 'n2', 'n3', 'n4', 'n5'];
+async function debtCfg(db) {
+  const v = (await db.one("SELECT value FROM kd_setting WHERE key = 'debt_class'"))?.value || {};
+  const ok = Array.isArray(v.days) && v.days.length === 3 && v.days.every((x, i) => Number.isInteger(x) && x > 0 && (!i || x > v.days[i - 1]));
+  return { days: ok ? v.days : DG_DAYS, units: v.units || {}, hist: v.hist || {} };
+}
+const debtGrpOf = (od, days, D) => od <= 0 ? 'n1' : days <= D[0] ? 'n2' : days <= D[1] ? 'n3' : days <= D[2] ? 'n4' : 'n5';
+const debtGrpL = D => ({ n1: 'Nhóm 1 · Trong hạn', n2: `Nhóm 2 · Quá hạn ≤ ${D[0]} ngày`, n3: `Nhóm 3 · Quá hạn ${D[0] + 1}–${D[1]} ngày`, n4: `Nhóm 4 · Quá hạn ${D[1] + 1}–${D[2]} ngày`, n5: `Nhóm 5 · Nợ khó đòi (> ${D[2]} ngày)` });
+const canDebtClass = u => can(u, E.debt_call, 'c') || u.role === 'admin';
+const monthAdd = (m, k) => { const d = new Date(Date.UTC(+m.slice(0, 4), +m.slice(5) - 1 + k, 1)); return d.toISOString().slice(0, 7); };
+
+async function debtStatus(db, user, f = {}) {
+  if (!can(user, E.installment, 'r')) deny();
+  const t = today(), m = t.slice(0, 7), t30 = addDays(t, 30), cfg = await debtCfg(db), D = cfg.days, GL = debtGrpL(D);
+  const cs = await signedContracts(db, f, "AND c.status = 'da_ky'" + mine(user, 'c'));
+  const ids = cs.map(c => c.id), vayIds = cs.filter(c => c.kind === 'vay').map(c => c.id);
+  const KL = { hdmb: 'HĐMB', vay: 'HĐ vay', thue: 'HĐ thuê', thue_mua: 'HĐ thuê mua', hoan_thien: 'HĐ hoàn thiện' };
+  // lãi / gốc công ty phải trả khách (HĐ vay) — để biết khách «cho công ty vay» thế nào và dòng chi dự kiến
+  const LP = await db.q('SELECT contract_id, kind, due_on, amount, paid_amt FROM kd_loan_pay WHERE contract_id = ANY($1)', [vayIds]);
+  const lpRem = x => Math.max(0, +x.amount - (+x.paid_amt || 0));
+  const calls = await db.q('SELECT DISTINCT ON (contract_id) * FROM kd_debt_call WHERE contract_id = ANY($1) ORDER BY contract_id, at DESC', [ids]);
+  await B.H.debt_call.decorate(calls, { db });
+  const callOf = new Map(calls.map(x => [x.contract_id, x]));
+  const plans = await db.q("SELECT contract_id, month, expected, status FROM kd_collect_plan WHERE contract_id = ANY($1) AND status NOT IN ('thay_the','tu_choi') AND month BETWEEN $2 AND $3", [ids, m, monthAdd(m, 5)]);
+  const RES = Object.fromEntries(C.F.debt_call.result.o.map(o => [o[0], o[1]]));
+  const byU = new Map();
+  for (const c of cs) (byU.get(c.unit_id) || byU.set(c.unit_id, []).get(c.unit_id)).push(c);
+  const rows = [];
+  for (const [uid, all] of byU) {
+    const main = all.find(c => ['hdmb', 'thue_mua'].includes(c.kind)) || all.find(c => c.kind !== 'vay') || all[0];
+    const sum = fn => all.reduce((a, c) => a + fn(c), 0);
+    const dueGross = sum(c => c.d.inst.filter(i => i.due_on && i.due_on <= t).reduce((a, i) => a + i.amount, 0));
+    const overdue = sum(c => c.d.overdue), days = Math.max(0, ...all.map(c => c.d.overdue_days || 0));
+    const nx = all.map(c => c.d.next).filter(Boolean).sort((a, b) => String(a.due_on).localeCompare(String(b.due_on)))[0] || null;
+    const auto = debtGrpOf(overdue, days, D), man = cfg.units[uid] || null, grp = man?.grp || auto;
+    const vay = all.find(c => c.kind === 'vay');
+    let vayInfo = null;
+    if (vay) {
+      const ls = LP.filter(x => x.contract_id === vay.id), lai = ls.filter(x => x.kind === 'lai');
+      vayInfo = { id: vay.id, number: vay.number, goc: +vay.value, goc_nhan: vay.d.paid, goc_cho: vay.d.left, exp_on: vay.exp_on, term: vay.term_months,
+        rate_l: vay.int_mode === 'lai_suat' ? (vay.loan_rate != null ? `${String(vay.loan_rate).replace('.', ',')} %/năm` : 'theo lãi suất') : vay.rent ? `bằng tiền thuê ${fmtMoney(+vay.rent)}/tháng` : 'bằng tiền thuê',
+        lai_con: lai.reduce((a, x) => a + lpRem(x), 0), lai_qh: lai.filter(x => x.due_on < t).reduce((a, x) => a + lpRem(x), 0), tra_con: ls.reduce((a, x) => a + lpRem(x), 0) };
+    }
+    const bank = main.loan_status ? { st: main.loan_status, st_l: main.loan_status === 'co_vay' ? 'Có vay ngân hàng' : 'Không vay', bank: main.loan_bank || '', doc3: main.loan_doc3 || '', doc3_l: main.loan_doc3 === 'da_co' ? 'đã có chứng từ 3 bên' : main.loan_doc3 === 'chua_co' ? 'chưa có chứng từ 3 bên' : '' } : null;
+    const lc = all.map(c => callOf.get(c.id)).filter(Boolean).sort((a, b) => String(b.at).localeCompare(String(a.at)))[0] || null;
+    const plM = plans.filter(p => p.month === m && all.some(c => c.id === p.contract_id)).reduce((a, p) => a + +p.expected, 0);
+    const W = [];
+    if (grp === 'n5') W.push(['r', `Nợ khó đòi — quá hạn ${days} ngày, cần phương án xử lý`]);
+    else if (overdue > 0) W.push([days > D[0] ? 'r' : 'a', `Quá hạn ${days} ngày · ${fmtMoney(overdue)}`]);
+    if (lc?.promise_st === 'Thất hẹn') W.push(['r', `Thất hẹn cam kết ${fmtMoney(lc.promise_amount)} ngày ${C.dmy(lc.promise_on)}`]);
+    else if (lc?.promise_amount && lc.promise_on >= t) W.push(['b', `Hẹn trả ${fmtMoney(lc.promise_amount)} ngày ${C.dmy(lc.promise_on)}`]);
+    const due7 = sum(c => c.d.due7);
+    if (due7 > 0) W.push(['b', `Sắp đến hạn ${C.dmy(nx?.due_on)} · ${fmtMoney(due7)}`]);
+    if ((overdue > 0 || due7 > 0) && !plM) W.push(['a', 'Chưa có kế hoạch thu tháng này']);
+    if (man && DG_KEYS.indexOf(man.grp) < DG_KEYS.indexOf(auto)) W.push(['a', `Đang chỉnh tay nhẹ hơn tự động (${GL[auto].split(' · ')[0]})`]);
+    if (bank?.st === 'co_vay' && bank.doc3 === 'chua_co') W.push(['a', 'Vay ngân hàng chưa có chứng từ 3 bên']);
+    if (vayInfo?.lai_qh > 0) W.push(['r', `Quá hạn trả lãi HĐ vay cho khách ${fmtMoney(vayInfo.lai_qh)}`]);
+    if (vayInfo?.exp_on && vayInfo.exp_on >= t && vayInfo.exp_on <= t30) W.push(['a', `HĐ vay đáo hạn ${C.dmy(vayInfo.exp_on)}`]);
+    rows.push({ unit_id: uid, unit: main.unit, project: main.project, building: main.building, contract_id: main.id, customer: main.customer, phone: main.b_phone || main.phone || '', owner: main.owner || '',
+      total: sum(c => c.d.total), due: dueGross, paid: sum(c => c.d.paid), left: sum(c => c.d.left), due_left: sum(c => c.d.due), overdue, days, due7,
+      next_on: nx?.due_on || null, next_amt: nx?.rem || null, auto, grp, grp_l: GL[grp], manual: man,
+      bank, vay: vayInfo, plan_m: plM || null,
+      call: lc ? { at: String(lc.at).slice(0, 10), result_l: RES[lc.result] || '', content: lc.content || '', promise: lc.promise_amount ? `${fmtMoney(lc.promise_amount)} · ${C.dmy(lc.promise_on)}` : '', promise_st: lc.promise_st || '' } : null,
+      warns: W, hist: (cfg.hist[uid] || []).slice(-5).reverse(),
+      contracts: all.map(c => ({ id: c.id, number: c.number, kind: c.kind, kind_l: KL[c.kind] || c.kind, total: c.d.total, paid: c.d.paid, left: c.d.left, overdue: c.d.overdue, days: c.d.overdue_days || 0, next_on: c.d.next?.due_on || null, next_amt: c.d.next?.rem || null })) });
+  }
+  rows.sort((a, b) => DG_KEYS.indexOf(b.grp) - DG_KEYS.indexOf(a.grp) || b.overdue - a.overdue || b.due_left - a.due_left || String(a.unit).localeCompare(String(b.unit)));
+  rows.forEach((r, i) => { r.stt = i + 1; });
+  // dòng thu – chi dự kiến 6 tháng: thu = phần còn phải thu của các đợt đến hạn trong tháng (tháng này cộng cả nợ quá hạn), tách riêng phần của căn nợ khó đòi;
+  // chi = lãi / gốc HĐ vay công ty phải trả khách đến hạn trong tháng (tháng này cộng cả phần quá hạn chưa trả); kế hoạch = dòng kế hoạch thu đã lập.
+  const grpOfC = new Map(); for (const r of rows) for (const c of r.contracts) grpOfC.set(c.id, r.grp);
+  const flow = Array.from({ length: 6 }, (_, k) => ({ m: monthAdd(m, k), thu: 0, thu_kd: 0, chi: 0, plan: 0 }));
+  const slot = d => { const mm = String(d || '').slice(0, 7); return mm < m ? flow[0] : flow.find(x => x.m === mm); };
+  for (const c of cs) for (const i of c.d.inst) { if (!(i.rem > 0) || !i.due_on) continue; const s = slot(i.due_on); if (!s) continue; if (grpOfC.get(c.id) === 'n5') s.thu_kd += i.rem; else s.thu += i.rem; }
+  for (const x of LP) { const r = lpRem(x); if (!r || !x.due_on) continue; const s = slot(x.due_on); if (s) s.chi += r; }
+  for (const p of plans) { const s = flow.find(x => x.m === p.month); if (s) s.plan += +p.expected; }
+  const groups = DG_KEYS.map(k => { const xs = rows.filter(r => r.grp === k); return { k, l: GL[k], n: xs.length, overdue: xs.reduce((a, r) => a + r.overdue, 0), left: xs.reduce((a, r) => a + r.left, 0) }; });
+  return { rows, groups, flow, days: D, labels: GL, month: m, can_class: canDebtClass(user), can_plan: can(user, E.collect_plan, 'c'), can_days: ['truong_phong', 'lanh_dao', 'admin'].includes(user.role), bravo_sync: await bravoSync(db) };
+}
+// chỉnh tay nhóm nợ 1 căn (grp = 'auto' → trả về tự động); db: trong giao dịch
+async function setDebtClass(db, user, unitId, b = {}) {
+  if (!canDebtClass(user)) deny();
+  const grp = String(b.grp || ''), reason = String(b.reason || '').trim();
+  if (grp !== 'auto' && !DG_KEYS.includes(grp)) bad('Chọn nhóm nợ');
+  if (reason.length < 3) bad('Ghi lý do cập nhật nhóm nợ');
+  if (reason.length > 500) bad('Lý do tối đa 500 ký tự');
+  const u = await db.one("SELECT u.id, u.code, u.is_demo FROM kd_unit u WHERE u.id = $1", [+unitId]); if (!u) bad('Không tìm thấy căn hộ');
+  if (C.own(user, E.customer) && !(await db.one("SELECT 1 FROM kd_contract WHERE unit_id = $1 AND status = 'da_ky' AND (owner_id = $2 OR created_by = $2)", [u.id, user.id]))) deny();
+  await db.q("INSERT INTO kd_setting (key, value) VALUES ('debt_class', '{}'::jsonb) ON CONFLICT (key) DO NOTHING");
+  const v = (await db.one("SELECT value FROM kd_setting WHERE key = 'debt_class' FOR UPDATE")).value || {};
+  v.units ||= {}; v.hist ||= {};
+  const before = v.units[u.id]?.grp || 'auto', at = new Date().toISOString(), D = (await debtCfg(db)).days, GL = debtGrpL(D);
+  if (grp === 'auto') delete v.units[u.id]; else v.units[u.id] = { grp, reason, by: user.id, by_l: user.full_name || user.username || '', at };
+  (v.hist[u.id] ||= []).push({ from: before, to: grp, reason, by_l: user.full_name || user.username || '', at });
+  v.hist[u.id] = v.hist[u.id].slice(-20);
+  await db.q("UPDATE kd_setting SET value = $1, updated_at = now(), updated_by = $2 WHERE key = 'debt_class'", [JSON.stringify(v), user.id ?? null]);
+  const L = k => k === 'auto' ? 'Theo tự động' : GL[k];
+  await C.audit(db, 'unit', u.id, 'phan_loai_no', { debt_grp: before }, { debt_grp: grp }, user, `Nhóm nợ căn ${u.code}: ${L(before)} → ${L(grp)}. Lý do: ${reason}`, u.is_demo);
+  return { ok: true, grp };
+}
+// đổi mốc ngày chia nhóm nợ (trưởng phòng / lãnh đạo)
+async function setDebtDays(db, user, days) {
+  if (!['truong_phong', 'lanh_dao', 'admin'].includes(user.role)) deny();
+  const d = (Array.isArray(days) ? days : []).map(x => +x);
+  if (d.length !== 3 || !d.every((x, i) => Number.isInteger(x) && x >= 1 && x <= 3650 && (!i || x > d[i - 1]))) bad('Mốc ngày phải là 3 số nguyên tăng dần (VD 30, 90, 180)');
+  await db.q("INSERT INTO kd_setting (key, value) VALUES ('debt_class', '{}'::jsonb) ON CONFLICT (key) DO NOTHING");
+  const v = (await db.one("SELECT value FROM kd_setting WHERE key = 'debt_class' FOR UPDATE")).value || {};
+  const old = v.days || DG_DAYS; v.days = d;
+  await db.q("UPDATE kd_setting SET value = $1, updated_at = now(), updated_by = $2 WHERE key = 'debt_class'", [JSON.stringify(v), user.id ?? null]);
+  await C.audit(db, 'unit', 0, 'moc_nhom_no', { days: old.join(',') }, { days: d.join(',') }, user, `Mốc nhóm nợ: ${old.join(' / ')} → ${d.join(' / ')} ngày`);
+  return { ok: true, days: d };
 }
 
 // ======================= THEO DÕI HĐ VAY — LÃI & GỐC (CN-07) =======================
@@ -1141,4 +1259,4 @@ async function monthly(db, period, projectId) {
   };
 }
 
-module.exports = { customerLedger, myDay, debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, voucherList, contractTrack, setLateRate, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
+module.exports = { debtStatus, setDebtClass, setDebtDays, debtCfg, debtGrpOf, customerLedger, myDay, debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, voucherList, contractTrack, setLateRate, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };

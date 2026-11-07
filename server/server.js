@@ -331,6 +331,9 @@ R('GET', '/api/contract-links', async (req, res, u, p, qs) => {
   send(res, 200, await q(`SELECT c.id, c.number, c.status, c.rent, c.value, c.eff_on, c.exp_on, u.code unit, k.full_name customer FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id
     WHERE c.kind = $1 AND c.id <> $2 AND (c.id = ANY($5) OR (c.status NOT IN ('huy','thanh_ly') AND (c.unit_id = $3 OR c.customer_id = $4))) ORDER BY c.id DESC LIMIT 30`, [kind, +qs.self || 0, +qs.unit || 0, +qs.customer || 0, ids]));
 });
+R('GET', '/api/debt-status', async (req, res, u, p, qs) => send(res, 200, await V.debtStatus({ q, one }, u, qs)));
+R('PUT', '/api/debt-status/days', async (req, res, u) => { const b = await readJson(req); send(res, 200, await tx(db => V.setDebtDays(db, u, b.days))); });
+R('PUT', '/api/debt-status/:id/class', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await tx(db => V.setDebtClass(db, u, p.id, b))); });
 R('GET', '/api/unit-status', async (req, res, u, p, qs) => send(res, 200, await V.unitStatus({ q, one }, u, qs)));
 R('GET', '/api/finish-pay', async (req, res, u, p, qs) => send(res, 200, await V.finishPay({ q, one }, u, qs)));
 R('GET', '/api/loans', async (req, res, u, p, qs) => send(res, 200, await V.loans({ q, one }, u, qs)));
@@ -391,19 +394,20 @@ async function suggestPlan(db, m, u, demo) {
   const have = new Set((await db.q("SELECT contract_id FROM kd_collect_plan WHERE month = $1 AND status <> 'thay_the'", [m])).map(r => r.contract_id));
   const calls = await db.q('SELECT DISTINCT ON (contract_id) contract_id, promise_amount, promise_on FROM kd_debt_call WHERE promise_on BETWEEN $1 AND $2 ORDER BY contract_id, at DESC', [start, end]);
   const pm = new Map(calls.map(c => [c.contract_id, c]));
+  const DC = await V.debtCfg(db), GL = { n4: 'Nhóm 4 · nghi ngờ', n5: 'Nhóm 5 · nợ khó đòi' };
   let n = 0; const skipped = [];
   for (const c of cs) {
     if (have.has(c.id) || c.d.left <= 0) continue;
     const dueBy = c.d.inst.filter(i => i.rem > 0 && i.due_on <= end).reduce((s, i) => s + i.rem, 0);
-    const pr = pm.get(c.id);
+    const pr = pm.get(c.id), grp = DC.units[c.unit_id]?.grp || V.debtGrpOf(c.d.overdue, c.d.overdue_days, DC.days);
     if (!dueBy && !pr) continue;
     const expected = Math.min(c.d.left, pr ? pr.promise_amount : dueBy);
     const firstDue = c.d.inst.find(i => i.rem > 0 && i.due_on >= start && i.due_on <= end)?.due_on;
     const expected_on = pr ? pr.promise_on : firstDue || (C.today() > start ? C.today().slice(0, 7) === m ? C.today() : end : start);
     try {
       await C.create('collect_plan', { month: m, contract_id: c.id, expected, expected_on: expected_on > end ? end : expected_on < start ? start : expected_on, basis: pr ? 'cam_ket' : 'lich_hd',
-        basis_note: pr ? `Cam kết ${C.fmtMoney(pr.promise_amount)} ngày ${C.dmy(pr.promise_on)}` : c.d.overdue > 0 ? `Nợ quá hạn ${C.fmtMoney(c.d.overdue)} (${c.d.overdue_days} ngày)` : `Kỳ đến hạn ${C.dmy(firstDue)}`,
-        ability: pr ? 'cao' : c.d.overdue_days > 60 ? 'thap' : 'vua', owner_id: u.role === 'cong_no' ? u.id : c.owner_id || u.id }, u, { db, system: true, demo });
+        basis_note: (GL[grp] ? GL[grp] + ' — ' : '') + (pr ? `Cam kết ${C.fmtMoney(pr.promise_amount)} ngày ${C.dmy(pr.promise_on)}` : c.d.overdue > 0 ? `Nợ quá hạn ${C.fmtMoney(c.d.overdue)} (${c.d.overdue_days} ngày)` : `Kỳ đến hạn ${C.dmy(firstDue)}`),
+        ability: GL[grp] ? 'thap' : pr ? 'cao' : c.d.overdue_days > 60 ? 'thap' : 'vua', owner_id: u.role === 'cong_no' ? u.id : c.owner_id || u.id }, u, { db, system: true, demo });
       n++;
     } catch (e) { if (!(e instanceof HttpError)) throw e; skipped.push(`${c.unit}: ${e.message}`); }
   }
