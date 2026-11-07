@@ -1295,3 +1295,86 @@ table.t tr.vch > td { padding: 0; background: #fbfcfe; white-space: normal; curs
 .ad-table thead tr:first-child th:not(.ad-grp):not([rowspan]) { vertical-align: bottom; }
 .ad-table td:nth-child(6), .ad-table th:nth-child(6) { padding-left: 20px; }
 .ad-table .ad-cell-txt { max-width: 300px; }
+
+/* ===== Màn Công nợ hợp đồng — giao diện «Soft» (lavender · blush · ink · cream), 07/11/2026 ===== */
+.ad { --sf-lav: #B3A1E8; --sf-lav-50: #F3EFFC; --sf-lav-100: #E8E1F8; --sf-pri: #5E4FA3; --sf-pri-d: #4A3D8C; --sf-blush: #F2C6D2; --sf-blush-50: #FCEEF2; --sf-blush-100: #F8DDE5;
+  --sf-ink: #171310; --sf-cream: #FBF8F1; --sf-line: #EEE8DE; --sf-rose: #B4405F; --sf-mint: #2F7A55; --sf-mint-50: #E9F5EE; --sf-amber: #94600A; --sf-amber-50: #FDF3E1;
+  --ad-text: #171310; --ad-text2: #4A4440; --ad-text3: #847C75; --ad-border: #E6DFD3; --ad-split: #F0EBE2; --ad-fill: #FBF8F1; --ad-bg: #fff;
+  --ad-primary: #5E4FA3; --ad-primary-bg: #E8E1F8; --ad-success: #5E4FA3; --ad-success-t: #4A3D8C; --ad-error: #D9667F; --ad-error-t: #B4405F;
+  --ad-shadow: 0 1px 2px rgba(23,19,16,.03), 0 8px 24px -12px rgba(94,79,163,.18);
+  font-family: 'IBM Plex Sans', system-ui, 'Segoe UI', sans-serif; }
+.ad h1, .ad .ad-stat-v, .ad .ad-card-head, .ad .ad-step-t { font-family: 'Archivo', 'IBM Plex Sans', system-ui, sans-serif; }
+/* đầu trang */
+.ad-crumb { font-size: 13px; letter-spacing: .02em; }
+.ad-crumb a:hover { color: var(--sf-pri); }
+.ad-head { align-items: center; margin-bottom: 24px; }
+.ad-back { width: 40px; height: 40px; margin-top: 0; border-radius: 999px; background: #fff; border: 1px solid var(--sf-line); box-shadow: var(--ad-shadow); }
+.ad-back:hover { background: var(--sf-lav-50); color: var(--sf-pri); }
+.ad-head-title h1 { font-size: 32px; font-weight: 800; letter-spacing: -.02em; line-height: 1.15; }
+.ad-head-sub { margin-top: 6px; color: var(--ad-text2); }
+.ad-head-sub i { color: var(--sf-lav); }
+/* nút: viên thuốc — chính tím, phụ hồng, icon viền */
+.ad-btn { height: 40px; padding: 0 20px; border-radius: 999px; border: 0; background: var(--sf-blush-50); color: var(--sf-ink); box-shadow: none; font-weight: 600; }
+.ad-btn:hover { background: var(--sf-blush-100); color: var(--sf-ink); }
+.ad-btn-primary { background: var(--sf-pri); color: #fff; box-shadow: 0 6px 16px -6px rgba(94,79,163,.55); }
+.ad-btn-primary:hover { background: var(--sf-pri-d); color: #fff; filter: none; }
+.ad-btn-icon { width: 40px; padding: 0; background: #fff; border: 1px solid var(--sf-line); }
+.ad-btn-icon:hover { background: var(--sf-lav-50); color: var(--sf-pri); }
+/* ô nhập: bo 12, viền ấm, focus vòng lavender */
+.ad .sdate, .ad .ad-input, .ad .inp { border-radius: 12px !important; border-color: var(--ad-border) !important; background: #fff; }
+.ad .sdate:focus-within, .ad .ad-input:focus, .ad .inp:focus { border-color: var(--sf-pri) !important; box-shadow: 0 0 0 3px var(--sf-lav-100) !important; outline: 0; }
+/* thẻ (card): bo 24, nền trắng, bóng mềm; tiêu đề chữ in hoa giãn chữ */
+.ad-card { border-radius: 24px; border: 1px solid var(--sf-line); box-shadow: var(--ad-shadow); margin-bottom: 20px; }
+.ad-card-pad { padding: 20px 28px; }
+.ad-card-head { min-height: 60px; padding: 0 28px; border-bottom: 0; font-size: 13px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--ad-text2); }
+.ad-card-extra { letter-spacing: 0; text-transform: none; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-weight: 500; }
+/* tổng quan: 4 ô bo tròn — trắng / lavender / trắng / hồng (quá hạn) */
+.ad-stats { gap: 16px; padding: 0 28px 24px; }
+.ad-stat { border: 1px solid var(--sf-line); border-radius: 20px; padding: 18px 20px; background: #fff; }
+.ad-stat:first-child { border-left: 1px solid var(--sf-line); }
+.ad-stat-success { background: var(--sf-lav-50); border-color: var(--sf-lav-100); }
+.ad-stat-error { background: var(--sf-blush-50); border-color: var(--sf-blush-100); }
+.ad-stat-t { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ad-text3); margin-bottom: 8px; }
+.ad-stat-v { font-size: 28px; font-weight: 800; letter-spacing: -.01em; }
+.ad-stat-success .ad-stat-v { color: var(--sf-pri); }
+.ad-stat-error .ad-stat-v { color: var(--sf-rose); }
+.ad-stat-f { color: var(--ad-text2); }
+.ad-progress-rail { height: 10px; background: #fff; box-shadow: inset 0 0 0 1px var(--sf-lav-100); }
+.ad-progress-rail i { background: linear-gradient(90deg, var(--sf-lav), var(--sf-pri)); }
+/* các đợt (steps) */
+.ad-steps { margin: 0 28px 24px; padding: 20px 8px; border: 0; border-radius: 20px; background: var(--sf-cream); }
+.ad-step::before { top: 5px; height: 4px; border-radius: 4px; background: var(--sf-line); }
+.ad-step-finish::before { background: var(--sf-lav); }
+.ad-step-dot { width: 14px; height: 14px; background: #fff; box-shadow: inset 0 0 0 2px #CFC6BA; }
+.ad-step-finish .ad-step-dot { background: var(--sf-pri); box-shadow: none; }
+.ad-step-error .ad-step-dot { background: var(--sf-rose); box-shadow: 0 0 0 4px var(--sf-blush-100); }
+.ad-step-process .ad-step-dot { width: 14px; height: 14px; margin-top: 0; background: #fff; box-shadow: inset 0 0 0 4px var(--sf-pri), 0 0 0 4px var(--sf-lav-100); }
+.ad-step-t { margin-top: 10px; font-weight: 700; }
+.ad-step-error .ad-step-t { color: var(--sf-rose); }
+/* thông tin hợp đồng */
+.ad-desc th, .ad-desc td { padding: 14px 28px; border-color: var(--ad-split); }
+.ad-desc th { background: var(--sf-cream); color: var(--ad-text3); font-size: 13px; }
+/* bảng */
+.ad-table-wrap { margin: 0 16px 16px; border: 1px solid var(--sf-line); border-radius: 18px; }
+.ad-table th { background: var(--sf-cream); color: var(--ad-text2); font-size: 13px; }
+.ad-table th:first-child, .ad-table td:first-child { padding-left: 20px; }
+.ad-table th:last-child, .ad-table td:last-child { padding-right: 20px; }
+.ad-table tbody tr:hover td { background: var(--sf-lav-50); }
+.ad-table tfoot td { background: var(--sf-cream); }
+.ad-table th.ad-grp { color: var(--sf-pri); background: var(--sf-lav-50); letter-spacing: .12em; }
+.ad-table thead tr:nth-child(2) th { background: var(--sf-lav-50); }
+.ad-table tr.ad-row-error td:first-child { box-shadow: inset 4px 0 0 var(--sf-rose); }
+.ad-table tr.ad-row-error td:first-child b { color: var(--sf-rose); }
+/* nhãn trạng thái: viên thuốc */
+.ad-tag { padding: 2px 10px; border-radius: 999px; border: 0; background: var(--sf-cream); color: var(--ad-text2); box-shadow: inset 0 0 0 1px var(--ad-border); }
+.ad-tag-success { background: var(--sf-mint-50); color: var(--sf-mint); box-shadow: none; }
+.ad-tag-error { background: var(--sf-blush-100); color: var(--sf-rose); box-shadow: none; }
+.ad-tag-warning { background: var(--sf-amber-50); color: var(--sf-amber); box-shadow: none; }
+.ad-tag-processing { background: var(--sf-lav-100); color: var(--sf-pri); box-shadow: none; }
+/* cách tính */
+.ad-collapse { border-radius: 20px; border-color: var(--sf-line); background: var(--sf-cream); }
+.ad-collapse summary { padding: 14px 20px; font-weight: 600; }
+.ad-collapse ul { border-top-color: var(--sf-line); border-radius: 0 0 20px 20px; padding: 14px 20px 18px 44px; }
+@media (max-width: 1100px) { .ad-stat:nth-child(3) { border-left: 1px solid var(--sf-line); } }
+@media (max-width: 640px) { .ad-stat { border-left: 1px solid var(--sf-line); } .ad-stats, .ad-card-head { padding-left: 16px; padding-right: 16px; } .ad-steps { margin: 0 16px 16px; } .ad-table-wrap { margin: 0 8px 8px; } }
+@media print { .ad-card, .ad-stat, .ad-table-wrap { border-radius: 8px; } }
