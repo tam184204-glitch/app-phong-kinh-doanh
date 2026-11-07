@@ -247,7 +247,7 @@ async function alerts(db, user, f = {}) {
   }
   for (const l of await db.q(`SELECT DISTINCT ON (l.customer_id) l.id, l.next_at, l.owner_id, k.full_name, k.code, own.full_name who FROM kd_contact_log l JOIN kd_customer k ON k.id = l.customer_id LEFT JOIN kd_user own ON own.id = l.owner_id
     WHERE l.next_at <= $1 AND l.next_at >= $1::date - 14 AND NOT EXISTS (SELECT 1 FROM kd_contact_log x WHERE x.customer_id = l.customer_id AND x.at::date >= l.next_at) ORDER BY l.customer_id, l.at DESC`, [t]))
-    push('lien_he', 'b', `${l.code} · ${l.full_name} — hẹn liên hệ lại ${C.dmy(l.next_at)}`, 'contact_log', l.id, l.next_at, l.who, null, l.owner_id);
+    push('lien_he', 'b', `${l.full_name} — hẹn liên hệ lại ${C.dmy(l.next_at)}`, 'contact_log', l.id, l.next_at, l.who, null, l.owner_id);
   for (const r of (await readyList(db, f)).filter(r => r.eligible && !r.handover_id)) push('ban_giao', 'a', `${r.unit} · ${r.customer} — đủ điều kiện, chưa lập kế hoạch bàn giao`, null, null, null, r.owner, r.unit_id, r.owner_id);
   for (const h of await db.q(`SELECT h.id, h.plan_at, h.status, h.owner_id, u.code unit, u.id unit_id, own.full_name who FROM kd_handover h JOIN kd_unit u ON u.id = h.unit_id LEFT JOIN kd_user own ON own.id = h.owner_id
     WHERE ((h.status IN ('da_moi','da_hen') AND h.plan_at < now() + interval '3 days') OR (h.status = 'da_ban_giao' AND h.actual_on < $${p.length + 1}::date - 30)) ${w}`, [...p, t])) {
@@ -947,7 +947,7 @@ async function search(db, user, qtext) {
     if (dig.length >= 4) { p.push(`%${dig}%`); cond.push(`regexp_replace(phone,'\D','','g') LIKE $${p.length}`, `regexp_replace(coalesce(phone2,''),'\D','','g') LIKE $${p.length}`); }
     let sc = ''; if (own) { p.push(user.id); sc = ` AND (owner_id = $${p.length} OR created_by = $${p.length})`; }
     for (const r of await db.q(`SELECT id, code, full_name, phone FROM kd_customer WHERE (${cond.join(' OR ')})${sc} ORDER BY full_name LIMIT 12`, p))
-      out.push({ type: 'customer', id: r.id, title: `${r.code} · ${r.full_name}`, sub: `ĐT ${r.phone}` });
+      out.push({ type: 'customer', id: r.id, title: r.full_name, sub: `ĐT ${r.phone}` });
   }
   if (can(user, E.contract, 'r')) for (const r of await db.q("SELECT c.id, c.number, c.code, u.code unit FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id WHERE c.number ILIKE $1 OR c.code ILIKE $1 LIMIT 8", [like]))
     out.push({ type: 'contract', id: r.id, title: r.number, sub: `${r.code} · căn ${r.unit}` });
@@ -988,7 +988,7 @@ const pgLit = s => `'${String(s).replace(/'/g, "''")}'`;
 // Tách khoản: Tiền nhà (sau thuế, không gồm hệ số góc) · Hệ số lô góc (sau thuế) · Phát sinh (hoàn thiện gộp HĐMB + HĐ hoàn thiện riêng) · Bảo trì.
 // Thu không ghi theo khoản → mỗi kỳ thu chia theo cơ cấu của kỳ: kỳ «Đợt thu phí bảo trì» gánh trọn phí bảo trì, phần còn lại chia theo tỷ lệ tiền nhà / góc / hoàn thiện.
 const DS_HEAD = [
-  ['', [['stt', 'Stt', 'int'], ['unit', 'Mã căn hộ'], ['cust_code', 'Mã khách hàng'], ['customer', 'Họ và tên'], ['address', 'Địa chỉ'], ['contract_on', 'Ngày ký hợp đồng', 'date'], ['vbtt_on', 'Ngày ký VBTT', 'date'], ['phone', 'SĐT'],
+  ['', [['stt', 'Stt', 'int'], ['unit', 'Mã căn hộ'], ['customer', 'Họ và tên'], ['address', 'Địa chỉ'], ['contract_on', 'Ngày ký hợp đồng', 'date'], ['vbtt_on', 'Ngày ký VBTT', 'date'], ['phone', 'SĐT'],
     ['area_floor', 'DT sàn', 'num'], ['area_tt', 'DT nền', 'num'], ['base_price', 'Giá nền', 'money'], ['build_price', 'Giá xây dựng', 'money']]],
   ['Tiền nhà', [['n_total', 'Tổng phải thu', 'money'], ['n_due', 'Phải thu theo tiến độ', 'money'], ['n_paid', 'Tổng đã thu', 'money'], ['n_left', 'Còn lại', 'money'], ['n_left_due', 'Còn lại theo tiến độ', 'money']]],
   ['Hệ số lô góc', [['g_total', 'Tổng phải thu', 'money'], ['g_due', 'Phải thu theo tiến độ', 'money'], ['g_paid', 'Tổng đã thu', 'money'], ['g_left', 'Còn lại', 'money']]],

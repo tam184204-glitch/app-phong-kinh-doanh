@@ -154,7 +154,7 @@ async function nextContractNo(db, ptype, on) {
 // form hợp đồng: chọn căn → lấy theo phiếu giữ chỗ đang hiệu lực (khách, ngày đề nghị mua, chính sách, hoàn thiện, nhân viên); chưa có chính sách thì lấy bảng giá đang phát hành của dự án
 async function contractPrefill(db, unitId, on = today()) {
   const u = await raw(db, 'unit', unitId); if (!u) return {};
-  const res = await db.one(`SELECT r.customer_id, r.reg_date, r.policy_id, r.finish_value, r.owner_id, k.code || ' · ' || k.full_name customer_label FROM kd_reservation r
+  const res = await db.one(`SELECT r.customer_id, r.reg_date, r.policy_id, r.finish_value, r.owner_id, k.full_name customer_label FROM kd_reservation r
     LEFT JOIN kd_customer k ON k.id = r.customer_id WHERE r.unit_id = $1 AND r.status IN ${ACTIVE_RES} ORDER BY r.id DESC LIMIT 1`, [unitId]);
   const pol = await db.one(`SELECT id, code || ' v' || version label FROM kd_price_policy WHERE ${res?.policy_id ? 'id = $1' : "status = 'phat_hanh' AND $1 = ANY(project_ids) AND start_on <= $2 AND end_on >= $2 ORDER BY start_on DESC, version DESC LIMIT 1"}`, res?.policy_id ? [res.policy_id] : [u.project_id, on]);
   return { customer_id: res?.customer_id ?? null, customer_label: res?.customer_label ?? null, request_on: res?.reg_date ?? null, finish_value: res?.finish_value ?? null, owner_id: res?.owner_id ?? null, policy_id: pol?.id ?? null, policy_label: pol?.label ?? null };

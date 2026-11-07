@@ -142,12 +142,12 @@ def('package', {
 
 // ===================== 03. KHÁCH HÀNG =====================
 def('customer', {
-  title: 'Khách hàng', one: 'khách hàng', code: 'KH-01', mod: '03', icon: 'fa-user', disp: "t.code||' · '||t.full_name",
+  title: 'Khách hàng', one: 'khách hàng', code: 'KH-01', mod: '03', icon: 'fa-user', disp: "t.full_name",
   purpose: 'Tạo một hồ sơ khách hàng thống nhất', users: 'Nhân viên kinh doanh / hồ sơ',
   how: 'Tìm khách cũ → nếu chưa có thì tạo → kiểm tra trùng → liên kết giao dịch',
   rules: 'Chỉ người có quyền được xem dữ liệu định danh; cảnh báo trùng điện thoại/giấy tờ',
   c: ['ban_hang', 'truong_phong', 'ho_so', 'cskh'], own: ['ban_hang'], search: ['code', 'full_name', 'phone', 'phone2'], fields: [
-    { k: 'code', l: 'Mã khách hàng', t: 'code', prefix: 'KH', pad: 6, manual: 1, help: 'Để trống → hệ thống tự cấp (KH000001…)' },
+    { k: 'code', l: 'Mã khách hàng', t: 'code', prefix: 'KH', pad: 6, manual: 1, hide: 1 },   // ẩn khỏi mọi màn hình 07/11/2026 — vẫn tự cấp ngầm để khớp phiếu thu MISA / nhập Bravo
     { k: 'full_name', l: 'Họ tên', t: 'text', req: 1 },
     { k: 'phone', l: 'Điện thoại', t: 'text', req: 1, help: '09xxxxxxxx' },
     { k: 'phone2', l: 'Điện thoại khác', t: 'text' },
@@ -173,7 +173,7 @@ def('customer', {
     { k: 'noxh_group', l: 'Nhóm đối tượng NOXH', t: 'sel', opt: 'nhom_noxh', noForm: 1 },
     owner(undefined, { noForm: 1 }),   // không hiện trong form tạo / sửa — tự lấy người tạo
     { k: 'note', l: 'Ghi chú', t: 'long' },
-  ], list: ['full_name', 'code', 'address', 'phone', 'email', 'tax_code', 'stage'],
+  ], list: ['full_name', 'address', 'phone', 'email', 'tax_code', 'stage'],
 });
 def('contact_log', {
   title: 'Nhật ký tư vấn – liên hệ', one: 'nhật ký', code: 'KH-02', mod: '03', icon: 'fa-comments', disp: "to_char(t.at,'DD/MM/YYYY HH24:MI')",
@@ -234,7 +234,7 @@ def('reservation', {
     { k: 'deal', l: 'Hình thức đăng ký', t: 'sel', req: 1, def: 'mua', o: [['mua', 'Đăng ký mua', 'b'], ['thue', 'Đăng ký thuê', 'v']] },
     { k: 'customer_id', l: 'Khách hàng đã có', t: 'ref', ref: 'customer', help: 'Chọn khách có sẵn để điền nhanh — để trống: hệ thống tự khớp theo CCCD / SĐT hoặc tạo khách mới',
       fill: { cust_code: 'code', cust_name: 'full_name', id_no: 'id_no', id_date: 'id_date', id_place: 'id_place', address: 'address', phone: 'phone', tax_code: 'tax_code', bank_account: 'bank_account' } },
-    { k: 'cust_code', l: 'Mã khách hàng', t: 'text', help: 'Để trống → lấy mã khách đã có (khớp CCCD / SĐT) hoặc tự cấp mã mới (KH000001…)' },
+    { k: 'cust_code', l: 'Mã khách hàng', t: 'text', hide: 1 },   // ẩn 07/11/2026 — hệ thống tự lấy / tự cấp
     { k: 'cust_name', l: 'Họ tên khách hàng', t: 'text', req: 1 },
     { k: 'id_no', l: 'Căn cước công dân', t: 'text', pii: 1 },
     { k: 'id_date', l: 'Ngày cấp', t: 'date', pii: 1 },
@@ -265,9 +265,9 @@ def('reservation', {
     // phiếu đã hủy: theo dõi trả lại hồ sơ cho khách — sửa ngay trên dòng ở tab «Đã hủy»
     { k: 'doc_ret', l: 'Trạng thái trả hồ sơ', t: 'sel', show: { status: ['huy'] }, o: [['chua_tra', 'Chưa trả hồ sơ', 'a'], ['da_tra', 'Đã trả hồ sơ', 'g']] },
     { k: 'doc_ret_on', l: 'Ngày trả hồ sơ', t: 'date', show: { status: ['huy'] } },
-  ], list: ['stt', 'unit_id', 'sale_check', 'cust_code', 'cust_name', 'id_no', 'id_date', 'id_place', 'address', 'phone', 'unit_value', 'finish_value', 'price', 'reg_at', 'hold_until', 'reg_state', 'progress', 'source', 'agent_id', 'prints'],
+  ], list: ['stt', 'unit_id', 'sale_check', 'cust_name', 'id_no', 'id_date', 'id_place', 'address', 'phone', 'unit_value', 'finish_value', 'price', 'reg_at', 'hold_until', 'reg_state', 'progress', 'source', 'agent_id', 'prints'],
   // tab «Đăng ký thuê» ở danh sách: tiền thuê thay cho giá bán
-  lists: { thue: { cols: ['stt', 'unit_id', 'sale_check', 'cust_code', 'cust_name', 'id_no', 'id_date', 'id_place', 'address', 'phone', 'rent', 'term_months', 'reg_at', 'hold_until', 'reg_state', 'progress', 'source', 'agent_id'] } },   // chưa có mẫu in đăng ký thuê → không có cột In
+  lists: { thue: { cols: ['stt', 'unit_id', 'sale_check', 'cust_name', 'id_no', 'id_date', 'id_place', 'address', 'phone', 'rent', 'term_months', 'reg_at', 'hold_until', 'reg_state', 'progress', 'source', 'agent_id'] } },   // chưa có mẫu in đăng ký thuê → không có cột In
   lock: ['chuyen_hd', 'het_han', 'huy', 'cho_duyet'], lockKeep: ['note', 'progress', 'reg_state', 'doc_ret', 'doc_ret_on'],
   files: [['tai_lieu', 'Tài liệu'], ['tra_ho_so', 'File scan trả hồ sơ']], fileKeep: ['tra_ho_so'],   // fileKeep: loại tệp vẫn xóa được khi phiếu đã khóa
   flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'giu_cho' } },
@@ -642,7 +642,7 @@ def('receipt', {
     { k: 'voucher_date', l: 'Ngày thu', t: 'date', req: 1, def: 'today' },
     { k: 'contract_id', l: 'Mã hợp đồng', t: 'ref', ref: 'contract', req: 1, sec: '1. Hợp đồng – khách hàng', help: 'Chọn hợp đồng (hoặc mã căn) → tự điền mã căn, khách hàng, dự án, loại hợp đồng' },
     { k: 'unit_id', l: 'Mã căn hộ', t: 'ref', ref: 'unit', help: 'Chọn căn → tự lấy hợp đồng của căn' },
-    { k: 'cust_code', l: 'Mã khách hàng', t: 'text', help: 'Tự lấy theo hợp đồng' },
+    { k: 'cust_code', l: 'Mã khách hàng', t: 'text', hide: 1 },   // ẩn 07/11/2026
     { k: 'cust_name', l: 'Họ tên khách hàng', t: 'text', help: 'Tự lấy theo hợp đồng' },
     { k: 'project_name', l: 'Dự án', t: 'text', help: 'Tự lấy theo hợp đồng' },
     { k: 'ct_kind', l: 'Loại hợp đồng', t: 'sel', o: HD_KIND, help: 'Tự lấy theo hợp đồng' },
@@ -654,7 +654,7 @@ def('receipt', {
     { k: 'synced_at', l: 'Ngày chốt dữ liệu', t: 'dt', ro: 1 },
     { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'hop_le', o: [['hop_le', 'Hợp lệ', 'g'], ['huy', 'Đã hủy', 'r']] },
     { k: 'void_reason', l: 'Lý do hủy', t: 'text', ro: 1 },
-  ], list: ['voucher_no', 'voucher_date', 'contract_id', 'unit_id', 'cust_code', 'cust_name', 'grp', 'installment_id', 'amount', 'content', 'status'],
+  ], list: ['voucher_no', 'voucher_date', 'contract_id', 'unit_id', 'cust_name', 'grp', 'installment_id', 'amount', 'content', 'status'],
   acts: [{ k: 'void', l: 'Hủy phiếu thu', icon: 'fa-ban', from: ['hop_le'], roles: ['cong_no', 'ho_so', 'truong_phong'], danger: 1, ask: [{ k: 'reason', l: 'Lý do hủy', t: 'long', req: 1 }] }],
 });
 // Phiếu chi (06/11/2026): tiền công ty chi ra theo hợp đồng → Theo dõi công nợ tự cập nhật
@@ -667,7 +667,7 @@ def('payment', {
     { k: 'voucher_date', l: 'Ngày chi', t: 'date', req: 1, def: 'today' },
     { k: 'contract_id', l: 'Mã hợp đồng', t: 'ref', ref: 'contract', req: 1, sec: '1. Hợp đồng – khách hàng', help: 'Chọn hợp đồng (hoặc mã căn) → tự điền mã căn, khách hàng, dự án, loại hợp đồng' },
     { k: 'unit_id', l: 'Mã căn hộ', t: 'ref', ref: 'unit', help: 'Chọn căn → tự lấy hợp đồng của căn' },
-    { k: 'cust_code', l: 'Mã khách hàng', t: 'text', help: 'Tự lấy theo hợp đồng' },
+    { k: 'cust_code', l: 'Mã khách hàng', t: 'text', hide: 1 },   // ẩn 07/11/2026
     { k: 'cust_name', l: 'Họ tên khách hàng', t: 'text', help: 'Tự lấy theo hợp đồng' },
     { k: 'project_name', l: 'Dự án', t: 'text', help: 'Tự lấy theo hợp đồng' },
     { k: 'ct_kind', l: 'Loại hợp đồng', t: 'sel', o: HD_KIND, help: 'Tự lấy theo hợp đồng' },
@@ -681,7 +681,7 @@ def('payment', {
     { k: 'src', l: 'Nguồn', t: 'sel', ro: 1, def: 'thu_cong', o: [['bravo', 'Bravo', 'b'], ['misa', 'MISA', 'v'], ['thu_cong', 'Phòng KD nhập', 's']] },
     { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'hop_le', o: [['hop_le', 'Hợp lệ', 'g'], ['huy', 'Đã hủy', 'r']] },
     { k: 'void_reason', l: 'Lý do hủy', t: 'text', ro: 1 },
-  ], list: ['voucher_no', 'voucher_date', 'contract_id', 'unit_id', 'cust_code', 'cust_name', 'kind', 'loan_pay_id', 'amount', 'receiver', 'content', 'status'],
+  ], list: ['voucher_no', 'voucher_date', 'contract_id', 'unit_id', 'cust_name', 'kind', 'loan_pay_id', 'amount', 'receiver', 'content', 'status'],
   acts: [{ k: 'void', l: 'Hủy phiếu chi', icon: 'fa-ban', from: ['hop_le'], roles: ['cong_no', 'ho_so', 'truong_phong'], danger: 1, ask: [{ k: 'reason', l: 'Lý do hủy', t: 'long', req: 1 }] }],
 });
 def('collect_plan', {
