@@ -6,7 +6,7 @@ const B = require('./biz');
 const { E, MGR, PII_ROLES } = require('./meta');
 const { today, addDays, dayDiff, fmtMoney, can, deny, bad } = C;
 
-const STAFF_SCOPE = ['ban_hang', 'cong_no', 'ho_so', 'cskh'];
+const STAFF_SCOPE = ['ban_hang', 'ho_so', 'cskh'];   // công nợ: xem mọi khách chậm trả (người đòi nợ ≠ người bán) — rà soát 07/11/2026
 const mon = s => s ? String(s).slice(0, 7) : null;
 const monthEnd = m => { const [y, mm] = m.split('-').map(Number); return new Date(Date.UTC(y, mm, 0)).toISOString().slice(0, 10); };
 const monthsBetween = (a, b) => { const out = []; let [y, m] = a.split('-').map(Number); const [Y, M] = b.split('-').map(Number); while (y < Y || (y === Y && m <= M)) { out.push(`${y}-${String(m).padStart(2, '0')}`); if (++m > 12) { m = 1; y++; } if (out.length > 60) break; } return out; };
@@ -211,12 +211,13 @@ async function alerts(db, user, f = {}) {
   const t = today(), out = [];
   const mineOnly = !f.all && STAFF_SCOPE.includes(user.role);
   const me = user.id;
-  const push = (cat, lvl, text, ent, id, due, who, unit_id, ownerId) => { if (mineOnly && ownerId && ownerId !== me) return; out.push({ cat, lvl, text, ent, id, due, who, unit_id }); };
+  // mục có truyền người phụ trách (kể cả trống) → chỉ hiện cho đúng người đó khi xem «của tôi»
+  const push = (...a) => { const [cat, lvl, text, ent, id, due, who, unit_id] = a; if (mineOnly && a.length > 8 && a[8] !== me) return; out.push({ cat, lvl, text, ent, id, due, who, unit_id }); };
   const p = []; const w = uf(f, p);
   for (const a of await approvalsFor(db, user)) push('phe_duyet', 'a', a.title, a.ent, a.rec_id, String(a.requested_at).slice(0, 10), a.requested_by_l);
   for (const r of await db.q(`SELECT r.id, r.code, r.status, r.hold_until, r.owner_id, u.code unit, u.id unit_id, k.full_name, own.full_name who FROM kd_reservation r JOIN kd_unit u ON u.id = r.unit_id JOIN kd_customer k ON k.id = r.customer_id LEFT JOIN kd_user own ON own.id = r.owner_id
     WHERE (r.status = 'qua_han' OR (r.status IN ('giu_cho','da_coc') AND r.hold_until < now() + interval '24 hours')) ${w}`, p))
-    push('giu_cho', r.status === 'qua_han' ? 'r' : 'a', `${r.unit} · ${r.full_name} — ${r.status === 'qua_han' ? 'đã quá hạn giữ chỗ, cần gia hạn / giải phóng / lập HĐ' : 'hết hạn giữ chỗ trong 24h'}`, 'reservation', r.id, String(r.hold_until).slice(0, 10), r.who, r.unit_id, r.owner_id);
+    push('giu_cho', r.status === 'qua_han' ? 'r' : 'a', `${r.unit} · ${r.full_name} — ${r.status === 'qua_han' ? 'đã quá hạn giữ chỗ, cần gia hạn / giải phóng / lập HĐ' : 'hết hạn giữ chỗ trong 24h'}`, 'reservation', r.id, new Date(Date.parse(r.hold_until) + 7 * 3600e3).toISOString().slice(0, 10), r.who, r.unit_id, r.owner_id);
   // hủy giao dịch / thanh lý: chưa chi tiền mà ngày dự kiến chi trả còn ≤ 30 ngày hoặc đã qua
   for (const r of await db.q(`SELECT t.id, t.code, t.pay_due, t.pay_amount, u.code unit, u.id unit_id, coalesce(k.full_name, rs.cust_name) full_name, own.full_name who, t.created_by
     FROM kd_cancel_req t LEFT JOIN kd_reservation rs ON rs.id = t.reservation_id LEFT JOIN kd_contract c ON c.id = t.contract_id LEFT JOIN kd_unit u ON u.id = coalesce(c.unit_id, rs.unit_id)
@@ -233,7 +234,7 @@ async function alerts(db, user, f = {}) {
     push('ky_hd', r.plan_sign < t ? 'r' : 'a', `${r.number} · ${r.unit} · ${r.full_name} — ${r.plan_sign < t ? 'quá ngày dự kiến ký' : 'sắp đến lịch ký'} ${C.dmy(r.plan_sign)}`, 'contract', r.id, r.plan_sign, r.who, r.unit_id, r.owner_id);
   const cs = await signedContracts(db, f, "AND c.status = 'da_ky'"), DK = (await debtCfg(db)).days;
   for (const c of cs) {
-    if (c.d.overdue > 0) push('no_qua_han', c.d.overdue_days > 30 ? 'r' : 'a', `${c.unit} · ${c.customer} — quá hạn ${fmtMoney(c.d.overdue)}đ (${c.d.overdue_days} ngày)${c.d.overdue_days > DK[2] ? ' · NỢ KHÓ ĐÒI' : ''}`, 'contract', c.id, c.d.overdue_since, c.owner, c.unit_id, c.owner_id);
+    if (c.d.overdue > 0) push('no_qua_han', c.d.overdue_days > DK[0] ? 'r' : 'a', `${c.unit} · ${c.customer} — quá hạn ${fmtMoney(c.d.overdue)}đ (${c.d.overdue_days} ngày)${c.d.overdue_days > DK[2] ? ' · NỢ KHÓ ĐÒI' : ''}`, 'contract', c.id, c.d.overdue_since, c.owner, c.unit_id, c.owner_id);
     else if (c.d.due7 > 0) push('den_han', 'b', `${c.unit} · ${c.customer} — ${c.d.next?.name || 'kỳ thu'} ${fmtMoney(c.d.due7)}đ đến hạn ${C.dmy(c.d.next?.due_on)}`, 'contract', c.id, c.d.next?.due_on, c.owner, c.unit_id, c.owner_id);
   }
   const calls = await db.q(`SELECT DISTINCT ON (d.contract_id) d.*, u.code unit, u.id unit_id, k.full_name, own.full_name who FROM kd_debt_call d JOIN kd_contract c ON c.id = d.contract_id JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id LEFT JOIN kd_user own ON own.id = d.owner_id
@@ -392,18 +393,19 @@ async function debtStatus(db, user, f = {}) {
   const RC = await rcpOf(db, cs.filter(c => c.kind === 'hdmb' && c.late_rate != null).map(c => c.id), t);
   const lateOf = c => c.kind === 'hdmb' && c.late_rate != null && +c.late_rate > 0 ? instDebt(c.d.inst, RC.get(c.id) || [], c, t, +c.late_rate).reduce((a, i) => a + i.late, 0) : null;
   const PST = Object.fromEntries(C.F.collect_plan.status.o.map(o => [o[0], o[1]]));
-  const plans = await db.q("SELECT contract_id, month, expected, expected_on, status FROM kd_collect_plan WHERE contract_id = ANY($1) AND status NOT IN ('thay_the','tu_choi') AND month BETWEEN $2 AND $3", [ids, m, monthAdd(m, 5)]);
+  const plans = await db.q("SELECT contract_id, month, expected, expected_on, status FROM kd_collect_plan WHERE contract_id = ANY($1) AND status <> 'thay_the' AND month BETWEEN $2 AND $3", [ids, m, monthAdd(m, 5)]);
   const RES = Object.fromEntries(C.F.debt_call.result.o.map(o => [o[0], o[1]]));
   const byU = new Map();
   for (const c of cs) (byU.get(c.unit_id) || byU.set(c.unit_id, []).get(c.unit_id)).push(c);
   const rows = [];
   for (const [uid, all] of byU) {
     const main = all.find(c => ['hdmb', 'thue_mua'].includes(c.kind)) || all.find(c => c.kind !== 'vay') || all[0];
-    const sum = fn => all.reduce((a, c) => a + fn(c), 0);
+    const rc = all.filter(c => c.kind !== 'vay'), sum = fn => rc.reduce((a, c) => a + fn(c), 0);   // HĐ vay = công ty vay của khách, không phải khoản khách nợ (xem cột Vay vốn)
     const dueGross = sum(c => c.d.inst.filter(i => i.due_on && i.due_on <= t).reduce((a, i) => a + i.amount, 0));
-    const overdue = sum(c => c.d.overdue), days = Math.max(0, ...all.map(c => c.d.overdue_days || 0));
-    const nx = all.map(c => c.d.next).filter(Boolean).sort((a, b) => String(a.due_on).localeCompare(String(b.due_on)))[0] || null;
-    const auto = debtGrpOf(overdue, days, D), man = cfg.units[uid] || null, grp = man?.grp || auto;
+    const overdue = sum(c => c.d.overdue), days = Math.max(0, ...rc.map(c => c.d.overdue_days || 0));
+    const paidDue = sum(c => c.d.inst.filter(i => i.due_on && i.due_on <= t).reduce((a, i) => a + i.paid, 0));   // đã thu vào các đợt đã đến hạn (cùng cơ sở với phải thu đến hạn)
+    const nx = rc.map(c => c.d.next).filter(Boolean).sort((a, b) => String(a.due_on).localeCompare(String(b.due_on)))[0] || null;
+    const auto = debtGrpOf(overdue, days, D), man = overdue > 0 ? cfg.units[uid] || null : null, grp = man?.grp || auto;   // hết nợ quá hạn → nhóm chỉnh tay hết hiệu lực
     const vay = all.find(c => c.kind === 'vay');
     let vayInfo = null;
     if (vay) {
@@ -414,7 +416,7 @@ async function debtStatus(db, user, f = {}) {
     }
     const bank = main.loan_status ? { st: main.loan_status, st_l: main.loan_status === 'co_vay' ? 'Có vay ngân hàng' : 'Không vay', bank: main.loan_bank || '', doc3: main.loan_doc3 || '', doc3_l: main.loan_doc3 === 'da_co' ? 'đã có chứng từ 3 bên' : main.loan_doc3 === 'chua_co' ? 'chưa có chứng từ 3 bên' : '' } : null;
     const lc = all.map(c => callOf.get(c.id)).filter(Boolean).sort((a, b) => String(b.at).localeCompare(String(a.at)))[0] || null;
-    const plX = plans.filter(p => p.month === m && all.some(c => c.id === p.contract_id)), plM = plX.reduce((a, p) => a + +p.expected, 0);
+    const plAll = plans.filter(p => p.month === m && all.some(c => c.id === p.contract_id)), plX = plAll.filter(p => p.status !== 'tu_choi'), plM = plX.reduce((a, p) => a + +p.expected, 0), plRej = !plX.length && plAll.length > 0;
     const lates = all.map(lateOf), lateInt = lates.some(x => x != null) ? lates.reduce((a, x) => a + (x || 0), 0) : null, rateSet = all.some(c => c.kind === 'hdmb' && c.late_rate != null);
     const callsU = allCalls.filter(x => all.some(c => c.id === x.contract_id));
     const W = [];
@@ -424,18 +426,18 @@ async function debtStatus(db, user, f = {}) {
     else if (lc?.promise_amount && lc.promise_on >= t) W.push(['b', `Hẹn trả ${fmtMoney(lc.promise_amount)} ngày ${C.dmy(lc.promise_on)}`]);
     const due7 = sum(c => c.d.due7);
     if (due7 > 0) W.push(['b', `Sắp đến hạn ${C.dmy(nx?.due_on)} · ${fmtMoney(due7)}`]);
-    if ((overdue > 0 || due7 > 0) && !plM) W.push(['a', 'Chưa có kế hoạch thu tháng này']);
+    if ((overdue > 0 || due7 > 0) && !plM) W.push(['a', plRej ? 'Kế hoạch thu tháng này bị từ chối — sửa và trình lại' : 'Chưa có kế hoạch thu tháng này']);
     if (man && DG_KEYS.indexOf(man.grp) < DG_KEYS.indexOf(auto)) W.push(['a', `Đang chỉnh tay nhẹ hơn tự động (${GL[auto].split(' · ')[0]})`]);
     if (bank?.st === 'co_vay' && bank.doc3 === 'chua_co') W.push(['a', 'Vay ngân hàng chưa có chứng từ 3 bên']);
     if (vayInfo?.lai_qh > 0) W.push(['r', `Quá hạn trả lãi HĐ vay cho khách ${fmtMoney(vayInfo.lai_qh)}`]);
     if (vayInfo?.exp_on && vayInfo.exp_on >= t && vayInfo.exp_on <= t30) W.push(['a', `HĐ vay đáo hạn ${C.dmy(vayInfo.exp_on)}`]);
     rows.push({ unit_id: uid, unit: main.unit, project: main.project, building: main.building, contract_id: main.id, customer: main.customer, phone: main.b_phone || main.phone || '', owner: main.owner || '',
-      total: sum(c => c.d.total), due: dueGross, paid: sum(c => c.d.paid), left: sum(c => c.d.left), due_left: sum(c => c.d.due), overdue, days, due7,
+      total: sum(c => c.d.total), due: dueGross, paid: paidDue, paid_all: sum(c => c.d.paid), left: sum(c => c.d.left), due_left: sum(c => c.d.due), overdue, days, due7,
       next_on: nx?.due_on || null, next_amt: nx?.rem || null, auto, grp, grp_l: GL[grp], manual: man,
-      bank, vay: vayInfo, plan_m: plM || null, plan_on: plX.map(p => p.expected_on).sort()[0] || null, plan_st: [...new Set(plX.map(p => PST[p.status] || p.status))].join(', '),
+      bank, vay: vayInfo, plan_m: plM || null, plan_on: plX.map(p => p.expected_on).sort()[0] || null, plan_st: plRej ? 'Bị từ chối' : [...new Set(plX.map(p => PST[p.status] || p.status))].join(', '), plan_n: plAll.length,
       late_int: lateInt, late_rate_set: rateSet, calls_n: callsU.length,
       calls: callsU.slice(0, 3).map(x => ({ at: new Date(Date.parse(x.at) + 7 * 3600e3).toISOString().slice(0, 10), result_l: RES[x.result] || '', content: x.content || '', promise: x.promise_amount ? `${fmtMoney(x.promise_amount)} · ${C.dmy(x.promise_on)}` : '' })),
-      call: lc ? { at: String(lc.at).slice(0, 10), result_l: RES[lc.result] || '', content: lc.content || '', promise: lc.promise_amount ? `${fmtMoney(lc.promise_amount)} · ${C.dmy(lc.promise_on)}` : '', promise_st: lc.promise_st || '' } : null,
+      call: lc ? { at: new Date(Date.parse(lc.at) + 7 * 3600e3).toISOString().slice(0, 10), result_l: RES[lc.result] || '', content: lc.content || '', promise: lc.promise_amount ? `${fmtMoney(lc.promise_amount)} · ${C.dmy(lc.promise_on)}` : '', promise_st: lc.promise_st || '' } : null,
       warns: W, hist: (cfg.hist[uid] || []).slice(-5).reverse(),
       contracts: all.map(c => ({ id: c.id, number: c.number, kind: c.kind, kind_l: KL[c.kind] || c.kind, total: c.d.total, paid: c.d.paid, left: c.d.left, overdue: c.d.overdue, days: c.d.overdue_days || 0, next_on: c.d.next?.due_on || null, next_amt: c.d.next?.rem || null })) });
   }
@@ -446,9 +448,9 @@ async function debtStatus(db, user, f = {}) {
   const grpOfC = new Map(); for (const r of rows) for (const c of r.contracts) grpOfC.set(c.id, r.grp);
   const flow = Array.from({ length: 6 }, (_, k) => ({ m: monthAdd(m, k), thu: 0, thu_kd: 0, chi: 0, plan: 0 }));
   const slot = d => { const mm = String(d || '').slice(0, 7); return mm < m ? flow[0] : flow.find(x => x.m === mm); };
-  for (const c of cs) for (const i of c.d.inst) { if (!(i.rem > 0) || !i.due_on) continue; const s = slot(i.due_on); if (!s) continue; if (grpOfC.get(c.id) === 'n5') s.thu_kd += i.rem; else s.thu += i.rem; }
+  for (const c of cs) if (c.kind !== 'vay') for (const i of c.d.inst) { if (!(i.rem > 0) || !i.due_on) continue; const s = slot(i.due_on); if (!s) continue; if (grpOfC.get(c.id) === 'n5') s.thu_kd += i.rem; else s.thu += i.rem; }
   for (const x of LP) { const r = lpRem(x); if (!r || !x.due_on) continue; const s = slot(x.due_on); if (s) s.chi += r; }
-  for (const p of plans) { const s = flow.find(x => x.m === p.month); if (s) s.plan += +p.expected; }
+  for (const p of plans) { if (p.status === 'tu_choi') continue; const s = flow.find(x => x.m === p.month); if (s) s.plan += +p.expected; }
   const groups = DG_KEYS.map(k => { const xs = rows.filter(r => r.grp === k); return { k, l: GL[k], n: xs.length, overdue: xs.reduce((a, r) => a + r.overdue, 0), left: xs.reduce((a, r) => a + r.left, 0) }; });
   return { rows, groups, flow, days: D, labels: GL, month: m, can_class: canDebtClass(user), can_plan: can(user, E.collect_plan, 'c'), can_days: ['truong_phong', 'lanh_dao', 'admin'].includes(user.role), bravo_sync: await bravoSync(db) };
 }
@@ -497,12 +499,15 @@ async function loanTrack(db, user, f = {}) {
       u.code unit, pr.code project, b.code building, k.full_name customer, coalesce(c.b_phone, k.phone) phone,
       (SELECT string_agg(x.number, ', ') FROM kd_contract x WHERE x.id = ANY(c.link_ids)) links
     FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_project pr ON pr.id = u.project_id JOIN kd_building b ON b.id = u.building_id JOIN kd_customer k ON k.id = c.customer_id
-    WHERE c.kind = 'vay' AND c.status <> 'huy' ${uf(f, p)}${mine(user, 'c')} ORDER BY c.exp_on NULLS LAST, u.code`, p);
+    WHERE c.kind = 'vay' AND c.status IN ('da_ky','thanh_ly') ${uf(f, p)}${mine(user, 'c')} ORDER BY c.exp_on NULLS LAST, u.code`, p);
   const ids = cs.map(c => c.id);
   await B.loanRebase(db, ids);   // lãi theo gốc khách đã chuyển (phiếu thu mới / đã hủy)
   const D = await B.debtOf(db, ids, t), RC = await rcpOf(db, ids, t), inW = on => !from || on >= from;
   const L = await db.q('SELECT * FROM kd_loan_pay WHERE contract_id = ANY($1) ORDER BY due_on, kind DESC, seq', [ids]);
-  const rem = x => Math.max(0, +x.amount - (+x.paid_amt || 0)), sum = (xs, fn) => xs.reduce((a, x) => a + fn(x), 0);
+  // xem theo «Đến ngày» trong quá khứ: số đã trả tính đến ngày đó (phiếu chi gắn kỳ có ngày ≤ Đến ngày), không lấy cả khoản trả sau (rà soát 07/11/2026)
+  const PT = t < today() ? new Map((await db.q("SELECT loan_pay_id, sum(amount) s FROM kd_payment WHERE contract_id = ANY($1) AND status = 'hop_le' AND loan_pay_id IS NOT NULL AND voucher_date <= $2 GROUP BY 1", [ids, t])).map(x => [x.loan_pay_id, +x.s])) : null;
+  const pd = x => !PT ? (+x.paid_amt || 0) : x.paid_on && x.paid_on <= t ? (+x.paid_amt || 0) : Math.min(+x.paid_amt || 0, PT.get(x.id) || 0);
+  const rem = x => Math.max(0, +x.amount - pd(x)), sum = (xs, fn) => xs.reduce((a, x) => a + fn(x), 0);
   // lãi dồn tích đến hết hôm nay: kỳ đã kết thúc tính đủ, kỳ đang chạy tính theo số ngày đã qua / số ngày của kỳ, kỳ chưa tới = 0
   const accrued = x => !x.period_from || x.period_from > t ? 0 : !x.period_to || x.period_to <= t ? +x.amount : +x.amount * (dayDiff(x.period_from, t) + 1) / (dayDiff(x.period_from, x.period_to) + 1);
   const ML = { tien_thue: 'Tiền thuê 1 tháng / tháng', lai_suat: 'Lãi suất' }, PL = { 1: 'Hàng tháng', 3: 'Hàng quý', 6: '6 tháng', 12: 'Hàng năm', 0: 'Khi đáo hạn' };
@@ -514,7 +519,7 @@ async function loanTrack(db, user, f = {}) {
       goc_hd: +c.value, goc_nhan: d.paid, goc_cho: d.left, eff_on: c.eff_on, exp_on: c.exp_on, term_months: c.term_months, mode_l: c.int_mode === 'lai_suat' ? `${ML.lai_suat} ${c.loan_rate ?? ''}%/năm` : ML.tien_thue, rent: c.int_mode === 'tien_thue' ? +c.rent : null, period_l: PL[c.int_period] || '',
       project_name: c.project_name, signed_on: c.signed_on || c.contract_on, term_l: c.term_months ? `${c.term_months} tháng` : '',
       rate_l: c.int_mode === 'lai_suat' ? (c.loan_rate != null ? `${String(c.loan_rate).replace('.', ',')}%/năm` : '') : c.rent ? `Bằng tiền thuê ${fmtMoney(+c.rent)}/tháng` : 'Bằng tiền thuê',
-      lai_tong: sum(lai, x => +x.amount), lai_tra: sum(lai, x => +x.paid_amt || 0), lai_con: sum(lai, rem), lai_den_nay: Math.max(0, Math.round(sum(lai, accrued) - sum(lai, x => +x.paid_amt || 0))), lai_qua_han: laiQH, goc_tra: sum(goc, x => +x.paid_amt || 0), goc_tra_con: sum(goc, rem),
+      lai_tong: sum(lai, x => +x.amount), lai_tra: sum(lai, pd), lai_con: sum(lai, rem), lai_den_nay: Math.max(0, Math.round(sum(lai, accrued) - sum(lai, pd))), lai_qua_han: laiQH, goc_tra: sum(goc, pd), goc_tra_con: sum(goc, rem),
       next_on: next?.due_on || null, next_amt: next ? rem(next) : null, next_l: next ? (next.kind === 'lai' ? `Lãi kỳ ${next.seq}` : 'Trả gốc') : '', state, state_l: LP_ST[state],
       goc_nhan_w: (RC.get(c.id) || []).filter(r => inW(r.voucher_date)).reduce((a, r) => a + +r.amount, 0), lai_w: sum(lai.filter(x => x.due_on && x.due_on <= t && inW(x.due_on)), x => +x.amount) };
   });
@@ -630,7 +635,7 @@ async function contractTrack(db, user, f = {}) {
       (SELECT n.body FROM kd_note n WHERE n.ent = 'contract' AND n.rec_id = c.id ORDER BY n.at DESC, n.id DESC LIMIT 1) note
     FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_project pr ON pr.id = u.project_id JOIN kd_building b ON b.id = u.building_id JOIN kd_customer k ON k.id = c.customer_id
       LEFT JOIN kd_user own ON own.id = c.owner_id
-    WHERE c.kind = ANY($1) AND c.status <> 'huy' ${uf(f, p)}${mine(user, 'c')} ORDER BY pr.code, u.code, c.id`, p);
+    WHERE c.kind = ANY($1) AND c.status IN ('da_ky','thanh_ly') ${uf(f, p)}${mine(user, 'c')} ORDER BY pr.code, u.code, c.id`, p);   // chỉ HĐ đã ký / đã thanh lý (rà soát 07/11/2026)
   const D = await B.debtOf(db, cs.map(c => c.id), t);   // HĐ thuê / hoàn thiện: như màn công nợ của hợp đồng (mọi phiếu thu)
   // phiếu chi hợp lệ (hoàn tiền / hoàn cọc / khác) — số công ty đã trả lại khách
   const PC = new Map((await db.q("SELECT contract_id, sum(amount) s, count(*) n FROM kd_payment WHERE status = 'hop_le' AND contract_id = ANY($1) AND ($2::date IS NULL OR voucher_date <= $2) GROUP BY 1", [cs.map(c => c.id), t])).map(x => [x.contract_id, x]));
@@ -833,7 +838,7 @@ async function priceSheet(db, user, id) {
 // ======================= HỒ SƠ 360° =======================
 async function unit360(db, user, id) {
   const u = C.notFound(await db.one(`SELECT u.*, p.code project_code, p.name project_name, b.code building_code, b.name building_name FROM kd_unit u JOIN kd_project p ON p.id = u.project_id JOIN kd_building b ON b.id = u.building_id WHERE u.id = $1`, [+id]), 'căn');
-  const get = async (ent, cond, pp, order = 't.id DESC') => can(user, E[ent], 'r') ? (await db.q(`SELECT t.*, ${C.labelCols(E[ent]).join(', ')} FROM ${E[ent].table} t WHERE ${cond} ORDER BY ${order}`, pp)) : null;
+  const get = async (ent, cond, pp, order = 't.id DESC') => can(user, E[ent], 'r') ? (await db.q(`SELECT t.*, ${C.labelCols(E[ent]).join(', ')} FROM ${E[ent].table} t WHERE ${cond} ORDER BY ${order}`, pp)).map(r => C.maskPii(E[ent], r, user, E[ent].listPii)) : null;   // che CCCD / MST / TK ngân hàng (rà soát 07/11/2026)
   const contracts = await get('contract', 't.unit_id = $1', [u.id]);
   const cids = (contracts || []).map(c => c.id);
   const D = await B.debtOf(db, cids);
@@ -859,7 +864,11 @@ async function unit360(db, user, id) {
   if (out.tickets) await B.H.ticket.decorate(out.tickets, { db });
   const custIds = [...new Set([...(contracts || []).map(c => c.customer_id), ...(out.reservations || []).map(r => r.customer_id)])];
   out.customers = can(user, E.customer, 'r') ? (await db.q('SELECT id, code, full_name, phone, email, address, kind, owner_id FROM kd_customer WHERE id = ANY($1)', [custIds])) : [];
-  if (E.customer.own?.includes(user.role)) out.customers = out.customers.map(c => c.owner_id === user.id ? c : { ...c, phone: '•••' + String(c.phone).slice(-3), email: null, address: null });
+  if (E.customer.own?.includes(user.role)) {
+    out.customers = out.customers.map(c => c.owner_id === user.id ? c : { ...c, phone: '•••' + String(c.phone).slice(-3), email: null, address: null });
+    (out.reservations || []).forEach(r => { if (r.owner_id !== user.id && r.created_by !== user.id) { if (r.phone) r.phone = '•••' + String(r.phone).slice(-3); r.cust_name = '•••'; } });
+    (contracts || []).forEach(c => { if (c.owner_id !== user.id && c.created_by !== user.id && c.b_phone) c.b_phone = '•••' + String(c.b_phone).slice(-3); });
+  }
   const recs = [['unit', [u.id]], ...Object.entries({ reservation: out.reservations, contract: contracts, contract_change: out.changes, handover: out.handover, defect: out.defects, pinkbook: out.pinkbook, ticket: out.tickets, noxh_check: out.noxh, refund: out.refunds }).map(([k, v]) => [k, (v || []).map(x => x.id)])];
   out.files = [];
   out.timeline = [];
@@ -874,7 +883,7 @@ async function unit360(db, user, id) {
 async function customer360(db, user, id) {
   const e = E.customer; if (!can(user, e, 'r')) deny();
   const c = (await C.get('customer', id, user, { db })).row;
-  const get = async (ent, cond, pp, order = 't.id DESC') => can(user, E[ent], 'r') ? await db.q(`SELECT t.*, ${C.labelCols(E[ent]).join(', ')} FROM ${E[ent].table} t WHERE ${cond} ORDER BY ${order}`, pp) : null;
+  const get = async (ent, cond, pp, order = 't.id DESC') => can(user, E[ent], 'r') ? (await db.q(`SELECT t.*, ${C.labelCols(E[ent]).join(', ')} FROM ${E[ent].table} t WHERE ${cond} ORDER BY ${order}`, pp)).map(r => C.maskPii(E[ent], r, user, E[ent].listPii)) : null;
   const contracts = await get('contract', 't.customer_id = $1', [c.id]);
   const D = await B.debtOf(db, (contracts || []).map(x => x.id));
   (contracts || []).forEach(x => { x._debt = D.get(x.id); x.paid = x._debt?.paid ?? null; });
@@ -894,7 +903,7 @@ async function customerLedger(db, user, id, f = {}) {
   const to = isoDay(f.to) || today(), from = isoDay(f.from) || null;
   if (from && from > to) bad('«Từ ngày» sau «Đến ngày»');
   const cs = await db.q(`SELECT c.id, c.number, c.kind, c.value, u.code unit FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id
-    WHERE c.customer_id = $1 AND c.kind <> 'vay' AND c.status <> 'huy' ORDER BY c.id`, [k.id]);
+    WHERE c.customer_id = $1 AND c.kind <> 'vay' AND c.status IN ('da_ky','thanh_ly') ORDER BY c.id`, [k.id]);
   const ids = cs.map(c => c.id), CM = new Map(cs.map(c => [c.id, c])), ev = [];
   const KL = Object.fromEntries(E.contract.fields.find(x => x.k === 'kind').o.map(o => [o[0], o[1]])), PK = Object.fromEntries(E.payment.fields.find(x => x.k === 'kind').o.map(o => [o[0], o[1]]));
   let notDue = 0;
@@ -1274,4 +1283,4 @@ async function monthly(db, period, projectId) {
   };
 }
 
-module.exports = { debtStatus, setDebtClass, setDebtDays, debtCfg, debtGrpOf, customerLedger, myDay, debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, voucherList, contractTrack, setLateRate, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
+module.exports = { debtStatus, setDebtClass, setDebtDays, debtCfg, debtGrpOf, debtGrpL, customerLedger, myDay, debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, voucherList, contractTrack, setLateRate, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };

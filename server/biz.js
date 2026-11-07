@@ -1161,7 +1161,7 @@ H.receipt = {
   async beforeSave(r, old, { db }) {
     const c = await raw(db, 'contract', r.contract_id);
     await fillVoucher(db, r, true);
-    if (c.status === 'huy') bad('Hợp đồng đã hủy');
+    if ((!old || old.contract_id !== r.contract_id) && c.status === 'huy') bad('Hợp đồng đã hủy');   // chỉ chặn khi lập mới / chuyển sang HĐ đã hủy — hủy phiếu cũ vẫn được
     if (r.installment_id) { const i = await raw(db, 'installment', r.installment_id); if (i.contract_id !== r.contract_id) bad('Khoản phải thu không thuộc hợp đồng này'); }
     r.voucher_no = r.voucher_no?.trim().toUpperCase();
     if (!old) { r.synced_at = r.synced_at || new Date().toISOString(); r.src = r.src || 'thu_cong'; }
@@ -1272,9 +1272,10 @@ H.debt_call = {
     for (const r of rows) {
       if (!r.promise_amount) { r.promise_st = ''; continue; }
       if (r.promise_on > t) { r.promise_st = 'Chờ đến hẹn'; continue; }
+      const today0 = r.promise_on === t;   // đúng ngày hẹn mà chưa thu đủ: «Đến hẹn hôm nay», chưa phải thất hẹn (rà soát 07/11/2026)
       const from = new Date(Date.parse(r.at) + 7 * 3600e3).toISOString().slice(0, 10);
       const got = (await db.one("SELECT coalesce(sum(amount),0) s FROM kd_receipt WHERE contract_id = $1 AND status = 'hop_le' AND voucher_date BETWEEN $2 AND $3", [r.contract_id, from, addDays(r.promise_on, 3)])).s;
-      r.promise_st = got >= r.promise_amount ? 'Đúng hẹn' : got > 0 ? `Thu một phần (${fmtMoney(got)})` : 'Thất hẹn';
+      r.promise_st = got >= r.promise_amount ? 'Đúng hẹn' : today0 ? 'Đến hẹn hôm nay' : got > 0 ? `Thu một phần (${fmtMoney(got)})` : 'Thất hẹn';
     }
   },
 };

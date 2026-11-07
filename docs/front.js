@@ -2302,7 +2302,7 @@ V.signing = async main => {
     $('#scDay', main).onchange = e => { if (okDay(e.target.value)) { sel = e.target.value; ym = sel.slice(0, 7); render(); } };
     $('#scX', main).onclick = () => download('/api/export-rows', { title: 'DANH SÁCH THEO DÕI KÝ HỢP ĐỒNG', cols: SIGN_COLS, rows: listed(), file: 'theo_doi_ky_hop_dong' });
   };
-  const draw = async () => { d = await api('GET', '/api/signing?' + qsOf({ project: f.project })); render(); };
+  const draw = async () => { d = await api('GET', '/api/signing?' + qsOf({ project: f.project, building: f.building })); render(); };
   main.onclick = e => {
     const tl = e.target.closest('[data-tile]'); if (tl) { tile = tile === tl.dataset.tile ? '' : tl.dataset.tile; return render(); }
     const stb = e.target.closest('#scTabs [data-s]'); if (stb) { ls = stb.dataset.s; return drawList(); }
@@ -2458,10 +2458,10 @@ V.ledger = async main => {
     $('#srcLine', main).innerHTML = `<span>${ico('fa-database')} Thực thu đồng bộ Bravo${d.bravo_sync ? ' — chốt ' + dmyhm(d.bravo_sync) : ''}</span><span>Phải thu = lịch thanh toán hiệu lực (gồm phụ lục)</span>`;
     const T = d.totals;
     const cols = [['project', 'Dự án'], ['building', 'Tòa'], ['unit', 'Mã căn'], ['customer', 'Khách hàng'], ['number', 'Số HĐ'], ['total', 'Phải thu', 'money'], ['paid', 'Đã thu', 'money'], ['paid_pct', '% thu', 'num'], ['left', 'Còn phải thu', 'money'], ['due', 'Đến hạn chưa thu', 'money'], ['overdue', 'Quá hạn', 'money'], ['overdue_days', 'Ngày quá hạn', 'int'], ['next_due', 'Kỳ tới', 'date'], ['promise', 'Cam kết'], ['plan_expected', 'KH tháng này', 'money'], ['owner', 'Phụ trách']];
-    $('#lg', main).innerHTML = `<div class="grid g5 mb">${[['Phải thu', T.total], ['Đã thu (Bravo)', T.paid], ['Còn phải thu', T.left], ['Nợ quá hạn', T.overdue, 1], ['Đến hạn 7 ngày', T.due7]].map(([l, v, red]) => `<div class="card kpi ${red && v ? 'red' : ''}" style="cursor:default"><div class="l">${l}</div><div class="v" style="font-size:20px">${fmB(v || 0)}</div><div class="s">${fm(v || 0)} đ</div></div>`).join('')}</div>
+    $('#lg', main).innerHTML = `<div class="grid g5 mb">${[['Phải thu', T.total], ['Đã thu', T.paid], ['Còn phải thu', T.left], ['Nợ quá hạn', T.overdue, 1], ['Đến hạn 7 ngày', T.due7]].map(([l, v, red]) => `<div class="card kpi ${red && v ? 'red' : ''}" style="cursor:default"><div class="l">${l}</div><div class="v" style="font-size:20px">${fmB(v || 0)}</div><div class="s">${fm(v || 0)} đ</div></div>`).join('')}</div>
       <div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="lq" placeholder="Mã căn, khách hàng, số HĐ…" value="${esc(s.q)}"></div><span class="grow"></span><span class="small muted">${d.rows.length} hợp đồng</span></div>
       <div class="tabs">${[['', 'Tất cả'], ['overdue', 'Có nợ quá hạn'], ['due7', 'Đến hạn ≤ 7 ngày'], ['noplan', 'Còn nợ, chưa có kế hoạch tháng'], ['left', 'Còn nợ'], ['done', 'Đã thu đủ']].map(([k, l]) => `<button data-fl="${k}" class="${s.filter === k ? 'on' : ''}">${l}</button>`).join('')}</div>${rowsTable(cols, d.rows, ['total', 'paid', 'left', 'due', 'overdue', 'plan_expected'])}</div>`;
-    $('#lq', main).oninput = debounce(e => { s.q = e.target.value; draw(); }, 400);
+    $('#lq', main).oninput = debounce(async e => { s.q = e.target.value; await draw(); const q = $('#lq', main); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }, 400);   // giữ con trỏ trong ô tìm sau khi vẽ lại (rà soát 07/11/2026)
     main.onclick = e => { const t = e.target.closest('[data-fl]'); if (t) { s.filter = t.dataset.fl; return draw(); } const tr = e.target.closest('tr[data-i]'); if (tr) ledgerRow(d.rows[+tr.dataset.i]); };
     $('#lx', main).onclick = () => download('/api/export-rows', { title: 'CN-01 Sổ công nợ chi tiết căn hộ', cols, rows: d.rows, sum: ['total', 'paid', 'left', 'due', 'overdue'], note: `Thực thu Bravo chốt ${d.bravo_sync ? dmyhm(d.bravo_sync) : ''} · xuất ${dmyhm(new Date().toISOString())}`, file: 'So_cong_no' });
   };
@@ -2870,7 +2870,7 @@ V.unitstatus = async main => {
         ${r.hist.length ? `<div class="us-hist">${r.hist.map(h => `<div>${dmy(String(h.at).slice(0, 10))} · ${esc(h.by_l)}: ${h.from === 'auto' ? 'tự động' : esc(short(h.from))} → ${h.to === 'auto' ? 'tự động' : esc(short(h.to))} — ${esc(h.reason)}</div>`).join('')}</div>` : ''}</div>
     </div><div class="us-acts"><a class="ad-btn" href="#/v/ctdebt?id=${r.contract_id}">${ico('fa-magnifying-glass-dollar')} Công nợ chi tiết</a>
       ${d.can_class ? `<button class="ad-btn" data-call="${r.contract_id}">${ico('fa-phone')} Ghi nhắc nợ</button><button class="ad-btn" data-cls="${r.unit_id}">${ico('fa-tags')} Cập nhật nhóm nợ</button>` : ''}
-      ${d.can_plan ? `<button class="ad-btn ad-btn-primary" data-plan1="${r.contract_id}">${ico('fa-calendar-plus')} Lập kế hoạch thu căn này</button>` : ''}</div></td></tr>`;
+      ${d.can_plan && !r.plan_n ? `<button class="ad-btn ad-btn-primary" data-plan1="${r.contract_id}">${ico('fa-calendar-plus')} Lập kế hoạch thu căn này</button>` : ''}</div></td></tr>`;
   const charts = () => {
     const G = d.groups, nAll = G.reduce((a, g) => a + g.n, 0) || 1, C = 2 * Math.PI * 54; let off = 0;
     const arcs = G.filter(g => g.n).map(g => { const L = g.n / nAll * C, x = `<circle r="54" cx="70" cy="70" fill="none" stroke="${DG_COL[g.k]}" stroke-width="22" stroke-dasharray="${L} ${C - L}" stroke-dashoffset="${-off}" transform="rotate(-90 70 70)"><title>${esc(g.l)}: ${g.n} căn</title></circle>`; off += L; return x; }).join('');
@@ -2911,7 +2911,7 @@ V.unitstatus = async main => {
         <div class="us-tabs">${[['', 'Tất cả', R.length], ...d.groups.map(g => [g.k, short(g.k) + (g.k === 'n5' ? ' · Nợ khó đòi' : g.k === 'n1' ? ' · Trong hạn' : ''), g.n]), ['warn', 'Có cảnh báo', R.filter(r => r.warns.length).length]].map(([k, l, n]) => `<button data-grp="${k}" class="${s.grp === k ? 'on' : ''}">${k && k !== 'warn' ? `<i style="background:${DG_COL[k]}"></i>` : ''}${esc(l)} <span>${n}</span></button>`).join('')}</div>
         <div class="ad-table-wrap"><table class="ad-table us-t"><thead><tr><th class="num">STT</th><th>Mã căn hộ</th><th>Tên khách hàng</th><th>Số điện thoại</th><th class="num">Số phải thu đến hạn</th><th class="num">Số đã thu</th><th class="num">Số còn phải thu</th><th class="num">Số ngày quá hạn</th><th class="num">Lãi phải trả quá hạn</th><th>Nhóm nợ</th><th>Tình trạng vay vốn</th><th>Kế hoạch thu</th><th>Lịch sử nhắc nợ</th><th></th></tr></thead>
           <tbody id="usTb"></tbody><tfoot id="usTf"></tfoot></table></div>
-        <div class="us-src">${ico('fa-database')} Thực thu đồng bộ Bravo${d.bravo_sync ? ' — chốt ' + dmyhm(d.bravo_sync) : ''}. Nhóm nợ tự động theo số ngày quá hạn lâu nhất của căn (mốc ${d.days?.join(' / ')} ngày); người ghi nhắc nợ được chỉnh tay kèm lý do, app lưu lịch sử.</div></div>`;
+        <div class="us-src">${ico('fa-database')} Số đã thu theo phiếu thu (phòng KD nhập / đồng bộ Bravo${d.bravo_sync ? ' — chốt ' + dmyhm(d.bravo_sync) : ''}); chỉ tính phần vào các đợt đã đến hạn, HĐ vay xem ở cột Vay vốn. Nhóm nợ tự động theo số ngày quá hạn lâu nhất của căn (mốc ${d.days?.join(' / ')} ngày); người ghi nhắc nợ được chỉnh tay kèm lý do, app lưu lịch sử.</div></div>`;
     drawT();
   };
   const drawT = () => {
@@ -2942,7 +2942,7 @@ V.unitstatus = async main => {
       foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="dyOk">Lưu</button>` });
     $('#dyOk', m.el).onclick = run(async () => { await api('PUT', '/api/debt-status/days', { days: [0, 1, 2].map(i => +$('#dy' + i, m.el).value) }); m.close(); toast('Đã đổi mốc ngày'); await load(); });
   };
-  const load = async () => { d = await api('GET', '/api/debt-status?' + qsOf({ project: f.project })); draw(); };
+  const load = async () => { d = await api('GET', '/api/debt-status?' + qsOf({ project: f.project, building: f.building })); draw(); };
   main.innerHTML = `<div class="page ad us">${head('06', 'Tình trạng công nợ đến hạn', 'fa-scale-unbalanced', `<button class="ad-btn" id="usX">${ico('fa-file-excel')} Xuất Excel</button>`, 'CN-06')}${filterBar(f, { period: false })}<div id="usBody"><div class="ad-card ad-empty">Đang tải…</div></div></div>`;
   wireFilter(main, f, load);
   $('#usX', main).onclick = () => download('/api/export-rows', { title: 'CN-06 Tình trạng công nợ đến hạn', file: 'Tinh_trang_cong_no_den_han',
@@ -2957,12 +2957,12 @@ V.unitstatus = async main => {
     const g = e.target.closest('[data-grp]'); if (g) { s.grp = s.grp === g.dataset.grp && g.dataset.grp ? '' : g.dataset.grp; draw(); return $('.us-tabs', main)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
     const b = e.target.closest('[data-unit]'); if (b) { s.open = +b.dataset.unit; s.grp = ''; s.q = ''; draw(); return $(`tr[data-u="${s.open}"]`, main)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
     if (e.target.closest('#usDays')) { e.preventDefault(); return daysForm(); }
-    const r = id => d.rows.find(x => x.unit_id === +id) || d.rows.find(x => x.contracts.some(c => c.id === +id));
-    const cl = e.target.closest('[data-cls]'); if (cl) return classForm(r(cl.dataset.cls));
+    const byU = id => d.rows.find(x => x.unit_id === +id), r = id => d.rows.find(x => x.contracts.some(c => c.id === +id));   // data-cls = mã căn; data-call / data-plan1 = mã hợp đồng
+    const cl = e.target.closest('[data-cls]'); if (cl) return classForm(byU(cl.dataset.cls));
     const ca = e.target.closest('[data-call]'); if (ca) { const x = r(ca.dataset.call); return openForm('debt_call', { preset: { contract_id: +ca.dataset.call, contract_id__l: x?.contracts.find(c => c.id === +ca.dataset.call)?.number || '' }, onSaved: load }); }
     const p1 = e.target.closest('[data-plan1]'); if (p1) { const x = r(p1.dataset.plan1); return openForm('collect_plan', { preset: { month: d.month, contract_id: +p1.dataset.plan1, contract_id__l: x?.contracts.find(c => c.id === +p1.dataset.plan1)?.number || '', expected: x?.due_left || null, expected_on: today(), basis: 'lich_hd', ability: ['n4', 'n5'].includes(x?.grp) ? 'thap' : 'vua' }, onSaved: load }); }
     if (e.target.closest('#usPlan')) { const ok = await ask('Lập kế hoạch thu', `App sẽ tự tạo dòng kế hoạch tháng ${d.month.slice(5)}/${d.month.slice(0, 4)} cho các căn còn nợ đến hạn, chưa có kế hoạch. Sau đó anh/chị kiểm tra, sửa và trình duyệt.`, { okLabel: 'Lập kế hoạch' }); if (!ok) return;
-      const x = await api('POST', '/api/collect_plan/suggest', { month: d.month }); toast(`Đã tạo ${x.created} dòng kế hoạch${x.skipped?.length ? ` · bỏ qua ${x.skipped.length}` : ''}`); return load(); }
+      const x = await api('POST', '/api/collect_plan/suggest', { month: d.month, project: f.project, building: f.building }); toast(`Đã tạo ${x.created} dòng kế hoạch${x.skipped?.length ? ` · bỏ qua ${x.skipped.length}: ${x.skipped.slice(0, 3).join('; ')}${x.skipped.length > 3 ? '…' : ''}` : ''}`); return load(); }
     const tr = e.target.closest('tr[data-u]'); if (tr && !e.target.closest('a')) { s.open = s.open === +tr.dataset.u ? null : +tr.dataset.u; drawT(); }
   });
   ST.reload = async () => { if ($('#usBody', main)) await load(); };
@@ -2988,7 +2988,7 @@ const vchToggle = async (tr, cid, { onLoan, reload, to } = {}) => {
     ${I.length ? `<div class="tbl-wrap mb"><table class="t compact noclick"><thead><tr><th>Đợt</th><th>Nội dung</th><th>Hạn thanh toán</th><th class="num">Số phải thu</th><th class="num">Đã thu</th><th class="num">Còn lại</th><th class="num">Số ngày quá hạn</th>
         <th class="num">Số tiền quá hạn lũy kế</th><th>Chi tiết tính lãi chậm trả</th><th class="num">Lãi suất (%/năm)</th><th class="num">Lãi quá hạn</th><th>Tình trạng</th></tr></thead>
       <tbody>${I.map(x => `<tr><td>${x.is_maint ? 'Phí bảo trì' : 'Đợt ' + x.no}</td><td class="wrap">${esc(x.name || '')}</td><td>${dmy(x.due_on)}</td><td class="num">${fm(x.amount)}</td><td class="num">${fm(x.paid)}</td><td class="num">${fm(x.rem)}</td>
-        <td class="num">${x.days ?? ''}</td><td class="num">${x.od ? fm(x.od) : ''}</td><td class="wrap small">${(x.segs || []).map(y => `${fm(y.amt)} × ${y.days} ngày (${y.paid ? 'trả ' + dmy(y.to) : 'chưa trả, đến ' + dmy(y.to)})`).join('<br>')}</td>
+        <td class="num">${x.days ?? ''}</td><td class="num">${x.od ? fm(x.od) : ''}</td><td class="wrap small">${(x.segs || []).map(y => `${fm(y.amt)} × ${y.days} ngày (${dmy(y.from)} → ${dmy(y.to)}${y.ev ? ' · ' + esc(y.ev) : ''})`).join('<br>')}</td>
         <td class="num">${x.rate != null ? fnum(x.rate) : ''}</td><td class="num">${x.late ? fm(x.late) : ''}</td><td>${pill(x.st_l, STC[x.st] || 's')}</td></tr>`).join('')}</tbody>
       <tfoot><tr><td></td><td>Cộng</td><td></td><td class="num">${fm(isum('amount'))}</td><td class="num">${fm(isum('paid'))}</td><td class="num">${fm(isum('rem'))}</td><td></td><td class="num">${fm(I.reduce((m, x) => x.od ?? m, 0))}</td><td></td><td></td><td class="num">${fm(isum('late'))}</td><td></td></tr></tfoot></table></div>
       <div class="small muted mb">Số tiền quá hạn lũy kế = cộng dồn phần còn lại chưa thanh toán của các đợt đã quá hạn. Lãi chậm trả tính theo từng khoảng: từ hạn đợt, số tiền quá hạn = phần còn nợ, giảm dần từ mỗi ngày khách trả; mỗi khoảng = số tiền quá hạn × số ngày × lãi suất / 365 (khoảng cuối đến ${dmy(g.asof)}) — tính cả những ngày đã trễ trước khi khách trả.</div>` : '<div class="empty mb">Hợp đồng chưa có lịch thu tiền</div>'}`;
@@ -3025,7 +3025,7 @@ const loanView = async main => {
     $('#ltN', main).textContent = `${shown().length} hợp đồng`;
     $('#ltT', main).innerHTML = rowsTable(cols, shown(), SUM, { no: 'STT' });
   };
-  const load = async () => { d = await api('GET', '/api/loan-track?' + qsOf({ project: f.project, from: s.from, to: s.to })); draw(); };
+  const load = async () => { d = await api('GET', '/api/loan-track?' + qsOf({ project: f.project, building: f.building, from: s.from, to: s.to })); draw(); };
   // bấm 1 HĐ vay: các kỳ trả lãi / gốc, ghi nhận đã trả
   const items = async id => {
     const g = await api('GET', `/api/loan-track/${id}`), T = today(), rem = x => Math.max(0, +x.amount - (+x.paid_amt || 0));
@@ -3123,7 +3123,7 @@ V.ctdebt = async (main, params = {}) => {
     const tagOf = x => x.rem <= 0 ? (x.late_paid_days ? tag(`Đã thu · trễ ${x.late_paid_days} ngày`, 'warning') : tag('Đã thu đủ', 'success'))
       : x.due_on < T ? tag(`Quá hạn ${dd(x.due_on, T)} ngày`, 'error') : x.due_on === T ? tag('Đến hạn hôm nay', 'warning')
       : tag(`${x.paid > 0 ? 'Thu một phần · ' : ''}Còn ${dd(T, x.due_on)} ngày`, x === next ? 'processing' : 'default');
-    const ST_TAG = { 'Đã ký': 'success', 'Dự thảo': 'default', 'Chờ duyệt': 'processing', 'Chờ ký': 'processing', 'Thanh lý': 'warning', 'Đã hủy': 'error' };
+    const ST_TAG = { 'Đã ký': 'success', 'Dự thảo': 'default', 'Chờ duyệt': 'processing', 'Chờ ký': 'processing', 'Thanh lý': 'warning', 'Đã thanh lý': 'warning', 'Đã hủy': 'error' };
     const rateIn = g.can_rate ? `<input class="ad-input cd-rate" id="cdRate" value="${g.late_rate ?? ''}" placeholder="vd 18" inputmode="decimal" title="Lãi suất chậm trả (%/năm) — gõ rồi Enter"> %/năm`
       : g.late_rate != null ? fnum(g.late_rate) + ' %/năm' : '<span class="ad-muted">chưa điền</span>';
     const desc = [['Khách hàng', esc(c.customer || '')], ['Mã khách hàng', esc(c.cust_code || '')], ['Số điện thoại', esc(c.phone || '')],
@@ -3241,7 +3241,7 @@ const ctTrack = async (main, kind) => {
       còn lại theo hợp đồng = giá trị − tổng đã thu đến ${dmy(d.asof)}. <b>Phí bảo trì</b>: số phải thu = phí bảo trì, còn lại = phí bảo trì − số đã thu. Tổng cộng = tiền nhà + phí bảo trì (cộng từng cột; tổng giá trị HĐ = giá trị HĐ + phí bảo trì). Số ngày quá hạn = từ hạn của đợt nợ sớm nhất đến ${dmy(d.asof)}.
       Số tiền quá hạn = cộng dồn (lũy kế) phần còn lại chưa thanh toán của các đợt đã quá hạn. Lãi quá hạn (lãi chậm trả) tính theo từng khoảng: từ hạn đợt, số tiền quá hạn = phần còn nợ, giảm dần từ mỗi ngày khách trả; mỗi khoảng = số tiền quá hạn × số ngày × lãi suất (%/năm) / 365 (khoảng cuối đến ${dmy(d.asof)}) — tính cả những ngày đã trễ trước khi khách trả${d.can_rate ? ' — gõ lãi suất vào cột «Lãi suất quá hạn» của từng hợp đồng' : ''}. Bấm 1 dòng để xem công nợ từng đợt, phiếu thu / phiếu chi của hợp đồng.`;
   };
-  const load = async () => { d = await api('GET', '/api/contract-track?' + qsOf({ kind, project: f.project, from: s.from, to: s.to })); draw(); };
+  const load = async () => { d = await api('GET', '/api/contract-track?' + qsOf({ kind, project: f.project, building: f.building, from: s.from, to: s.to })); draw(); };
   main.innerHTML = `<div class="page">${head('06', `Theo dõi công nợ — ${KL[kind]}`, CT_KINDS.find(x => x[0] === kind)[2], `<button class="btn" id="ctX">${ico('fa-file-excel')} Xuất Excel</button>`, 'CN-07')}${ctKindBar(kind)}${filterBar(f, { period: false })}<div class="grid g4 mb" id="ctK"></div><div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="ctQ" placeholder="Tìm mã căn, khách hàng, số HĐ, SĐT…" value="${esc(s.q)}"></div><span id="ctDates" style="display:contents"><span class="small muted">Từ ngày</span>${segDate('ctFr', s.from)}<span class="small muted">Đến ngày</span>${segDate('ctTo', s.to || today())}</span><span class="grow"></span><span class="small muted" id="ctN"></span></div><div id="ctT"><div class="empty">Đang tải…</div></div><div class="small muted mt" id="ctNote">Phải thu theo lịch thanh toán của hợp đồng; đã thu theo Phiếu thu, đã chi theo Phiếu chi (hoàn tiền / hoàn cọc). Bấm 1 dòng để sổ ra phiếu thu / phiếu chi của hợp đồng.</div></div></div>`;
   wireFilter(main, f, load);
   { wireSegDate(main); $('#ctDates', main).addEventListener('sdchange', run(async e => { const v = segVal(e.target); if (v === null) return; if (e.target.id === 'ctFr') s.from = v; else s.to = v; await load(); })); }
@@ -3269,7 +3269,7 @@ V.finishpay = async main => {
     $('#fpN', main).textContent = `${rs.length} căn`;
     $('#fpT', main).innerHTML = rowsTable(cols, rs, ['value', 'paid', 'left', 'overdue']);
   };
-  const load = async () => { d = await api('GET', '/api/finish-pay?' + qsOf({ project: f.project })); $('#srcLine', main).innerHTML = `<span>${ico('fa-database')} Thực thu đồng bộ Bravo${d.bravo_sync ? ' — chốt ' + dmyhm(d.bravo_sync) : ''}</span><span>Gộp HĐMB: tạm tính theo % đã thu của hợp đồng, chưa phải số thu riêng của khoản hoàn thiện</span>`; draw(); };
+  const load = async () => { d = await api('GET', '/api/finish-pay?' + qsOf({ project: f.project, building: f.building })); $('#srcLine', main).innerHTML = `<span>${ico('fa-database')} Thực thu đồng bộ Bravo${d.bravo_sync ? ' — chốt ' + dmyhm(d.bravo_sync) : ''}</span><span>Gộp HĐMB: tạm tính theo % đã thu của hợp đồng, chưa phải số thu riêng của khoản hoàn thiện</span>`; draw(); };
   main.innerHTML = `<div class="page">${head('06', 'Tiến độ thu tiền hoàn thiện', 'fa-couch', `<button class="btn" id="fpX">${ico('fa-file-excel')} Xuất Excel</button>`, 'CN-05')}${filterBar(f, { period: false })}<div class="grid g4 mb" id="fpK"></div><div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="fpQ" placeholder="Mã căn, khách hàng, số HĐ…" value="${esc(s.q)}"></div><span class="grow"></span><span class="small muted" id="fpN"></span></div><div class="tabs" id="fpTabs"></div><div id="fpT"></div></div></div>`;
   wireFilter(main, f, load);
   $('#fpQ', main).oninput = debounce(e => { s.q = e.target.value; draw(); }, 200);

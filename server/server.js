@@ -385,21 +385,25 @@ R('POST', '/api/ai/ask', async (req, res, u) => { const b = await readJson(req);
 // --- nghiệp vụ hàng loạt ---
 R('POST', '/api/collect_plan/suggest', async (req, res, u) => {
   if (!can(u, M.E.collect_plan, 'c')) deny();
-  const { month } = await readJson(req); const m = C.isoMonth(month || '') || bad('Chọn tháng kế hoạch');
-  send(res, 200, await tx(db => suggestPlan(db, m, u)));
+  const b = await readJson(req); const m = C.isoMonth(b.month || '') || bad('Chọn tháng kế hoạch');
+  send(res, 200, await tx(db => suggestPlan(db, m, u, undefined, { project: b.project, building: b.building })));
 });
-async function suggestPlan(db, m, u, demo) {
+async function suggestPlan(db, m, u, demo, f = {}) {   // f: dự án / tòa đang lọc trên màn (rà soát 07/11/2026)
   const end = new Date(Date.UTC(+m.slice(0, 4), +m.slice(5), 0)).toISOString().slice(0, 10), start = m + '-01';
-  const cs = await V.signedContracts(db, {}, "AND c.status = 'da_ky'");
-  const have = new Set((await db.q("SELECT contract_id FROM kd_collect_plan WHERE month = $1 AND status <> 'thay_the'", [m])).map(r => r.contract_id));
+  const cs = await V.signedContracts(db, { project: f.project || '', building: f.building || '' }, "AND c.status = 'da_ky'");
+  const hv = await db.q("SELECT contract_id, status FROM kd_collect_plan WHERE month = $1 AND status <> 'thay_the'", [m]);
+  const have = new Set(hv.map(r => r.contract_id)), rej = new Set(hv.filter(r => r.status === 'tu_choi').map(r => r.contract_id));
   const calls = await db.q('SELECT DISTINCT ON (contract_id) contract_id, promise_amount, promise_on FROM kd_debt_call WHERE promise_on BETWEEN $1 AND $2 ORDER BY contract_id, at DESC', [start, end]);
   const pm = new Map(calls.map(c => [c.contract_id, c]));
-  const DC = await V.debtCfg(db), GL = { n4: 'Nhóm 4 · nghi ngờ', n5: 'Nhóm 5 · nợ khó đòi' };
+  // nhóm nợ theo CĂN như màn Tình trạng công nợ đến hạn (cộng các HĐ của căn, trừ HĐ vay; số ngày quá hạn lâu nhất)
+  const DC = await V.debtCfg(db), GLa = V.debtGrpL(DC.days), GL = { n4: GLa.n4, n5: GLa.n5 }, UG = new Map();
+  for (const c of cs) { if (c.kind === 'vay') continue; const g = UG.get(c.unit_id) || { od: 0, days: 0 }; g.od += c.d.overdue; g.days = Math.max(g.days, c.d.overdue_days || 0); UG.set(c.unit_id, g); }
   let n = 0; const skipped = [];
   for (const c of cs) {
-    if (have.has(c.id) || c.d.left <= 0) continue;
+    if (rej.has(c.id) && c.d.left > 0) { skipped.push(`${c.unit}: kế hoạch tháng này đã bị từ chối — sửa dòng cũ rồi trình duyệt lại`); continue; }
+    if (have.has(c.id) || c.d.left <= 0 || c.kind === 'vay') continue;
     const dueBy = c.d.inst.filter(i => i.rem > 0 && i.due_on <= end).reduce((s, i) => s + i.rem, 0);
-    const pr = pm.get(c.id), grp = DC.units[c.unit_id]?.grp || V.debtGrpOf(c.d.overdue, c.d.overdue_days, DC.days);
+    const ug = UG.get(c.unit_id) || { od: 0, days: 0 }, pr = pm.get(c.id), grp = (ug.od > 0 && DC.units[c.unit_id]?.grp) || V.debtGrpOf(ug.od, ug.days, DC.days);
     if (!dueBy && !pr) continue;
     const expected = Math.min(c.d.left, pr ? pr.promise_amount : dueBy);
     const firstDue = c.d.inst.find(i => i.rem > 0 && i.due_on >= start && i.due_on <= end)?.due_on;
