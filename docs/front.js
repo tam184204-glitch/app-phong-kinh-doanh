@@ -2047,7 +2047,7 @@ V.customers = async (main, params) => {
   const ce = M.ents.customer.perm;
   // 07/11/2026: lưới hiện đủ thông tin theo phiếu khách hàng (cùng thứ tự các ô trên phiếu)
   const CF = Object.fromEntries(M.ents.customer.fields.map(f => [f.k, f]));
-  const CC = ['code', 'full_name', 'phone', 'phone2', 'email', 'tax_code', 'bank_account', 'source', 'agent_id', 'interest_project', 'need', 'budget', 'id_no', 'id_date', 'id_place', 'birth', 'address', 'note']
+  const CC = ['code', 'full_name', 'phone', 'phone2', 'email', 'tax_code', 'bank_account', 'source', 'agent_id', 'interest_project', 'id_no', 'id_date', 'id_place', 'birth', 'address', 'note']
     .filter(k => CF[k]).map(k => [k, CF[k].l]);   // như lưới Bravo, mã trước tên; bỏ cột Tình trạng (03/11/2026) — vẫn lọc được ở ô «Mọi tình trạng»
   const draw = async () => {
     const get = async e => M.ents[e]?.perm.r ? (await api('GET', `/api/e/${e}?limit=20000${e === 'customer' ? '&group=sau_ban' : ''}`)).rows : [];   // 02 chỉ khách sau mở bán; khách tiềm năng ở 03
