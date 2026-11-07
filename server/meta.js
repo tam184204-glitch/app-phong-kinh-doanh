@@ -496,9 +496,9 @@ def('contract', {
     { k: 'area_build', l: 'Diện tích xây dựng m²', t: 'num', show: LK_SALE },
     money('build_price', 'Đơn giá xây dựng đ/m²', { show: LK_SALE }),
     money('build_amt', 'Giá trị xây dựng', { show: LK_SALE }),
-    money('discount', 'Tiền giảm giá', { show: { kind: [...SALE_K, 'thue'] }, help: 'Trừ thẳng vào Tổng tiền (giá trị hợp đồng). HĐ mua bán: chia ngược ra giá trước thuế, thuế, bảo trì. HĐ thuê: không trừ vào tiền thuê' }),
+    money('discount', 'Tiền giảm giá', { show: { kind: [...SALE_K, 'thue', 'vay'] }, help: 'Trừ thẳng vào Tổng tiền (giá trị hợp đồng). HĐ mua bán: chia ngược ra giá trước thuế, thuế, bảo trì. HĐ thuê: không trừ vào tiền thuê' }),
     // HĐ thuê (04/11/2026): giá trị căn hộ theo Danh mục sản phẩm − giảm giá — CHỈ ĐỂ THÔNG TIN (tiền thuê, tiến độ thu, công nợ vẫn = tiền thuê/tháng × số tháng)
-    money('unit_total', 'Giá trị HĐMB', { show: RENT_ONLY, help: 'Giá trị nếu mua căn: tự lấy theo mã căn ở Danh mục sản phẩm (Tổng giá căn hộ = sau thuế + phí bảo trì + hoàn thiện) rồi trừ thẳng Tiền giảm giá; sửa được. Chỉ để thông tin — tiền thuê vẫn tính theo tiền thuê/tháng × số tháng' }),
+    money('unit_total', 'Giá trị HĐMB', { show: RENT_VAY, help: 'Giá trị nếu mua căn: tự lấy theo mã căn ở Danh mục sản phẩm (Tổng giá căn hộ = sau thuế + phí bảo trì + hoàn thiện) rồi trừ thẳng Tiền giảm giá; sửa được. Chỉ để thông tin — tiền thuê vẫn tính theo tiền thuê/tháng × số tháng' }),
     money('pretax', 'Tiền trước thuế', { show: SALE_ONLY }),
     { k: 'vat_pct', l: 'Thuế suất %', t: 'num', show: SALE_ONLY },
     money('vat_amt', 'Tiền thuế', { help: 'Để trống → trước thuế × thuế suất', show: SALE_ONLY }),
@@ -538,6 +538,9 @@ def('contract', {
     { k: 'cn', l: 'CN', t: 'bool', hide: 1 },   // bỏ khỏi form HĐMB (03/11/2026) — giữ cột cho dữ liệu cũ
     { k: 'vbtt_hold', l: 'Tạm đóng VBTT', t: 'bool', hide: 1 },
     { k: 'new_schedule', l: 'Lần TT · % · Giá trị VND', t: 'json', sec: 'Lần thanh toán', help: 'Nhập tỷ lệ % → giá trị tự tính theo Tổng tiền' },
+    // HĐ thuê / HĐ vay bản chất bán căn (07/11/2026): tiến độ khách trả tiền mua nhà theo Giá trị HĐMB → lên Bảng tổng hợp công nợ.
+    //  Đã thu = phiếu thu của chính hợp đồng (HĐ vay: gốc khách đã chuyển tính là tiền mua nhà). Khi ký HĐMB thật: thanh lý HĐ thuê / vay, lập HĐMB mới.
+    { k: 'sale_sched', l: 'Đợt · % · Giá trị VND (theo Giá trị HĐMB)', t: 'json', show: { kind: ['thue', 'vay'], nature: ['ban'] }, help: 'Nhập tỷ lệ % → giá trị tự tính theo Giá trị HĐMB. Số phải thu lên Bảng tổng hợp ở Theo dõi công nợ; đã thu = phiếu thu của hợp đồng này (HĐ vay: gốc khách đã chuyển)' },
     { k: 'pay_method', l: 'Phương thức thanh toán', t: 'text' },
     { k: 'plan_sign', l: 'Ngày dự kiến ký', t: 'date', show: LK_ONLY },   // chung cư: nhập ở Hồ sơ mua NOXH, tự sang hợp đồng
     { k: 'sign_place', l: 'Địa điểm ký', t: 'text', show: LK_ONLY },
@@ -558,7 +561,7 @@ def('contract', {
     owner('Nhân viên KD'),
     { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'du_thao', o: [['du_thao', 'Dự thảo', 's'], ['cho_duyet', 'Đang rà soát', 'a'], ['cho_ky', 'Chờ ký', 'b'], ['tu_choi', 'Trả lại dự thảo', 'r'], ['da_ky', 'Đã ký', 'g'], ['thanh_ly', 'Đã thanh lý', 't'], ['huy', 'Đã hủy', 's']] },
   ], list: ['number', 'contract_on', 'kind', 'unit_id', 'customer_id', 'value', 'plan_sign', 'sign_status', 'signed_on', 'status'],
-  lock: ['da_ky', 'thanh_ly', 'huy'], lockKeep: ['sign_status', 'sign_place', 'plan_sign', 'owner_id', 'late_rate', 'loan_status', 'loan_bank', 'loan_doc3', 'liquidated_on', 'liquidate_reason', 'liquidate_note'],
+  lock: ['da_ky', 'thanh_ly', 'huy'], lockKeep: ['sign_status', 'sign_place', 'plan_sign', 'owner_id', 'late_rate', 'sale_sched', 'loan_status', 'loan_bank', 'loan_doc3', 'liquidated_on', 'liquidate_reason', 'liquidate_note'],
   // đã trình duyệt / chờ ký: nhân viên chỉ sửa được lần thanh toán (+ lockKeep); quản lý vẫn sửa được
   softLock: { st: ['cho_duyet', 'cho_ky'], keep: ['sign_status', 'sign_place', 'plan_sign', 'new_schedule', 'loan_status', 'loan_bank', 'loan_doc3'], boss: MGR },
   flow: { field: 'status', submit: ['du_thao', 'tu_choi'], approve: { ok: 'da_ky' }, submitLabel: 'Gửi trình duyệt' },

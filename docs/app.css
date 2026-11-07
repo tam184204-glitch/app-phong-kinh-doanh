@@ -1297,10 +1297,10 @@ table.t tr.vch > td { padding: 0; background: #fbfcfe; white-space: normal; curs
 .ad-table .ad-cell-txt { max-width: 300px; }
 
 /* ===== Màn Công nợ hợp đồng — giao diện «Soft» (lavender · blush · ink · cream), 07/11/2026 ===== */
-.ad { --sf-lav: #9DB3D9; --sf-lav-50: #EEF3FA; --sf-lav-100: #DCE6F4; --sf-pri: #1F3A68; --sf-pri-d: #152A4D; --sf-blush: #F3C2C2; --sf-blush-50: #FDECEC; --sf-blush-100: #F9D6D6;
+.ad { --sf-lav: #9DB3D9; --sf-lav-50: #EEF3FA; --sf-lav-100: #DCE6F4; --sf-pri: #2A4F8A; --sf-pri-d: #1F3A68; --sf-blush: #F3C2C2; --sf-blush-50: #FDECEC; --sf-blush-100: #F9D6D6;
   --sf-ink: #171310; --sf-cream: #FBF8F1; --sf-line: #EEE8DE; --sf-rose: #C62828; --sf-mint: #2F7A55; --sf-mint-50: #E9F5EE; --sf-amber: #94600A; --sf-amber-50: #FDF3E1;
   --ad-text: #171310; --ad-text2: #4A4440; --ad-text3: #847C75; --ad-border: #E6DFD3; --ad-split: #F0EBE2; --ad-fill: #FBF8F1; --ad-bg: #fff;
-  --ad-primary: #1F3A68; --ad-primary-bg: #DCE6F4; --ad-success: #1F3A68; --ad-success-t: #152A4D; --ad-error: #E53935; --ad-error-t: #C62828;
+  --ad-primary: #2A4F8A; --ad-primary-bg: #DCE6F4; --ad-success: #2A4F8A; --ad-success-t: #1F3A68; --ad-error: #E53935; --ad-error-t: #C62828;
   --ad-shadow: 0 1px 2px rgba(23,19,16,.03), 0 8px 24px -12px rgba(94,79,163,.18);
   font-family: 'IBM Plex Sans', system-ui, 'Segoe UI', sans-serif; }
 .ad h1, .ad .ad-stat-v, .ad .ad-card-head, .ad .ad-step-t { font-family: 'Archivo', 'IBM Plex Sans', system-ui, sans-serif; }
@@ -1487,19 +1487,19 @@ table.t tr.vch > td { padding: 0; background: #fbfcfe; white-space: normal; curs
 .us-t td:last-child, .us-t th:last-child { padding-right: 14px; width: 20px; }
 
 /* ================= GIAO DIỆN «SOFT» CHO TOÀN APP (07/11/2026) =================
-   Theo ảnh mẫu LaunchKit «Soft, morphed»: lavender #9DB3D9 · tím chính #1F3A68 · blush #F3C2C2 · ink #171310 · cream #FBF8F1; chữ Archivo (tiêu đề, số) + IBM Plex Sans (nội dung).
+   Theo ảnh mẫu LaunchKit «Soft, morphed»: lavender #9DB3D9 · tím chính #2A4F8A · blush #F3C2C2 · ink #171310 · cream #FBF8F1; chữ Archivo (tiêu đề, số) + IBM Plex Sans (nội dung).
    Đổi bộ màu gốc → mọi màn hình dùng biến màu tự ăn theo; bên dưới chỉnh thêm các thành phần có mã màu cứng. Người dùng chọn màu nhấn khác trong Hồ sơ vẫn được giữ. */
 :root {
-  --cobalt: #1F3A68; --cobalt-d: #152A4D; --cobalt-l: #3A5A94; --cobalt-50: #EEF3FA; --cobalt-100: #DCE6F4;
+  --cobalt: #2A4F8A; --cobalt-d: #1F3A68; --cobalt-l: #4A6FAE; --cobalt-50: #EEF3FA; --cobalt-100: #DCE6F4;
   --amber: #F5A623; --amber-d: #C98210; --amber-50: #FFF6E4;
   --sage: #7DBF9B; --sage-d: #2F7A55; --sage-50: #E9F5EE;
   --ink: #171310; --text: #2A2420; --muted: #7A726B; --muted2: #A59D95;
   --paper: #FBF8F1; --card: #fff; --line: #EEE8DE; --line2: #F0EBE2;
-  --soft: 0 18px 42px -18px rgba(31, 58, 104, .28); --soft2: 0 1px 2px rgba(23, 19, 16, .03), 0 8px 24px -12px rgba(31, 58, 104, .18); --deep: 0 28px 70px -20px rgba(23, 19, 16, .30);
+  --soft: 0 18px 42px -18px rgba(42, 79, 138, .28); --soft2: 0 1px 2px rgba(23, 19, 16, .03), 0 8px 24px -12px rgba(42, 79, 138, .18); --deep: 0 28px 70px -20px rgba(23, 19, 16, .30);
   --r: 20px;
-  --g: #2F7A55; --g-bg: #E9F5EE; --b: #1F3A68; --b-bg: #EEF3FA; --a: #94600A; --a-bg: #FDF3E1; --r-c: #C62828; --r-bg: #FDECEC;
-  --s: #5B534D; --s-bg: #F4F0E8; --v: #1F3A68; --v-bg: #E6EDF7; --t: #0F766E; --t-bg: #E0F4F2;
-  --skyline: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20900%20260'%3E%3Cdefs%3E%3ClinearGradient%20id%3D'g'%20x1%3D'0'%20y1%3D'0'%20x2%3D'1'%20y2%3D'1'%3E%3Cstop%20stop-color%3D'%231F3A68'%2F%3E%3Cstop%20offset%3D'.55'%20stop-color%3D'%239DB3D9'%2F%3E%3Cstop%20offset%3D'1'%20stop-color%3D'%23F3C2C2'%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Cg%20fill%3D'none'%20stroke%3D'url(%23g)'%20stroke-width%3D'3'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Cpath%20d%3D'M34%20218H866'%20opacity%3D'.45'%2F%3E%3Cpath%20d%3D'M84%20218V116l58-34%2058%2034v102M110%20218v-54h64v54M104%20126h18M154%20126h18M104%20151h18M154%20151h18'%2F%3E%3Cpath%20d%3D'M242%20218V82h78v136M262%20106h12M292%20106h12M262%20134h12M292%20134h12M262%20162h12M292%20162h12M262%20190h12M292%20190h12'%2F%3E%3Cpath%20d%3D'M352%20218V58h92v160M376%2086h14M408%2086h14M376%20116h14M408%20116h14M376%20146h14M408%20146h14M376%20176h14M408%20176h14'%2F%3E%3Cpath%20d%3D'M492%20218v-92l58-38%2058%2038v92M526%20218v-58h48v58M526%20136h48M526%20160h48'%2F%3E%3Cpath%20d%3D'M654%20218V96h78v122M676%20122h12M708%20122h12M676%20150h12M708%20150h12M676%20178h12M708%20178h12'%2F%3E%3Cpath%20d%3D'M766%20218v-72l54-42%2054%2042v72M796%20218v-44h48v44'%2F%3E%3Cpath%20d%3D'M120%2086L212%2062L304%2088L396%2052L492%20104L610%2074L746%2098'%20opacity%3D'.58'%2F%3E%3C%2Fg%3E%3Cg%20fill%3D'%23F5A623'%20opacity%3D'.78'%3E%3Ccircle%20cx%3D'212'%20cy%3D'62'%20r%3D'3'%2F%3E%3Ccircle%20cx%3D'396'%20cy%3D'52'%20r%3D'3'%2F%3E%3Ccircle%20cx%3D'610'%20cy%3D'74'%20r%3D'3'%2F%3E%3Ccircle%20cx%3D'746'%20cy%3D'98'%20r%3D'3'%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E");
+  --g: #2F7A55; --g-bg: #E9F5EE; --b: #2A4F8A; --b-bg: #EEF3FA; --a: #94600A; --a-bg: #FDF3E1; --r-c: #C62828; --r-bg: #FDECEC;
+  --s: #5B534D; --s-bg: #F4F0E8; --v: #2A4F8A; --v-bg: #E6EDF7; --t: #0F766E; --t-bg: #E0F4F2;
+  --skyline: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20900%20260'%3E%3Cdefs%3E%3ClinearGradient%20id%3D'g'%20x1%3D'0'%20y1%3D'0'%20x2%3D'1'%20y2%3D'1'%3E%3Cstop%20stop-color%3D'%232A4F8A'%2F%3E%3Cstop%20offset%3D'.55'%20stop-color%3D'%239DB3D9'%2F%3E%3Cstop%20offset%3D'1'%20stop-color%3D'%23F3C2C2'%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Cg%20fill%3D'none'%20stroke%3D'url(%23g)'%20stroke-width%3D'3'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Cpath%20d%3D'M34%20218H866'%20opacity%3D'.45'%2F%3E%3Cpath%20d%3D'M84%20218V116l58-34%2058%2034v102M110%20218v-54h64v54M104%20126h18M154%20126h18M104%20151h18M154%20151h18'%2F%3E%3Cpath%20d%3D'M242%20218V82h78v136M262%20106h12M292%20106h12M262%20134h12M292%20134h12M262%20162h12M292%20162h12M262%20190h12M292%20190h12'%2F%3E%3Cpath%20d%3D'M352%20218V58h92v160M376%2086h14M408%2086h14M376%20116h14M408%20116h14M376%20146h14M408%20146h14M376%20176h14M408%20176h14'%2F%3E%3Cpath%20d%3D'M492%20218v-92l58-38%2058%2038v92M526%20218v-58h48v58M526%20136h48M526%20160h48'%2F%3E%3Cpath%20d%3D'M654%20218V96h78v122M676%20122h12M708%20122h12M676%20150h12M708%20150h12M676%20178h12M708%20178h12'%2F%3E%3Cpath%20d%3D'M766%20218v-72l54-42%2054%2042v72M796%20218v-44h48v44'%2F%3E%3Cpath%20d%3D'M120%2086L212%2062L304%2088L396%2052L492%20104L610%2074L746%2098'%20opacity%3D'.58'%2F%3E%3C%2Fg%3E%3Cg%20fill%3D'%23F5A623'%20opacity%3D'.78'%3E%3Ccircle%20cx%3D'212'%20cy%3D'62'%20r%3D'3'%2F%3E%3Ccircle%20cx%3D'396'%20cy%3D'52'%20r%3D'3'%2F%3E%3Ccircle%20cx%3D'610'%20cy%3D'74'%20r%3D'3'%2F%3E%3Ccircle%20cx%3D'746'%20cy%3D'98'%20r%3D'3'%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E");
 }
 body {
   font-family: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; color: var(--text);
@@ -1509,7 +1509,7 @@ body {
     linear-gradient(180deg, #FBF8F1 0%, #FAF7F2 55%, #F3F6FB 100%);
   background-attachment: fixed;
 }
-body::before { background: repeating-linear-gradient(90deg, rgba(31, 58, 104, .035) 0 1px, transparent 1px 78px), repeating-linear-gradient(0deg, rgba(31, 58, 104, .025) 0 1px, transparent 1px 78px); }
+body::before { background: repeating-linear-gradient(90deg, rgba(42, 79, 138, .035) 0 1px, transparent 1px 78px), repeating-linear-gradient(0deg, rgba(42, 79, 138, .025) 0 1px, transparent 1px 78px); }
 h1, h2, h3, .ph h1, .kpi .v, .brand b, .md-hello, .mh h3 { font-family: 'Archivo', 'IBM Plex Sans', system-ui, sans-serif; }
 ::selection { background: #DCE6F4; }
 
@@ -1522,7 +1522,7 @@ h1, h2, h3, .ph h1, .kpi .v, .brand b, .md-hello, .mh h3 { font-family: 'Archivo
 .gres { border-radius: 18px; border-color: var(--line); }
 
 /* menu trái: nền ink, mục đang chọn lavender */
-.side { background: linear-gradient(180deg, #122039 0%, #172E55 55%, #1E3B69 100%); border-right-color: rgba(255, 255, 255, .06); scrollbar-color: rgba(255, 255, 255, .22) transparent; }
+.side { background: linear-gradient(180deg, #1A3058 0%, #21407A 55%, #2A4C8A 100%); border-right-color: rgba(255, 255, 255, .06); scrollbar-color: rgba(255, 255, 255, .22) transparent; }
 .side h6 { color: #9DB3D9; }
 .side .mod > button, .side .mod > a.solo { color: #E8EFF9; border-radius: 14px; }
 .side .mod > button:hover, .side .mod > a.solo:hover, .side .mod .items a:hover { background: rgba(157, 179, 217, .14); }
@@ -1550,7 +1550,7 @@ h1, h2, h3, .ph h1, .kpi .v, .brand b, .md-hello, .mh h3 { font-family: 'Archivo
 /* nút: viên thuốc — chính tím đặc, phụ trắng viền ấm, nhấn hồng */
 .btn { height: 38px; padding: 0 18px; border-radius: 999px; border: 1px solid #E6DFD3; background: #fff; color: var(--ink); font-weight: 600; }
 .btn:hover { border-color: #C9D6EB; background: #EEF3FA; color: var(--cobalt-d); }
-.btn.pri { background: var(--cobalt); border-color: transparent; color: #fff; box-shadow: 0 6px 16px -6px rgba(31, 58, 104, .55); }
+.btn.pri { background: var(--cobalt); border-color: transparent; color: #fff; box-shadow: 0 6px 16px -6px rgba(42, 79, 138, .55); }
 .btn.pri:hover { background: var(--cobalt-d); color: #fff; filter: none; }
 .btn.amb { background: #F5A623; border-color: transparent; color: #2A1B00; }
 .btn.amb:hover { background: #F0B44A; }
@@ -1587,7 +1587,7 @@ table.t tbody tr.sel td { background: #FDECEC; }
 table.t tfoot td { background: var(--paper); border-top-color: var(--line); }
 
 /* ô số liệu (KPI) */
-.kpi::before { background: linear-gradient(180deg, #F5A623, #1F3A68); }
+.kpi::before { background: linear-gradient(180deg, #F5A623, #2A4F8A); }
 .kpi:hover { border-color: #C9D6EB; }
 .kpi .l i { color: var(--cobalt); }
 .kpi .v { font-weight: 800; letter-spacing: -.01em; }
@@ -1598,12 +1598,12 @@ table.t tfoot td { background: var(--paper); border-top-color: var(--line); }
 
 /* mã màu cứng còn lại ở các màn (nền xanh nhạt / viền xanh) → tông kem / lavender */
 .tbl-wrap, .toolbar { border-color: var(--line); }
-:root { --card-bg: linear-gradient(135deg, rgba(255, 255, 255, .98), rgba(255, 255, 255, .94)), linear-gradient(135deg, rgba(157, 179, 217, .08), rgba(242, 198, 210, .08)); --card-sh: 0 1px 2px rgba(23, 19, 16, .03), 0 10px 28px -14px rgba(31, 58, 104, .22); --card-sh-h: 0 20px 44px -16px rgba(31, 58, 104, .32); }
+:root { --card-bg: linear-gradient(135deg, rgba(255, 255, 255, .98), rgba(255, 255, 255, .94)), linear-gradient(135deg, rgba(157, 179, 217, .08), rgba(242, 198, 210, .08)); --card-sh: 0 1px 2px rgba(23, 19, 16, .03), 0 10px 28px -14px rgba(42, 79, 138, .22); --card-sh-h: 0 20px 44px -16px rgba(42, 79, 138, .32); }
 .kpi { background-image: linear-gradient(225deg, rgba(157, 179, 217, .55) 0 10px, transparent 10px), var(--card-bg); }
 .kpi:hover { border-color: #C9D6EB; }
 .kpi .v { background: linear-gradient(135deg, var(--ink), var(--cobalt-d)); -webkit-background-clip: text; background-clip: text; }
 
-/* xanh navy (07/11/2026): màu chính #1F3A68, phụ xanh nhạt #9DB3D9, nhấn vàng cam #F5A623; hồng chỉ dùng cho báo quá hạn / lỗi */
+/* xanh navy (07/11/2026): màu chính #2A4F8A, phụ xanh nhạt #9DB3D9, nhấn vàng cam #F5A623; hồng chỉ dùng cho báo quá hạn / lỗi */
 .ad-btn { background: var(--sf-lav-50); }
 .ad-btn:hover { background: var(--sf-lav-100); color: var(--sf-pri); }
 .kpi { background-image: linear-gradient(225deg, rgba(245, 166, 35, .45) 0 10px, transparent 10px), var(--card-bg); }

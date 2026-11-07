@@ -939,8 +939,9 @@ H.contract = {
     // chung cư có giá nền: tính như BRAVO / Danh mục sản phẩm — chỉ khi tạo mới hoặc đổi ô giá (hợp đồng cũ giữ nguyên số)
     const PK = ['base_price', 'base_orig', 'area_tt', 'floor_price', 'area_floor', 'discount', 'corner_pct', 'vat_pct', 'finish_value', 'unit_id'];
     // HĐ thuê (BRAVO): số tháng theo ngày bắt đầu – kết thúc, tổng tiền = đơn giá thuê × số tháng
-    if (r.kind !== 'thue') { r.unit_total = null; r.rent_house = null; r.rent_furn = null; }
-    if (r.kind === 'thue') {
+    if (r.kind !== 'thue') { r.rent_house = null; r.rent_furn = null; }
+    if (!['thue', 'vay'].includes(r.kind)) r.unit_total = null;   // HĐ vay bán căn cũng có Giá trị HĐMB (07/11/2026)
+    if (['thue', 'vay'].includes(r.kind)) {
       // Tổng tiền (giá trị hợp đồng, chỉ để thông tin) = Tổng giá căn hộ theo Danh mục sản phẩm − Tiền giảm giá (trừ thẳng, như HĐMB)
       const same = old && String(old.unit_total ?? '') === String(r.unit_total ?? '');
       if (r.unit_id && (r.unit_total == null || (old && old.unit_id !== r.unit_id && same))) {   // chưa có / đổi căn → lấy lại theo căn
@@ -981,6 +982,11 @@ H.contract = {
     // không lưu vào cột (lịch thu nằm ở kd_installment) — chuyển sang afterSave qua ctx
     ctx.sched = Array.isArray(r.new_schedule) && r.new_schedule.length ? await normSchedule(db, r.new_schedule.map(x => x.pct != null ? { ...x, amount: null } : x), r.value, 'Lần thanh toán', ['hdmb', 'thue_mua'].includes(r.kind) ? +r.maint_fee || 0 : 0, r.maint_dot) : null;
     r.new_schedule = null;
+    // tiến độ thu tiền HĐMB của HĐ thuê / vay bán căn: tổng các đợt phải khớp Giá trị HĐMB
+    if (['thue', 'vay'].includes(r.kind) && r.nature === 'ban' && Array.isArray(r.sale_sched) && r.sale_sched.length) {
+      if (!(+r.unit_total > 0)) bad('Tiến độ thu tiền HĐMB: nhập Giá trị HĐMB trước', { fields: ['unit_total'] });
+      r.sale_sched = (await normSchedule(db, r.sale_sched.map(x => x.pct != null && x.pct !== '' ? { ...x, amount: null } : x), +r.unit_total, 'Tiến độ thu tiền HĐMB')).map(({ name, due_on, pct, amount }) => ({ name, due_on, pct, amount }));
+    } else r.sale_sched = null;
     if (!old || old.unit_id !== r.unit_id) {
       const u = r.unit_id ? await raw(db, 'unit', r.unit_id) : null;
       if (!u) bad('Chọn mã căn hộ', { fields: ['unit_id'] });
