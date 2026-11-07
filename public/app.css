@@ -1636,3 +1636,7 @@ table.t tfoot td { background: var(--paper); border-top-color: var(--line); }
 .us-t td.us-cus { max-width: 170px; }
 .us-wc { min-width: 180px; max-width: 210px; }
 .us-cl { min-width: 170px; max-width: 220px; }
+/* khối dòng thu – chi trên màn Kế hoạch dự kiến dòng thu-chi (07/11/2026) */
+.pf-box { max-width: none; margin-bottom: 4px; }
+.pf-box .ad-card-extra a.ad-btn { text-decoration: none; }
+.us .ph a.ad-btn { text-decoration: none; }
