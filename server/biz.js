@@ -985,7 +985,8 @@ H.contract = {
     ctx.sched = Array.isArray(r.new_schedule) && r.new_schedule.length ? await normSchedule(db, r.new_schedule.map(x => x.pct != null ? { ...x, amount: null } : x), r.value, 'Lần thanh toán', ['hdmb', 'thue_mua'].includes(r.kind) ? +r.maint_fee || 0 : 0, r.maint_dot) : null;
     r.new_schedule = null;
     // tiến độ thu tiền HĐMB của HĐ thuê / vay bán căn: tổng các đợt phải khớp Giá trị HĐMB
-    if (['thue', 'vay'].includes(r.kind) && r.nature === 'ban' && Array.isArray(r.sale_sched) && r.sale_sched.length) {
+    if (!['thue', 'vay'].includes(r.kind)) r.sale_on = null;
+    if (['thue', 'vay'].includes(r.kind) && r.sale_on && Array.isArray(r.sale_sched) && r.sale_sched.length) {   // tick «Có tiến độ thu tiền HĐMB»
       if (!(+r.unit_total > 0)) bad('Tiến độ thu tiền HĐMB: nhập Giá trị HĐMB trước', { fields: ['unit_total'] });
       r.sale_sched = (await normSchedule(db, r.sale_sched.map(x => x.pct != null && x.pct !== '' ? { ...x, amount: null } : x), +r.unit_total, 'Tiến độ thu tiền HĐMB')).map(({ name, due_on, pct, amount }) => ({ name, due_on, pct, amount }));
     } else r.sale_sched = null;
