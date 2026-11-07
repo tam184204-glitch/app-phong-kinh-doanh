@@ -467,7 +467,8 @@ H.customer = {
     const oldPh = old ? [old.phone, old.phone2].filter(Boolean).map(digits) : [];   // chỉ kiểm trùng số vừa nhập / vừa đổi — sửa ô khác, tự cập nhật tình trạng không bị chặn vì dữ liệu cũ
     for (const ph of [r.phone, r.phone2].filter(Boolean).filter(x => !oldPh.includes(digits(x)))) {
       const d = await db.one("SELECT id, code, full_name FROM kd_customer WHERE id <> $1 AND ($2 IN (regexp_replace(phone,'\\D','','g'), regexp_replace(coalesce(phone2,''),'\\D','','g')))", [id, ph]);
-      dup(d, `Trùng số điện thoại ${ph} với khách hàng ${d?.code} · ${d?.full_name}. Hãy mở hồ sơ cũ để liên kết giao dịch, không tạo hồ sơ mới.`);
+      // cho phép trùng số điện thoại (Tâm 07/11/2026): chỉ nhắc, vẫn lưu
+      if (d) warn.push(`Số điện thoại ${ph} đã có ở khách hàng ${d.code} · ${d.full_name} — kiểm tra có phải cùng một người không`);
     }
     if (r.id_no && String(old?.id_no || '').replace(/\s+/g, '').toUpperCase() !== r.id_no) { const d = await db.one('SELECT id, code, full_name FROM kd_customer WHERE id <> $1 AND upper(id_no) = $2', [id, r.id_no]); dup(d, `Trùng giấy tờ định danh với khách hàng ${d?.code} · ${d?.full_name}`); }
     const sim = !old && !copy && r.full_name &&await db.one('SELECT code, phone FROM kd_customer WHERE lower(full_name) = lower($1) LIMIT 1', [r.full_name]);
@@ -638,7 +639,7 @@ H.reservation = {
       return { patch: { deposit: d.deposit, deposit_on: d.deposit_on, status: 'da_coc' } }; },
     async extend(r, d) { if (Date.parse(d.hold_until) <= Date.now()) bad('Hạn mới phải sau thời điểm hiện tại'); return { patch: { hold_until: d.hold_until, status: r.deposit > 0 ? 'da_coc' : 'giu_cho' } }; },
     // giải phóng căn = hủy đăng ký (07/11/2026): phiếu sang «Đã hủy», trạng thái căn «Hủy đăng ký», căn trả về còn bán
-    async release(r, d) { return { patch: { status: 'huy', reg_state: 'huy' }, msg: r.deposit > 0 ? `Đã giải phóng căn — phiếu chuyển sang «Giải phóng / Đã hủy». Khách đã cọc ${fmtMoney(r.deposit)}đ — xử lý theo chính sách (lập «Đề xuất hoàn tiền» nếu cần), hệ thống không tự hoàn tiền.` : 'Đã giải phóng căn — phiếu chuyển sang «Giải phóng / Đã hủy»' }; },
+    async release(r, d) { return { patch: { status: 'huy', reg_state: 'huy' }, msg: r.deposit > 0 ? `Đã giải phóng căn — phiếu chuyển sang «Đã hủy». Khách đã cọc ${fmtMoney(r.deposit)}đ — xử lý theo chính sách (lập «Đề xuất hoàn tiền» nếu cần), hệ thống không tự hoàn tiền.` : 'Đã giải phóng căn — phiếu chuyển sang «Đã hủy»' }; },
     async to_contract(r, d, { db, user, demo }) {
       // phiếu đăng ký thuê → hợp đồng thuê: tiền thuê, thời hạn từ phiếu; bắt đầu thuê = ngày dự kiến ký
       if (r.deal !== 'thue' && d.kind === 'thue') bad('Phiếu đăng ký mua không lập hợp đồng thuê — sửa phiếu sang «Đăng ký thuê» và nhập tiền thuê/tháng, hoặc lập phiếu đăng ký thuê mới');
@@ -984,7 +985,8 @@ H.contract = {
     ctx.sched = Array.isArray(r.new_schedule) && r.new_schedule.length ? await normSchedule(db, r.new_schedule.map(x => x.pct != null ? { ...x, amount: null } : x), r.value, 'Lần thanh toán', ['hdmb', 'thue_mua'].includes(r.kind) ? +r.maint_fee || 0 : 0, r.maint_dot) : null;
     r.new_schedule = null;
     // tiến độ thu tiền HĐMB của HĐ thuê / vay bán căn: tổng các đợt phải khớp Giá trị HĐMB
-    if (['thue', 'vay'].includes(r.kind) && r.nature === 'ban' && Array.isArray(r.sale_sched) && r.sale_sched.length) {
+    if (!['thue', 'vay'].includes(r.kind)) r.sale_on = null;
+    if (['thue', 'vay'].includes(r.kind) && r.sale_on && Array.isArray(r.sale_sched) && r.sale_sched.length) {   // tick «Có tiến độ thu tiền HĐMB»
       if (!(+r.unit_total > 0)) bad('Tiến độ thu tiền HĐMB: nhập Giá trị HĐMB trước', { fields: ['unit_total'] });
       r.sale_sched = (await normSchedule(db, r.sale_sched.map(x => x.pct != null && x.pct !== '' ? { ...x, amount: null } : x), +r.unit_total, 'Tiến độ thu tiền HĐMB')).map(({ name, due_on, pct, amount }) => ({ name, due_on, pct, amount }));
     } else r.sale_sched = null;

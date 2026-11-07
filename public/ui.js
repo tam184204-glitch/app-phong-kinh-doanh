@@ -439,7 +439,7 @@ const HD_LAYOUT = [
     ['int_period', 'principal_method', 'int_note'], ['link_ids'],
     ['rent_house', 'rent_furn', 'rent', 'value', 'deposit', 'cn', 'vbtt_hold'], ['sale_price', 'plan_hdmb', 'prev_id', 'next_id']] },   // bán qua HĐ vay / HĐ thuê; HĐMB nối tiếp   // HĐ thuê: tiền thuê/tháng cạnh tổng tiền thuê; mua bán không có ô tiền thuê
   { t: 'Lần thanh toán', rows: [['new_schedule'], ['pay_method']] },
-  { t: 'Tiến độ thu tiền HĐMB', rows: [['sale_sched']] },   // HĐ thuê / vay bán căn (07/11/2026)
+  { t: 'Tiến độ thu tiền HĐMB', rows: [['sale_on'], ['sale_sched']] },   // tick «Có tiến độ thu tiền HĐMB» → sổ ra bảng   // HĐ thuê / vay bán căn (07/11/2026)
   { t: 'Lịch ký', cols: 4, rows: [['plan_sign', 'sign_place', 'sign_status', 'signed_on']] },
   { t: 'Tình trạng vay vốn', cols: 4, rows: [['loan_status', 'loan_bank', 'loan_doc3']] },
 ];

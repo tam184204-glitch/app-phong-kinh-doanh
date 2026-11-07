@@ -378,8 +378,9 @@ const monthAdd = (m, k) => { const d = new Date(Date.UTC(+m.slice(0, 4), +m.slic
 
 async function debtStatus(db, user, f = {}) {
   if (!can(user, E.installment, 'r')) deny();
+  if (f.unit != null && f.unit !== '' && !/^\d+$/.test(String(f.unit))) bad('Bộ lọc không hợp lệ');
   const t = today(), m = t.slice(0, 7), t30 = addDays(t, 30), cfg = await debtCfg(db), D = cfg.days, GL = debtGrpL(D);
-  const cs = await signedContracts(db, f, "AND c.status = 'da_ky'" + mine(user, 'c'));
+  const cs = await signedContracts(db, f, "AND c.status = 'da_ky'" + mine(user, 'c') + (f.unit ? ` AND c.unit_id = ${+f.unit}` : ''));   // unit: màn chi tiết 1 căn
   const ids = cs.map(c => c.id), vayIds = cs.filter(c => c.kind === 'vay').map(c => c.id);
   const KL = { hdmb: 'HĐMB', vay: 'HĐ vay', thue: 'HĐ thuê', thue_mua: 'HĐ thuê mua', hoan_thien: 'HĐ hoàn thiện' };
   // lãi / gốc công ty phải trả khách (HĐ vay) — để biết khách «cho công ty vay» thế nào và dòng chi dự kiến
@@ -885,6 +886,10 @@ async function customer360(db, user, id) {
   (contracts || []).forEach(x => { x._debt = D.get(x.id); x.paid = x._debt?.paid ?? null; });
   const out = { customer: c, contracts, reservations: await get('reservation', 't.customer_id = $1', [c.id]), logs: await get('contact_log', 't.customer_id = $1', [c.id], 't.at DESC'),
     tickets: await get('ticket', 't.customer_id = $1', [c.id]), noxh: await get('noxh_check', 't.customer_id = $1', [c.id]), pinkbook: await get('pinkbook', 't.customer_id = $1', [c.id]) };
+  // nhắc nợ – cam kết + kế hoạch thu của các hợp đồng của khách (ghi ở Tình trạng công nợ đến hạn) — 07/11/2026
+  const cids = (contracts || []).map(x => x.id);
+  out.calls = await get('debt_call', 't.contract_id = ANY($1)', [cids], 't.at DESC'); out.plans = await get('collect_plan', 't.contract_id = ANY($1)', [cids], 't.month DESC');
+  if (out.calls) await B.H.debt_call.decorate(out.calls, { db });
   if (out.reservations) await B.H.reservation.decorate(out.reservations, { db });
   return out;
 }
@@ -993,6 +998,11 @@ const DS_HEAD = [
   ['', [['common_amt', 'Tiền diện tích sử dụng chung đã chi', 'money'], ['sign_l', 'Ký hợp đồng'], ['tax_code', 'Mã số thuế'], ['id_no', 'CCCD'], ['id_date', 'Ngày cấp', 'date'], ['id_place', 'Nơi cấp'], ['hdv_left', 'Số dư còn lại HĐV', 'money']]],
 ];
 const DS_COLS = DS_HEAD.flatMap(([, cs]) => cs);
+const DS_FIXED = 8;   // 8 cột đầu (Stt … SĐT) luôn hiện — dòng cộng tòa / dự án ghép ô qua các cột này
+const DS_COND = { con_no: ['Còn nợ theo tiến độ (đến hạn chưa thu)', r => r.t_left_due > 0], qua_han: ['Có nợ quá hạn', r => r.overdue > 0], du_tien_do: ['Đã thu đủ theo tiến độ', r => r.t_left_due <= 0],
+  con_hd: ['Còn nợ theo hợp đồng', r => r.t_left > 0], du_hd: ['Đã thu đủ hợp đồng', r => r.t_left <= 0] };
+// nhóm cột theo ô tick «Điều kiện lọc» (hide = các cột bỏ tick)
+const dsHead = hide => DS_HEAD.map(([g, cs], gi) => [g, cs.filter((c, ci) => (gi === 0 && ci < DS_FIXED) || !hide.has(c[0]))]).filter(([, cs]) => cs.length);
 const DS_SUM = DS_COLS.filter(c => ['money', 'num'].includes(c[2]) && !['base_price', 'build_price'].includes(c[0])).map(c => c[0]);
 const isoDay = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && (d => !isNaN(d) && d.toISOString().slice(0, 10) === v)(new Date(v + 'T00:00:00Z')) ? v : null;
 async function debtSummary(db, user, f = {}) {
@@ -1003,7 +1013,7 @@ async function debtSummary(db, user, f = {}) {
   const cs = await db.q(`SELECT c.*, u.code unit, u.project_id, u.building_id, pr.code project, pr.name project_name, b.code building, k.code cust_code, k.full_name customer, k.address k_addr, k.phone k_phone, k.tax_code k_tax, k.id_no k_id_no, k.id_date k_id_date, k.id_place k_id_place,
       (SELECT r.reg_date FROM kd_reservation r WHERE r.id = c.reservation_id) vbtt_on
     FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id JOIN kd_project pr ON pr.id = u.project_id JOIN kd_building b ON b.id = u.building_id
-    WHERE (c.kind IN ('hdmb','thue_mua','hoan_thien') OR (c.kind IN ('thue','vay') AND c.nature = 'ban' AND jsonb_array_length(coalesce(c.sale_sched, '[]'::jsonb)) > 0)) AND c.status NOT IN ('huy','thanh_ly') ${f.sign === 'da_ky' ? "AND c.status = 'da_ky'" : f.sign === 'chua' ? "AND c.status <> 'da_ky'" : ''} ${uf(f, p)}${mine(user, 'c')}
+    WHERE (c.kind IN ('hdmb','thue_mua','hoan_thien') OR (c.kind IN ('thue','vay') AND c.sale_on AND jsonb_array_length(coalesce(c.sale_sched, '[]'::jsonb)) > 0)) AND c.status NOT IN ('huy','thanh_ly') ${f.sign === 'da_ky' ? "AND c.status = 'da_ky'" : f.sign === 'chua' ? "AND c.status <> 'da_ky'" : ''} ${uf(f, p)}${mine(user, 'c')}
     ORDER BY pr.code, b.code, u.floor, u.code, c.id`, p);
   const ids = cs.map(c => c.id), D = await B.debtOf(db, ids, to);
   // HĐ vay cùng căn (bản chất bán): số dư = gốc khách đã chuyển − gốc công ty đã trả lại
@@ -1063,19 +1073,21 @@ async function debtSummary(db, user, f = {}) {
     r.overdue = all.reduce((s, x) => s + (['thue', 'vay'].includes(x.kind) ? Math.max(0, (x.sale_sched || []).filter(i => i.due_on < to).reduce((a, i) => a + +i.amount, 0) - (D.get(x.id)?.paid || 0)) : D.get(x.id)?.overdue || 0), 0);
     rows.push(r);
   }
-  return { head: DS_HEAD.map(([g, cs]) => [g, cs.map(c => c.slice(0, 3))]), sum: DS_SUM, rows, to, pii, bravo_sync: await bravoSync(db) };
+  // điều kiện lọc theo tình trạng công nợ (07/11/2026)
+  if (f.cond) { const F = DS_COND[f.cond]; if (!F) bad('Điều kiện lọc không hợp lệ'); rows.splice(0, rows.length, ...rows.filter(F[1])); }
+  return { head: DS_HEAD.map(([g, cs]) => [g, cs.map(c => c.slice(0, 3))]), conds: Object.entries(DS_COND).map(([k, v]) => [k, v[0]]), sum: DS_SUM, rows, to, pii, bravo_sync: await bravoSync(db) };
 }
 // xuất Excel đúng bố cục bảng: 2 tầng tiêu đề, dòng mục (1. HỢP ĐỒNG …), dòng cộng từng tòa, dòng Tổng cộng
-function debtSummaryXlsx(d, q = '') {
+function debtSummaryXlsx(d, q = '', hide = new Set()) {
   const { buildXlsx } = require('./xlsx');
-  const cols = DS_COLS, n = cols.length, out = [], merges = [], styles = new Map(), L = i => { let s = ''; i++; while (i) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = (i - m - 1) / 26; } return s; };
+  const HEAD = dsHead(hide), cols = HEAD.flatMap(([, cs]) => cs), n = cols.length, out = [], merges = [], styles = new Map(), L = i => { let s = ''; i++; while (i) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = (i - m - 1) / 26; } return s; };
   const st = (ri, ci, v) => styles.set(ri + ':' + ci, v);
   const cell = (r, c) => { const v = r[c[0]]; if (v == null || v === '') return ''; return c[2] === 'date' ? C.dmy(v) : ['money', 'num', 'int'].includes(c[2]) ? +v : v; };
   out.push(['BẢNG TỔNG HỢP CÔNG NỢ - KINH DOANH']); merges.push(`A1:${L(n - 1)}1`); st(0, 0, 5);
   out.push([`Số liệu đến ngày ${C.dmy(d.to)} · thực thu Bravo${d.bravo_sync ? ' chốt ' + new Date(d.bravo_sync).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : ''}${q ? ` · lọc «${q}»` : ''}`]); merges.push(`A2:${L(n - 1)}2`);
   out.push([]);
   const h1 = [], h2 = []; let ci = 0;
-  for (const [g, cs] of DS_HEAD) {
+  for (const [g, cs] of HEAD) {
     if (!g) for (const c of cs) { h1.push(c[1]); h2.push(''); merges.push(`${L(ci)}4:${L(ci)}5`); ci++; }
     else { cs.forEach((c, i) => { h1.push(i ? '' : g); h2.push(c[1]); }); merges.push(`${L(ci)}4:${L(ci + cs.length - 1)}4`); ci += cs.length; }
   }
