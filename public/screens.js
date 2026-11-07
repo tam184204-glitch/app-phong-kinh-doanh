@@ -1311,11 +1311,32 @@ V.debtsum = async main => {
   (ST.ctkind ||= {}).kind = 'tonghop';
   const f = filt(), s = ST.debtsum ||= { q: '', sign: '', to: '', from: '', shut: new Set() };
   let d = null;
+  // «Điều kiện lọc» (07/11/2026): tick chọn cột / nhóm cột cần xem (nhớ trên máy) + lọc theo tình trạng công nợ; 8 cột đầu luôn hiện
+  const FK = 'ctg-kd-ds-an';
+  if (!s.hide) { s.hide = new Set(); try { s.hide = new Set(JSON.parse(localStorage.getItem(FK) || '[]')); } catch { } s.cond ||= ''; s.flt ??= false; s.fq ||= ''; }
+  const saveHide = () => { try { localStorage.setItem(FK, JSON.stringify([...s.hide])); } catch { } };
+  const head2 = () => d.head.map(([g, cs], gi) => [g, cs.filter((c, ci) => (gi === 0 && ci < 8) || !s.hide.has(c[0]))]).filter(([, cs]) => cs.length);
+  const fNorm = x => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().replace(/\s+/g, ' ').trim();
+  const drawFlt = () => {
+    const box = $('#dsF', main); if (!box || !d) return; let i = 0;
+    const secs = d.head.map(([g, cs], gi) => ({ h: g || (gi === 0 ? 'Thông tin căn hộ' : 'Thông tin khác'), ks: cs.filter((c, ci) => !(gi === 0 && ci < 8)) })).filter(x => x.ks.length);
+    const nAll = secs.reduce((a, x) => a + x.ks.length, 0), nOn = secs.reduce((a, x) => a + x.ks.filter(c => !s.hide.has(c[0])).length, 0);
+    box.innerHTML = `<div class="flt-hd"><b>${ico('fa-filter')} Điều kiện lọc</b><button type="button" class="btn ghost sm" data-fx="hide" title="Ẩn">${ico('fa-xmark')}</button></div>
+      <div class="flt-f"><label>Tình trạng công nợ</label><select id="dsC"><option value="">Tất cả</option>${(d.conds || []).map(([k, l]) => `<option value="${k}" ${s.cond === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>
+      <div class="flt-sec" style="border-top:0;padding-top:0">Cột hiện trên bảng</div>
+      <div class="search flt-q"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="dsFq" placeholder="Tra cứu cột…" value="${esc(s.fq)}" autocomplete="off"></div>
+      <div class="flt-ft row" style="margin:0 0 6px;gap:6px"><button type="button" class="btn sm" data-fx="all">${ico('fa-square-check')} Chọn tất cả</button><button type="button" class="btn sm ghost" data-fx="none">Bỏ chọn</button><span class="small muted">${nOn}/${nAll}</span></div>
+      ${secs.map(x => `<div data-sg><label class="chk flt-sec" style="display:flex;gap:6px"><input type="checkbox" data-fg="${esc(x.ks.map(c => c[0]).join(','))}" ${x.ks.every(c => !s.hide.has(c[0])) ? 'checked' : ''}> ${esc(x.h)}</label>${x.ks.map(c => `<label class="chk flt-v" data-l="${esc(fNorm(c[1] + ' ' + x.h))}"><input type="checkbox" data-fc="${c[0]}" ${s.hide.has(c[0]) ? '' : 'checked'}> <span class="n">${++i}.</span> ${esc(c[1])}</label>`).join('')}</div>`).join('')}
+      <div class="small muted flt-none" hidden>Không có cột nào khớp</div>`;
+    fltQ();
+  };
+  const fltQ = () => { const box = $('#dsF', main); if (!box) return; const q = fNorm(s.fq); let any = false;
+    $$('[data-sg]', box).forEach(g => { let n = 0; $$('[data-l]', g).forEach(l => { const on = !q || l.dataset.l.includes(q); l.hidden = !on; if (on) n++; }); g.hidden = !n; if (n) any = true; }); const no = $('.flt-none', box); if (no) no.hidden = any; };
   const cell = (r, c) => { const v = r[c[0]]; if (v == null || v === '') return ''; return c[2] === 'money' ? fm(v) : c[2] === 'num' ? fnum(v) : c[2] === 'date' ? dmy(v) : esc(v); };
   const isN = c => ['money', 'num', 'int'].includes(c[2]);
   const shown = () => { const q = s.q.trim().toLowerCase(); return d.rows.filter(r => !q || [r.unit, r.customer, r.cust_code, r.number, r.phone].some(x => String(x || '').toLowerCase().includes(q))); };
   const draw = () => {
-    const cols = d.head.flatMap(([, cs]) => cs), rs = shown(), tot = k => rs.reduce((a, r) => a + (+r[k] || 0), 0);
+    const H = head2(), cols = H.flatMap(([, cs]) => cs), rs = shown(), tot = k => rs.reduce((a, r) => a + (+r[k] || 0), 0);
     const tile = (l, v, sub, red) => `<div class="card kpi ${red && v ? 'red' : ''}" style="cursor:default"><div class="l">${l}</div><div class="v" style="font-size:20px">${fmB(v)}</div><div class="s">${sub}</div></div>`;
     $('#dsK', main).innerHTML = tile('Giá trị hợp đồng', tot('value'), `${rs.length} căn · ${fm(tot('value'))} đ`) + tile('Tổng đã thu', tot('t_paid'), `${fm(tot('t_paid'))} đ · thu phát sinh ${fm(tot('k_new'))}`)
       + tile('Còn lại theo tiến độ', tot('t_left_due'), `${fm(tot('t_left_due'))} đ — đến hạn chưa thu`, 1) + tile('Còn lại theo hợp đồng', tot('t_left'), `${fm(tot('t_left'))} đ · 5% theo HĐ ${fm(tot('pct5'))}`);
@@ -1334,31 +1355,41 @@ V.debtsum = async main => {
       }
     });
     $('#dsT', main).innerHTML = `<div class="tbl-wrap"><table class="t compact hd2 grid-bravo dsum"><thead>
-      <tr class="h1">${d.head.map(([g, cs]) => g ? `<th colspan="${cs.length}">${esc(g)}</th>` : cs.map(c => `<th rowspan="2" class="${isN(c) ? 'num' : ''}">${esc(c[1])}</th>`).join('')).join('')}</tr>
-      <tr>${d.head.filter(([g]) => g).flatMap(([, cs]) => cs).map(c => `<th class="num">${esc(c[1])}</th>`).join('')}</tr></thead>
+      <tr class="h1">${H.map(([g, cs]) => g ? `<th colspan="${cs.length}">${esc(g)}</th>` : cs.map(c => `<th rowspan="2" class="${isN(c) ? 'num' : ''}">${esc(c[1])}</th>`).join('')).join('')}</tr>
+      <tr>${H.filter(([g]) => g).flatMap(([, cs]) => cs).map(c => `<th class="num">${esc(c[1])}</th>`).join('')}</tr></thead>
       <tbody>${body}</tbody><tfoot>${sumTds('Tổng cộng:', rs, 'ds-tot')}</tfoot></table></div>`;
   };
   const load = async () => {
-    d = await api('GET', '/api/debt-summary?' + qsOf({ project: f.project, building: f.building, sign: s.sign, to: s.to, from: s.from }));
+    d = await api('GET', '/api/debt-summary?' + qsOf({ project: f.project, building: f.building, sign: s.sign, to: s.to, from: s.from, cond: s.cond }));
     $('#srcLine', main).innerHTML = `<span>${ico('fa-database')} Thực thu đồng bộ Bravo${d.bravo_sync ? ' — chốt ' + dmyhm(d.bravo_sync) : ''}</span><span>Số liệu đến ${dmy(d.to)} · thu phát sinh từ ${dmy(d.from)}</span>`;
-    draw();
+    draw(); drawFlt();
   };
   main.innerHTML = `<div class="page">${head('06', 'Theo dõi công nợ — Bảng tổng hợp', 'fa-table-list', `<button class="btn" id="dsX">${ico('fa-file-excel')} Xuất Excel</button><a class="btn" href="#/v/ledger">${ico('fa-book-open')} Sổ công nợ chi tiết</a>`, 'CN-08')}${ctKindBar('tonghop')}${filterBar(f, { period: false })}
     <div class="grid g4 mb" id="dsK"></div>
     <div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="dsQ" placeholder="Mã căn, mã KH, họ tên, SĐT, số HĐ…" value="${esc(s.q)}"></div>
       <select id="dsS"><option value="">Mọi hợp đồng</option><option value="da_ky">Đã ký hợp đồng</option><option value="chua">Chưa ký (dự thảo / chờ ký)</option></select>
       <span class="small muted">Số liệu đến ngày</span>${segDate('dsTo', s.to || today())}<span class="small muted">Thu phát sinh từ</span>${segDate('dsFr', s.from || today().slice(0, 7) + '-01')}
-      <span class="grow"></span><span class="small muted" id="dsN"></span></div>
-    <div id="dsT"><div class="empty">Đang tính công nợ…</div></div>
+      <button class="btn sm" id="dsFl">${ico('fa-filter')} Điều kiện lọc</button><span class="grow"></span><span class="small muted" id="dsN"></span></div>
+    <div class="flt-wrap ${s.flt ? '' : 'flt-off'}" id="dsW" style="padding:0 12px"><div class="flt-main"><div id="dsT"><div class="empty">Đang tính công nợ…</div></div></div><aside class="flt" id="dsF"></aside></div>
     <div class="small muted mt">Tiền nhà = tiền sau thuế không gồm hệ số góc · Hệ số lô góc tính sau thuế · Phát sinh = giá trị hoàn thiện (gộp HĐMB + HĐ hoàn thiện riêng) · Bảo trì = phí bảo trì 2%. Thu tiền Bravo không ghi theo khoản → mỗi kỳ thu chia theo cơ cấu của kỳ (đợt thu phí bảo trì gánh trọn phí bảo trì). «Theo tiến độ» = các kỳ đến hạn tới ngày chốt. Kế toán: thu quá khứ = thu trước ngày «từ», thu phát sinh = thu trong kỳ, công nợ còn lại = đến hạn chưa thu. Bấm 1 căn để mở hợp đồng & lịch thanh toán, bấm dòng tòa để thu gọn.</div></div></div>`;
   $('#dsS', main).value = s.sign;
   wireFilter(main, f, load); wireSegDate(main);
   $('#dsQ', main).oninput = debounce(e => { s.q = e.target.value; draw(); }, 250);
   $('#dsS', main).onchange = run(async e => { s.sign = e.target.value; await load(); });
   main.addEventListener('sdchange', run(async e => { const v = segVal(e.target); if (!v) return; if (e.target.id === 'dsTo') s.to = v; else s.from = v; await load(); }));
-  $('#dsX', main).onclick = () => download('/api/debt-summary.xlsx?' + qsOf({ project: f.project, building: f.building, sign: s.sign, to: d?.to, from: d?.from, q: s.q.trim() }));
+  $('#dsX', main).onclick = () => download('/api/debt-summary.xlsx?' + qsOf({ project: f.project, building: f.building, sign: s.sign, to: d?.to, from: d?.from, q: s.q.trim(), cond: s.cond, hide: [...s.hide].join(',') }));
+  // Điều kiện lọc: bật / tắt khung, tick cột / nhóm, chọn tình trạng, tra cứu cột
+  main.addEventListener('change', run(async e => {
+    const t = e.target;
+    if (t.id === 'dsC') { s.cond = t.value; return load(); }
+    if (t.dataset.fc) { t.checked ? s.hide.delete(t.dataset.fc) : s.hide.add(t.dataset.fc); saveHide(); draw(); return drawFlt(); }
+    if (t.dataset.fg) { for (const k of t.dataset.fg.split(',')) t.checked ? s.hide.delete(k) : s.hide.add(k); saveHide(); draw(); return drawFlt(); }
+  }));
+  main.addEventListener('input', e => { if (e.target.id === 'dsFq') { s.fq = e.target.value; fltQ(); } });
   main.onclick = e => {
     if (ctKindClick(e, main)) return;
+    if (e.target.closest('#dsFl') || e.target.closest('#dsF [data-fx=hide]')) { s.flt = !s.flt; return $('#dsW', main).classList.toggle('flt-off', !s.flt); }
+    const fx = e.target.closest('#dsF [data-fx]')?.dataset.fx; if (fx === 'all' || fx === 'none') { const ks = d.head.flatMap(([, cs], gi) => cs.filter((c, ci) => !(gi === 0 && ci < 8)).map(c => c[0])); fx === 'all' ? s.hide.clear() : ks.forEach(k => s.hide.add(k)); saveHide(); draw(); return drawFlt(); }
     const g = e.target.closest('tr[data-g]'); if (g) { const k = g.dataset.g; s.shut.has(k) ? s.shut.delete(k) : s.shut.add(k); return draw(); }
     const tr = e.target.closest('tr[data-c]'); if (tr) openDetail('contract', +tr.dataset.c, 'debt');
   };

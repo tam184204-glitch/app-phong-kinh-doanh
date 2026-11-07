@@ -994,6 +994,11 @@ const DS_HEAD = [
   ['', [['common_amt', 'Tiền diện tích sử dụng chung đã chi', 'money'], ['sign_l', 'Ký hợp đồng'], ['tax_code', 'Mã số thuế'], ['id_no', 'CCCD'], ['id_date', 'Ngày cấp', 'date'], ['id_place', 'Nơi cấp'], ['hdv_left', 'Số dư còn lại HĐV', 'money']]],
 ];
 const DS_COLS = DS_HEAD.flatMap(([, cs]) => cs);
+const DS_FIXED = 8;   // 8 cột đầu (Stt … SĐT) luôn hiện — dòng cộng tòa / dự án ghép ô qua các cột này
+const DS_COND = { con_no: ['Còn nợ theo tiến độ (đến hạn chưa thu)', r => r.t_left_due > 0], qua_han: ['Có nợ quá hạn', r => r.overdue > 0], du_tien_do: ['Đã thu đủ theo tiến độ', r => r.t_left_due <= 0],
+  con_hd: ['Còn nợ theo hợp đồng', r => r.t_left > 0], du_hd: ['Đã thu đủ hợp đồng', r => r.t_left <= 0], thu_ps: ['Có thu phát sinh trong kỳ', r => r.k_new > 0] };
+// nhóm cột theo ô tick «Điều kiện lọc» (hide = các cột bỏ tick)
+const dsHead = hide => DS_HEAD.map(([g, cs], gi) => [g, cs.filter((c, ci) => (gi === 0 && ci < DS_FIXED) || !hide.has(c[0]))]).filter(([, cs]) => cs.length);
 const DS_SUM = DS_COLS.filter(c => ['money', 'num'].includes(c[2]) && !['base_price', 'build_price'].includes(c[0])).map(c => c[0]);
 const isoDay = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && (d => !isNaN(d) && d.toISOString().slice(0, 10) === v)(new Date(v + 'T00:00:00Z')) ? v : null;
 async function debtSummary(db, user, f = {}) {
@@ -1068,19 +1073,21 @@ async function debtSummary(db, user, f = {}) {
     r.overdue = all.reduce((s, x) => s + (['thue', 'vay'].includes(x.kind) ? Math.max(0, (x.sale_sched || []).filter(i => i.due_on < to).reduce((a, i) => a + +i.amount, 0) - (D.get(x.id)?.paid || 0)) : D.get(x.id)?.overdue || 0), 0);
     rows.push(r);
   }
-  return { head: DS_HEAD.map(([g, cs]) => [g, cs.map(c => c.slice(0, 3))]), sum: DS_SUM, rows, from, to, pii, bravo_sync: await bravoSync(db) };
+  // điều kiện lọc theo tình trạng công nợ (07/11/2026)
+  if (f.cond) { const F = DS_COND[f.cond]; if (!F) bad('Điều kiện lọc không hợp lệ'); rows.splice(0, rows.length, ...rows.filter(F[1])); }
+  return { head: DS_HEAD.map(([g, cs]) => [g, cs.map(c => c.slice(0, 3))]), conds: Object.entries(DS_COND).map(([k, v]) => [k, v[0]]), sum: DS_SUM, rows, from, to, pii, bravo_sync: await bravoSync(db) };
 }
 // xuất Excel đúng bố cục bảng: 2 tầng tiêu đề, dòng mục (1. HỢP ĐỒNG …), dòng cộng từng tòa, dòng Tổng cộng
-function debtSummaryXlsx(d, q = '') {
+function debtSummaryXlsx(d, q = '', hide = new Set()) {
   const { buildXlsx } = require('./xlsx');
-  const cols = DS_COLS, n = cols.length, out = [], merges = [], styles = new Map(), L = i => { let s = ''; i++; while (i) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = (i - m - 1) / 26; } return s; };
+  const HEAD = dsHead(hide), cols = HEAD.flatMap(([, cs]) => cs), n = cols.length, out = [], merges = [], styles = new Map(), L = i => { let s = ''; i++; while (i) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = (i - m - 1) / 26; } return s; };
   const st = (ri, ci, v) => styles.set(ri + ':' + ci, v);
   const cell = (r, c) => { const v = r[c[0]]; if (v == null || v === '') return ''; return c[2] === 'date' ? C.dmy(v) : ['money', 'num', 'int'].includes(c[2]) ? +v : v; };
   out.push(['BẢNG TỔNG HỢP CÔNG NỢ - KINH DOANH']); merges.push(`A1:${L(n - 1)}1`); st(0, 0, 5);
   out.push([`Số liệu đến ngày ${C.dmy(d.to)} · thu phát sinh từ ${C.dmy(d.from)} · thực thu Bravo${d.bravo_sync ? ' chốt ' + new Date(d.bravo_sync).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : ''}${q ? ` · lọc «${q}»` : ''}`]); merges.push(`A2:${L(n - 1)}2`);
   out.push([]);
   const h1 = [], h2 = []; let ci = 0;
-  for (const [g, cs] of DS_HEAD) {
+  for (const [g, cs] of HEAD) {
     if (!g) for (const c of cs) { h1.push(c[1]); h2.push(''); merges.push(`${L(ci)}4:${L(ci)}5`); ci++; }
     else { cs.forEach((c, i) => { h1.push(i ? '' : g); h2.push(c[1]); }); merges.push(`${L(ci)}4:${L(ci + cs.length - 1)}4`); ci += cs.length; }
   }

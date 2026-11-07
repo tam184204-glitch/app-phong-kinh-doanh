@@ -370,7 +370,7 @@ R('GET', '/api/debt-summary.xlsx', async (req, res, u, p, qs) => {
   const d = await V.debtSummary({ q, one }, u, qs), s = String(qs.q || '').trim().toLowerCase();
   if (s) d.rows = d.rows.filter(r => [r.unit, r.customer, r.cust_code, r.number, r.phone].some(x => String(x || '').toLowerCase().includes(s)));
   await C.audit({ q }, 'view', null, 'xuat_du_lieu', null, null, u, `CN-08 Bảng tổng hợp công nợ · ${d.rows.length} căn`);
-  sendFile(res, V.debtSummaryXlsx(d, qs.q), `Bang_tong_hop_cong_no_${d.to}.xlsx`, MIME['.xlsx']);
+  sendFile(res, V.debtSummaryXlsx(d, qs.q, new Set(String(qs.hide || '').split(',').filter(Boolean))), `Bang_tong_hop_cong_no_${d.to}.xlsx`, MIME['.xlsx']);   // hide: cột bỏ tick ở Điều kiện lọc
 });
 R('GET', '/api/ledger', async (req, res, u, p, qs) => send(res, 200, await V.ledger({ q, one }, u, qs)));
 R('GET', '/api/ready', async (req, res, u, p, qs) => { if (!can(u, M.E.handover, 'r')) deny(); send(res, 200, await V.readyList({ q, one }, { ...qs, all: qs.all === '1' })); });
