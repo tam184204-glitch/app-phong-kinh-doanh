@@ -7,7 +7,7 @@
 <link rel="icon" href="logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="fa.css">
-<link rel="stylesheet" href="app.css?v=457e9935a0">
+<link rel="stylesheet" href="app.css?v=ddb7343f8a">
 <style>
 #demobar{position:fixed;left:12px;bottom:12px;z-index:9999;background:#1E4E8C;color:#fff;font:12px/1.4 system-ui,sans-serif;padding:6px 10px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.2);opacity:.9}
 #demobar a{color:#F5A623;cursor:pointer;margin-left:8px;text-decoration:underline}
@@ -25,7 +25,7 @@ const url = local ? new URL('pglite/index.js', location.href).href : 'https://cd
 const bar = document.getElementById('demobar');
 try {
   await window.__ctgBoot(url);
-  for (const s of ['front.js?v=dfc98a2871']) await new Promise((res, rej) => { const el = document.createElement('script'); el.src = s; el.onload = res; el.onerror = rej; document.body.append(el); });
+  for (const s of ['front.js?v=8522674ecb']) await new Promise((res, rej) => { const el = document.createElement('script'); el.src = s; el.onload = res; el.onerror = rej; document.body.append(el); });
   document.getElementById('boot').remove();
   setInterval(() => { if (!bar.isConnected) document.body.append(bar); }, 800);
 } catch (e) {

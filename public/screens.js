@@ -245,9 +245,9 @@ V.dashboard = async main => {
       </div>
       <div class="grid g2 mt">
         <div class="card"><div class="hd"><h3>${ico('fa-building')} Tình trạng giỏ hàng theo tòa</h3><span class="grow"></span><a href="#/v/board">Mở bảng hàng →</a></div><div class="bd">${d.byBuilding.map(b => {
-          const segs = [['con_ban', b.con_ban, '#7DBF9B'], ['giu_cho', b.giu_cho, '#E3A93B'], ['da_ky', b.da_ky, '#5E4FA3'], ['da_ban_giao', b.da_ban_giao, '#0f766e']];
+          const segs = [['con_ban', b.con_ban, '#7DBF9B'], ['giu_cho', b.giu_cho, '#F5A623'], ['da_ky', b.da_ky, '#1F3A68'], ['da_ban_giao', b.da_ban_giao, '#0f766e']];
           return `<div class="mb" data-drill="building:${b.building_id}" style="cursor:pointer"><div class="row"><b>${esc(b.project)} · Tòa ${esc(b.building)}</b><span class="grow"></span><span class="small muted">${b.total} căn · tiêu thụ ${fnum(b.rate)}%</span></div><div class="stack mt">${segs.map(s => `<i style="width:${b.total ? s[1] / b.total * 100 : 0}%;background:${s[2]}" title="${s[1]}"></i>`).join('')}</div><div class="small muted mt">Còn bán ${b.con_ban} · giữ chỗ/cọc ${b.giu_cho} · đã ký ${b.da_ky} · đã bàn giao ${b.da_ban_giao}</div></div>`;
-        }).join('') || '<div class="empty">Chưa có sản phẩm</div>'}<div class="legend"><span><b style="background:#7DBF9B"></b>Còn bán</span><span><b style="background:#E3A93B"></b>Giữ chỗ / cọc</span><span><b style="background:#5E4FA3"></b>Đã ký HĐ</span><span><b style="background:#0f766e"></b>Đã bàn giao</span></div></div></div>
+        }).join('') || '<div class="empty">Chưa có sản phẩm</div>'}<div class="legend"><span><b style="background:#7DBF9B"></b>Còn bán</span><span><b style="background:#F5A623"></b>Giữ chỗ / cọc</span><span><b style="background:#1F3A68"></b>Đã ký HĐ</span><span><b style="background:#0f766e"></b>Đã bàn giao</span></div></div></div>
         <div class="card"><div class="hd"><h3>${ico('fa-list-check')} Tiến độ hồ sơ – hợp đồng – bàn giao</h3></div><div class="bd"><div class="grid g3">
           ${[['noxh:nhap,tu_choi', 'Hồ sơ NOXH đang xử lý', d.progress.noxh_open], ['noxh:cho_duyet', 'Hồ sơ chờ xét duyệt', d.progress.noxh_review], ['noxh:da_duyet', 'Hồ sơ đạt', d.progress.noxh_ok],
              ['contracts:du_thao,tu_choi,cho_duyet', 'HĐ dự thảo / rà soát', d.progress.ct_draft + d.progress.ct_review], ['contracts:cho_ky', 'HĐ chờ ký', d.progress.ct_wait], ['contracts:da_ky', 'HĐ đã ký', d.progress.ct_signed],
@@ -256,8 +256,8 @@ V.dashboard = async main => {
       </div>
       <div class="card mt"><div class="hd"><h3>${ico('fa-bell')} Cảnh báo tồn đọng</h3><span class="grow"></span><a href="#/v/alerts">Xem tất cả →</a></div><div class="bd"><div class="grid g4">${d.alerts.sort((a, b) => b.red - a.red || b.n - a.n).map(a => `<div class="cat-tile ${a.red ? 'red' : ''}" data-drill="alerts:${a.cat}"><b>${a.n}</b><span class="small">${esc(a.label)}${a.red ? ` <span class="pill r">${a.red} khẩn</span>` : ''}</span></div>`).join('') || '<div class="muted">Không có tồn đọng</div>'}</div></div></div>`;
     const ser = d.series.map(x => ({ ...x, label: x.m.slice(5) + '/' + x.m.slice(2, 4) }));
-    $('#c1', main).append(barChart(ser, [{ k: 'signed', l: 'Doanh số ký', c: '#5E4FA3' }], { line: { k: 'target_sales', l: 'Chỉ tiêu', c: '#E3A93B' }, onClick: r => drill('revenue:' + r.m, f) }));
-    $('#c2', main).append(barChart(ser, [{ k: 'plan', l: 'Kế hoạch (đã duyệt)', c: '#D8CCEE' }, { k: 'actual', l: 'Thực thu (Bravo)', c: '#7DBF9B' }], { line: { k: 'target_collect', l: 'Chỉ tiêu thu', c: '#E3A93B' }, onClick: r => drill('collected:' + r.m, f) }));
+    $('#c1', main).append(barChart(ser, [{ k: 'signed', l: 'Doanh số ký', c: '#1F3A68' }], { line: { k: 'target_sales', l: 'Chỉ tiêu', c: '#F5A623' }, onClick: r => drill('revenue:' + r.m, f) }));
+    $('#c2', main).append(barChart(ser, [{ k: 'plan', l: 'Kế hoạch (đã duyệt)', c: '#C9D6EB' }, { k: 'actual', l: 'Thực thu (Bravo)', c: '#7DBF9B' }], { line: { k: 'target_collect', l: 'Chỉ tiêu thu', c: '#F5A623' }, onClick: r => drill('collected:' + r.m, f) }));
     main.onclick = e => { const t = e.target.closest('[data-drill]'); if (t) { e.preventDefault(); drill(t.dataset.drill, f); } };
   };
   await draw();
@@ -1367,7 +1367,7 @@ V.debtsum = async main => {
 };
 // CN-06 tình trạng căn hộ theo bản chất giao dịch + công nợ tách theo hợp đồng (tiền vay / tiền thuê không trừ vào giá mua)
 // CN-06 Tình trạng công nợ đến hạn (07/11/2026): biểu đồ phân loại nợ, top căn nợ quá hạn, dòng thu – chi 6 tháng; bảng phân loại nợ theo mã căn (nhóm tự động theo số ngày quá hạn, chỉnh tay được)
-const DG_COL = { n1: '#7DBF9B', n2: '#B3A1E8', n3: '#E3A93B', n4: '#E58FA6', n5: '#B4405F' };
+const DG_COL = { n1: '#7DBF9B', n2: '#7FA0D6', n3: '#E3A93B', n4: '#E58FA6', n5: '#B4405F' };
 const DG_TAG = { n1: 'success', n2: 'processing', n3: 'warning', n4: 'error', n5: 'error' };
 const fmS = n => { n = +n || 0; const a = Math.abs(n); return a >= 1e9 ? (n / 1e9).toFixed(a >= 1e11 ? 0 : 2).replace('.', ',') + ' tỷ' : a >= 1e6 ? Math.round(n / 1e6).toLocaleString('vi-VN') + ' tr' : fm(n); };
 V.unitstatus = async main => {
@@ -1862,7 +1862,7 @@ if (location.hash.startsWith('#/login')) loginView(); else boot();
 const STATUS = [['lam_viec', 'Đang làm việc', 'g', 'fa-circle-check'], ['ban', 'Bận – không làm phiền', 'r', 'fa-circle-minus'], ['hop', 'Đang họp', 'a', 'fa-people-group'],
   ['cong_tac', 'Đi công tác / công trình', 'b', 'fa-car-side'], ['vang', 'Tạm vắng', 'v', 'fa-mug-hot'], ['nghi', 'Nghỉ phép', 's', 'fa-umbrella-beach']];
 const PREF0 = { theme: 'light', accent: 'cobalt', zoom: 1, dense: false, anim: true, deco: true, home: 'myday', badgeApr: true, badgeAl: true, refresh: 2 };
-const ACCENTS = { cobalt: ['Tím Soft (mặc định)', '#5E4FA3', '#4A3D8C', '#7B6CC4', '#F3EFFC', '#E8E1F8'], ctg: ['Xanh Cát Tường', '#1E4E8C', '#143866', '#2D7DD2', '#EEF4FB', '#DCE8F6'], teal: ['Xanh ngọc', '#0F766E', '#0B5550', '#14A39A', '#E6F6F4', '#C9ECE8'],
+const ACCENTS = { cobalt: ['Xanh navy (mặc định)', '#1F3A68', '#152A4D', '#3A5A94', '#EEF3FA', '#DCE6F4'], ctg: ['Xanh Cát Tường', '#1E4E8C', '#143866', '#2D7DD2', '#EEF4FB', '#DCE8F6'], teal: ['Xanh ngọc', '#0F766E', '#0B5550', '#14A39A', '#E6F6F4', '#C9ECE8'],
   sage: ['Xanh lá', '#2F6B3A', '#1F4D28', '#4E9A5B', '#EDF6EE', '#D4EAD6'], violet: ['Tím', '#5B3FA8', '#412C7C', '#7C5CD6', '#F2EEFC', '#E0D7F7'],
   wine: ['Đỏ rượu', '#9B2C3A', '#6F1E29', '#C2465A', '#FBEFF1', '#F3D6DB'], slate: ['Xám than', '#334155', '#1E293B', '#56657A', '#F1F4F8', '#DFE5EE'] };
 const prefs = () => ({ ...PREF0, ...(M?.me?.prefs || {}) });
