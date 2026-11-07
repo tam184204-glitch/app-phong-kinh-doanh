@@ -1297,10 +1297,10 @@ table.t tr.vch > td { padding: 0; background: #fbfcfe; white-space: normal; curs
 .ad-table .ad-cell-txt { max-width: 300px; }
 
 /* ===== Màn Công nợ hợp đồng — giao diện «Soft» (lavender · blush · ink · cream), 07/11/2026 ===== */
-.ad { --sf-lav: #9DB3D9; --sf-lav-50: #EEF3FA; --sf-lav-100: #DCE6F4; --sf-pri: #1F3A68; --sf-pri-d: #152A4D; --sf-blush: #F2C6D2; --sf-blush-50: #FCEEF2; --sf-blush-100: #F8DDE5;
-  --sf-ink: #171310; --sf-cream: #FBF8F1; --sf-line: #EEE8DE; --sf-rose: #B4405F; --sf-mint: #2F7A55; --sf-mint-50: #E9F5EE; --sf-amber: #94600A; --sf-amber-50: #FDF3E1;
+.ad { --sf-lav: #9DB3D9; --sf-lav-50: #EEF3FA; --sf-lav-100: #DCE6F4; --sf-pri: #1F3A68; --sf-pri-d: #152A4D; --sf-blush: #F3C2C2; --sf-blush-50: #FDECEC; --sf-blush-100: #F9D6D6;
+  --sf-ink: #171310; --sf-cream: #FBF8F1; --sf-line: #EEE8DE; --sf-rose: #C62828; --sf-mint: #2F7A55; --sf-mint-50: #E9F5EE; --sf-amber: #94600A; --sf-amber-50: #FDF3E1;
   --ad-text: #171310; --ad-text2: #4A4440; --ad-text3: #847C75; --ad-border: #E6DFD3; --ad-split: #F0EBE2; --ad-fill: #FBF8F1; --ad-bg: #fff;
-  --ad-primary: #1F3A68; --ad-primary-bg: #DCE6F4; --ad-success: #1F3A68; --ad-success-t: #152A4D; --ad-error: #D9667F; --ad-error-t: #B4405F;
+  --ad-primary: #1F3A68; --ad-primary-bg: #DCE6F4; --ad-success: #1F3A68; --ad-success-t: #152A4D; --ad-error: #E53935; --ad-error-t: #C62828;
   --ad-shadow: 0 1px 2px rgba(23,19,16,.03), 0 8px 24px -12px rgba(94,79,163,.18);
   font-family: 'IBM Plex Sans', system-ui, 'Segoe UI', sans-serif; }
 .ad h1, .ad .ad-stat-v, .ad .ad-card-head, .ad .ad-step-t { font-family: 'Archivo', 'IBM Plex Sans', system-ui, sans-serif; }
@@ -1487,7 +1487,7 @@ table.t tr.vch > td { padding: 0; background: #fbfcfe; white-space: normal; curs
 .us-t td:last-child, .us-t th:last-child { padding-right: 14px; width: 20px; }
 
 /* ================= GIAO DIỆN «SOFT» CHO TOÀN APP (07/11/2026) =================
-   Theo ảnh mẫu LaunchKit «Soft, morphed»: lavender #9DB3D9 · tím chính #1F3A68 · blush #F2C6D2 · ink #171310 · cream #FBF8F1; chữ Archivo (tiêu đề, số) + IBM Plex Sans (nội dung).
+   Theo ảnh mẫu LaunchKit «Soft, morphed»: lavender #9DB3D9 · tím chính #1F3A68 · blush #F3C2C2 · ink #171310 · cream #FBF8F1; chữ Archivo (tiêu đề, số) + IBM Plex Sans (nội dung).
    Đổi bộ màu gốc → mọi màn hình dùng biến màu tự ăn theo; bên dưới chỉnh thêm các thành phần có mã màu cứng. Người dùng chọn màu nhấn khác trong Hồ sơ vẫn được giữ. */
 :root {
   --cobalt: #1F3A68; --cobalt-d: #152A4D; --cobalt-l: #3A5A94; --cobalt-50: #EEF3FA; --cobalt-100: #DCE6F4;
@@ -1497,9 +1497,9 @@ table.t tr.vch > td { padding: 0; background: #fbfcfe; white-space: normal; curs
   --paper: #FBF8F1; --card: #fff; --line: #EEE8DE; --line2: #F0EBE2;
   --soft: 0 18px 42px -18px rgba(31, 58, 104, .28); --soft2: 0 1px 2px rgba(23, 19, 16, .03), 0 8px 24px -12px rgba(31, 58, 104, .18); --deep: 0 28px 70px -20px rgba(23, 19, 16, .30);
   --r: 20px;
-  --g: #2F7A55; --g-bg: #E9F5EE; --b: #1F3A68; --b-bg: #EEF3FA; --a: #94600A; --a-bg: #FDF3E1; --r-c: #B4405F; --r-bg: #FCEEF2;
+  --g: #2F7A55; --g-bg: #E9F5EE; --b: #1F3A68; --b-bg: #EEF3FA; --a: #94600A; --a-bg: #FDF3E1; --r-c: #C62828; --r-bg: #FDECEC;
   --s: #5B534D; --s-bg: #F4F0E8; --v: #1F3A68; --v-bg: #E6EDF7; --t: #0F766E; --t-bg: #E0F4F2;
-  --skyline: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20900%20260'%3E%3Cdefs%3E%3ClinearGradient%20id%3D'g'%20x1%3D'0'%20y1%3D'0'%20x2%3D'1'%20y2%3D'1'%3E%3Cstop%20stop-color%3D'%231F3A68'%2F%3E%3Cstop%20offset%3D'.55'%20stop-color%3D'%239DB3D9'%2F%3E%3Cstop%20offset%3D'1'%20stop-color%3D'%23F2C6D2'%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Cg%20fill%3D'none'%20stroke%3D'url(%23g)'%20stroke-width%3D'3'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Cpath%20d%3D'M34%20218H866'%20opacity%3D'.45'%2F%3E%3Cpath%20d%3D'M84%20218V116l58-34%2058%2034v102M110%20218v-54h64v54M104%20126h18M154%20126h18M104%20151h18M154%20151h18'%2F%3E%3Cpath%20d%3D'M242%20218V82h78v136M262%20106h12M292%20106h12M262%20134h12M292%20134h12M262%20162h12M292%20162h12M262%20190h12M292%20190h12'%2F%3E%3Cpath%20d%3D'M352%20218V58h92v160M376%2086h14M408%2086h14M376%20116h14M408%20116h14M376%20146h14M408%20146h14M376%20176h14M408%20176h14'%2F%3E%3Cpath%20d%3D'M492%20218v-92l58-38%2058%2038v92M526%20218v-58h48v58M526%20136h48M526%20160h48'%2F%3E%3Cpath%20d%3D'M654%20218V96h78v122M676%20122h12M708%20122h12M676%20150h12M708%20150h12M676%20178h12M708%20178h12'%2F%3E%3Cpath%20d%3D'M766%20218v-72l54-42%2054%2042v72M796%20218v-44h48v44'%2F%3E%3Cpath%20d%3D'M120%2086L212%2062L304%2088L396%2052L492%20104L610%2074L746%2098'%20opacity%3D'.58'%2F%3E%3C%2Fg%3E%3Cg%20fill%3D'%23F5A623'%20opacity%3D'.78'%3E%3Ccircle%20cx%3D'212'%20cy%3D'62'%20r%3D'3'%2F%3E%3Ccircle%20cx%3D'396'%20cy%3D'52'%20r%3D'3'%2F%3E%3Ccircle%20cx%3D'610'%20cy%3D'74'%20r%3D'3'%2F%3E%3Ccircle%20cx%3D'746'%20cy%3D'98'%20r%3D'3'%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E");
+  --skyline: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20900%20260'%3E%3Cdefs%3E%3ClinearGradient%20id%3D'g'%20x1%3D'0'%20y1%3D'0'%20x2%3D'1'%20y2%3D'1'%3E%3Cstop%20stop-color%3D'%231F3A68'%2F%3E%3Cstop%20offset%3D'.55'%20stop-color%3D'%239DB3D9'%2F%3E%3Cstop%20offset%3D'1'%20stop-color%3D'%23F3C2C2'%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Cg%20fill%3D'none'%20stroke%3D'url(%23g)'%20stroke-width%3D'3'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Cpath%20d%3D'M34%20218H866'%20opacity%3D'.45'%2F%3E%3Cpath%20d%3D'M84%20218V116l58-34%2058%2034v102M110%20218v-54h64v54M104%20126h18M154%20126h18M104%20151h18M154%20151h18'%2F%3E%3Cpath%20d%3D'M242%20218V82h78v136M262%20106h12M292%20106h12M262%20134h12M292%20134h12M262%20162h12M292%20162h12M262%20190h12M292%20190h12'%2F%3E%3Cpath%20d%3D'M352%20218V58h92v160M376%2086h14M408%2086h14M376%20116h14M408%20116h14M376%20146h14M408%20146h14M376%20176h14M408%20176h14'%2F%3E%3Cpath%20d%3D'M492%20218v-92l58-38%2058%2038v92M526%20218v-58h48v58M526%20136h48M526%20160h48'%2F%3E%3Cpath%20d%3D'M654%20218V96h78v122M676%20122h12M708%20122h12M676%20150h12M708%20150h12M676%20178h12M708%20178h12'%2F%3E%3Cpath%20d%3D'M766%20218v-72l54-42%2054%2042v72M796%20218v-44h48v44'%2F%3E%3Cpath%20d%3D'M120%2086L212%2062L304%2088L396%2052L492%20104L610%2074L746%2098'%20opacity%3D'.58'%2F%3E%3C%2Fg%3E%3Cg%20fill%3D'%23F5A623'%20opacity%3D'.78'%3E%3Ccircle%20cx%3D'212'%20cy%3D'62'%20r%3D'3'%2F%3E%3Ccircle%20cx%3D'396'%20cy%3D'52'%20r%3D'3'%2F%3E%3Ccircle%20cx%3D'610'%20cy%3D'74'%20r%3D'3'%2F%3E%3Ccircle%20cx%3D'746'%20cy%3D'98'%20r%3D'3'%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E");
 }
 body {
   font-family: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; color: var(--text);
@@ -1555,7 +1555,7 @@ h1, h2, h3, .ph h1, .kpi .v, .brand b, .md-hello, .mh h3 { font-family: 'Archivo
 .btn.amb { background: #F5A623; border-color: transparent; color: #2A1B00; }
 .btn.amb:hover { background: #F0B44A; }
 .btn.ok { background: var(--sage-d); border-color: transparent; }
-.btn.danger { color: var(--r-c); border-color: #F2C6D2; }
+.btn.danger { color: var(--r-c); border-color: #F3C2C2; }
 .btn.danger:hover { background: var(--r-bg); }
 .btn.ghost { border-color: transparent; background: transparent; }
 .btn.ghost:hover { background: #EEF3FA; }
@@ -1583,7 +1583,7 @@ h1, h2, h3, .ph h1, .kpi .v, .brand b, .md-hello, .mh h3 { font-family: 'Archivo
 table.t th { background: var(--paper); color: #4A4440; font-weight: 600; border-bottom-color: var(--line); }
 table.t td { border-bottom-color: var(--line2); }
 table.t tbody tr:hover td { background: #F4F7FC; }
-table.t tbody tr.sel td { background: #FCEEF2; }
+table.t tbody tr.sel td { background: #FDECEC; }
 table.t tfoot td { background: var(--paper); border-top-color: var(--line); }
 
 /* ô số liệu (KPI) */
@@ -1611,3 +1611,7 @@ table.t tfoot td { background: var(--paper); border-top-color: var(--line); }
 .ad-btn.ad-btn-primary { background: var(--sf-pri); color: #fff; }
 .ad-btn.ad-btn-primary:hover { background: var(--sf-pri-d); color: #fff; }
 .ad-btn.ad-btn-icon { background: #fff; }
+
+/* cảnh báo màu ĐỎ, không dùng hồng (07/11/2026) */
+.pill.r { background: #FDECEC; color: #C62828; }
+.kpi.red .v { background: linear-gradient(135deg, #8E1C1C, #C62828); -webkit-background-clip: text; background-clip: text; }

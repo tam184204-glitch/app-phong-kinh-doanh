@@ -2843,7 +2843,7 @@ V.debtsum = async main => {
 };
 // CN-06 tình trạng căn hộ theo bản chất giao dịch + công nợ tách theo hợp đồng (tiền vay / tiền thuê không trừ vào giá mua)
 // CN-06 Tình trạng công nợ đến hạn (07/11/2026): biểu đồ phân loại nợ, top căn nợ quá hạn, dòng thu – chi 6 tháng; bảng phân loại nợ theo mã căn (nhóm tự động theo số ngày quá hạn, chỉnh tay được)
-const DG_COL = { n1: '#7DBF9B', n2: '#7FA0D6', n3: '#E3A93B', n4: '#E58FA6', n5: '#B4405F' };
+const DG_COL = { n1: '#7DBF9B', n2: '#7FA0D6', n3: '#E3A93B', n4: '#E8734A', n5: '#C62828' };
 const DG_TAG = { n1: 'success', n2: 'processing', n3: 'warning', n4: 'error', n5: 'error' };
 const fmS = n => { n = +n || 0; const a = Math.abs(n); return a >= 1e9 ? (n / 1e9).toFixed(a >= 1e11 ? 0 : 2).replace('.', ',') + ' tỷ' : a >= 1e6 ? Math.round(n / 1e6).toLocaleString('vi-VN') + ' tr' : fm(n); };
 V.unitstatus = async main => {
