@@ -204,7 +204,7 @@ function input(f, v, rec = {}, { ro, id } = {}) {
     case 'refs': { const ids = v || [], ls = String(rec[f.k + '__l'] ?? '').split(', '), lab = (id, i) => { const p = f.ref === 'project' && M.projects.find(x => x.id === id); return p ? `${p.code} · ${p.name}` : ids.length === ls.length ? ls[i] : '#' + id; };
       return `<div class="combo multi" data-ref="${f.ref}" data-multi><div class="chips">${ids.map((id, i) => `<span class="chip" data-id="${id}">${esc(lab(id, i))}<button type="button" tabindex="-1" title="Bỏ">${ico('fa-xmark')}</button></span>`).join('')}<input type="text" placeholder="${ids.length ? 'Thêm' : 'Gõ để tìm'} ${esc(M.ents[f.ref].one)}…" autocomplete="off" data-combo></div><input type="hidden" ${nm} value="${esc(ids.join(','))}"></div>`; }
     case 'check': return `<div class="cklist${f.qty ? ' qty' : ''}" ${nm} ${f.qty ? 'data-qty' : ''}>${checkRows(v || [], f.qty)}</div>`;
-    case 'json': return f.k === 'new_schedule' ? `<div data-sched ${nm}></div>` : f.grid ? `<div class="gridin" ${nm}>${gridRows(f, v || [])}</div>` : `<div class="ro">${show(f, rec)}</div>`;
+    case 'json': return f.k === 'new_schedule' ? `<div data-sched ${nm}></div>` : f.k === 'sale_sched' ? `<div data-ssched ${nm}></div>` : f.grid ? `<div class="gridin" ${nm}>${gridRows(f, v || [])}</div>` : `<div class="ro">${show(f, rec)}</div>`;
     default: if (f.choose) return `<select ${nm}>${[...new Set([...f.choose, ...(v ? [v] : [])])].map(o => `<option ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;   // ô chữ nhưng chọn trong danh sách (giữ giá trị cũ ngoài danh sách)
       return `<input ${nm} value="${esc(v ?? '')}" autocomplete="off"${f.sug ? ` list="dl_${f.k}"` : ''}>${f.sug ? sugList('dl_' + f.k, f.sug) : ''}`;
   }
@@ -439,6 +439,7 @@ const HD_LAYOUT = [
     ['int_period', 'principal_method', 'int_note'], ['link_ids'],
     ['rent_house', 'rent_furn', 'rent', 'value', 'deposit', 'cn', 'vbtt_hold'], ['sale_price', 'plan_hdmb', 'prev_id', 'next_id']] },   // bán qua HĐ vay / HĐ thuê; HĐMB nối tiếp   // HĐ thuê: tiền thuê/tháng cạnh tổng tiền thuê; mua bán không có ô tiền thuê
   { t: 'Lần thanh toán', rows: [['new_schedule'], ['pay_method']] },
+  { t: 'Tiến độ thu tiền HĐMB', rows: [['sale_sched']] },   // HĐ thuê / vay bán căn (07/11/2026)
   { t: 'Lịch ký', cols: 4, rows: [['plan_sign', 'sign_place', 'sign_status', 'signed_on']] },
   { t: 'Tình trạng vay vốn', cols: 4, rows: [['loan_status', 'loan_bank', 'loan_doc3']] },
 ];
@@ -731,7 +732,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   const lockKeep = perm?.locked ? new Set(perm.lockKeep || []) : null;
   // khách đã ở giai đoạn sau mở bán (02 Danh mục khách hàng): Tình trạng chỉ chọn các bước sau mở bán — chọn lại «Mới»… thì khách chuyển sang 03 Tiềm năng, mất khỏi danh mục (PROSPECT ở screens.js)
   const postSale = ent === 'customer' && rec.stage && !PROSPECT.has(rec.stage);
-  const fields = E.fields.filter(f => !skip.includes(f.k) && !f.noForm && !(f.ro && !id) && !(f.t === 'code' && !id && !f.manual) && !(f.t === 'json' && f.k !== 'new_schedule' && !f.grid))
+  const fields = E.fields.filter(f => !skip.includes(f.k) && !f.noForm && !(f.ro && !id) && !(f.t === 'code' && !id && !f.manual) && !(f.t === 'json' && f.k !== 'new_schedule' && f.k !== 'sale_sched' && !f.grid))
     .map(f => postSale && f.k === 'stage' ? { ...f, o: f.o.filter(o => !PROSPECT.has(o[0])) } : f);
   const wide = f => ['long', 'check', 'json'].includes(f.t) || !!f.pick || !!f.upload;
   const body = `${E.note ? `<div class="warnbar">${ico('fa-circle-info')}<span>${esc(E.note)}</span></div>` : ''}${lockKeep ? `<div class="lockbar">${ico('fa-lock')} Bản ghi đã chốt — chỉ sửa được: ${[...lockKeep].filter(k => { const f = E.fields.find(x => x.k === k), sh = d => isShown(E.fields.find(x => x.k === d) || {}, rec); return !f?.show || isShown(f, rec) || Object.keys(f.show).every(d => lockKeep.has(d) && sh(d)); }).map(k => k === 'new_schedule' ? 'Lần thanh toán' : E.fields.find(f => f.k === k)?.l).join(', ')}</div>` : ''}${perm?.softOpen ? `<div class="warnbar">${ico('fa-unlock')}<span>Hợp đồng đã trình duyệt: nhân viên đã bị khóa, chỉ sửa được Lần thanh toán. Quản lý vẫn sửa được toàn bộ.</span></div>` : ''}<div id="ferr"></div><form class="form" autocomplete="off">${fields.map(f => {
@@ -748,6 +749,8 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   if (ent === 'contract') { bravoLayout(form, HD_LAYOUT); $('.modal', m.el).classList.add('full'); if (rec.kind !== 'hoan_thien') htp = hdPair(form, { ht: htRec, locked: htLocked, tab, draft: htDraft, oldFinish: +rec.finish_value > 0, kind: rec.kind, debt: rec._debt, rec0: rec }); }
   const sch = $('[data-sched]', form);
   if (sch) schedEditor(sch, rec.new_schedule || [], { mdot: () => rec.maint_dot ?? 3, maint: () => ent === 'contract' && ['hdmb', 'thue_mua'].includes(form.elements.kind?.value ?? rec.kind) ? readField(form, E.fields.find(f => f.k === 'maint_fee')) || 0 : null, total: () => ent === 'contract' ? readField(form, E.fields.find(f => f.k === 'value')) || 0 : readField(form, E.fields.find(f => f.k === 'value_after')) || rec.value_before || 0, first: ent === 'contract' ? () => { const kd = $('[name=kind]', form)?.value ?? rec.kind; return readField(form, E.fields.find(f => f.k === (kd === 'thue' ? 'eff_on' : kd === 'vay' && form.elements.loan_recv_on?.value ? 'loan_recv_on' : 'contract_on'))); } : null });
+  const ssch = $('[data-ssched]', form);   // tiến độ thu tiền HĐMB của HĐ thuê / vay bán căn: % theo Giá trị HĐMB
+  if (ssch) schedEditor(ssch, rec.sale_sched || [], { total: () => { const v = readField(form, E.fields.find(f => f.k === 'unit_total')); return v === undefined ? +rec.unit_total || 0 : +v || 0; } });
   htp?.rentDraw(); htp?.loanDraw?.();
   const vis = () => { const cur = collect(true); for (const f of fields) { const box = $(`[data-f="${f.k}"]`, form); if (box) box.classList.toggle('hidden', !isShown(f, cur)); } $$('.bv-row, .bv-sec:not(.loan-sec)', form).forEach(x => x.classList.toggle('hidden', !$('.fld:not(.hidden)', x))); htp?.sync(cur.ptype !== 'lien_ke' && ['hdmb', 'thue_mua', 'thue', 'vay'].includes(cur.kind)); };
   const collect = (all) => { const out = {}; for (const f of fields) { if (f.ro || (f.t === 'code' && !f.manual)) continue; if (lockKeep && !lockKeep.has(f.k)) continue; const v = readField(form, f); if (v !== undefined) out[f.k] = v; }

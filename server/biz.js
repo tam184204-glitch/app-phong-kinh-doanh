@@ -637,7 +637,8 @@ H.reservation = {
     async deposit(r, d) { if (r.price != null && d.deposit > r.price) bad('Tiền đặt cọc lớn hơn giá bán');   // phiếu thuê không có giá bán
       return { patch: { deposit: d.deposit, deposit_on: d.deposit_on, status: 'da_coc' } }; },
     async extend(r, d) { if (Date.parse(d.hold_until) <= Date.now()) bad('Hạn mới phải sau thời điểm hiện tại'); return { patch: { hold_until: d.hold_until, status: r.deposit > 0 ? 'da_coc' : 'giu_cho' } }; },
-    async release(r, d) { return { patch: { status: 'het_han' }, msg: r.deposit > 0 ? `Đã giải phóng căn. Khách đã cọc ${fmtMoney(r.deposit)}đ — xử lý theo chính sách (lập «Đề xuất hoàn tiền» nếu cần), hệ thống không tự hoàn tiền.` : 'Đã giải phóng căn' }; },
+    // giải phóng căn = hủy đăng ký (07/11/2026): phiếu sang «Đã hủy», trạng thái căn «Hủy đăng ký», căn trả về còn bán
+    async release(r, d) { return { patch: { status: 'huy', reg_state: 'huy' }, msg: r.deposit > 0 ? `Đã giải phóng căn — phiếu chuyển sang «Giải phóng / Đã hủy». Khách đã cọc ${fmtMoney(r.deposit)}đ — xử lý theo chính sách (lập «Đề xuất hoàn tiền» nếu cần), hệ thống không tự hoàn tiền.` : 'Đã giải phóng căn — phiếu chuyển sang «Giải phóng / Đã hủy»' }; },
     async to_contract(r, d, { db, user, demo }) {
       // phiếu đăng ký thuê → hợp đồng thuê: tiền thuê, thời hạn từ phiếu; bắt đầu thuê = ngày dự kiến ký
       if (r.deal !== 'thue' && d.kind === 'thue') bad('Phiếu đăng ký mua không lập hợp đồng thuê — sửa phiếu sang «Đăng ký thuê» và nhập tiền thuê/tháng, hoặc lập phiếu đăng ký thuê mới');
@@ -939,8 +940,9 @@ H.contract = {
     // chung cư có giá nền: tính như BRAVO / Danh mục sản phẩm — chỉ khi tạo mới hoặc đổi ô giá (hợp đồng cũ giữ nguyên số)
     const PK = ['base_price', 'base_orig', 'area_tt', 'floor_price', 'area_floor', 'discount', 'corner_pct', 'vat_pct', 'finish_value', 'unit_id'];
     // HĐ thuê (BRAVO): số tháng theo ngày bắt đầu – kết thúc, tổng tiền = đơn giá thuê × số tháng
-    if (r.kind !== 'thue') { r.unit_total = null; r.rent_house = null; r.rent_furn = null; }
-    if (r.kind === 'thue') {
+    if (r.kind !== 'thue') { r.rent_house = null; r.rent_furn = null; }
+    if (!['thue', 'vay'].includes(r.kind)) r.unit_total = null;   // HĐ vay bán căn cũng có Giá trị HĐMB (07/11/2026)
+    if (['thue', 'vay'].includes(r.kind)) {
       // Tổng tiền (giá trị hợp đồng, chỉ để thông tin) = Tổng giá căn hộ theo Danh mục sản phẩm − Tiền giảm giá (trừ thẳng, như HĐMB)
       const same = old && String(old.unit_total ?? '') === String(r.unit_total ?? '');
       if (r.unit_id && (r.unit_total == null || (old && old.unit_id !== r.unit_id && same))) {   // chưa có / đổi căn → lấy lại theo căn
@@ -981,6 +983,11 @@ H.contract = {
     // không lưu vào cột (lịch thu nằm ở kd_installment) — chuyển sang afterSave qua ctx
     ctx.sched = Array.isArray(r.new_schedule) && r.new_schedule.length ? await normSchedule(db, r.new_schedule.map(x => x.pct != null ? { ...x, amount: null } : x), r.value, 'Lần thanh toán', ['hdmb', 'thue_mua'].includes(r.kind) ? +r.maint_fee || 0 : 0, r.maint_dot) : null;
     r.new_schedule = null;
+    // tiến độ thu tiền HĐMB của HĐ thuê / vay bán căn: tổng các đợt phải khớp Giá trị HĐMB
+    if (['thue', 'vay'].includes(r.kind) && r.nature === 'ban' && Array.isArray(r.sale_sched) && r.sale_sched.length) {
+      if (!(+r.unit_total > 0)) bad('Tiến độ thu tiền HĐMB: nhập Giá trị HĐMB trước', { fields: ['unit_total'] });
+      r.sale_sched = (await normSchedule(db, r.sale_sched.map(x => x.pct != null && x.pct !== '' ? { ...x, amount: null } : x), +r.unit_total, 'Tiến độ thu tiền HĐMB')).map(({ name, due_on, pct, amount }) => ({ name, due_on, pct, amount }));
+    } else r.sale_sched = null;
     if (!old || old.unit_id !== r.unit_id) {
       const u = r.unit_id ? await raw(db, 'unit', r.unit_id) : null;
       if (!u) bad('Chọn mã căn hộ', { fields: ['unit_id'] });
@@ -1161,7 +1168,7 @@ H.receipt = {
   async beforeSave(r, old, { db }) {
     const c = await raw(db, 'contract', r.contract_id);
     await fillVoucher(db, r, true);
-    if (c.status === 'huy') bad('Hợp đồng đã hủy');
+    if ((!old || old.contract_id !== r.contract_id) && c.status === 'huy') bad('Hợp đồng đã hủy');   // chỉ chặn khi lập mới / chuyển sang HĐ đã hủy — hủy phiếu cũ vẫn được
     if (r.installment_id) { const i = await raw(db, 'installment', r.installment_id); if (i.contract_id !== r.contract_id) bad('Khoản phải thu không thuộc hợp đồng này'); }
     r.voucher_no = r.voucher_no?.trim().toUpperCase();
     if (!old) { r.synced_at = r.synced_at || new Date().toISOString(); r.src = r.src || 'thu_cong'; }
@@ -1272,9 +1279,10 @@ H.debt_call = {
     for (const r of rows) {
       if (!r.promise_amount) { r.promise_st = ''; continue; }
       if (r.promise_on > t) { r.promise_st = 'Chờ đến hẹn'; continue; }
+      const today0 = r.promise_on === t;   // đúng ngày hẹn mà chưa thu đủ: «Đến hẹn hôm nay», chưa phải thất hẹn (rà soát 07/11/2026)
       const from = new Date(Date.parse(r.at) + 7 * 3600e3).toISOString().slice(0, 10);
       const got = (await db.one("SELECT coalesce(sum(amount),0) s FROM kd_receipt WHERE contract_id = $1 AND status = 'hop_le' AND voucher_date BETWEEN $2 AND $3", [r.contract_id, from, addDays(r.promise_on, 3)])).s;
-      r.promise_st = got >= r.promise_amount ? 'Đúng hẹn' : got > 0 ? `Thu một phần (${fmtMoney(got)})` : 'Thất hẹn';
+      r.promise_st = got >= r.promise_amount ? 'Đúng hẹn' : today0 ? 'Đến hẹn hôm nay' : got > 0 ? `Thu một phần (${fmtMoney(got)})` : 'Thất hẹn';
     }
   },
 };

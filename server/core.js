@@ -255,7 +255,9 @@ async function list(entKey, user, qs = {}, { db = { q, one }, limit } = {}) {
   }
   if (H[entKey]?.where) { const w = H[entKey].where(qs, user); if (w) add(w.sql, ...(w.params || [])); }
   const baseWhere = [...where], baseP = [...p];   // số đếm trên tab trạng thái: theo nhóm đang xem, chưa lọc trạng thái
-  if (qs.status) add(`t.status = ANY($1)`, String(qs.status).split(','));
+  // phiếu đăng ký: «Hết hạn» (giải phóng căn trước 07/11/2026) chung 1 mục với «Giải phóng / Đã hủy»
+  const stQ = qs.status ? String(qs.status).split(',') : null; if (stQ && entKey === 'reservation' && stQ.includes('huy')) stQ.push('het_han');
+  if (stQ) add(`t.status = ANY($1)`, stQ);
   const W = where.length ? 'WHERE ' + where.join(' AND ') : '';
   let order = e.order || 't.id DESC';
   if (qs.sort) { const k = qs.sort.replace(/^-/, ''); if (F[entKey][k] || ['id', 'created_at'].includes(k)) order = `t.${k} ${qs.sort[0] === '-' ? 'DESC' : 'ASC'} NULLS LAST, t.id DESC`; }
@@ -266,6 +268,7 @@ async function list(entKey, user, qs = {}, { db = { q, one }, limit } = {}) {
   if (F[entKey].status) {
     const bw = baseWhere.length ? 'WHERE ' + baseWhere.join(' AND ') : '';
     counts = Object.fromEntries((await db.q(`SELECT t.status, count(*) AS n FROM ${e.table} t ${bw} GROUP BY 1`, baseP)).map(r => [r.status, r.n]));
+    if (entKey === 'reservation' && counts.het_han) { counts.huy = (+counts.huy || 0) + +counts.het_han; delete counts.het_han; }
   }
   if (H[entKey]?.decorate) await H[entKey].decorate(rows, { db, user });
   rows.forEach(r => maskPii(e, r, user, e.listPii));          // listPii: danh sách hiện thẳng định danh cho vai trò được xem
