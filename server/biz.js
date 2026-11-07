@@ -637,7 +637,8 @@ H.reservation = {
     async deposit(r, d) { if (r.price != null && d.deposit > r.price) bad('Tiền đặt cọc lớn hơn giá bán');   // phiếu thuê không có giá bán
       return { patch: { deposit: d.deposit, deposit_on: d.deposit_on, status: 'da_coc' } }; },
     async extend(r, d) { if (Date.parse(d.hold_until) <= Date.now()) bad('Hạn mới phải sau thời điểm hiện tại'); return { patch: { hold_until: d.hold_until, status: r.deposit > 0 ? 'da_coc' : 'giu_cho' } }; },
-    async release(r, d) { return { patch: { status: 'het_han' }, msg: r.deposit > 0 ? `Đã giải phóng căn. Khách đã cọc ${fmtMoney(r.deposit)}đ — xử lý theo chính sách (lập «Đề xuất hoàn tiền» nếu cần), hệ thống không tự hoàn tiền.` : 'Đã giải phóng căn' }; },
+    // giải phóng căn = hủy đăng ký (07/11/2026): phiếu sang «Đã hủy», trạng thái căn «Hủy đăng ký», căn trả về còn bán
+    async release(r, d) { return { patch: { status: 'huy', reg_state: 'huy' }, msg: r.deposit > 0 ? `Đã giải phóng căn — phiếu chuyển sang Đã hủy. Khách đã cọc ${fmtMoney(r.deposit)}đ — xử lý theo chính sách (lập «Đề xuất hoàn tiền» nếu cần), hệ thống không tự hoàn tiền.` : 'Đã giải phóng căn — phiếu chuyển sang Đã hủy' }; },
     async to_contract(r, d, { db, user, demo }) {
       // phiếu đăng ký thuê → hợp đồng thuê: tiền thuê, thời hạn từ phiếu; bắt đầu thuê = ngày dự kiến ký
       if (r.deal !== 'thue' && d.kind === 'thue') bad('Phiếu đăng ký mua không lập hợp đồng thuê — sửa phiếu sang «Đăng ký thuê» và nhập tiền thuê/tháng, hoặc lập phiếu đăng ký thuê mới');
