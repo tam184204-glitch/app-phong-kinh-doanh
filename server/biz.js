@@ -467,7 +467,8 @@ H.customer = {
     const oldPh = old ? [old.phone, old.phone2].filter(Boolean).map(digits) : [];   // chỉ kiểm trùng số vừa nhập / vừa đổi — sửa ô khác, tự cập nhật tình trạng không bị chặn vì dữ liệu cũ
     for (const ph of [r.phone, r.phone2].filter(Boolean).filter(x => !oldPh.includes(digits(x)))) {
       const d = await db.one("SELECT id, code, full_name FROM kd_customer WHERE id <> $1 AND ($2 IN (regexp_replace(phone,'\\D','','g'), regexp_replace(coalesce(phone2,''),'\\D','','g')))", [id, ph]);
-      dup(d, `Trùng số điện thoại ${ph} với khách hàng ${d?.code} · ${d?.full_name}. Hãy mở hồ sơ cũ để liên kết giao dịch, không tạo hồ sơ mới.`);
+      // cho phép trùng số điện thoại (Tâm 07/11/2026): chỉ nhắc, vẫn lưu
+      if (d) warn.push(`Số điện thoại ${ph} đã có ở khách hàng ${d.code} · ${d.full_name} — kiểm tra có phải cùng một người không`);
     }
     if (r.id_no && String(old?.id_no || '').replace(/\s+/g, '').toUpperCase() !== r.id_no) { const d = await db.one('SELECT id, code, full_name FROM kd_customer WHERE id <> $1 AND upper(id_no) = $2', [id, r.id_no]); dup(d, `Trùng giấy tờ định danh với khách hàng ${d?.code} · ${d?.full_name}`); }
     const sim = !old && !copy && r.full_name &&await db.one('SELECT code, phone FROM kd_customer WHERE lower(full_name) = lower($1) LIMIT 1', [r.full_name]);
