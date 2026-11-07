@@ -1309,7 +1309,7 @@ const LOAN_COLS = [['unit', 'Mã căn hộ'], ['customer', 'Tên khách hàng'],
 // CN-08 bảng tổng hợp công nợ — đúng bố cục file Excel «Bảng tổng hợp công nợ - kinh doanh» (2 tầng tiêu đề, nhóm theo dự án → tòa có dòng cộng)
 V.debtsum = async main => {
   (ST.ctkind ||= {}).kind = 'tonghop';
-  const f = filt(), s = ST.debtsum ||= { q: '', sign: '', to: '', from: '', shut: new Set() };
+  const f = filt(), s = ST.debtsum ||= { q: '', sign: '', to: '', shut: new Set() };
   let d = null;
   const cell = (r, c) => { const v = r[c[0]]; if (v == null || v === '') return ''; return c[2] === 'money' ? fm(v) : c[2] === 'num' ? fnum(v) : c[2] === 'date' ? dmy(v) : esc(v); };
   const isN = c => ['money', 'num', 'int'].includes(c[2]);
@@ -1317,7 +1317,7 @@ V.debtsum = async main => {
   const draw = () => {
     const cols = d.head.flatMap(([, cs]) => cs), rs = shown(), tot = k => rs.reduce((a, r) => a + (+r[k] || 0), 0);
     const tile = (l, v, sub, red) => `<div class="card kpi ${red && v ? 'red' : ''}" style="cursor:default"><div class="l">${l}</div><div class="v" style="font-size:20px">${fmB(v)}</div><div class="s">${sub}</div></div>`;
-    $('#dsK', main).innerHTML = tile('Giá trị hợp đồng', tot('value'), `${rs.length} căn · ${fm(tot('value'))} đ`) + tile('Tổng đã thu', tot('t_paid'), `${fm(tot('t_paid'))} đ · thu phát sinh ${fm(tot('k_new'))}`)
+    $('#dsK', main).innerHTML = tile('Giá trị hợp đồng', tot('value'), `${rs.length} căn · ${fm(tot('value'))} đ`) + tile('Tổng đã thu', tot('t_paid'), `${fm(tot('t_paid'))} đ`)
       + tile('Còn lại theo tiến độ', tot('t_left_due'), `${fm(tot('t_left_due'))} đ — đến hạn chưa thu`, 1) + tile('Còn lại theo hợp đồng', tot('t_left'), `${fm(tot('t_left'))} đ · 5% theo HĐ ${fm(tot('pct5'))}`);
     $('#dsN', main).textContent = `${rs.length} căn`;
     if (!rs.length) { $('#dsT', main).innerHTML = '<div class="empty">Không có hợp đồng phù hợp</div>'; return; }
@@ -1339,24 +1339,24 @@ V.debtsum = async main => {
       <tbody>${body}</tbody><tfoot>${sumTds('Tổng cộng:', rs, 'ds-tot')}</tfoot></table></div>`;
   };
   const load = async () => {
-    d = await api('GET', '/api/debt-summary?' + qsOf({ project: f.project, building: f.building, sign: s.sign, to: s.to, from: s.from }));
-    $('#srcLine', main).innerHTML = `<span>${ico('fa-database')} Thực thu đồng bộ Bravo${d.bravo_sync ? ' — chốt ' + dmyhm(d.bravo_sync) : ''}</span><span>Số liệu đến ${dmy(d.to)} · thu phát sinh từ ${dmy(d.from)}</span>`;
+    d = await api('GET', '/api/debt-summary?' + qsOf({ project: f.project, building: f.building, sign: s.sign, to: s.to }));
+    $('#srcLine', main).innerHTML = `<span>${ico('fa-database')} Thực thu đồng bộ Bravo${d.bravo_sync ? ' — chốt ' + dmyhm(d.bravo_sync) : ''}</span><span>Số liệu đến ${dmy(d.to)}</span>`;
     draw();
   };
   main.innerHTML = `<div class="page">${head('06', 'Theo dõi công nợ — Bảng tổng hợp', 'fa-table-list', `<button class="btn" id="dsX">${ico('fa-file-excel')} Xuất Excel</button><a class="btn" href="#/v/ledger">${ico('fa-book-open')} Sổ công nợ chi tiết</a>`, 'CN-08')}${ctKindBar('tonghop')}${filterBar(f, { period: false })}
     <div class="grid g4 mb" id="dsK"></div>
     <div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="dsQ" placeholder="Mã căn, mã KH, họ tên, SĐT, số HĐ…" value="${esc(s.q)}"></div>
       <select id="dsS"><option value="">Mọi hợp đồng</option><option value="da_ky">Đã ký hợp đồng</option><option value="chua">Chưa ký (dự thảo / chờ ký)</option></select>
-      <span class="small muted">Số liệu đến ngày</span>${segDate('dsTo', s.to || today())}<span class="small muted">Thu phát sinh từ</span>${segDate('dsFr', s.from || today().slice(0, 7) + '-01')}
+      <span class="small muted">Số liệu đến ngày</span>${segDate('dsTo', s.to || today())}
       <span class="grow"></span><span class="small muted" id="dsN"></span></div>
     <div id="dsT"><div class="empty">Đang tính công nợ…</div></div>
-    <div class="small muted mt">Tiền nhà = tiền sau thuế không gồm hệ số góc · Hệ số lô góc tính sau thuế · Phát sinh = giá trị hoàn thiện (gộp HĐMB + HĐ hoàn thiện riêng) · Bảo trì = phí bảo trì 2%. Thu tiền Bravo không ghi theo khoản → mỗi kỳ thu chia theo cơ cấu của kỳ (đợt thu phí bảo trì gánh trọn phí bảo trì). «Theo tiến độ» = các kỳ đến hạn tới ngày chốt. Kế toán: thu quá khứ = thu trước ngày «từ», thu phát sinh = thu trong kỳ, công nợ còn lại = đến hạn chưa thu. Bấm 1 căn để mở hợp đồng & lịch thanh toán, bấm dòng tòa để thu gọn.</div></div></div>`;
+    <div class="small muted mt">Tiền nhà = tiền sau thuế không gồm hệ số góc · Hệ số lô góc tính sau thuế · Phát sinh = giá trị hoàn thiện (gộp HĐMB + HĐ hoàn thiện riêng) · Bảo trì = phí bảo trì 2%. Thu tiền Bravo không ghi theo khoản → mỗi kỳ thu chia theo cơ cấu của kỳ (đợt thu phí bảo trì gánh trọn phí bảo trì). «Theo tiến độ» = các kỳ đến hạn tới ngày chốt. Bấm 1 căn để mở hợp đồng & lịch thanh toán, bấm dòng tòa để thu gọn.</div></div></div>`;
   $('#dsS', main).value = s.sign;
   wireFilter(main, f, load); wireSegDate(main);
   $('#dsQ', main).oninput = debounce(e => { s.q = e.target.value; draw(); }, 250);
   $('#dsS', main).onchange = run(async e => { s.sign = e.target.value; await load(); });
-  main.addEventListener('sdchange', run(async e => { const v = segVal(e.target); if (!v) return; if (e.target.id === 'dsTo') s.to = v; else s.from = v; await load(); }));
-  $('#dsX', main).onclick = () => download('/api/debt-summary.xlsx?' + qsOf({ project: f.project, building: f.building, sign: s.sign, to: d?.to, from: d?.from, q: s.q.trim() }));
+  main.addEventListener('sdchange', run(async e => { const v = segVal(e.target); if (!v || e.target.id !== 'dsTo') return; s.to = v; await load(); }));
+  $('#dsX', main).onclick = () => download('/api/debt-summary.xlsx?' + qsOf({ project: f.project, building: f.building, sign: s.sign, to: d?.to, q: s.q.trim() }));
   main.onclick = e => {
     if (ctKindClick(e, main)) return;
     const g = e.target.closest('tr[data-g]'); if (g) { const k = g.dataset.g; s.shut.has(k) ? s.shut.delete(k) : s.shut.add(k); return draw(); }

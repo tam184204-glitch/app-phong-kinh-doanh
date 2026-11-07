@@ -852,7 +852,6 @@ const DS_HEAD = [
   ['Phát sinh', [['p_total', 'Tổng phải thu', 'money'], ['p_due', 'Phải thu theo tiến độ', 'money'], ['p_paid', 'Tổng đã thu', 'money'], ['p_left', 'Còn lại', 'money'], ['p_left_due', 'Còn lại theo tiến độ', 'money']]],
   ['Bảo trì', [['b_total', 'Tổng phải thu', 'money'], ['b_due', 'Phải thu theo tiến độ', 'money'], ['b_paid', 'Tổng đã thu', 'money'], ['b_left', 'Còn lại', 'money']]],
   ['Tổng hợp', [['value', 'Giá trị hợp đồng', 'money'], ['t_total', 'Tổng phải thu', 'money'], ['t_due', 'Tổng phải thu theo tiến độ', 'money'], ['t_paid', 'Tổng đã thu', 'money'], ['t_left_due', 'Số còn lại theo tiến độ', 'money'], ['t_left', 'Còn lại theo hợp đồng', 'money'], ['pct5', '5 % theo hợp đồng', 'money']]],
-  ['Kế toán', [['k_old', 'Thu quá khứ', 'money'], ['k_new', 'Thu phát sinh', 'money'], ['k_paid', 'Tổng đã thu', 'money'], ['k_debt', 'Công nợ còn lại', 'money']]],
   ['', [['common_amt', 'Tiền diện tích sử dụng chung đã chi', 'money'], ['sign_l', 'Ký hợp đồng'], ['tax_code', 'Mã số thuế'], ['id_no', 'CCCD'], ['id_date', 'Ngày cấp', 'date'], ['id_place', 'Nơi cấp'], ['hdv_left', 'Số dư còn lại HĐV', 'money']]],
 ];
 const DS_COLS = DS_HEAD.flatMap(([, cs]) => cs);
@@ -860,8 +859,7 @@ const DS_SUM = DS_COLS.filter(c => ['money', 'num'].includes(c[2]) && !['base_pr
 const isoDay = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && (d => !isNaN(d) && d.toISOString().slice(0, 10) === v)(new Date(v + 'T00:00:00Z')) ? v : null;
 async function debtSummary(db, user, f = {}) {
   if (!can(user, E.installment, 'r')) deny();
-  const t = today(), to = isoDay(f.to) || t, from = isoDay(f.from) || to.slice(0, 7) + '-01';
-  if (from > to) bad('«Thu phát sinh từ ngày» sau «Số liệu đến ngày»');
+  const to = isoDay(f.to) || today();   // bỏ nhóm cột Kế toán (07/11/2026) → không còn «Thu phát sinh từ ngày»
   if (f.sign && !['da_ky', 'chua'].includes(f.sign)) bad('Bộ lọc không hợp lệ');
   const p = [];
   const cs = await db.q(`SELECT c.*, u.code unit, u.project_id, u.building_id, pr.code project, pr.name project_name, b.code building, k.code cust_code, k.full_name customer, k.address k_addr, k.phone k_phone, k.tax_code k_tax, k.id_no k_id_no, k.id_date k_id_date, k.id_place k_id_place,
@@ -870,8 +868,6 @@ async function debtSummary(db, user, f = {}) {
     WHERE c.kind IN ('hdmb','thue_mua','hoan_thien') AND c.status NOT IN ('huy','thanh_ly') ${f.sign === 'da_ky' ? "AND c.status = 'da_ky'" : f.sign === 'chua' ? "AND c.status <> 'da_ky'" : ''} ${uf(f, p)}${mine(user, 'c')}
     ORDER BY pr.code, b.code, u.floor, u.code, c.id`, p);
   const ids = cs.map(c => c.id), D = await B.debtOf(db, ids, to);
-  const RC = new Map((await db.q(`SELECT contract_id, sum(amount) FILTER (WHERE voucher_date < $2) old, sum(amount) FILTER (WHERE voucher_date >= $2 AND voucher_date <= $3) new
-    FROM kd_receipt WHERE status = 'hop_le' AND contract_id = ANY($1) GROUP BY 1`, [ids, from, to])).map(r => [r.contract_id, r]));
   // HĐ vay cùng căn (bản chất bán): số dư = gốc khách đã chuyển − gốc công ty đã trả lại
   const unitIds = [...new Set(cs.map(c => c.unit_id))];
   const vays = await db.q("SELECT c.id, c.unit_id FROM kd_contract c WHERE c.kind = 'vay' AND c.status <> 'huy' AND coalesce(c.nature, 'ban') = 'ban' AND c.unit_id = ANY($1)", [unitIds]);
@@ -921,11 +917,10 @@ async function debtSummary(db, user, f = {}) {
     r.value = all.reduce((s, x) => s + (+x.value || 0), 0);
     r.t_total = r.n_total + r.g_total + r.p_total + r.b_total; r.t_due = r.n_due + r.g_due + r.p_due + r.b_due; r.t_paid = r.n_paid + r.g_paid + r.p_paid + r.b_paid;
     r.t_left_due = pos(r.t_due - r.t_paid); r.t_left = r.t_total - r.t_paid; r.pct5 = Math.round(r.n_total * 0.05);
-    r.k_old = all.reduce((s, x) => s + (+RC.get(x.id)?.old || 0), 0); r.k_new = all.reduce((s, x) => s + (+RC.get(x.id)?.new || 0), 0); r.k_paid = r.k_old + r.k_new; r.k_debt = pos(r.t_due - r.k_paid);
     r.overdue = all.reduce((s, x) => s + (D.get(x.id)?.overdue || 0), 0);
     rows.push(r);
   }
-  return { head: DS_HEAD.map(([g, cs]) => [g, cs.map(c => c.slice(0, 3))]), sum: DS_SUM, rows, from, to, pii, bravo_sync: await bravoSync(db) };
+  return { head: DS_HEAD.map(([g, cs]) => [g, cs.map(c => c.slice(0, 3))]), sum: DS_SUM, rows, to, pii, bravo_sync: await bravoSync(db) };
 }
 // xuất Excel đúng bố cục bảng: 2 tầng tiêu đề, dòng mục (1. HỢP ĐỒNG …), dòng cộng từng tòa, dòng Tổng cộng
 function debtSummaryXlsx(d, q = '') {
@@ -934,7 +929,7 @@ function debtSummaryXlsx(d, q = '') {
   const st = (ri, ci, v) => styles.set(ri + ':' + ci, v);
   const cell = (r, c) => { const v = r[c[0]]; if (v == null || v === '') return ''; return c[2] === 'date' ? C.dmy(v) : ['money', 'num', 'int'].includes(c[2]) ? +v : v; };
   out.push(['BẢNG TỔNG HỢP CÔNG NỢ - KINH DOANH']); merges.push(`A1:${L(n - 1)}1`); st(0, 0, 5);
-  out.push([`Số liệu đến ngày ${C.dmy(d.to)} · thu phát sinh từ ${C.dmy(d.from)} · thực thu Bravo${d.bravo_sync ? ' chốt ' + new Date(d.bravo_sync).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : ''}${q ? ` · lọc «${q}»` : ''}`]); merges.push(`A2:${L(n - 1)}2`);
+  out.push([`Số liệu đến ngày ${C.dmy(d.to)} · thực thu Bravo${d.bravo_sync ? ' chốt ' + new Date(d.bravo_sync).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : ''}${q ? ` · lọc «${q}»` : ''}`]); merges.push(`A2:${L(n - 1)}2`);
   out.push([]);
   const h1 = [], h2 = []; let ci = 0;
   for (const [g, cs] of DS_HEAD) {
