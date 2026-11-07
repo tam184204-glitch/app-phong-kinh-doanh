@@ -885,6 +885,10 @@ async function customer360(db, user, id) {
   (contracts || []).forEach(x => { x._debt = D.get(x.id); x.paid = x._debt?.paid ?? null; });
   const out = { customer: c, contracts, reservations: await get('reservation', 't.customer_id = $1', [c.id]), logs: await get('contact_log', 't.customer_id = $1', [c.id], 't.at DESC'),
     tickets: await get('ticket', 't.customer_id = $1', [c.id]), noxh: await get('noxh_check', 't.customer_id = $1', [c.id]), pinkbook: await get('pinkbook', 't.customer_id = $1', [c.id]) };
+  // nhắc nợ – cam kết + kế hoạch thu của các hợp đồng của khách (ghi ở Tình trạng công nợ đến hạn) — 07/11/2026
+  const cids = (contracts || []).map(x => x.id);
+  out.calls = await get('debt_call', 't.contract_id = ANY($1)', [cids], 't.at DESC'); out.plans = await get('collect_plan', 't.contract_id = ANY($1)', [cids], 't.month DESC');
+  if (out.calls) await B.H.debt_call.decorate(out.calls, { db });
   if (out.reservations) await B.H.reservation.decorate(out.reservations, { db });
   return out;
 }
