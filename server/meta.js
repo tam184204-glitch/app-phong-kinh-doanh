@@ -567,7 +567,8 @@ def('contract', {
   lock: ['da_ky', 'thanh_ly', 'huy'], lockKeep: ['sign_status', 'sign_place', 'plan_sign', 'owner_id', 'late_rate', 'sale_on', 'sale_sched', 'loan_status', 'loan_bank', 'loan_doc3', 'liquidated_on', 'liquidate_reason', 'liquidate_note'],
   // đã trình duyệt / chờ ký: nhân viên chỉ sửa được lần thanh toán (+ lockKeep); quản lý vẫn sửa được
   softLock: { st: ['cho_duyet', 'cho_ky'], keep: ['sign_status', 'sign_place', 'plan_sign', 'new_schedule', 'loan_status', 'loan_bank', 'loan_doc3'], boss: MGR },
-  flow: { field: 'status', submit: ['du_thao', 'tu_choi'], approve: { ok: 'da_ky' }, submitLabel: 'Gửi trình duyệt' },
+  // saveOnly (07/11/2026): tạo hợp đồng chỉ có nút «Lưu dự thảo» — lưu xong ở Dự thảo, trình duyệt sau bằng nút «Gửi trình duyệt» trên hợp đồng
+  flow: { field: 'status', submit: ['du_thao', 'tu_choi'], approve: { ok: 'da_ky' }, submitLabel: 'Gửi trình duyệt', saveOnly: 1 },
   acts: [
     { k: 'schedule', l: 'Lập lịch thanh toán', icon: 'fa-calendar-days', from: ['du_thao', 'tu_choi'], roles: ['ho_so', 'cong_no', 'truong_phong'], noBtn: 1 },   // bỏ nút 04/11/2026: lịch thanh toán soạn ở «Lần thanh toán» trong form hợp đồng (Sửa)
     { k: 'liquidate', l: 'Thanh lý', icon: 'fa-box-archive', from: ['da_ky'], roles: MGR, ask: [{ k: 'liquidated_on', l: 'Ngày thanh lý', t: 'date', req: 1, def: 'today' }, { k: 'liquidate_reason', l: 'Lý do', t: 'sel', o: LIQ_REASON, req: 1 }, { k: 'liquidate_note', l: 'Ghi chú', t: 'long' }] },
