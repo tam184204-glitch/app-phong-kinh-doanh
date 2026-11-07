@@ -536,7 +536,8 @@ async function loadDemo() {
 }
 
 // ======================= XÓA DỮ LIỆU THỬ =======================
-const ORDER = ['sale_notice', 'commission', 'collect_plan', 'debt_call', 'refund', 'cancel_req', 'receipt', 'contract_change', 'defect', 'pinkbook', 'handover', 'ticket', 'notice', 'noxh_check', 'contact_log', 'loan_pay', 'installment', 'contract', 'reservation',
+// phiếu chi trỏ tới đề xuất hoàn tiền / kỳ trả lãi HĐ vay / hợp đồng → xóa trước các bảng đó
+const ORDER = ['sale_notice', 'commission', 'collect_plan', 'debt_call', 'payment', 'refund', 'cancel_req', 'receipt', 'contract_change', 'defect', 'pinkbook', 'handover', 'ticket', 'notice', 'noxh_check', 'contact_log', 'loan_pay', 'installment', 'contract', 'reservation',
   'report', 'target', 'agent_alloc', 'commission', 'customer', 'commission_policy', 'agent', 'package'];
 async function clearDemo() {
   const out = {};
