@@ -1615,3 +1615,24 @@ table.t tfoot td { background: var(--paper); border-top-color: var(--line); }
 /* cảnh báo màu ĐỎ, không dùng hồng (07/11/2026) */
 .pill.r { background: #FDECEC; color: #C62828; }
 .kpi.red .v { background: linear-gradient(135deg, #8E1C1C, #C62828); -webkit-background-clip: text; background-clip: text; }
+
+/* bảng phân loại nợ: đủ cột theo mẫu phòng KD (07/11/2026) — cuộn ngang, giữ cố định STT + mã căn khi cuộn */
+.us-t .us-ph, .us-t .us-vay { display: table-cell !important; }
+.us-ph2, .us-vay2 { display: none !important; }
+.us-t th { white-space: normal; min-width: 64px; }
+.us-t td:nth-child(1), .us-t th:nth-child(1) { position: sticky; left: 0; z-index: 2; background: #fff; min-width: 44px; }
+.us-t td:nth-child(2), .us-t th:nth-child(2) { position: sticky; left: 44px; z-index: 2; background: #fff; box-shadow: 6px 0 8px -6px rgba(23, 19, 16, .12); }
+.us-t thead th:nth-child(1), .us-t thead th:nth-child(2), .us-t tfoot td:nth-child(1), .us-t tfoot td:nth-child(2) { background: var(--sf-cream); }
+.us-t tbody tr:hover td:nth-child(1), .us-t tbody tr:hover td:nth-child(2), .us-t tr.us-on td:nth-child(1), .us-t tr.us-on td:nth-child(2) { background: var(--sf-lav-50); }
+.us-t tr.us-det > td { position: static; box-shadow: none; }
+.us-wc { min-width: 200px; max-width: 240px; }
+.us-wl { margin-top: 6px; }
+.us-pl { min-width: 120px; }
+.us-cl { min-width: 190px; max-width: 240px; font-size: 13px; }
+.us-call + .us-call { margin-top: 4px; }
+.us-call small { display: block; color: var(--ad-text3); }
+.us-t td.us-cus { width: auto; min-width: 140px; max-width: 200px; }
+.us-hint { font-size: 12.5px; letter-spacing: 0; text-transform: none; margin-right: 8px; }
+.us-t td.us-cus { max-width: 170px; }
+.us-wc { min-width: 180px; max-width: 210px; }
+.us-cl { min-width: 170px; max-width: 220px; }

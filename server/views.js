@@ -387,7 +387,12 @@ async function debtStatus(db, user, f = {}) {
   const calls = await db.q('SELECT DISTINCT ON (contract_id) * FROM kd_debt_call WHERE contract_id = ANY($1) ORDER BY contract_id, at DESC', [ids]);
   await B.H.debt_call.decorate(calls, { db });
   const callOf = new Map(calls.map(x => [x.contract_id, x]));
-  const plans = await db.q("SELECT contract_id, month, expected, status FROM kd_collect_plan WHERE contract_id = ANY($1) AND status NOT IN ('thay_the','tu_choi') AND month BETWEEN $2 AND $3", [ids, m, monthAdd(m, 5)]);
+  // lịch sử nhắc nợ (mọi lần gọi) · lãi chậm trả khách phải trả (HĐMB có lãi suất quá hạn — cùng cách tính màn Công nợ hợp đồng)
+  const allCalls = await db.q('SELECT contract_id, at, result, content, promise_amount, promise_on FROM kd_debt_call WHERE contract_id = ANY($1) ORDER BY at DESC', [ids]);
+  const RC = await rcpOf(db, cs.filter(c => c.kind === 'hdmb' && c.late_rate != null).map(c => c.id), t);
+  const lateOf = c => c.kind === 'hdmb' && c.late_rate != null && +c.late_rate > 0 ? instDebt(c.d.inst, RC.get(c.id) || [], c, t, +c.late_rate).reduce((a, i) => a + i.late, 0) : null;
+  const PST = Object.fromEntries(C.F.collect_plan.status.o.map(o => [o[0], o[1]]));
+  const plans = await db.q("SELECT contract_id, month, expected, expected_on, status FROM kd_collect_plan WHERE contract_id = ANY($1) AND status NOT IN ('thay_the','tu_choi') AND month BETWEEN $2 AND $3", [ids, m, monthAdd(m, 5)]);
   const RES = Object.fromEntries(C.F.debt_call.result.o.map(o => [o[0], o[1]]));
   const byU = new Map();
   for (const c of cs) (byU.get(c.unit_id) || byU.set(c.unit_id, []).get(c.unit_id)).push(c);
@@ -409,7 +414,9 @@ async function debtStatus(db, user, f = {}) {
     }
     const bank = main.loan_status ? { st: main.loan_status, st_l: main.loan_status === 'co_vay' ? 'Có vay ngân hàng' : 'Không vay', bank: main.loan_bank || '', doc3: main.loan_doc3 || '', doc3_l: main.loan_doc3 === 'da_co' ? 'đã có chứng từ 3 bên' : main.loan_doc3 === 'chua_co' ? 'chưa có chứng từ 3 bên' : '' } : null;
     const lc = all.map(c => callOf.get(c.id)).filter(Boolean).sort((a, b) => String(b.at).localeCompare(String(a.at)))[0] || null;
-    const plM = plans.filter(p => p.month === m && all.some(c => c.id === p.contract_id)).reduce((a, p) => a + +p.expected, 0);
+    const plX = plans.filter(p => p.month === m && all.some(c => c.id === p.contract_id)), plM = plX.reduce((a, p) => a + +p.expected, 0);
+    const lates = all.map(lateOf), lateInt = lates.some(x => x != null) ? lates.reduce((a, x) => a + (x || 0), 0) : null, rateSet = all.some(c => c.kind === 'hdmb' && c.late_rate != null);
+    const callsU = allCalls.filter(x => all.some(c => c.id === x.contract_id));
     const W = [];
     if (grp === 'n5') W.push(['r', `Nợ khó đòi — quá hạn ${days} ngày, cần phương án xử lý`]);
     else if (overdue > 0) W.push([days > D[0] ? 'r' : 'a', `Quá hạn ${days} ngày · ${fmtMoney(overdue)}`]);
@@ -425,7 +432,9 @@ async function debtStatus(db, user, f = {}) {
     rows.push({ unit_id: uid, unit: main.unit, project: main.project, building: main.building, contract_id: main.id, customer: main.customer, phone: main.b_phone || main.phone || '', owner: main.owner || '',
       total: sum(c => c.d.total), due: dueGross, paid: sum(c => c.d.paid), left: sum(c => c.d.left), due_left: sum(c => c.d.due), overdue, days, due7,
       next_on: nx?.due_on || null, next_amt: nx?.rem || null, auto, grp, grp_l: GL[grp], manual: man,
-      bank, vay: vayInfo, plan_m: plM || null,
+      bank, vay: vayInfo, plan_m: plM || null, plan_on: plX.map(p => p.expected_on).sort()[0] || null, plan_st: [...new Set(plX.map(p => PST[p.status] || p.status))].join(', '),
+      late_int: lateInt, late_rate_set: rateSet, calls_n: callsU.length,
+      calls: callsU.slice(0, 3).map(x => ({ at: new Date(Date.parse(x.at) + 7 * 3600e3).toISOString().slice(0, 10), result_l: RES[x.result] || '', content: x.content || '', promise: x.promise_amount ? `${fmtMoney(x.promise_amount)} · ${C.dmy(x.promise_on)}` : '' })),
       call: lc ? { at: String(lc.at).slice(0, 10), result_l: RES[lc.result] || '', content: lc.content || '', promise: lc.promise_amount ? `${fmtMoney(lc.promise_amount)} · ${C.dmy(lc.promise_on)}` : '', promise_st: lc.promise_st || '' } : null,
       warns: W, hist: (cfg.hist[uid] || []).slice(-5).reverse(),
       contracts: all.map(c => ({ id: c.id, number: c.number, kind: c.kind, kind_l: KL[c.kind] || c.kind, total: c.d.total, paid: c.d.paid, left: c.d.left, overdue: c.d.overdue, days: c.d.overdue_days || 0, next_on: c.d.next?.due_on || null, next_amt: c.d.next?.rem || null })) });
