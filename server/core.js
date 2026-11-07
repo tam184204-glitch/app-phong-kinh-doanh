@@ -255,7 +255,7 @@ async function list(entKey, user, qs = {}, { db = { q, one }, limit } = {}) {
   }
   if (H[entKey]?.where) { const w = H[entKey].where(qs, user); if (w) add(w.sql, ...(w.params || [])); }
   const baseWhere = [...where], baseP = [...p];   // số đếm trên tab trạng thái: theo nhóm đang xem, chưa lọc trạng thái
-  // phiếu đăng ký: «Hết hạn» (giải phóng căn trước 07/11/2026) chung 1 mục với «Giải phóng / Đã hủy»
+  // phiếu đăng ký: «Hết hạn» (giải phóng căn trước 07/11/2026) chung 1 mục với «Đã hủy»
   const stQ = qs.status ? String(qs.status).split(',') : null; if (stQ && entKey === 'reservation' && stQ.includes('huy')) stQ.push('het_han');
   if (stQ) add(`t.status = ANY($1)`, stQ);
   const W = where.length ? 'WHERE ' + where.join(' AND ') : '';

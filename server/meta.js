@@ -195,9 +195,9 @@ def('contact_log', {
 
 // ===================== 04. GIAO DỊCH =====================
 const RES_ST = [['nhap', 'Nháp', 's'], ['cho_duyet', 'Chờ duyệt', 'a'], ['giu_cho', 'Đang giữ chỗ', 'b'], ['qua_han', 'Quá hạn giữ chỗ', 'r'], ['da_coc', 'Đã đặt cọc', 'v'],
-  ['chuyen_hd', 'Đã chuyển hợp đồng', 'g'], ['het_han', 'Hết hạn', 's'], ['tu_choi', 'Từ chối', 'r'], ['huy', 'Giải phóng / Đã hủy', 's']];
+  ['chuyen_hd', 'Đã chuyển hợp đồng', 'g'], ['het_han', 'Hết hạn', 's'], ['tu_choi', 'Từ chối', 'r'], ['huy', 'Đã hủy', 's']];
 // phiếu đăng ký căn hộ (lập từ Bảng hàng): trạng thái căn + tiến trình do nhân viên chọn
-const REG_ST = [['giu_cho', 'Giữ chỗ', 'a'], ['qua_han', 'Quá hạn giữ chỗ', 'r'], ['ky_hdmb', 'Ký HĐMB', 'g'], ['huy', 'Giải phóng / Đã hủy', 'r']];   // giải phóng căn = hủy đăng ký: 1 mục (07/11/2026)   // quá hạn: tự đặt khi qua «Hạn giữ chỗ» chưa đặt cọc
+const REG_ST = [['giu_cho', 'Giữ chỗ', 'a'], ['qua_han', 'Quá hạn giữ chỗ', 'r'], ['ky_hdmb', 'Ký HĐMB', 'g'], ['huy', 'Đã hủy', 'r']];   // giải phóng căn = hủy đăng ký: 1 mục «Đã hủy» (07/11/2026)   // quá hạn: tự đặt khi qua «Hạn giữ chỗ» chưa đặt cọc
 const REG_PROG = [['tiep_nhan', 'Đã tiếp nhận hồ sơ', 's'], ['cho_xet_duyet', 'Đã nộp hồ sơ chờ xét duyệt', 'a'], ['du_dk', 'Đủ điều kiện ký HĐMB', 'b'], ['da_ky', 'Đã ký HĐMB', 'g']];
 // thông báo mở bán căn hộ: mỗi đợt mở bán (văn bản thông báo, thời gian nhận hồ sơ, căn mở bán) — duyệt thì căn chưa mở bán trong đợt chuyển «Còn bán»
 def('sale_notice', {
