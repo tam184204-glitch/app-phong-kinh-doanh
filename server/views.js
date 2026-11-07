@@ -838,7 +838,7 @@ async function priceSheet(db, user, id) {
 // ======================= HỒ SƠ 360° =======================
 async function unit360(db, user, id) {
   const u = C.notFound(await db.one(`SELECT u.*, p.code project_code, p.name project_name, b.code building_code, b.name building_name FROM kd_unit u JOIN kd_project p ON p.id = u.project_id JOIN kd_building b ON b.id = u.building_id WHERE u.id = $1`, [+id]), 'căn');
-  const get = async (ent, cond, pp, order = 't.id DESC') => can(user, E[ent], 'r') ? (await db.q(`SELECT t.*, ${C.labelCols(E[ent]).join(', ')} FROM ${E[ent].table} t WHERE ${cond} ORDER BY ${order}`, pp)).map(r => C.maskPii(E[ent], r, user, E[ent].listPii)) : null;   // che CCCD / MST / TK ngân hàng (rà soát 07/11/2026)
+  const get = async (ent, cond, pp, order = 't.id DESC') => can(user, E[ent], 'r') ? (await db.q(`SELECT t.*, ${C.labelCols(E[ent]).join(', ')} FROM ${E[ent].table} t WHERE ${cond} ORDER BY ${order}`, pp)) : null;
   const contracts = await get('contract', 't.unit_id = $1', [u.id]);
   const cids = (contracts || []).map(c => c.id);
   const D = await B.debtOf(db, cids);
@@ -864,11 +864,7 @@ async function unit360(db, user, id) {
   if (out.tickets) await B.H.ticket.decorate(out.tickets, { db });
   const custIds = [...new Set([...(contracts || []).map(c => c.customer_id), ...(out.reservations || []).map(r => r.customer_id)])];
   out.customers = can(user, E.customer, 'r') ? (await db.q('SELECT id, code, full_name, phone, email, address, kind, owner_id FROM kd_customer WHERE id = ANY($1)', [custIds])) : [];
-  if (E.customer.own?.includes(user.role)) {
-    out.customers = out.customers.map(c => c.owner_id === user.id ? c : { ...c, phone: '•••' + String(c.phone).slice(-3), email: null, address: null });
-    (out.reservations || []).forEach(r => { if (r.owner_id !== user.id && r.created_by !== user.id) { if (r.phone) r.phone = '•••' + String(r.phone).slice(-3); r.cust_name = '•••'; } });
-    (contracts || []).forEach(c => { if (c.owner_id !== user.id && c.created_by !== user.id && c.b_phone) c.b_phone = '•••' + String(c.b_phone).slice(-3); });
-  }
+  if (E.customer.own?.includes(user.role)) out.customers = out.customers.map(c => c.owner_id === user.id ? c : { ...c, phone: '•••' + String(c.phone).slice(-3), email: null, address: null });
   const recs = [['unit', [u.id]], ...Object.entries({ reservation: out.reservations, contract: contracts, contract_change: out.changes, handover: out.handover, defect: out.defects, pinkbook: out.pinkbook, ticket: out.tickets, noxh_check: out.noxh, refund: out.refunds }).map(([k, v]) => [k, (v || []).map(x => x.id)])];
   out.files = [];
   out.timeline = [];
@@ -883,7 +879,7 @@ async function unit360(db, user, id) {
 async function customer360(db, user, id) {
   const e = E.customer; if (!can(user, e, 'r')) deny();
   const c = (await C.get('customer', id, user, { db })).row;
-  const get = async (ent, cond, pp, order = 't.id DESC') => can(user, E[ent], 'r') ? (await db.q(`SELECT t.*, ${C.labelCols(E[ent]).join(', ')} FROM ${E[ent].table} t WHERE ${cond} ORDER BY ${order}`, pp)).map(r => C.maskPii(E[ent], r, user, E[ent].listPii)) : null;
+  const get = async (ent, cond, pp, order = 't.id DESC') => can(user, E[ent], 'r') ? await db.q(`SELECT t.*, ${C.labelCols(E[ent]).join(', ')} FROM ${E[ent].table} t WHERE ${cond} ORDER BY ${order}`, pp) : null;
   const contracts = await get('contract', 't.customer_id = $1', [c.id]);
   const D = await B.debtOf(db, (contracts || []).map(x => x.id));
   (contracts || []).forEach(x => { x._debt = D.get(x.id); x.paid = x._debt?.paid ?? null; });
