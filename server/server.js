@@ -102,7 +102,7 @@ async function login(req, res) {
 // ---------- meta gửi giao diện ----------
 const EXPORT_ROLES = ['lanh_dao', 'truong_phong', 'admin', 'cong_no', 'ke_toan', 'ho_so', 'cskh'];   // được xuất Excel từ màn tổng hợp
 async function metaFor(user) {
-  const strip = e => ({ ...e, fields: e.fields.filter(f => !f.hide).map(f => ({ ...f })), perm: { r: can(user, e, 'r'), c: can(user, e, 'c'), u: can(user, e, 'u'), d: can(user, e, 'd'), a: can(user, e, 'a'), x: can(user, e, 'x') } });
+  const strip = e => ({ ...e, fields: e.fields.filter(f => !f.hide).map(f => ({ ...f, ...(f.reqForm ? { req: 1 } : {}) })), perm: { r: can(user, e, 'r'), c: can(user, e, 'c'), u: can(user, e, 'u'), d: can(user, e, 'd'), a: can(user, e, 'a'), x: can(user, e, 'x') } });
   const ents = Object.fromEntries(Object.values(M.E).map(e => [e.key, strip(e)]));
   const lk = await C.lookups();
   for (const e of Object.values(ents)) for (const f of [...e.fields, ...(e.acts || []).flatMap(a => a.ask || [])]) if (f.opt) f.o = (lk[f.opt] || []).filter(x => x[2]).map(x => [x[0], x[1]]);
@@ -209,7 +209,10 @@ R('GET', '/api/ver', (req, res) => {
 // --- dữ liệu chung ---
 R('GET', '/api/e/:ent', async (req, res, u, p, qs) => send(res, 200, await C.list(p.ent, u, qs)));
 R('GET', '/api/e/:ent/:id', async (req, res, u, p) => send(res, 200, await C.get(p.ent, p.id, u)));
-R('POST', '/api/e/:ent', async (req, res, u, p, qs) => { const b = await readJson(req); send(res, 200, await C.create(p.ent, b, u, { check: qs.check === '1', copyOf: +qs.copy_of || 0 })); });
+R('POST', '/api/e/:ent', async (req, res, u, p, qs) => { const b = await readJson(req);
+  { const miss = (M.E[p.ent]?.fields || []).filter(f => f.reqForm && (b[f.k] == null || b[f.k] === ''));   // phiếu khách hàng: khai báo đủ thông tin (07/11/2026)
+    if (miss.length) bad('Thiếu thông tin bắt buộc: ' + miss.map(f => f.l).join(', '), { fields: miss.map(f => f.k) }); }
+  send(res, 200, await C.create(p.ent, b, u, { check: qs.check === '1', copyOf: +qs.copy_of || 0 })); });
 R('PUT', '/api/e/:ent/:id', async (req, res, u, p, qs) => { const b = await readJson(req); send(res, 200, await C.update(p.ent, p.id, b, u, { check: qs.check === '1' })); });
 R('DELETE', '/api/e/:ent/:id', async (req, res, u, p) => send(res, 200, await C.remove(p.ent, p.id, u)));
 R('POST', '/api/e/:ent/:id/submit', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await C.submit(p.ent, p.id, u, b)); });
