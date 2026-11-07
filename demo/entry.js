@@ -194,6 +194,19 @@ async function boot(pgliteUrl) {
       localStorage.setItem('ctg-kd-demo-chi-dmsp-0711', '1');
     }
   } catch (e) { console.warn('xóa dữ liệu các phân hệ', e); }
+  // 07/11/2026: danh mục khách hàng theo căn tòa K (CTS-K-101, 102, 103) — mã khách = mã căn; tên / SĐT / CCCD để người dùng tự điền. Tạo 1 lần / trình duyệt
+  try {
+    if (!localStorage.getItem('ctg-kd-demo-kh-k101')) {
+      const pj = await one("SELECT id FROM kd_project WHERE code = 'CTS'"), u = await one("SELECT id FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1");
+      for (const code of ['CTS-K-101', 'CTS-K-102', 'CTS-K-103']) {
+        if (await one('SELECT 1 FROM kd_customer WHERE upper(code) = $1', [code])) continue;
+        const k = await one(`INSERT INTO kd_customer (code, full_name, stage, source, interest_project, owner_id, note, created_by)
+          VALUES ($1, $2, 'da_nop_hsmn', 'truc_tiep', $3, $4, $5, $4) RETURNING id`, [code, 'Khách hàng căn ' + code, pj?.id || null, u?.id || null, 'Khách hàng của căn ' + code + ' — cập nhật họ tên, điện thoại, CCCD']);
+        await q("INSERT INTO kd_audit (ent, rec_id, action, user_id, note) VALUES ('customer', $1, 'tao', $2, 'Tạo danh mục khách hàng theo căn')", [k.id, u?.id || null]);
+      }
+      localStorage.setItem('ctg-kd-demo-kh-k101', '1');
+    }
+  } catch (e) { console.warn('khách hàng căn tòa K', e); }
   const job = async () => { try { await tx(db => biz.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.warn('job', e.message); } };
   await job(); setInterval(job, 2 * 60e3);
 
