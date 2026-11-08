@@ -654,7 +654,8 @@ async function contractTrack(db, user, f = {}) {
     // theo khoảng ngày: phải thu theo tiến độ = các kỳ có hạn trong khoảng; đã thu trong kỳ = phiếu thu trong khoảng (để trống «Từ ngày» = từ đầu HĐ)
     const inW = on => !from || on >= from, due_w = d.inst.filter(i => i.due_on && i.due_on <= t && inW(i.due_on)).reduce((a, i) => a + +i.amount, 0);
     const paid_w = (RC.get(c.id) || []).filter(r => inW(r.voucher_date)).reduce((a, r) => a + +r.amount, 0);
-    if (!hd) Object.assign(row, { due_w, paid_w, left_w: due_w - paid_w, _act: due_w > 0 || paid_w > 0 });   // đã chi trả lại khách · thực giữ = đã thu − đã chi
+    // left_hd: còn phải thu theo hợp đồng = giá trị HĐ − tổng đã thu đến t (bảng HĐ hoàn thiện 08/11/2026)
+    if (!hd) Object.assign(row, { due_w, paid_w, left_w: due_w - paid_w, left_hd: row.value - d.paid, _act: due_w > 0 || paid_w > 0 });   // đã chi trả lại khách · thực giữ = đã thu − đã chi
     if (hd) {
       // theo mẫu «Bảng theo dõi hợp đồng mua bán» + công thức phòng KD (05/11/2026), Tổng cộng = Tiền nhà + Phí bảo trì (cộng từng cột):
       //  tiền nhà: giá trị = tiền sau thuế (+ hoàn thiện nếu gộp HĐMB) · phải thu theo tiến độ = các đợt có hạn trong khoảng ngày · đã thu = phiếu thu (có «Từ ngày»: thu trong khoảng)
