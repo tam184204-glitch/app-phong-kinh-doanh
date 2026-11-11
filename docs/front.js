@@ -1139,7 +1139,7 @@ async function tplScopePick(form) {
   box.onchange = e => { const c = e.target.closest('[data-sk]'); if (!c) return; const k = keys(), K = c.dataset.sk;
     if (c.checked) { k.add(K); if (!K.includes('-')) for (const x of [...k]) if (x.startsWith(K + '-')) k.delete(x); } else k.delete(K);   // tích cả dự án thì bỏ từng tòa của dự án đó
     inp.value = [...k].join(', '); inp.dispatchEvent(new Event('input', { bubbles: true })); draw(); };
-  inp.addEventListener('input', e => { if (e.isTrusted) draw(); });
+  inp.readOnly = true; inp.placeholder = 'Mẫu chung — mọi dự án (tích chọn ở khung bên dưới)';   // chỉ chọn theo dự án / tòa hiện có, không gõ tay (Tâm 11/11/2026)
   inp.closest('.fld').after(box); draw();
 }
 // form mẫu: dòng «Mẫu này hiện ở…», trường trộn theo module (bấm để chèn vào chỗ con trỏ), Xem thử với bản ghi mới nhất
