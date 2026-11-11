@@ -1665,3 +1665,12 @@ table.t tfoot td { background: var(--paper); border-top-color: var(--line); }
 .tplh-chip { font: 12px/1.2 inherit; padding: 4px 9px; border-radius: 999px; border: 1px solid var(--line, #d4deea); background: #fff; cursor: pointer; }
 .tplh-chip:hover { border-color: var(--cobalt, #2A4F8A); color: var(--cobalt, #2A4F8A); }
 .tplh-foot { display: flex; gap: 10px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+
+/* 11/11/2026: mẫu theo dự án / tòa */
+.tplsc { background: var(--sf-lav-50, #f4f6fb); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; font-size: 13px; }
+label.tplr { display: flex; gap: 8px; align-items: center; padding: 7px 0; }
+.tplsp { background: var(--sf-lav-50, #f4f6fb); border: 1px solid var(--line, #e3e8f0); border-radius: 10px; padding: 10px 12px; }
+.tplsp-l { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow: auto; }
+.tplsp-p { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; }
+.tplsp-p > label { min-width: 240px; }
+.tplsp-b { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; }

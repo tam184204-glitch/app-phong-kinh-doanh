@@ -483,6 +483,39 @@ const editDoc = body => `<div class="doc" contenteditable="true" spellcheck="fal
 const DOTS = '..............................';     // ô trống trên bản in → để khách / nhân viên điền tay
 const PRINT_KIND = { dang_ky_can: 'bản đăng ký căn hộ', dang_ky_noi_that: 'bản đăng ký nội thất' };
 // mẫu hợp với căn: đúng loại, phạm vi (mã dự án / tòa) và số phòng ngủ — mẫu ghi rõ phạm vi xếp trước mẫu chung
+// ===== mẫu theo dự án / tòa (11/11/2026): ô «Áp dụng cho dự án / tòa» = mã dự án (CTS), dự án-tòa (CTS-O) hoặc tòa (O); trống = mọi căn =====
+const scopeKeys = t => String(t.scope || '').split(/[,;\s]+/).map(x => x.trim().toUpperCase()).filter(Boolean);
+// căn / dự án của một bản ghi: { pcode, bcode, pname, bname, bedrooms, unit }
+async function recScope(ent, id) {
+  const r = id && E[ent] ? await one(`SELECT * FROM ${E[ent].table} WHERE id = $1`, [+id]) : null;
+  if (!r) return {};
+  let unitId = ent === 'unit' ? r.id : r.unit_id;
+  if (!unitId && r.contract_id) unitId = (await one('SELECT unit_id FROM kd_contract WHERE id = $1', [r.contract_id]))?.unit_id;
+  if (!unitId && r.reservation_id) unitId = (await one('SELECT unit_id FROM kd_reservation WHERE id = $1', [r.reservation_id]))?.unit_id;
+  if (unitId) {
+    const u = await one('SELECT u.code, u.bedrooms, b.code bcode, b.name bname, p.code pcode, p.name pname FROM kd_unit u JOIN kd_building b ON b.id = u.building_id JOIN kd_project p ON p.id = u.project_id WHERE u.id = $1', [unitId]);
+    if (u) return { pcode: u.pcode, bcode: u.bcode, pname: u.pname, bname: u.bname, bedrooms: u.bedrooms, unit: u.code };
+  }
+  if (r.unit_text) {   // hồ sơ NOXH chưa gắn căn: lấy theo mã căn ghi tay CTS-O-0101
+    const [pc, bc] = String(r.unit_text).toUpperCase().split('-');
+    const p = pc && await one('SELECT code, name FROM kd_project WHERE upper(code) = $1', [pc]);
+    if (p) return { pcode: p.code, bcode: bc || null, pname: p.name, bname: bc ? 'Tòa ' + bc : null, unit: r.unit_text };
+  }
+  const pid = ent === 'project' ? r.id : r.project_id;
+  const p = pid && await one('SELECT code, name FROM kd_project WHERE id = $1', [pid]);
+  return p ? { pcode: p.code, pname: p.name } : {};
+}
+// mẫu hợp với căn / dự án: 2 = đúng tòa, 1 = đúng dự án, 0 = mẫu chung; -1 = mẫu của dự án / tòa khác (không dùng)
+function tplFitLevel(t, sc) {
+  const ks = scopeKeys(t);
+  const bed = !t.bedrooms || !sc.bedrooms || t.bedrooms === sc.bedrooms;
+  if (!bed) return -1;
+  if (!ks.length) return 0;
+  const P = String(sc.pcode || '').toUpperCase(), B = String(sc.bcode || '').toUpperCase();
+  if (P && B && (ks.includes(`${P}-${B}`) || ks.includes(B))) return 2;
+  if (P && ks.includes(P)) return 1;
+  return -1;
+}
 async function regTemplates(kind, unitId) {
   const ts = await q("SELECT * FROM kd_template WHERE active AND kind = $1 AND coalesce(ent, 'reservation') IN ('reservation', 'noxh_check') ORDER BY id", [kind]);
   if (!unitId) return ts;
@@ -601,7 +634,7 @@ ${units.map((u, i) => `<tr><td class="ct">${i + 1}</td><td>${escH(u.code)}</td><
 <tr><td></td><td><b>Tổng cộng: ${units.length} căn</b></td><td class="n"><b>${num(Math.round(units.reduce((s, u) => s + (+u.area_tt || 0), 0) * 10) / 10)}</b></td><td class="n"><b>${num(Math.round(units.reduce((s, u) => s + (+u.area_xd || 0), 0) * 10) / 10)}</b></td></tr></tbody></table>`;
   } else {
     const tpl = tplCode ? await one('SELECT * FROM kd_template WHERE active AND code = $1', [tplCode])
-      : await one(`SELECT * FROM kd_template WHERE active AND kind = 'thong_bao' AND code LIKE 'TB-MOBAN%' AND coalesce(ent, 'sale_notice') = 'sale_notice' ORDER BY (upper(coalesce(scope,'')) = upper($1)) DESC, id LIMIT 1`, [p.code]);
+      : (await q(`SELECT * FROM kd_template WHERE active AND kind = 'thong_bao' AND code LIKE 'TB-MOBAN%' AND coalesce(ent, 'sale_notice') = 'sale_notice' ORDER BY id`)).map(t => [t, tplFitLevel(t, { pcode: p.code })]).filter(x => x[1] >= 0).sort((a, b) => b[1] - a[1])[0]?.[0];
     if (!tpl) bad('Chưa có mẫu Thông báo mở bán — tạo ở Quản trị › Mẫu biểu (loại Thông báo, mã bắt đầu TB-MOBAN)');
     const map = { cong_ty: seller.name, cong_ty_hoa: seller.name.toUpperCase(), so_vb: n.doc_no || `&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/${d.getUTCFullYear()}/TB-${p.code}`,
       ngay_viet: `ngày ${String(d.getUTCDate()).padStart(2, '0')} tháng ${String(d.getUTCMonth() + 1).padStart(2, '0')} năm ${d.getUTCFullYear()}`, ten_dot: escH(DOT), du_an: escH(p.name),
@@ -703,5 +736,5 @@ async function previewTemplate(b, user) {
   return printGeneric(ent, id, user, null, { name: b.name, code: b.code, content: b.content || '' });
 }
 
-module.exports = { tplFields, printGeneric, previewTemplate,
+module.exports = { recScope, tplFitLevel, scopeKeys, tplFields, printGeneric, previewTemplate,
   misaSample, printSaleNotice, printCancelReq, EDIT_CSS, editBar, editDoc, A, strip, mapRows, exportList, sheet, importFile, importTemplate, IMPORTS, createUser, hashPw, checkPw, printContract, printReservation, regTemplates, moneyWords };

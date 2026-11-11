@@ -237,16 +237,24 @@ R('GET', '/api/pii/:ent/:id', async (req, res, u, p) => {
 });
 R('GET', '/api/templates', async (req, res, u, p, qs) => {
   // ?ent=<module> → mẫu của module (nút «Mẫu biểu» / «In theo mẫu»); &active=1 chỉ mẫu đang dùng
-  if (qs.ent) return send(res, 200, await q(`SELECT id, code, name, kind, ent, scope, bedrooms, active, updated_at FROM kd_template WHERE ent = $1 ${qs.active ? 'AND active' : ''} ORDER BY active DESC, id`, [qs.ent]));
+  if (qs.ent) {
+    const ts = await q(`SELECT id, code, name, kind, ent, scope, bedrooms, active, updated_at FROM kd_template WHERE ent = $1 ${qs.active ? 'AND active' : ''} ORDER BY active DESC, id`, [qs.ent]);
+    if (!qs.rec) return send(res, 200, ts);
+    // ?rec=<bản ghi> → chỉ mẫu hợp dự án / tòa của bản ghi, mẫu riêng của tòa / dự án xếp trước mẫu chung
+    const sc = await IO.recScope(qs.ent, qs.rec);
+    return send(res, 200, ts.map(t => ({ ...t, lv: IO.tplFitLevel(t, sc) })).filter(t => t.lv >= 0).sort((a, b) => b.lv - a.lv || a.id - b.id));
+  }
   // ?res=<phiếu đăng ký> → chỉ mẫu hợp với căn của phiếu (dự án / tòa / số phòng ngủ)
   if (qs.all && qs.res) {
     const r = await one('SELECT unit_id FROM kd_reservation WHERE id = $1', [+qs.res]);
-    const ts = await q("SELECT code, name, kind, scope, bedrooms FROM kd_template WHERE active AND kind IN ('dang_ky_can','dang_ky_noi_that') ORDER BY id");
+    const ts = await q("SELECT code, name, kind, scope, bedrooms FROM kd_template WHERE active AND kind IN ('dang_ky_can','dang_ky_noi_that') AND coalesce(ent, 'reservation') = 'reservation' ORDER BY id");
+    const sc = await IO.recScope('reservation', qs.res);
     const fit = new Set([...await IO.regTemplates('dang_ky_can', r?.unit_id), ...await IO.regTemplates('dang_ky_noi_that', r?.unit_id)].map(t => t.code));
     const out = new Map();
     for (const t of ts) {
       const key = t.name.replace(/\s*–?\s*hoàn thiện căn hộ \d phòng ngủ$/, '');   // 2PN / 3PN cùng một file → một lựa chọn
-      const o = out.get(key); if (!o || (!o.fit && fit.has(t.code))) out.set(key, { code: t.code, kind: t.kind, label: key === t.name ? t.name : key + ' – hoàn thiện căn hộ', fit: fit.has(t.code) });
+      const lv = IO.tplFitLevel(t, sc);
+      const o = out.get(key); if (!o || (!o.fit && fit.has(t.code))) out.set(key, { code: t.code, kind: t.kind, label: key === t.name ? t.name : key + ' – hoàn thiện căn hộ', fit: fit.has(t.code), lv: Math.max(lv, o?.lv ?? -1), scope: t.scope });
     }
     return send(res, 200, [...out.values()]);
   }
@@ -567,6 +575,7 @@ R('POST', '/api/mau4/undo', async (req, res, u) => send(res, 200, await M4.bulkU
 R('GET', '/api/mau4/xlsx', async (req, res, u, p, qs) => sendFile(res, await M4.xlsx(u, qs), `Mau4_ho_so_${qs.kind === 'thue' ? 'thue' : 'mua'}_NOXH_${C.today()}.xlsx`, MIME['.xlsx']));
 R('GET', '/print/sale_notice/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printSaleNotice(p.id, u, qs.kind, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 R('GET', '/print/cancel_req/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printCancelReq(p.id, u), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
+R('GET', '/api/template-scope/:ent/:id', async (req, res, u, p) => send(res, 200, await IO.recScope(p.ent, p.id)));
 R('GET', '/api/template-fields/:ent', async (req, res, u, p) => send(res, 200, IO.tplFields(p.ent)));
 R('POST', '/api/template-preview', async (req, res, u) => send(res, 200, { html: await IO.previewTemplate(await readJson(req), u) }));
 R('GET', '/print/tpl/:ent/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printGeneric(p.ent, p.id, u, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
