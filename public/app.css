@@ -1678,3 +1678,9 @@ label.tplr { display: flex; gap: 8px; align-items: center; padding: 7px 0; }
 /* 11/11/2026: ô ngày / tháng / năm sinh gõ sai → đỏ ngay */
 .gridin .gridt input.bad, .gridt input.bad { border-color: #d64545 !important; background: #fff1f0; color: #b42318; }
 .gridt input[data-gc="bday"], .gridt input[data-gc="bmonth"], .gridt input[data-gc="byear"] { text-align: center; }
+
+/* 11/11/2026: danh mục giấy tờ — thanh điền nhanh */
+.cklist .ck-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--line, #e3e8f0); background: var(--sf-lav-50, #f6f8fc); }
+.cklist .ck-sum { margin-right: 6px; font-size: 13px; }
+.cklist .it[data-i] .ck-n { cursor: pointer; }
+.cklist .it[data-i] .ck-n:hover { color: var(--cobalt, #2A4F8A); text-decoration: underline dotted; }

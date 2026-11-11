@@ -213,7 +213,9 @@ function input(f, v, rec = {}, { ro, id } = {}) {
 const CK = [['', '— chưa —'], ['da_nhan', 'Đã nhận / đạt'], ['thieu', 'Thiếu'], ['can_sua', 'Cần sửa / bổ sung']];
 // qty: thêm cột «Số lượng» (bản) — dùng in biên bản giao nhận hồ sơ
 function checkRows(items, qty) {
-  return `<div class="it hd"><div>Giấy tờ / hạng mục</div>${qty ? '<div>Số lượng</div>' : ''}<div>Tình trạng</div><div>Ghi chú</div><div></div></div>` + items.map((x, i) => `<div class="it ${x.st || ''}" data-i="${i}"><div class="ck-n">${esc(x.n)}</div>${qty ? `<div><input data-ck="qty" inputmode="numeric" value="${esc(x.qty ?? '')}" placeholder="0"></div>` : ''}<div><select data-ck="st">${CK.map(o => `<option value="${o[0]}" ${o[0] === (x.st || '') ? 'selected' : ''}>${o[1]}</option>`).join('')}</select></div><div><input data-ck="note" value="${esc(x.note || '')}" placeholder="Ghi chú (không bắt buộc)"></div><div class="ck-act"><button type="button" class="btn sm ghost" data-ck-ed title="Sửa tên giấy tờ">${ico('fa-pen')}</button><button type="button" class="btn sm ghost danger" data-ck-del title="Xóa giấy tờ này khỏi hồ sơ">${ico('fa-trash')}</button></div><input type="hidden" data-ck="n" value="${esc(x.n)}"></div>`).join('')
+  const nOk = items.filter(x => x.st === 'da_nhan').length;
+  return `<div class="ck-bar"><span class="ck-sum">Đã nhận <b>${nOk}</b>/${items.length}</span><button type="button" class="btn sm ok" data-ck-all="da_nhan" title="Đánh dấu tất cả giấy tờ «Đã nhận / đạt»">${ico('fa-check-double')} Đủ hết hồ sơ</button><button type="button" class="btn sm" data-ck-all="thieu" title="Các giấy tờ chưa đánh dấu → «Thiếu»">${ico('fa-circle-exclamation')} Còn lại là thiếu</button><button type="button" class="btn sm ghost" data-ck-all="" title="Xóa tình trạng tất cả giấy tờ">${ico('fa-rotate-left')} Xóa đánh dấu</button><span class="muted small">Bấm tên giấy tờ để đánh dấu / bỏ «Đã nhận»</span></div>`
+    + `<div class="it hd"><div>Giấy tờ / hạng mục</div>${qty ? '<div>Số lượng</div>' : ''}<div>Tình trạng</div><div>Ghi chú</div><div></div></div>` + items.map((x, i) => `<div class="it ${x.st || ''}" data-i="${i}"><div class="ck-n">${esc(x.n)}</div>${qty ? `<div><input data-ck="qty" inputmode="numeric" value="${esc(x.qty ?? '')}" placeholder="0"></div>` : ''}<div><select data-ck="st">${CK.map(o => `<option value="${o[0]}" ${o[0] === (x.st || '') ? 'selected' : ''}>${o[1]}</option>`).join('')}</select></div><div><input data-ck="note" value="${esc(x.note || '')}" placeholder="Ghi chú (không bắt buộc)"></div><div class="ck-act"><button type="button" class="btn sm ghost" data-ck-ed title="Sửa tên giấy tờ">${ico('fa-pen')}</button><button type="button" class="btn sm ghost danger" data-ck-del title="Xóa giấy tờ này khỏi hồ sơ">${ico('fa-trash')}</button></div><input type="hidden" data-ck="n" value="${esc(x.n)}"></div>`).join('')
     + `<div class="it"><div class="row"><input data-ck-new placeholder="+ Thêm giấy tờ khác…" style="flex:1"><button type="button" class="btn sm" data-ck-add>Thêm</button></div></div>`;
 }
 function readCheck(el) { return $$('.it[data-i]', el).map(r => { const q = $('[data-ck=qty]', r); return { n: $('[data-ck=n]', r).value, st: $('[data-ck=st]', r).value, note: $('[data-ck=note]', r).value, ...(q ? { qty: q.value.trim() } : {}) }; }); }
@@ -280,7 +282,16 @@ function wireInputs(root, onChange) {
     });
   });
   $$('.cklist', root).forEach(el => {
-    el.addEventListener('change', e => { const r = e.target.closest('.it[data-i]'); if (r && e.target.dataset.ck === 'st') r.className = 'it ' + e.target.value; });
+    const ckSum = () => { const b = $('.ck-sum b', el); if (b) b.textContent = $$('[data-ck=st]', el).filter(x => x.value === 'da_nhan').length; };
+    const ckSet = (r, v) => { const sel = $('[data-ck=st]', r); if (!sel) return; sel.value = v; r.className = 'it ' + v; };
+    el.addEventListener('change', e => { const r = e.target.closest('.it[data-i]'); if (r && e.target.dataset.ck === 'st') r.className = 'it ' + e.target.value; ckSum(); });
+    // điền nhanh (11/11/2026): Đủ hết hồ sơ / còn lại là thiếu / xóa đánh dấu; bấm tên giấy tờ = bật / tắt «Đã nhận»
+    el.addEventListener('click', e => {
+      const all = e.target.closest('[data-ck-all]');
+      if (all) { const v = all.dataset.ckAll; $$('.it[data-i]', el).forEach(r => { const cur = $('[data-ck=st]', r)?.value; if (v === 'thieu' ? !cur : true) ckSet(r, v); }); ckSum(); el.dispatchEvent(new Event('change', { bubbles: true })); return; }
+      const nm = e.target.closest('.ck-n'); const r = nm && nm.closest('.it[data-i]');
+      if (r && !$('input', nm)) { ckSet(r, $('[data-ck=st]', r).value === 'da_nhan' ? '' : 'da_nhan'); ckSum(); el.dispatchEvent(new Event('change', { bubbles: true })); }
+    });
     el.addEventListener('click', e => { if (!e.target.matches('[data-ck-add]')) return; const inp = $('[data-ck-new]', el); const v = inp.value.trim(); if (!v) return; const items = readCheck(el); items.push({ n: v, st: '', note: '' }); el.innerHTML = checkRows(items, 'qty' in el.dataset); });
     // sửa tên / xóa từng giấy tờ (lưu khi bấm Lưu form)
     el.addEventListener('click', e => {
