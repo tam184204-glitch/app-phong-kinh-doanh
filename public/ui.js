@@ -806,6 +806,29 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     for (const [c, x] of Object.entries(v)) { const el = tr && $(`[data-gc="${c}"]`, tr); if (el && !el.value && x && !String(x).startsWith('•')) el.value = x; }
     const ba = form.elements.bank_account; if (ba && !ba.value && k.bank_account && !String(k.bank_account).startsWith('•')) ba.value = k.bank_account;
   };
+  // hồ sơ NOXH (11/11/2026): chọn mã căn / đổi Hình thức → tìm phiếu Đăng ký mua / thuê đang hiệu lực của căn → điền phiếu, khách, chủ hộ, số tài khoản
+  if (ent === 'noxh_check' && !id) {
+    const setRef = (k, v, label) => { const h = form.elements[k]; if (!h) return; h.value = v ?? ''; const t = h.closest('.combo')?.querySelector('[data-combo]'); if (t) t.value = label || ''; };
+    const LIVE = ['cho_duyet', 'giu_cho', 'qua_han', 'da_coc', 'chuyen_hd', 'nhap'];
+    let last = null;
+    const fromUnit = async () => {
+      const uid = form.elements.unit_id?.value; if (!uid) return;
+      const want = form.elements.reg_kind?.value || 'mua';
+      const rs = (await api('GET', `/api/e/reservation?f_unit_id=${uid}&limit=50`)).rows.filter(r => LIVE.includes(r.status))
+        .sort((a, b) => (a.status === 'nhap') - (b.status === 'nhap') || b.id - a.id);   // phiếu đã giữ chỗ / đặt cọc trước phiếu mới đăng ký
+      const r = rs.find(x => (x.deal || 'mua') === want) || rs[0];
+      if (!r) { toast('Căn này chưa có phiếu Đăng ký mua / thuê đang hiệu lực — nhập thông tin khách bằng tay'); return; }
+      if (last && last !== r.customer_id) $$('.gridin[name="head"] tr[data-gr] [data-gc]', form).forEach(el => { if (!el.readOnly) el.value = ''; });   // đổi sang căn của khách khác: xóa chủ hộ đã tự điền
+      setRef('reservation_id', r.id, [r.code, r.cust_name].filter(Boolean).join(' · '));
+      setRef('customer_id', r.customer_id, r.customer_id__l || r.cust_name);
+      if (form.elements.reg_kind && r.deal && form.elements.reg_kind.value !== r.deal) form.elements.reg_kind.value = r.deal;
+      const ba = form.elements.bank_account; if (ba && last && last !== r.customer_id) ba.value = '';
+      last = r.customer_id;
+      await fillHead(r.customer_id);
+      toast(`Đã lấy thông tin khách theo phiếu ${r.code || '#' + r.id} (${r.deal === 'thue' ? 'đăng ký thuê' : 'đăng ký mua'})`);
+    };
+    form.addEventListener('change', e => { if (['unit_id', 'reg_kind'].includes(e.target.name)) fromUnit().catch(err => toast(err.message, true)); });
+  }
   // chọn căn / khách → tự điền các ô liên quan (giá theo danh mục sản phẩm, thông tin khách)
   for (const f of fields.filter(f => f.fill)) form.addEventListener('change', async e => {
     if (e.target.name !== f.k || !e.target.value) return;
