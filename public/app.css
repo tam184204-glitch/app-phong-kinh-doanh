@@ -1652,3 +1652,6 @@ table.t tfoot td { background: var(--paper); border-top-color: var(--line); }
 .du .ad-head-extra a.ad-btn, .du .ad-head-sub a { text-decoration: none; }
 .du .ad-table td small { display: block; }
 .du .du-thu { height: 32px; padding: 0 12px; font-size: 13px; margin-right: 6px; }
+
+/* 11/11/2026: tiêu đề bảng Tình trạng công nợ đến hạn 1 dòng — «Tình trạng vay vốn» xuống 2 dòng làm lệch hàng tiêu đề */
+.us-t thead th { white-space: nowrap; vertical-align: middle; }
