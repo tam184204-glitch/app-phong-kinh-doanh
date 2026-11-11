@@ -97,6 +97,34 @@ function fakeRes(done) {
 }
 const isApi = u => typeof u === 'string' && (u.startsWith('/api/') || u.startsWith('/print/'));
 
+const DEMO_USERS = [
+  ['tampm', 'thu.quantri', 'Phạm Minh Tâm', 'admin', 'Quản trị hệ thống'],
+  ['dungpt', null, 'Phạm Tiến Dũng', 'lanh_dao', 'Chủ tịch Tập đoàn'],
+  ['dungntt', 'thu.truongphong', 'Nguyễn Thị Thanh Dung', 'truong_phong', 'Trưởng phòng Kinh doanh'],
+  ['kinhdoanh1', 'thu.banhang', 'Nhân viên kinh doanh 1', 'ban_hang', 'Nhân viên kinh doanh'],
+  ['kinhdoanh2', 'thu.banhang2', 'Nhân viên kinh doanh 2', 'ban_hang', 'Nhân viên kinh doanh'],
+  ['kinhdoanh3', null, 'Nhân viên kinh doanh 3', 'ban_hang', 'Nhân viên kinh doanh'],
+  ['kinhdoanh4', null, 'Nhân viên kinh doanh 4', 'ban_hang', 'Nhân viên kinh doanh'],
+];
+async function demoAccounts(db) {
+  const IO = require('../server/io');
+  if (await db.one('SELECT 1 FROM kd_user WHERE lower(username) = $1 AND active', ['tampm']) && (await db.one('SELECT count(*) n FROM kd_user WHERE active')).n === DEMO_USERS.length) return;   // đã đúng
+  const keep = [];
+  for (const [un, old, name, role, title] of DEMO_USERS) {
+    let u = await db.one('SELECT id FROM kd_user WHERE lower(username) = $1', [un]);
+    if (!u && old) {
+      u = await db.one('SELECT id FROM kd_user WHERE lower(username) = $1', [old]);
+      if (u) await db.q('UPDATE kd_user SET username = $2, full_name = $3 WHERE id = $1', [u.id, un, name]);   // họ tên người dùng đã tự sửa thì vẫn đặt lại đúng người
+    }
+    if (!u) u = await IO.createUser(db, { username: un, full_name: name, role, title }, (await db.one("SELECT * FROM kd_user WHERE role = 'admin' ORDER BY id LIMIT 1")) || require('../server/core').SYS);
+    await db.q('UPDATE kd_user SET full_name = $2, role = $3, title = $4, dept = $5, active = true, is_trial = false, must_change = false WHERE id = $1',
+      [u.id, name, role, title, role === 'lanh_dao' ? 'Chủ tịch, Ban Giám đốc' : role === 'admin' ? 'Quản trị hệ thống' : 'Phòng Kinh doanh']);
+    keep.push(u.id);
+  }
+  await db.q('UPDATE kd_user SET active = false WHERE NOT (id = ANY($1))', [keep]);
+  await db.q('DELETE FROM kd_session WHERE NOT (user_id = ANY($1))', [keep]);
+}
+
 async function boot(pgliteUrl) {
   let pg = null;
   // đặt trước mọi bước khởi động: dữ liệu trên trình duyệt hỏng thì màn hình lỗi vẫn gọi được để nạp lại
@@ -155,6 +183,9 @@ async function boot(pgliteUrl) {
     const seed = require('../server/seed');
     await seed.seedBase();
   }
+  // tài khoản bản demo (Tâm 11/11/2026): 4 nhân viên kinh doanh, trưởng phòng Nguyễn Thị Thanh Dung, quản trị Phạm Minh Tâm, lãnh đạo Phạm Tiến Dũng.
+  // Đổi tên tài khoản thử cũ (giữ id → dữ liệu đã nhập vẫn đúng người), tạo tài khoản còn thiếu, ngừng các tài khoản khác. Chạy mỗi lần mở, chỉ sửa khi còn lệch.
+  try { await tx(db => demoAccounts(db)); } catch (e) { console.warn('tài khoản demo', e); }
   // bảng giá Bravo tòa O CTS (94 căn) — nạp như «Nhập bảng hàng» trên máy thật; chạy lại an toàn (cập nhật theo mã căn)
   if ((await one("SELECT count(*) n FROM kd_unit u JOIN kd_building b ON b.id = u.building_id JOIN kd_project p ON p.id = u.project_id WHERE p.code = 'CTS' AND b.code IN ('O', 'K')")).n < 206) {
     say('Đang nạp bảng giá tòa O, tòa K…');
