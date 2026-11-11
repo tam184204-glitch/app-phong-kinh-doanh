@@ -421,8 +421,8 @@ async function debtStatus(db, user, f = {}) {
     const lates = all.map(lateOf), lateInt = lates.some(x => x != null) ? lates.reduce((a, x) => a + (x || 0), 0) : null, rateSet = all.some(c => c.kind === 'hdmb' && c.late_rate != null);
     const callsU = allCalls.filter(x => all.some(c => c.id === x.contract_id));
     const W = [];
-    if (grp === 'n5') W.push(['r', `Nợ khó đòi — quá hạn ${days} ngày, cần phương án xử lý`]);
-    else if (overdue > 0) W.push([days > D[0] ? 'r' : 'a', `Quá hạn ${days} ngày · ${fmtMoney(overdue)}`]);
+    if (grp === 'n5') W.push(['r', `Nợ khó đòi — quá hạn ${days} ngày, cần phương án xử lý`, 'qh']);   // 'qh': bảng CN-06 không hiện dòng này (đã có cột Số ngày quá hạn)
+    else if (overdue > 0) W.push([days > D[0] ? 'r' : 'a', `Quá hạn ${days} ngày · ${fmtMoney(overdue)}`, 'qh']);
     if (lc?.promise_st === 'Thất hẹn') W.push(['r', `Thất hẹn cam kết ${fmtMoney(lc.promise_amount)} ngày ${C.dmy(lc.promise_on)}`]);
     else if (lc?.promise_amount && lc.promise_on >= t) W.push(['b', `Hẹn trả ${fmtMoney(lc.promise_amount)} ngày ${C.dmy(lc.promise_on)}`]);
     const due7 = sum(c => c.d.due7);

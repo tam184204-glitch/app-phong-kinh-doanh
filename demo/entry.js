@@ -7,6 +7,60 @@ const SID_KEY = 'ctg-kd-demo-sid';
 let sid = null;
 try { sid = localStorage.getItem(SID_KEY); } catch {}
 
+// ===== Mẫu biểu dùng chung qua Git (11/11/2026) =====
+// Bản demo không có máy chủ: mẫu biểu sửa ở màn Quản trị › Mẫu biểu chỉ nằm trên trình duyệt người sửa. Quản trị bấm «Đẩy mẫu biểu lên Git»
+// → ghi docs/mau-bieu.json vào kho GitHub (GitHub Pages phát lại sau 1–2 phút) → trình duyệt khác mở link thấy «ver» mới thì ghi đè mẫu của mình.
+const TPL_FILE = 'mau-bieu.json', TPL_VER = 'ctg-kd-mau-bieu-ver', TPL_COLS = 'code, name, kind, content, scope, bedrooms, active';
+const GH = { owner: 'tam184204-glitch', repo: 'app-phong-kinh-doanh', branch: 'main', path: 'docs/' + TPL_FILE, tokenKey: 'ctg-kd-gh-token' };
+async function syncTemplatesFromGit(q, one) {
+  let cur = null; try { cur = localStorage.getItem(TPL_VER); } catch {}
+  const r = await fetch(new URL(`${TPL_FILE}?t=${Date.now()}`, location.href), { cache: 'no-store' });   // ?t= qua bộ đệm 10 phút của Pages
+  if (!r.ok) return;
+  const d = await r.json().catch(() => null);
+  if (!d?.ver || d.ver === cur || !Array.isArray(d.templates) || !d.templates.length) return;
+  say('Đang cập nhật mẫu biểu dùng chung…');
+  const codes = [];
+  for (const t of d.templates) {
+    if (!t.code || !t.name || !t.kind) continue;
+    codes.push(String(t.code).toUpperCase());
+    const v = [t.code, t.name, t.kind, t.content || '', t.scope ?? null, t.bedrooms ?? null, t.active !== false];
+    const u = await q('UPDATE kd_template SET name = $2, kind = $3, content = $4, scope = $5, bedrooms = $6, active = $7, updated_at = now() WHERE upper(code) = upper($1) RETURNING id', v);
+    if (!u.length) await q(`INSERT INTO kd_template (${TPL_COLS}) VALUES ($1, $2, $3, $4, $5, $6, $7)`, v);
+  }
+  // mẫu quản trị đã xóa: xóa theo; đang được bản ghi khác trỏ tới thì chỉ tắt
+  try { await q('DELETE FROM kd_template WHERE NOT (upper(code) = ANY($1))', [codes]); }
+  catch (e) { console.warn('xóa mẫu cũ', e); await q('UPDATE kd_template SET active = false WHERE NOT (upper(code) = ANY($1))', [codes]); }
+  try { localStorage.setItem(TPL_VER, d.ver); } catch {}
+  console.log(`mẫu biểu từ Git: ${codes.length} mẫu, bản ${d.ver}${d.by ? ' do ' + d.by : ''}`);
+}
+// Gọi từ giao diện (nút chỉ hiện cho vai trò Quản trị). Mã truy cập GitHub (fine-grained token, quyền Contents: Read and write của kho) lưu trên trình duyệt này.
+window.__ctgDemoPublish = async ({ user } = {}) => {
+  let token = null; try { token = localStorage.getItem(GH.tokenKey); } catch {}
+  if (!token) {
+    token = prompt(`Dán mã truy cập GitHub (Personal access token, fine-grained; quyền Contents: Read and write cho kho ${GH.owner}/${GH.repo}).\nMã chỉ lưu trên trình duyệt này, không đưa vào bản demo.`);
+    if (!token || !token.trim()) return null;
+    token = token.trim();
+    try { localStorage.setItem(GH.tokenKey, token); } catch {}
+  }
+  const { q } = require('../server/db');
+  const rows = await q(`SELECT ${TPL_COLS} FROM kd_template ORDER BY id`);
+  if (!rows.length) throw new Error('Chưa có mẫu biểu nào để đẩy');
+  const ver = new Date().toISOString();
+  const body = JSON.stringify({ ver, by: user || '', templates: rows }, null, 1);
+  const api = `https://api.github.com/repos/${GH.owner}/${GH.repo}/contents/${GH.path}`;
+  const H = { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json' };
+  const g = await fetch(`${api}?ref=${GH.branch}&t=${Date.now()}`, { headers: H, cache: 'no-store' });
+  if (g.status === 401 || g.status === 403) { try { localStorage.removeItem(GH.tokenKey); } catch {} throw new Error('Mã truy cập GitHub sai, hết hạn hoặc thiếu quyền Contents — bấm lại để nhập mã mới'); }
+  const sha = g.ok ? (await g.json()).sha : undefined;
+  const p = await fetch(api, { method: 'PUT', headers: H, body: JSON.stringify({
+    message: `Mẫu biểu: ${rows.length} mẫu — ${user || 'quản trị'} đẩy từ bản demo ${ver.slice(0, 16).replace('T', ' ')}`,
+    content: Buffer.from(body, 'utf8').toString('base64'), sha, branch: GH.branch }) });
+  if (!p.ok) { const e = await p.json().catch(() => ({})); throw new Error(`GitHub từ chối (${p.status}): ${e.message || ''}`); }
+  try { localStorage.setItem(TPL_VER, ver); } catch {}   // trình duyệt này đã là bản mới
+  return { n: rows.length, ver };
+};
+window.__ctgDemoForgetToken = () => { try { localStorage.removeItem(GH.tokenKey); } catch {} };
+
 // req giả: đủ cho readJson (on data/end) và upload (pipe → busboy shim)
 function fakeReq(method, url, headers, body) {
   const h = {}; let fired = false;
@@ -128,6 +182,8 @@ async function boot(pgliteUrl) {
   } catch (e) { console.warn('đồng bộ giá phiếu', e); }
   // mẫu in đơn đăng ký chuẩn (thêm 27/10/2026) — giống máy thật: nạp mẫu còn thiếu, tắt mẫu khung cũ
   try { await require('../server/seed').ensureTemplates(); } catch (e) { console.warn('mẫu in', e); }
+  // mẫu biểu dùng chung từ Git (docs/mau-bieu.json, 11/11/2026): quản trị bấm «Đẩy mẫu biểu lên Git» ở màn Mẫu biểu → mọi trình duyệt mở link nhận bản mới
+  try { await syncTemplatesFromGit(q, one); } catch (e) { console.warn('mẫu biểu từ Git', e); }
   // 04/11/2026: bỏ 87 hồ sơ NOXH giả (Mẫu 4 demo) — không nạp nữa; trình duyệt đã nạp thì dọn ở bước «dọn dữ liệu thử» bên dưới
   // tòa K dự án CTS (thêm 27/10/2026, chưa có căn)
   if (!(await one("SELECT 1 FROM kd_building b JOIN kd_project p ON p.id = b.project_id WHERE p.code = 'CTS' AND b.code = 'K'")))
