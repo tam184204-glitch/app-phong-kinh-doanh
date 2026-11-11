@@ -1655,3 +1655,13 @@ table.t tfoot td { background: var(--paper); border-top-color: var(--line); }
 
 /* 11/11/2026: tiêu đề bảng Tình trạng công nợ đến hạn 1 dòng — «Tình trạng vay vốn» xuống 2 dòng làm lệch hàng tiêu đề */
 .us-t thead th { white-space: nowrap; vertical-align: middle; }
+
+/* 11/11/2026: form mẫu biểu — nơi hiện mẫu, trường trộn bấm để chèn, xem thử */
+.tplh { background: var(--sf-lav-50, #f4f6fb); border: 1px solid var(--line, #e3e8f0); border-radius: 10px; padding: 10px 12px; }
+.tplh-where { margin-bottom: 8px; color: var(--cobalt, #2A4F8A); }
+.tplh-chips { display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow: auto; }
+.tplh-g { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.tplh-g > b { font-size: 12px; min-width: 110px; color: var(--muted, #667); }
+.tplh-chip { font: 12px/1.2 inherit; padding: 4px 9px; border-radius: 999px; border: 1px solid var(--line, #d4deea); background: #fff; cursor: pointer; }
+.tplh-chip:hover { border-color: var(--cobalt, #2A4F8A); color: var(--cobalt, #2A4F8A); }
+.tplh-foot { display: flex; gap: 10px; align-items: center; margin-top: 8px; flex-wrap: wrap; }

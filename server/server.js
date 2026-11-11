@@ -236,6 +236,8 @@ R('GET', '/api/pii/:ent/:id', async (req, res, u, p) => {
   send(res, 200, Object.fromEntries(fs_.map(f => [f.k, g.row[f.k]])));
 });
 R('GET', '/api/templates', async (req, res, u, p, qs) => {
+  // ?ent=<module> → mẫu của module (nút «Mẫu biểu» / «In theo mẫu»); &active=1 chỉ mẫu đang dùng
+  if (qs.ent) return send(res, 200, await q(`SELECT id, code, name, kind, ent, scope, bedrooms, active, updated_at FROM kd_template WHERE ent = $1 ${qs.active ? 'AND active' : ''} ORDER BY active DESC, id`, [qs.ent]));
   // ?res=<phiếu đăng ký> → chỉ mẫu hợp với căn của phiếu (dự án / tòa / số phòng ngủ)
   if (qs.all && qs.res) {
     const r = await one('SELECT unit_id FROM kd_reservation WHERE id = $1', [+qs.res]);
@@ -563,8 +565,11 @@ R('GET', '/api/mau4', async (req, res, u, p, qs) => send(res, 200, await M4.data
 R('POST', '/api/mau4/status', async (req, res, u) => send(res, 200, await M4.bulkStatus(u, await readJson(req))));
 R('POST', '/api/mau4/undo', async (req, res, u) => send(res, 200, await M4.bulkUndo(u, await readJson(req))));
 R('GET', '/api/mau4/xlsx', async (req, res, u, p, qs) => sendFile(res, await M4.xlsx(u, qs), `Mau4_ho_so_${qs.kind === 'thue' ? 'thue' : 'mua'}_NOXH_${C.today()}.xlsx`, MIME['.xlsx']));
-R('GET', '/print/sale_notice/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printSaleNotice(p.id, u, qs.kind), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
+R('GET', '/print/sale_notice/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printSaleNotice(p.id, u, qs.kind, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 R('GET', '/print/cancel_req/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printCancelReq(p.id, u), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
+R('GET', '/api/template-fields/:ent', async (req, res, u, p) => send(res, 200, IO.tplFields(p.ent)));
+R('POST', '/api/template-preview', async (req, res, u) => send(res, 200, { html: await IO.previewTemplate(await readJson(req), u) }));
+R('GET', '/print/tpl/:ent/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printGeneric(p.ent, p.id, u, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 R('GET', '/print/contract/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printContract(p.id, u, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 
 // ---------- máy chủ ----------

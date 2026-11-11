@@ -148,6 +148,7 @@ NHÂN VIÊN KINH DOANH                                   KHÁCH HÀNG ĐĂNG KÝ
 // khi khởi động: thêm mẫu mặc định còn thiếu (không đè mẫu đã sửa) + bổ sung dữ liệu phiếu cũ
 async function ensureTemplates() {
   await tx(async db => {
+    await require('./biz').fillTplEnt(db);   // mẫu cũ chưa có module (11/11/2026)
     const sysU = await db.one("SELECT * FROM kd_user WHERE role = 'admin' ORDER BY id LIMIT 1") || C.SYS;
     for (const t of REG_TEMPLATES()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });
     // mẫu chuẩn theo file Excel phòng Kinh doanh: lần đầu nạp thì tắt các mẫu khung cũ

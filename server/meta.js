@@ -989,11 +989,12 @@ def('template', {
     { k: 'code', l: 'Mã mẫu', t: 'text', req: 1, uniq: 1 },
     { k: 'name', l: 'Tên mẫu', t: 'text', req: 1 },
     { k: 'kind', l: 'Loại', t: 'sel', req: 1, o: [['hop_dong', 'Hợp đồng'], ['phu_luc', 'Phụ lục'], ['bien_ban', 'Biên bản'], ['de_nghi', 'Phiếu đề nghị'], ['thong_bao', 'Thông báo'], ['bao_cao', 'Báo cáo'], ['dang_ky_can', 'Bản đăng ký căn hộ'], ['dang_ky_noi_that', 'Bản đăng ký nội thất'], ['bien_ban_giao_nhan', 'Biên bản giao nhận hồ sơ']] },
+    { k: 'ent', l: 'Hiện ở module', t: 'sel', o: [], help: 'Mẫu hiện ở nút «In theo mẫu» khi mở một bản ghi của màn này. Tạo / sửa mẫu ngay trong từng module: nút «Mẫu biểu» trên đầu danh sách' },   // o: điền sau MENU (TPL_PLACES)
     { k: 'content', l: 'Nội dung mẫu', t: 'long', req: 1, help: 'Trường trộn: {so_hd} {ten_kh} {dien_thoai} {cccd} {dia_chi} {ma_can} {du_an} {toa} {tang} {dien_tich} {gia_tri} {gia_tri_chu} {ngay} {lich_thanh_toan} — bản đăng ký: {ma_phieu} {ngay_dk} {tien_coc} {trang_thai} {tien_trinh} {ghi_chu} {goi_hoan_thien} {gia_tri_hoan_thien} {gia_tri_hoan_thien_chu} {danh_muc_noi_that} {so_don} {ky_hieu} {ngay_viet} {don_gia} {gia_truoc_thue} {thue_vat} {phi_bao_tri} {tong_gia} {tong_gia_chu} {chinh_sach} — nội dung bắt đầu bằng thẻ HTML thì in theo HTML' },
     { k: 'scope', l: 'Áp dụng cho dự án / tòa', t: 'text', help: 'Mã dự án hoặc mã tòa, cách nhau dấu phẩy (TNS, G…) — để trống = mọi căn' },
     { k: 'bedrooms', l: 'Áp dụng cho căn số phòng ngủ', t: 'int', help: 'Để trống = mọi loại căn' },
     { k: 'active', l: 'Đang dùng', t: 'bool', def: true },
-  ], list: ['code', 'name', 'kind', 'scope', 'bedrooms', 'active'],
+  ], list: ['code', 'name', 'ent', 'kind', 'scope', 'bedrooms', 'active'],
 });
 
 // menu (12 phân hệ). view = màn tự dựng; ent = danh sách thực thể
@@ -1011,6 +1012,21 @@ const MENU = [
   ['11', 'Báo cáo quản trị', 'fa-chart-pie', [['reports', 'Báo cáo tổng hợp'], ['e:report'], ['e:target']]],
   ['12', 'Quản trị hệ thống', 'fa-gear', [['users', 'Tài khoản – phân quyền'], ['catalog', 'Danh mục dùng chung'], ['flows', 'Luồng phê duyệt'], ['e:template'], ['audit', 'Nhật ký thao tác'], ['integr', 'Tích hợp MISA / Bravo / BSC']]],
 ];
+// nơi mẫu biểu hiện (11/11/2026): mọi màn danh sách bản ghi trong menu — «04 Giao dịch bán hàng › Đăng ký mua / thuê – giữ chỗ»…
+const VIEW_ENT = { products: ['unit'], customers: ['customer'], vouchers: ['receipt', 'payment'] };   // màn tự dựng nhưng mở bản ghi của thực thể
+const TPL_PLACES = (() => {
+  const out = new Map();
+  for (const [code, mod, , items] of MENU) for (const [key, label] of items) {
+    const ents = key.startsWith('e:') ? [key.slice(2).split('?')[0]] : VIEW_ENT[key] || [];
+    for (const k of ents) {
+      if (!E[k] || k === 'template' || out.has(k)) continue;
+      const l = k === 'contract' ? 'Hợp đồng (căn hộ chung cư / nhà liền kề)' : ents.length > 1 ? E[k].title : label || E[k].title;
+      out.set(k, `${code} ${mod} › ${l}`);
+    }
+  }
+  return [...out];
+})();
+E.template.fields.find(f => f.k === 'ent').o = TPL_PLACES;
 // màn tự dựng chỉ mở cho các vai trò
 const VIEW_ROLES = {
   users: ['admin'], mau4: PII_ROLES, catalog: ['admin', 'truong_phong'], audit: ['admin', 'truong_phong', 'lanh_dao'], integr: ['admin', 'ke_toan', 'truong_phong'],
@@ -1055,4 +1071,4 @@ const VIRT = {
   b_name: 'Họ và tên', days_out: 'Ngày tại cơ quan', sla: 'SLA', n_units: 'Số căn mở bán', n_reg: 'Đã đăng ký / giữ chỗ', n_free: 'Còn trống', project: 'Dự án', building: 'Tòa', stt: 'STT', prints: 'In bản đăng ký', ret_files: 'File scan trả hồ sơ', bbgn: 'In biên bản giao nhận',
 };
 
-module.exports = { M4, SELLERS, PROSPECT_ST, VIRT,  ROLES, ALL, MGR, PII_ROLES, E, MENU, VIEW_ROLES, LOOKUPS, SETTINGS, UNIT_ST };
+module.exports = { M4, SELLERS, PROSPECT_ST, VIRT,  ROLES, ALL, MGR, PII_ROLES, E, MENU, VIEW_ROLES, LOOKUPS, SETTINGS, UNIT_ST, TPL_PLACES };

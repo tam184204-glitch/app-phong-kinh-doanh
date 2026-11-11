@@ -10,7 +10,7 @@ try { sid = localStorage.getItem(SID_KEY); } catch {}
 // ===== Mẫu biểu dùng chung qua Git (11/11/2026) =====
 // Bản demo không có máy chủ: mẫu biểu sửa ở màn Quản trị › Mẫu biểu chỉ nằm trên trình duyệt người sửa. Quản trị bấm «Đẩy mẫu biểu lên Git»
 // → ghi docs/mau-bieu.json vào kho GitHub (GitHub Pages phát lại sau 1–2 phút) → trình duyệt khác mở link thấy «ver» mới thì ghi đè mẫu của mình.
-const TPL_FILE = 'mau-bieu.json', TPL_VER = 'ctg-kd-mau-bieu-ver', TPL_COLS = 'code, name, kind, content, scope, bedrooms, active';
+const TPL_FILE = 'mau-bieu.json', TPL_VER = 'ctg-kd-mau-bieu-ver', TPL_COLS = 'code, name, kind, content, scope, bedrooms, active, ent';
 const GH = { owner: 'tam184204-glitch', repo: 'app-phong-kinh-doanh', branch: 'main', path: 'docs/' + TPL_FILE, tokenKey: 'ctg-kd-gh-token' };
 async function syncTemplatesFromGit(q, one) {
   let cur = null; try { cur = localStorage.getItem(TPL_VER); } catch {}
@@ -23,13 +23,14 @@ async function syncTemplatesFromGit(q, one) {
   for (const t of d.templates) {
     if (!t.code || !t.name || !t.kind) continue;
     codes.push(String(t.code).toUpperCase());
-    const v = [t.code, t.name, t.kind, t.content || '', t.scope ?? null, t.bedrooms ?? null, t.active !== false];
-    const u = await q('UPDATE kd_template SET name = $2, kind = $3, content = $4, scope = $5, bedrooms = $6, active = $7, updated_at = now() WHERE upper(code) = upper($1) RETURNING id', v);
-    if (!u.length) await q(`INSERT INTO kd_template (${TPL_COLS}) VALUES ($1, $2, $3, $4, $5, $6, $7)`, v);
+    const v = [t.code, t.name, t.kind, t.content || '', t.scope ?? null, t.bedrooms ?? null, t.active !== false, t.ent ?? null];
+    const u = await q('UPDATE kd_template SET name = $2, kind = $3, content = $4, scope = $5, bedrooms = $6, active = $7, ent = $8, updated_at = now() WHERE upper(code) = upper($1) RETURNING id', v);
+    if (!u.length) await q(`INSERT INTO kd_template (${TPL_COLS}) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, v);
   }
   // mẫu quản trị đã xóa: xóa theo; đang được bản ghi khác trỏ tới thì chỉ tắt
   try { await q('DELETE FROM kd_template WHERE NOT (upper(code) = ANY($1))', [codes]); }
   catch (e) { console.warn('xóa mẫu cũ', e); await q('UPDATE kd_template SET active = false WHERE NOT (upper(code) = ANY($1))', [codes]); }
+  await require('../server/biz').fillTplEnt({ q });   // bản đẩy trước 11/11/2026 chưa có module
   try { localStorage.setItem(TPL_VER, d.ver); } catch {}
   console.log(`mẫu biểu từ Git: ${codes.length} mẫu, bản ${d.ver}${d.by ? ' do ' + d.by : ''}`);
 }

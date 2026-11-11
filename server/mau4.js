@@ -206,7 +206,7 @@ const BB_CU = () => [['BBGN-CT', 'Tầng 3 tòa CTN, đường Lý Thái Tổ, P
 async function handoverTemplates(qs) {
   const unitId = qs.reservation ? (await one('SELECT unit_id FROM kd_reservation WHERE id = $1', [+qs.reservation]))?.unit_id
     : qs.noxh ? (await one('SELECT unit_id FROM kd_noxh_check WHERE id = $1', [+qs.noxh]))?.unit_id : null;
-  const all = await q('SELECT code, name FROM kd_template WHERE active AND kind = $1 ORDER BY id', [BB_KIND]);
+  const all = await q("SELECT code, name FROM kd_template WHERE active AND kind = $1 AND coalesce(ent, 'noxh_check') IN ('reservation', 'noxh_check') ORDER BY id", [BB_KIND]);
   const fit = (await IO.regTemplates(BB_KIND, unitId)).map(t => t.code);
   return all.map(t => ({ ...t, fit: t.code === fit[0] }));
 }

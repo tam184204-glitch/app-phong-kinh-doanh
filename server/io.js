@@ -437,7 +437,7 @@ async function printContract(id, user, tplCode) {
   const c = C.notFound(await one(`SELECT c.*, u.code unit, u.floor, u.area_tt, u.direction, b.code building, p.name project, p.address p_addr, p.investor,
       k.full_name, k.phone, k.id_no, k.id_date, k.id_place, k.address FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_building b ON b.id = u.building_id
       JOIN kd_project p ON p.id = u.project_id JOIN kd_customer k ON k.id = c.customer_id WHERE c.id = $1`, [+id]), 'hợp đồng');
-  const tpl = await one(`SELECT * FROM kd_template WHERE active AND ${tplCode ? 'code = $1' : "kind = 'hop_dong' ORDER BY id LIMIT 1"}`, tplCode ? [tplCode] : []);
+  const tpl = await one(`SELECT * FROM kd_template WHERE active AND ${tplCode ? 'code = $1' : "kind = 'hop_dong' AND coalesce(ent, 'contract') = 'contract' ORDER BY id LIMIT 1"}`, tplCode ? [tplCode] : []);
   if (!tpl) bad('Chưa có mẫu hợp đồng — tạo ở Quản trị › Mẫu biểu');
   const inst = await q('SELECT * FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [c.id]);
   const pii = ['truong_phong', 'lanh_dao', 'ho_so', 'admin'].includes(user.role);
@@ -479,7 +479,7 @@ const DOTS = '..............................';     // ô trống trên bản in 
 const PRINT_KIND = { dang_ky_can: 'bản đăng ký căn hộ', dang_ky_noi_that: 'bản đăng ký nội thất' };
 // mẫu hợp với căn: đúng loại, phạm vi (mã dự án / tòa) và số phòng ngủ — mẫu ghi rõ phạm vi xếp trước mẫu chung
 async function regTemplates(kind, unitId) {
-  const ts = await q('SELECT * FROM kd_template WHERE active AND kind = $1 ORDER BY id', [kind]);
+  const ts = await q("SELECT * FROM kd_template WHERE active AND kind = $1 AND coalesce(ent, 'reservation') IN ('reservation', 'noxh_check') ORDER BY id", [kind]);
   if (!unitId) return ts;
   const u = await one('SELECT u.bedrooms, b.code bcode, p.code pcode FROM kd_unit u JOIN kd_building b ON b.id = u.building_id JOIN kd_project p ON p.id = u.project_id WHERE u.id = $1', [unitId]);
   if (!u) return ts;
@@ -573,7 +573,7 @@ ${r.reason ? `<p>Lý do: ${escH(r.reason)}</p>` : ''}
 }
 
 // thông báo mở bán: «thong_bao» theo mẫu Thông báo (Mẫu biểu, mã TB-MOBAN-…, theo dự án) / «danh_sach» = danh sách căn mở bán (như «DS mở bán đợt 5 CTS.xlsx»)
-async function printSaleNotice(id, user, kind) {
+async function printSaleNotice(id, user, kind, tplCode) {
   const { row: n } = await C.get('sale_notice', id, user);
   const p = await one('SELECT * FROM kd_project WHERE id = $1', [n.project_id]);
   const seller = M.SELLERS.find(s => s.projects.includes(p.code)) || M.SELLERS[0];
@@ -595,7 +595,8 @@ async function printSaleNotice(id, user, kind) {
 ${units.map((u, i) => `<tr><td class="ct">${i + 1}</td><td>${escH(u.code)}</td><td class="n">${num(u.area_tt)}</td><td class="n">${num(u.area_xd)}</td></tr>`).join('')}
 <tr><td></td><td><b>Tổng cộng: ${units.length} căn</b></td><td class="n"><b>${num(Math.round(units.reduce((s, u) => s + (+u.area_tt || 0), 0) * 10) / 10)}</b></td><td class="n"><b>${num(Math.round(units.reduce((s, u) => s + (+u.area_xd || 0), 0) * 10) / 10)}</b></td></tr></tbody></table>`;
   } else {
-    const tpl = await one(`SELECT * FROM kd_template WHERE active AND kind = 'thong_bao' AND code LIKE 'TB-MOBAN%' ORDER BY (upper(coalesce(scope,'')) = upper($1)) DESC, id LIMIT 1`, [p.code]);
+    const tpl = tplCode ? await one('SELECT * FROM kd_template WHERE active AND code = $1', [tplCode])
+      : await one(`SELECT * FROM kd_template WHERE active AND kind = 'thong_bao' AND code LIKE 'TB-MOBAN%' AND coalesce(ent, 'sale_notice') = 'sale_notice' ORDER BY (upper(coalesce(scope,'')) = upper($1)) DESC, id LIMIT 1`, [p.code]);
     if (!tpl) bad('Chưa có mẫu Thông báo mở bán — tạo ở Quản trị › Mẫu biểu (loại Thông báo, mã bắt đầu TB-MOBAN)');
     const map = { cong_ty: seller.name, cong_ty_hoa: seller.name.toUpperCase(), so_vb: n.doc_no || `&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/${d.getUTCFullYear()}/TB-${p.code}`,
       ngay_viet: `ngày ${String(d.getUTCDate()).padStart(2, '0')} tháng ${String(d.getUTCMonth() + 1).padStart(2, '0')} năm ${d.getUTCFullYear()}`, ten_dot: escH(DOT), du_an: escH(p.name),
@@ -607,5 +608,95 @@ ${units.map((u, i) => `<tr><td class="ct">${i + 1}</td><td>${escH(u.code)}</td><
 <body>${editBar(`${kind === 'danh_sach' ? 'Danh sách căn mở bán' : 'Thông báo mở bán'} ${escH(n.code)} · ${units.length} căn`)}${editDoc(body)}</body></html>`;
 }
 
-module.exports = {
+// ===== Mẫu in chung cho mọi module (11/11/2026) =====
+// Mẫu gắn module (kd_template.ent) → nút «In theo mẫu» trên bản ghi của module đó. Trường trộn {ma_truong}: trường của bản ghi + khách hàng, căn hộ, hợp đồng liên quan + chung.
+const PII_PRINT = ['truong_phong', 'lanh_dao', 'ho_so', 'admin'];
+const REL = {
+  kh: ['Khách hàng', [['ten_kh', 'Họ tên khách hàng'], ['ma_kh', 'Mã khách hàng'], ['dien_thoai', 'Điện thoại'], ['email', 'Email'], ['cccd', 'Số CCCD'], ['ngay_cap', 'Ngày cấp CCCD'], ['noi_cap', 'Nơi cấp CCCD'], ['dia_chi', 'Địa chỉ']]],
+  can: ['Căn hộ', [['ma_can', 'Mã căn'], ['du_an', 'Dự án'], ['dia_diem', 'Địa điểm dự án'], ['chu_dau_tu', 'Chủ đầu tư'], ['toa', 'Tòa'], ['tang', 'Tầng'], ['dien_tich', 'Diện tích thông thủy (m²)'], ['huong', 'Hướng'], ['phong_ngu', 'Số phòng ngủ']]],
+  hd: ['Hợp đồng', [['so_hd', 'Số hợp đồng'], ['ngay_ky', 'Ngày ký hợp đồng'], ['gia_tri', 'Giá trị hợp đồng'], ['gia_tri_chu', 'Giá trị hợp đồng bằng chữ'], ['lich_thanh_toan', 'Bảng lịch thanh toán']]],
+  chung: ['Chung', [['ngay', 'Ngày in (dd/mm/yyyy)'], ['ngay_viet', 'Ngày in (ngày … tháng … năm …)'], ['nguoi_lap', 'Người in']]],
+};
+const SKIP_T = ['json', 'check', 'kenh'];
+function tplFields(ent) {
+  const e = E[ent]; if (!e) bad('Module không hợp lệ');
+  const has = k => e.fields.some(f => f.k === k);
+  const own = e.fields.filter(f => !SKIP_T.includes(f.t) && !f.noForm).map(f => [f.k, f.l]);
+  for (const f of e.fields) if (f.t === 'money') own.push([f.k + '_chu', f.l + ' (bằng chữ)']);
+  const gs = [[e.title, own]];
+  if (ent === 'customer' || has('customer_id')) gs.push(REL.kh);
+  if (ent === 'unit' || has('unit_id')) gs.push(REL.can);
+  if (ent === 'contract' || has('contract_id')) gs.push(REL.hd);
+  gs.push(REL.chung);
+  return gs.map(([g, items]) => ({ g, items: items.map(([k, l]) => ({ k, l })) }));
+}
+async function fieldText(f, v, row) {
+  if (v == null || v === '') return '';
+  if (['ref', 'refs', 'user'].includes(f.t)) return row[f.k + '__l'] ?? '';
+  if (f.t === 'sel') return await C.optLabel(f, v) ?? v;
+  if (f.t === 'date') return dmy(v);
+  if (f.t === 'dt') return dmy(String(v).slice(0, 10)) + ' ' + String(v).slice(11, 16);
+  if (f.t === 'money') return fmtMoney(v);
+  if (f.t === 'bool') return v ? 'Có' : 'Không';
+  if (f.t === 'num') return String(v).replace('.', ',');
+  return String(v);
+}
+async function tplMap(ent, row, user) {
+  const e = E[ent], map = {}, pii = PII_PRINT.includes(user.role);
+  for (const f of e.fields) {
+    if (SKIP_T.includes(f.t)) continue;
+    map[f.k] = f.pii && !pii && row[f.k] ? '(ẩn)' : await fieldText(f, row[f.k], row);
+    if (f.t === 'money') map[f.k + '_chu'] = +row[f.k] ? moneyWords(+row[f.k]) : '';
+  }
+  const kid = ent === 'customer' ? row.id : row.customer_id;
+  if (kid) {
+    const k = await one('SELECT * FROM kd_customer WHERE id = $1', [kid]);
+    if (k) Object.assign(map, { ten_kh: k.full_name, ma_kh: k.code, dien_thoai: k.phone, email: k.email, cccd: pii ? k.id_no : (k.id_no ? '(ẩn)' : ''), ngay_cap: pii ? dmy(k.id_date) : '', noi_cap: pii ? k.id_place : '', dia_chi: k.address });
+  }
+  const cid = ent === 'contract' ? row.id : row.contract_id;
+  const c = cid ? await one('SELECT * FROM kd_contract WHERE id = $1', [cid]) : null;
+  if (c) {
+    const inst = await q('SELECT * FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [c.id]);
+    Object.assign(map, { so_hd: c.number, ngay_ky: dmy(c.signed_on || c.contract_on), gia_tri: fmtMoney(c.value), gia_tri_chu: +c.value ? moneyWords(+c.value) : '',
+      lich_thanh_toan: inst.length ? `<table class="sch"><tr><th>Đợt</th><th>Nội dung</th><th>Hạn thanh toán</th><th>Tỷ lệ</th><th>Số tiền (đồng)</th></tr>${inst.map(i => `<tr><td>${i.seq}</td><td>${escH(i.name)}</td><td>${dmy(i.due_on)}</td><td>${i.pct ?? ''}${i.pct != null ? '%' : ''}</td><td style="text-align:right">${fmtMoney(i.amount)}</td></tr>`).join('')}</table>` : '' });
+  }
+  const uid = ent === 'unit' ? row.id : row.unit_id || c?.unit_id;
+  if (uid) {
+    const u = await one(`SELECT u.*, b.code building, p.name project, p.address p_addr, p.investor FROM kd_unit u JOIN kd_building b ON b.id = u.building_id JOIN kd_project p ON p.id = u.project_id WHERE u.id = $1`, [uid]);
+    if (u) Object.assign(map, { ma_can: u.code, du_an: u.project, dia_diem: u.p_addr, chu_dau_tu: u.investor, toa: u.building, tang: u.floor, dien_tich: u.area_tt != null ? String(u.area_tt).replace('.', ',') : '', huong: u.direction, phong_ngu: u.bedrooms });
+  }
+  const d = C.today().split('-');
+  Object.assign(map, { ngay: dmy(C.today()), ngay_viet: `ngày ${d[2]} tháng ${d[1]} năm ${d[0]}`, nguoi_lap: user.full_name });
+  for (const k of Object.keys(map)) if (map[k] == null) map[k] = '';
+  return map;
+}
+// nội dung mẫu → HTML: bắt đầu bằng thẻ HTML thì giữ (bỏ script / on…), không thì giữ xuống dòng; trường trộn chưa có giá trị in dấu chấm để điền tay
+function mergeTpl(content, map) {
+  const html = /^\s*</.test(content || '');
+  const base = html ? String(content).replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '') : escH(content).replace(/\n/g, '<br>');
+  return base.replace(/\{(\w+)\}/g, (m, k) => !(k in map) ? m : k === 'lich_thanh_toan' ? map[k] : map[k] === '' ? '…………………' : mergeVal(map, k));
+}
+const GEN_CSS = `@page{size:A4;margin:20mm 18mm 20mm 25mm} body{font:13pt/1.5 "Times New Roman",serif;color:#000;max-width:170mm;margin:auto}
+    .sch{border-collapse:collapse;width:100%;margin:6pt 0} .sch td,.sch th{border:1px solid #000;padding:3pt 5pt;font-size:12pt} table{border-collapse:collapse}`;
+async function printGeneric(ent, id, user, tplCode, draft) {
+  if (!E[ent]) bad('Module không hợp lệ');
+  const tpl = draft || await one('SELECT * FROM kd_template WHERE active AND code = $1', [tplCode]);
+  if (!tpl) bad('Không tìm thấy mẫu (hoặc mẫu đang tắt)');
+  const { row } = await C.get(ent, id, user, { reveal: true });
+  const body = mergeTpl(tpl.content, await tplMap(ent, row, user));
+  if (!draft) await C.audit({ q }, ent, row.id, 'in_theo_mau', null, null, user, tpl.code);
+  const recName = row.code || row.number || '#' + row.id;
+  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${escH(tpl.name)} – ${escH(recName)}</title><style>${GEN_CSS}
+    ${EDIT_CSS}</style></head><body>${editBar(draft ? `<b>Xem thử</b> mẫu «${escH(tpl.name || 'chưa đặt tên')}» với ${escH(E[ent].one)} ${escH(recName)} — chưa lưu mẫu` : `Bản in từ mẫu «${escH(tpl.name)}» · ${escH(E[ent].one)} ${escH(recName)}`)}${editDoc(body)}</body></html>`;
+}
+// xem thử khi đang soạn mẫu: lấy bản ghi mới nhất (hoặc bản ghi chọn) của module
+async function previewTemplate(b, user) {
+  const ent = b.ent; if (!E[ent]) bad('Chọn module hiện mẫu trước');
+  let id = +b.rec || null;
+  if (!id) id = (await C.list(ent, user, { limit: 1 })).rows?.[0]?.id;
+  if (!id) bad(`Module chưa có ${E[ent].one} nào để xem thử — tạo một ${E[ent].one} trước`);
+  return printGeneric(ent, id, user, null, { name: b.name, code: b.code, content: b.content || '' });
+}
+
+module.exports = { tplFields, printGeneric, previewTemplate,
   misaSample, printSaleNotice, printCancelReq, EDIT_CSS, editBar, editDoc, A, strip, mapRows, exportList, sheet, importFile, importTemplate, IMPORTS, createUser, hashPw, checkPw, printContract, printReservation, regTemplates, moneyWords };
