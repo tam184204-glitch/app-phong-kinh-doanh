@@ -295,12 +295,15 @@ const M4 = {
   quan_he: ['Vợ (Chồng)', 'Chồng (Vợ)', 'Con', 'Anh, chị, em', 'Cha (Mẹ)', 'Ông (Bà)', 'Cháu'],
 };
 // cột khai báo một người trong hộ theo Mẫu 4 — dùng chung cho dòng chủ hộ và thành viên (mỗi lần gọi trả bản mới, không dùng chung đối tượng)
+// 99 phường, xã tỉnh Bắc Ninh từ 01/7/2025 (Nghị quyết 1658/NQ-UBTVQH15; bỏ cấp huyện) — gợi ý ô «Thị trấn/xã» khi tỉnh là Bắc Ninh
+const BN_PHUONG = ['Kinh Bắc', 'Võ Cường', 'Vũ Ninh', 'Hạp Lĩnh', 'Nam Sơn', 'Từ Sơn', 'Tam Sơn', 'Đồng Nguyên', 'Phù Khê', 'Thuận Thành', 'Mão Điền', 'Trạm Lộ', 'Trí Quả', 'Song Liễu', 'Ninh Xá', 'Quế Võ', 'Phương Liễu', 'Nhân Hòa', 'Đào Viên', 'Bồng Lai', 'Bắc Giang', 'Đa Mai', 'Tiền Phong', 'Tân Tiến', 'Yên Dũng', 'Tân An', 'Cảnh Thụy', 'Việt Yên', 'Nếnh', 'Vân Hà', 'Tự Lạn', 'Chũ', 'Phượng Sơn'];
+const BN_XA = ['Chi Lăng', 'Phù Lãng', 'Yên Phong', 'Văn Môn', 'Tam Giang', 'Yên Trung', 'Tam Đa', 'Tiên Du', 'Liên Bão', 'Tân Chi', 'Đại Đồng', 'Phật Tích', 'Gia Bình', 'Nhân Thắng', 'Đại Lai', 'Cao Đức', 'Đông Cứu', 'Lương Tài', 'Lâm Thao', 'Trung Chính', 'Trung Kênh', 'Đồng Việt', 'Hiệp Hòa', 'Xuân Cẩm', 'Hợp Thịnh', 'Hoàng Vân', 'Tân Yên', 'Nhã Nam', 'Quang Trung', 'Phúc Hòa', 'Ngọc Thiện', 'Bố Hạ', 'Yên Thế', 'Xuân Lương', 'Đồng Kỳ', 'Tam Tiến', 'Lạng Giang', 'Tiên Lục', 'Tân Dĩnh', 'Mỹ Thái', 'Kép', 'Biển Động', 'Lục Ngạn', 'Đèo Gia', 'Sơn Hải', 'Tân Sơn', 'Biên Sơn', 'Sa Lý', 'Sơn Động', 'Tây Yên Tử', 'An Lạc', 'Tuấn Đạo', 'Dương Hưu', 'Yên Định', 'Đại Sơn', 'Vân Sơn', 'Kiên Lao', 'Nam Dương', 'Lục Nam', 'Bắc Lũng', 'Bảo Đài', 'Lục Sơn', 'Trường Sơn', 'Cẩm Lý', 'Nghĩa Phương', 'Đông Phú'];
 const M4_PERSON = () => [
   { k: 'name', l: 'Họ và Tên', w: 170 }, { k: 'phone', l: 'Số điện thoại', w: 115 }, { k: 'bday', l: 'Ngày sinh', w: 60, pii: 1 }, { k: 'bmonth', l: 'Tháng sinh', w: 60, pii: 1 }, { k: 'byear', l: 'Năm sinh', w: 70, pii: 1 },
   { k: 'old_id_no', l: 'Số CMND', w: 110, pii: 1 }, { k: 'id_no', l: 'Số CCCD', w: 125, pii: 1 }, { k: 'job', l: 'Nghề nghiệp', sug: M4.nghe, w: 170 },
   { k: 'doi_tuong', l: 'Đối tượng chính sách được hưởng nhà ở xã hội', sug: M4.doi_tuong, w: 240 }, { k: 'confirm_org', l: 'Cơ quan xác nhận về đối tượng', w: 180 },
   { k: 'housing', l: 'Điều kiện nhà ở (mô tả đúng hiện trạng nhà ở được VPĐKĐĐ xác nhận)', sug: M4.nha_o, w: 240 },
-  { k: 'province', l: 'Tỉnh', w: 100 }, { k: 'district', l: 'Huyện/ Thành phố', w: 120 }, { k: 'commune', l: 'Thị trấn/xã', w: 120 },
+  { k: 'province', l: 'Tỉnh', w: 100, def: 'Bắc Ninh' }, { k: 'district', l: 'Huyện/ Thành phố', w: 120 }, { k: 'commune', l: 'Thị trấn/xã', w: 150, sug: [...BN_PHUONG.map(x => ['Phường', x]), ...BN_XA.map(x => ['Xã', x])], sugProv: 'Bắc Ninh' },
   { k: 'income', l: 'Điều kiện thu nhập (mô tả theo đúng nội dung Giấy xác nhận)', sug: M4.thu_nhap, w: 240 }];
 const SIGN_ST = [['chua_lien_he', 'Chưa liên hệ', 's'], ['da_lien_he', 'Đã liên hệ', 'b'], ['da_hen', 'Đã hẹn', 'v'], ['can_bo_sung', 'Cần bổ sung hồ sơ', 'a'], ['da_ky', 'Đã ký', 'g']];
 def('noxh_check', {

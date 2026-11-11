@@ -213,18 +213,18 @@ const CK = [['', '— chưa —'], ['da_nhan', 'Đã nhận / đạt'], ['thieu'
 // qty: thêm cột «Số lượng» (bản) — dùng in biên bản giao nhận hồ sơ
 function checkRows(items, qty) {
   const nOk = items.filter(x => x.st === 'da_nhan').length;
-  return `<div class="ck-bar"><span class="ck-sum">Đã nhận <b>${nOk}</b>/${items.length}</span><button type="button" class="btn sm ok" data-ck-all="da_nhan" title="Đánh dấu tất cả giấy tờ «Đã nhận / đạt»">${ico('fa-check-double')} Đủ hết hồ sơ</button><button type="button" class="btn sm" data-ck-all="thieu" title="Các giấy tờ chưa đánh dấu → «Thiếu»">${ico('fa-circle-exclamation')} Còn lại là thiếu</button><button type="button" class="btn sm ghost" data-ck-all="" title="Xóa tình trạng tất cả giấy tờ">${ico('fa-rotate-left')} Xóa đánh dấu</button><span class="muted small">Bấm tên giấy tờ để đánh dấu / bỏ «Đã nhận»</span></div>`
+  return `<div class="ck-bar"><span class="ck-sum">Đã nhận <b>${nOk}</b>/${items.length}</span><button type="button" class="btn sm ok" data-ck-all="da_nhan" title="Đánh dấu tất cả giấy tờ «Đã nhận / đạt»">${ico('fa-check-double')} Đủ hết hồ sơ</button><button type="button" class="btn sm ghost" data-ck-all="" title="Xóa tình trạng tất cả giấy tờ">${ico('fa-rotate-left')} Xóa đánh dấu</button><span class="muted small">Bấm tên giấy tờ để đánh dấu / bỏ «Đã nhận»</span></div>`
     + `<div class="it hd"><div>Giấy tờ / hạng mục</div>${qty ? '<div>Số lượng</div>' : ''}<div>Tình trạng</div><div>Ghi chú</div><div></div></div>` + items.map((x, i) => `<div class="it ${x.st || ''}" data-i="${i}"><div class="ck-n">${esc(x.n)}</div>${qty ? `<div><input data-ck="qty" inputmode="numeric" value="${esc(x.qty ?? '')}" placeholder="0"></div>` : ''}<div><select data-ck="st">${CK.map(o => `<option value="${o[0]}" ${o[0] === (x.st || '') ? 'selected' : ''}>${o[1]}</option>`).join('')}</select></div><div><input data-ck="note" value="${esc(x.note || '')}" placeholder="Ghi chú (không bắt buộc)"></div><div class="ck-act"><button type="button" class="btn sm ghost" data-ck-ed title="Sửa tên giấy tờ">${ico('fa-pen')}</button><button type="button" class="btn sm ghost danger" data-ck-del title="Xóa giấy tờ này khỏi hồ sơ">${ico('fa-trash')}</button></div><input type="hidden" data-ck="n" value="${esc(x.n)}"></div>`).join('')
     + `<div class="it"><div class="row"><input data-ck-new placeholder="+ Thêm giấy tờ khác…" style="flex:1"><button type="button" class="btn sm" data-ck-add>Thêm</button></div></div>`;
 }
 function readCheck(el) { return $$('.it[data-i]', el).map(r => { const q = $('[data-ck=qty]', r); return { n: $('[data-ck=n]', r).value, st: $('[data-ck=st]', r).value, note: $('[data-ck=note]', r).value, ...(q ? { qty: q.value.trim() } : {}) }; }); }
 const ckItem = s => { const m = /^(.*?)\s*\|\s*(\d+)\s*$/.exec(String(s)); return m ? { n: m[1].trim(), qty: +m[2] } : { n: String(s).trim() }; };
-const sugList = (id, xs) => `<datalist id="${id}">${xs.map(x => `<option value="${esc(x)}">`).join('')}</datalist>`;
+const sugList = (id, xs) => `<datalist id="${id}">${xs.map(x => Array.isArray(x) ? `<option value="${esc(x[1])}">${esc(x[0] + ' ' + x[1])}</option>` : `<option value="${esc(x)}">`).join('')}</datalist>`;   // [loại, tên] → hiện «Xã Yên Trung», ghi «Yên Trung»
 // bảng nhập nhiều dòng (VD thành viên hộ gia đình): mỗi cột là ô chữ / ô chọn / ô chữ có gợi ý; fixed = đúng 1 dòng (VD chủ hộ), cột ro = giá trị cố định
 function gridRows(f, rows) {
   if (f.fixed) rows = [rows[0] || {}];
   const cell = (c, v) => c.ro ? `<input data-gc="${c.k}" value="${esc(v || c.def || '')}" readonly tabindex="-1">` : c.o ? `<select data-gc="${c.k}"><option value="">— chọn —</option>${c.o.map(o => `<option ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`
-    : `<input data-gc="${c.k}" value="${esc(v ?? '')}"${c.ph ? ` placeholder="${esc(c.ph)}"` : ''}${c.sug ? ` list="dl_${f.k}_${c.k}"` : ''}${DOB[c.k] ? ` inputmode="numeric" placeholder="${DOB[c.k].ph}"` : ''} autocomplete="off">`;
+    : `<input data-gc="${c.k}" value="${esc(v ?? c.def ?? '')}"${c.ph ? ` placeholder="${esc(c.ph)}"` : ''}${c.sug && !c.sugProv ? ` list="dl_${f.k}_${c.k}"` : ''}${c.sugProv ? ` data-sugprov="${esc(c.sugProv)}" data-sugid="dl_${f.k}_${c.k}" placeholder="Chọn hoặc gõ"` : ''}${DOB[c.k] ? ` inputmode="numeric" placeholder="${DOB[c.k].ph}"` : ''} autocomplete="off">`;
   return `<div class="tbl-wrap"><table class="t compact noclick gridt"><thead><tr><th>#</th>${f.grid.map(c => `<th style="min-width:${c.w || 120}px">${esc(c.l)}</th>`).join('')}${f.fixed ? '' : '<th></th>'}</tr></thead>
     <tbody>${rows.map((x, i) => `<tr data-gr><td class="center">${i + 1}</td>${f.grid.map(c => `<td>${cell(c, x[c.k])}</td>`).join('')}${f.fixed ? '' : `<td><button type="button" class="btn sm" data-gdel title="Bỏ dòng">${ico('fa-xmark')}</button></td>`}</tr>`).join('')}</tbody></table></div>
     ${f.fixed ? '' : `<button type="button" class="btn sm mt" data-gadd>${ico('fa-plus')} Thêm thành viên</button>`}${f.grid.filter(c => c.sug).map(c => sugList(`dl_${f.k}_${c.k}`, c.sug)).join('')}`;
@@ -261,8 +261,15 @@ document.addEventListener('input', e => {
   if (v && (full || sep)) dobNext(el);
 });
 document.addEventListener('focusout', e => { const el = e.target.closest?.('input[data-gc]'); if (el && DOB[el.dataset.gc]) dobCheck(el.closest('tr')); });
+// ô «Thị trấn/xã»: danh sách phường, xã chỉ hiện khi Tỉnh của dòng đó là Bắc Ninh (tỉnh khác gõ tay)
+const noAcc = v => String(v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd').toLowerCase().replace(/^(tinh|thanh pho|tp\.?)\s+/, '').trim();
+document.addEventListener('focusin', e => {
+  const el = e.target.closest?.('input[data-sugprov]'); if (!el) return;
+  const prov = $('[data-gc="province"]', el.closest('tr'))?.value;
+  if (noAcc(prov) === noAcc(el.dataset.sugprov)) el.setAttribute('list', el.dataset.sugid); else el.removeAttribute('list');
+});
 const gridVals = (el, f) => $$('tr[data-gr]', el).map(tr => Object.fromEntries(f.grid.map(c => [c.k, $(`[data-gc="${c.k}"]`, tr).value.trim()])));
-const readGrid = (el, f) => gridVals(el, f).filter(x => f.grid.some(c => !c.ro && x[c.k]));
+const readGrid = (el, f) => gridVals(el, f).filter(x => f.grid.some(c => !c.ro && x[c.k] && x[c.k] !== c.def));   // dòng chỉ có giá trị mặc định (VD Tỉnh = Bắc Ninh) = dòng trống
 function wireInputs(root, onChange) {
   $$('[data-pick]', root).forEach(b => {
     const wrap = b.parentElement, txt = $('input[name]', wrap), nat = $(`input[type=${b.dataset.pick}]`, wrap);
