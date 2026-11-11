@@ -1674,3 +1674,7 @@ label.tplr { display: flex; gap: 8px; align-items: center; padding: 7px 0; }
 .tplsp-p { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; }
 .tplsp-p > label { min-width: 240px; }
 .tplsp-b { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; }
+
+/* 11/11/2026: ô ngày / tháng / năm sinh gõ sai → đỏ ngay */
+.gridin .gridt input.bad, .gridt input.bad { border-color: #d64545 !important; background: #fff1f0; color: #b42318; }
+.gridt input[data-gc="bday"], .gridt input[data-gc="bmonth"], .gridt input[data-gc="byear"] { text-align: center; }

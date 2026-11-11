@@ -222,11 +222,43 @@ const sugList = (id, xs) => `<datalist id="${id}">${xs.map(x => `<option value="
 function gridRows(f, rows) {
   if (f.fixed) rows = [rows[0] || {}];
   const cell = (c, v) => c.ro ? `<input data-gc="${c.k}" value="${esc(v || c.def || '')}" readonly tabindex="-1">` : c.o ? `<select data-gc="${c.k}"><option value="">— chọn —</option>${c.o.map(o => `<option ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`
-    : `<input data-gc="${c.k}" value="${esc(v ?? '')}"${c.ph ? ` placeholder="${esc(c.ph)}"` : ''}${c.sug ? ` list="dl_${f.k}_${c.k}"` : ''} autocomplete="off">`;
+    : `<input data-gc="${c.k}" value="${esc(v ?? '')}"${c.ph ? ` placeholder="${esc(c.ph)}"` : ''}${c.sug ? ` list="dl_${f.k}_${c.k}"` : ''}${DOB[c.k] ? ` inputmode="numeric" placeholder="${DOB[c.k].ph}"` : ''} autocomplete="off">`;
   return `<div class="tbl-wrap"><table class="t compact noclick gridt"><thead><tr><th>#</th>${f.grid.map(c => `<th style="min-width:${c.w || 120}px">${esc(c.l)}</th>`).join('')}${f.fixed ? '' : '<th></th>'}</tr></thead>
     <tbody>${rows.map((x, i) => `<tr data-gr><td class="center">${i + 1}</td>${f.grid.map(c => `<td>${cell(c, x[c.k])}</td>`).join('')}${f.fixed ? '' : `<td><button type="button" class="btn sm" data-gdel title="Bỏ dòng">${ico('fa-xmark')}</button></td>`}</tr>`).join('')}</tbody></table></div>
     ${f.fixed ? '' : `<button type="button" class="btn sm mt" data-gadd>${ico('fa-plus')} Thêm thành viên</button>`}${f.grid.filter(c => c.sug).map(c => sugList(`dl_${f.k}_${c.k}`, c.sug)).join('')}`;
 }
+// ===== ngày / tháng / năm sinh trong bảng hộ gia đình (11/11/2026) =====
+// gõ đủ số → tự nhảy ô sau (ngày → tháng → năm → cột tiếp); gõ «/ . -» hoặc khoảng trắng cũng sang ô; dán / gõ «12/05/1990» vào ô Ngày → tự tách 3 ô; sai thì ô đỏ ngay
+const DOB = { bday: { max: 2, ph: 'dd' }, bmonth: { max: 2, ph: 'mm' }, byear: { max: 4, ph: 'yyyy' } };
+const dobNext = el => { const xs = $$('input:not([readonly]),select', el.closest('tr')), i = xs.indexOf(el); const n = xs[i + 1]; if (n) { n.focus(); n.select?.(); } };
+function dobCheck(tr) {
+  const g = k => $(`[data-gc="${k}"]`, tr), d = g('bday'), m = g('bmonth'), y = g('byear'); if (!d || !m || !y) return;
+  const masked = [d, m, y].some(x => x.value.startsWith('•')); if (masked) return;
+  const dv = +d.value, mv = +m.value, yv = +y.value, now = new Date().getFullYear();
+  const bd = d.value !== '' && !(dv >= 1 && dv <= 31), bm = m.value !== '' && !(mv >= 1 && mv <= 12), by = y.value !== '' && (y.value.length === 4 ? !(yv >= 1900 && yv <= now) : document.activeElement !== y);
+  const all = !bd && !bm && !by && d.value && m.value && y.value.length === 4 && new Date(yv, mv - 1, dv).getDate() !== dv;   // VD 31/02
+  d.classList.toggle('bad', bd || all); m.classList.toggle('bad', bm || all); y.classList.toggle('bad', by || all);
+  d.title = bd ? 'Ngày phải từ 1 đến 31' : all ? 'Ngày không có trong tháng này' : ''; m.title = bm ? 'Tháng phải từ 1 đến 12' : ''; y.title = by ? `Năm sinh từ 1900 đến ${now}` : '';
+}
+function dobSplit(el, txt) {   // «12/05/1990», «12-5-1990», «12.05.1990», «12 05 1990»
+  const m = /^\s*(\d{1,2})\s*[\/.\- ]\s*(\d{1,2})\s*[\/.\- ]\s*(\d{4})\s*$/.exec(txt || ''); if (!m) return false;
+  const tr = el.closest('tr'), set = (k, v) => { const x = $(`[data-gc="${k}"]`, tr); if (x) x.value = v; };
+  set('bday', String(+m[1])); set('bmonth', String(+m[2])); set('byear', m[3]);
+  dobCheck(tr); dobNext($('[data-gc="byear"]', tr)); return true;
+}
+document.addEventListener('paste', e => { const el = e.target.closest?.('input[data-gc]'); if (!el || !DOB[el.dataset.gc]) return;
+  if (dobSplit(el, e.clipboardData?.getData('text'))) e.preventDefault(); });
+document.addEventListener('input', e => {
+  const el = e.target.closest?.('input[data-gc]'); const D = el && DOB[el.dataset.gc]; if (!D) return;
+  if (el.dataset.gc === 'bday' && /[\/.\- ]\d/.test(el.value) && dobSplit(el, el.value)) return;   // gõ cả ngày tháng năm vào ô Ngày
+  const sep = /[\/.\- ]$/.test(el.value);
+  el.value = el.value.replace(/\D/g, '').slice(0, D.max);
+  dobCheck(el.closest('tr'));
+  const v = el.value, first = +v[0];
+  const full = v.length >= D.max || (v.length === 1 && ((el.dataset.gc === 'bday' && first > 3) || (el.dataset.gc === 'bmonth' && first > 1)));   // 5 → ngày 5, không thể là 2 chữ số
+  if (v && (full || sep)) dobNext(el);
+});
+document.addEventListener('focusout', e => { const el = e.target.closest?.('input[data-gc]'); if (el && DOB[el.dataset.gc]) dobCheck(el.closest('tr')); });
 const gridVals = (el, f) => $$('tr[data-gr]', el).map(tr => Object.fromEntries(f.grid.map(c => [c.k, $(`[data-gc="${c.k}"]`, tr).value.trim()])));
 const readGrid = (el, f) => gridVals(el, f).filter(x => f.grid.some(c => !c.ro && x[c.k]));
 function wireInputs(root, onChange) {
