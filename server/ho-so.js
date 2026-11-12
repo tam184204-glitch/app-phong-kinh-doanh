@@ -14,6 +14,7 @@ const PII_PRINT = ['truong_phong', 'lanh_dao', 'ho_so', 'admin'];
 
 // tên trường cho dòng «Thiếu dữ liệu»
 const LABEL = {
+  ban_ve_can: 'Bản vẽ căn hộ (chưa có cho tầng / mã hiệu này)', ban_ve_tang: 'Bản vẽ mặt bằng tầng',
   ten_kh: 'Họ tên khách', ten_kh_hoa: 'Họ tên khách', cccd: 'Số CCCD', ngay_cap: 'Ngày cấp CCCD', noi_cap: 'Nơi cấp CCCD', ngay_sinh: 'Ngày sinh', thuong_tru: 'Địa chỉ thường trú', dia_chi: 'Địa chỉ liên hệ',
   dien_thoai: 'Điện thoại', email: 'Email', mst: 'Mã số thuế', stk: 'Tài khoản ngân hàng', vc_ten: 'Họ tên vợ / chồng', vc_cccd: 'CCCD vợ / chồng', vc_ngay_cap: 'Ngày cấp CCCD vợ / chồng', vc_noi_cap: 'Nơi cấp CCCD vợ / chồng',
   dt_tt: 'Diện tích thông thủy', dt_san: 'Diện tích sàn', don_gia: 'Đơn giá nền', ngay_don: 'Ngày đơn đề nghị mua', gia_truoc_thue: 'Giá trước thuế', thue_vat: 'Thuế VAT', phi_bao_tri: 'Phí bảo trì',
@@ -31,6 +32,19 @@ const num = v => v == null || v === '' ? null : +v;
 const area = v => v == null || v === '' ? '' : String(+v).replace('.', ',');
 
 // dữ liệu một căn → { map: trường → chữ, nums: trường → số, ctx: bản ghi gốc }
+// bản vẽ mô tả căn hộ (13/11/2026): mẫu loại «ban_ve», mã <DỰ ÁN>-<TÒA>-BV-<mã hiệu căn> / -BV-TANG (mặt bằng tầng); data-floors="2-9" = tầng áp dụng;
+// bản vẽ riêng 1 tầng: <DỰ ÁN>-<TÒA>-BV-T<tầng>-<mã hiệu>. Nạp sẵn tòa K (CTS) từ «MB K.pdf» + «chi tiet can ho/K01…K13.pdf»
+const BV = { sig: null, rows: [] };
+async function banVe(u) {
+  const meta = await q("SELECT id, updated_at FROM kd_template WHERE kind = 'ban_ve' AND active ORDER BY id");
+  const sig = meta.map(r => r.id + ':' + r.updated_at).join(',');
+  if (sig !== BV.sig) { BV.rows = await q("SELECT code, content FROM kd_template WHERE kind = 'ban_ve' AND active"); BV.sig = sig; }
+  if (!BV.rows.length) return { can: '', tang: '' };
+  const fl = +u.floor || +String(u.code).slice(-4, -2), pos = String(u.code).slice(-2), P = `${u.pcode}-${u.bcode}`.toUpperCase();
+  const fit = t => { const m = /data-floors="(\d+)-(\d+)"/.exec(t.content || ''); return !m || (fl >= +m[1] && fl <= +m[2]); };
+  const get = suf => (BV.rows.find(t => t.code.toUpperCase() === `${P}-BV-T${fl}-${suf}`) || BV.rows.find(t => t.code.toUpperCase() === `${P}-BV-${suf}` && fit(t)))?.content || '';
+  return { can: get(pos), tang: get('TANG') };
+}
 async function hsData(unitId, user, custId) {
   const u = await one(`SELECT u.*, b.code bcode, b.name bname, p.code pcode, p.name pname FROM kd_unit u JOIN kd_building b ON b.id = u.building_id JOIN kd_project p ON p.id = u.project_id WHERE u.id = $1`, [+unitId]);
   if (!u) bad('Không tìm thấy căn hộ');
@@ -60,6 +74,7 @@ async function hsData(unitId, user, custId) {
     so_hdtt: ht?.number || '', ngay_hdtt: dmy(ht?.contract_on), so_hdv: vay?.number || '', ngay_hdv: dmy(vay?.contract_on || vay?.loan_recv_on),
     so_vbtt_sc: hdmb?.agreement || '', ngay_vbtt_sc: '',
   };
+  { const b = await banVe(u); S.ban_ve_can = b.can; S.ban_ve_tang = b.tang; }
   S.ten_kh_hoa = S.ten_kh.toUpperCase();
   S.cccd_dai_dien = P((typeof process !== 'undefined' && process.env?.CCCD_DAI_DIEN) || '');   // CCCD người đại diện công ty ký — đặt ở .env máy chủ
   const N = {
@@ -80,6 +95,7 @@ async function hsData(unitId, user, custId) {
   const iv = await sched(vay); [1, 2, 3, 4].forEach(i => { N['vay_dot' + i] = iv[i - 1] ? +iv[i - 1].amount : null; });
   // thông báo nộp tiền: đợt đang phải thu = đợt đầu tiên mà lũy kế phải nộp vượt số đã nộp
   const im = await sched(hdmb), ih = await sched(ht);
+  for (const k of ['phai_nop', 'da_nop', 'con_nop', 'con_tien_nha', 'con_hoan_thien', 'tong_phai_nop']) N[k] = null;   // chưa có lịch thu → in «……» (không để lộ {phai_nop})
   if (im.length) {
     const daNha = N.da_tt || 0, daHt = N.da_tt_ht || 0;
     let cum = 0, cumHt = 0, dot = im[im.length - 1];
@@ -126,6 +142,7 @@ function evalExpr(src, N, miss) {
 const NO_MISS = new Set(['cccd_dai_dien']);   // để trống thì in «……» nhưng không báo thiếu
 const escH = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const DOTS = '…………………';
+const SHORT = new Set(['dot', 'tang', 'can_so', 'toa', 'so_can4', 'toa_ky']);   // trường ngắn: chừa chỗ điền tay ngắn, không đẩy dòng
 // trộn mẫu với dữ liệu căn; miss = trường còn trống
 function merge(content, D, miss = new Set()) {
   const { moneyWords, fillToday } = require('./io');
@@ -140,8 +157,8 @@ function merge(content, D, miss = new Set()) {
     .replace(/\{(\w+)\}/g, (m, k) => {
       if (!(k in D.map)) return m;
       const v = D.map[k];
-      if (v === '' || v == null) { if (!NO_MISS.has(k)) miss.add(k.replace(/_chu$|_hoa$/, '')); return DOTS; }
-      return escH(v);
+      if (v === '' || v == null) { if (!NO_MISS.has(k)) miss.add(k.replace(/_chu$|_hoa$/, '')); if (SHORT.has(k)) return '……'; return k.startsWith('ban_ve_') ? '<p style="text-align:center;font-style:italic">(Chưa có bản vẽ cho căn này — bổ sung ở Mẫu biểu, loại «Bản vẽ»)</p>' : DOTS; }
+      return k.startsWith('ban_ve_') ? v : escH(v);   // bản vẽ: HTML ảnh từ mẫu «Bản vẽ»
     }));
 }
 const missOf = (content, D) => { const s = new Set(); merge(content, D, s); return [...s].map(k => LABEL[k] || k); };
@@ -247,20 +264,29 @@ async function hsInfo(key, user, custId) {
     history: hist, cust: cid,
     units: others.length > 1 ? others.map(r => r.code) : [], byCustomer: f.cust ? f.cust.code : null,
     step: stepOf(x), added, demoFill: demoFillOn(),
-    bos: BO.map(([k, l]) => ({ k, l, tpls: ts.filter(t => t.bo === k).map(t => ({ code: t.code, name: t.name, kind: t.kind, missing: missOf(t.content, D) })) })),
+    bos: BO.map(([k, l]) => ({ k, l, tpls: ts.filter(t => t.bo === k).map(t => ({ code: t.code, name: t.name, kind: t.kind, missing: missOf(t.content, D),
+      annex: tplKey(t.code) === 'MB-02' ? ts.filter(x => x.bo === k && ANNEX(tplKey(x.code))).map(x => x.name) : undefined, inHd: ANNEX(tplKey(t.code)) && ts.some(x => x.bo === k && tplKey(x.code) === 'MB-02') || undefined })) })),
   };
 }
 
 // thể thức theo NĐ 30/2020/NĐ-CP Phụ lục I: A4, lề trên / dưới 20 mm, trái 30 mm, phải 15 mm; Times New Roman cỡ 13; giãn dòng ~1,3
-const HS_CSS = `@page{size:A4;margin:20mm 15mm 20mm 30mm} body{font:13pt/1.2 "Times New Roman",serif;color:#000;max-width:165mm;margin:auto}
+const HS_CSS = `@page{size:A4;margin:20mm 15mm 20mm 30mm} body{font:13pt/1.2 "Times New Roman",serif;color:#000;max-width:165mm;margin:auto;text-align:justify}
   table.xl{width:100%;border-collapse:collapse;table-layout:fixed} table.xl td{padding:3pt 2pt;vertical-align:top;overflow-wrap:break-word}
   .wd p{margin:0 0 4pt} table.bd{width:100%;border-collapse:collapse;margin:4pt 0} table.bd td{border:1px solid #000;padding:2pt 4pt;vertical-align:top} table.bd p{margin:0}
   section.hs + section.hs{page-break-before:always;break-before:page} .hs-t{font:600 12px system-ui;color:#5b6b7f;margin:18px 0 6px}
-  @media print{.hs-t{display:none}}`;
+  @page bv{size:A4 landscape;margin:12mm 15mm} .bv-page{page:bv} .bv-img{display:block;margin:0 auto;max-width:100%;max-height:150mm} .bv-page + .bv-page .bv-img{max-height:128mm}
+  @media print{.hs-t{display:none} body{max-width:none}}`;
+const ANNEX = k => /^MB-02-/.test(k) || k === 'MB-03';
+const isHdSet = codes => codes.length && codes.some(c => tplKey(c) === 'MB-02') && codes.every(c => tplKey(c) === 'MB-02' || ANNEX(tplKey(c)));
+function withAnnex(pick, ts) {
+  if (!pick.some(t => tplKey(t.code) === 'MB-02')) return pick;
+  const add = ts.filter(t => ANNEX(tplKey(t.code)) && !pick.includes(t)); if (!add.length) return pick;
+  return [...pick, ...add].map((t, i) => [t, i]).sort((a, b) => tplKey(a[0].code).localeCompare(tplKey(b[0].code)) || a[1] - b[1]).map(x => x[0]);
+}
 async function hsDocs(unitId, codes, user, custId) {
   if (!can(user, E.unit, 'r')) deny();
   const ts = await unitTemplates(unitId), want = String(codes || '').split(',').map(s => s.trim()).filter(Boolean);
-  const pickT = want.length ? want.map(c => ts.find(t => t.code === c)).filter(Boolean) : ts;
+  const pickT = withAnnex(want.length ? want.map(c => ts.find(t => t.code === c)).filter(Boolean) : ts, ts.filter(t => t.bo === 'mua_ban'));
   if (!pickT.length) bad('Chưa chọn hồ sơ (hoặc mẫu không áp dụng cho căn này)');
   const D = await hsData(unitId, user, custId);
   return { D, docs: pickT.map(t => ({ t, html: merge(t.content, D) })) };
@@ -283,7 +309,7 @@ async function printHs(unitId, codes, user, bo, custId) {
         setTimeout(() => { b.textContent = t; b.disabled = false; }, 4000);
       } catch (e) { alert(e.message); b.textContent = t; b.disabled = false; } };
   })()</` + `script>`;
-  const isHd = docs.every(d => /-MB-02/.test(d.t.code));   // HĐMB: «Trang HĐ: x/y» góc dưới phải như bản HĐMB chuẩn; văn bản khác: số trang giữa lề trên từ trang 2 (NĐ 30)
+  const isHd = isHdSet(docs.map(d => d.t.code));   // HĐMB: «Trang HĐ: x/y» góc dưới phải như bản HĐMB chuẩn; văn bản khác: số trang giữa lề trên từ trang 2 (NĐ 30)
   const MB = ['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right'];
   const box = (k, v) => `@${k}{content:${v};font:${k.startsWith('bottom') ? '9pt' : '13pt'} "Times New Roman",serif}`;
   const pageCss = isHd ? `@page{${MB.map(k => box(k, k === 'bottom-right' ? '"Trang HĐ: " counter(page) "/" counter(pages)' : '""')).join('')}}`
@@ -300,7 +326,7 @@ async function wordFromHtml(unitId, docs, user) {
   const safe = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').replace(/[^\w.-]+/g, '_').replace(/_+/g, '_');
   const one1 = docs.length === 1 && names.find(n => n.code === docs[0].code);
   const name = `${one1 ? safe(one1.name) : 'Bo_ho_so'}_${u.code}_da-sua.docx`;
-  return { buf: docxOf(docs.map(d => clean(d.html)), name, docs.every(d => /-MB-02/.test(d.code || ''))), name };
+  return { buf: docxOf(docs.map(d => clean(d.html)), name, isHdSet(docs.map(d => String(d.code || '')))), name };
 }
 // Word: tệp .docx nhúng HTML (altChunk) — Word mở và sửa như văn bản thường
 function docxOf(htmls, title, isHd, groups) {   // groups: số hồ sơ của từng căn (in hàng loạt) → mỗi căn 1 section, số trang đánh lại từ 1
@@ -308,11 +334,13 @@ function docxOf(htmls, title, isHd, groups) {   // groups: số hồ sơ của t
   // Word không vẽ border của <span>: gạch chân tiêu ngữ đổi sang underline
   // Word giãn dòng trống rộng hơn trình duyệt (bìa HĐMB tràn trang): dòng trống → ô &nbsp; cỡ chữ đúng bằng chiều cao dòng
   const wordFix = h => h.split("border-bottom:1px solid #000;padding-bottom:1px").join("text-decoration:underline")
+    .split('class="bv-img"').join('class="bv-img" width="620" height="438"')   // bản vẽ: Word không hiểu max-width → khổ ngang vừa lề trang dọc
     .replace(/<tr style="height:(\d+)pt"><td colspan="(\d+)"><\/td><\/tr>/g, (m, ht, cs) => `<tr><td colspan="${cs}" style="font-size:${Math.max(2, Math.round(+ht * 0.6))}pt;line-height:${Math.max(2, Math.round(+ht * 0.6))}pt;padding:0">&nbsp;</td></tr>`);
   const page = h => `<!doctype html><html><head><meta charset="utf-8"><title>${escH(title)}</title><style>${css}</style></head><body>${wordFix(h)}</body></html>`;
-  const CT = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="htm" ContentType="text/html"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/><Override PartName="/word/header2.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/><Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/></Types>';
+  const CT = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="htm" ContentType="text/html"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/><Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/><Override PartName="/word/header2.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/><Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/></Types>';
   // font mặc định Times New Roman 13 (HTML nhúng không tự lấy font của trang)
   const STY = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="Times New Roman" w:cs="Times New Roman"/><w:sz w:val="26"/><w:szCs w:val="26"/><w:lang w:val="vi-VN"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>';
+  const SET = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:compat><w:doNotExpandShiftReturn/></w:compat></w:settings>';
   const RELS = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>';
   // mỗi hồ sơ một khối HTML (altChunk), giữa các hồ sơ là ngắt trang của Word
   const brk = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
@@ -328,15 +356,15 @@ function docxOf(htmls, title, isHd, groups) {   // groups: số hồ sơ của t
     + htmls.map((h, i) => `<w:altChunk r:id="hc${i + 1}"/>` + (i === htmls.length - 1 ? '' : ends.has(i) ? `<w:p><w:pPr>${sect()}</w:pPr></w:p>` : brk)).join('')
     + sect() + '</w:body></w:document>';
   const DREL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-    + htmls.map((h, i) => `<Relationship Id="hc${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/aFChunk" Target="hs${i + 1}.htm"/>`).join('') + '<Relationship Id="rSty" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rHd" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/><Relationship Id="rHd0" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header2.xml"/><Relationship Id="rFt" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/></Relationships>';
-  return zip([['[Content_Types].xml', CT], ['_rels/.rels', RELS], ['word/document.xml', DOC], ['word/_rels/document.xml.rels', DREL], ['word/styles.xml', STY], ['word/header1.xml', HDR], ['word/header2.xml', HDR0], ['word/footer1.xml', FTR], ...htmls.map((h, i) => [`word/hs${i + 1}.htm`, page(h)])]);
+    + htmls.map((h, i) => `<Relationship Id="hc${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/aFChunk" Target="hs${i + 1}.htm"/>`).join('') + '<Relationship Id="rSty" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rSet" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/><Relationship Id="rHd" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/><Relationship Id="rHd0" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header2.xml"/><Relationship Id="rFt" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/></Relationships>';
+  return zip([['[Content_Types].xml', CT], ['_rels/.rels', RELS], ['word/document.xml', DOC], ['word/_rels/document.xml.rels', DREL], ['word/styles.xml', STY], ['word/settings.xml', SET], ['word/header1.xml', HDR], ['word/header2.xml', HDR0], ['word/footer1.xml', FTR], ...htmls.map((h, i) => [`word/hs${i + 1}.htm`, page(h)])]);
 }
 async function wordHs(unitId, codes, user, custId) {
   const { D, docs } = await hsDocs(unitId, codes, user, custId);
   await C.audit({ q }, 'unit', +unitId, 'tai_word_ho_so', null, null, user, docs.map(d => d.t.code).join(', '));
   const safe = s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').replace(/[^\w.-]+/g, '_').replace(/_+/g, '_');
   const name = docs.length === 1 ? `${safe(docs[0].t.name)}_${D.map.ma_can}.docx` : `Bo_ho_so_${D.map.ma_can}.docx`;
-  return { buf: docxOf(docs.map(d => d.html), name, docs.every(d => /-MB-02/.test(d.t.code))), name };
+  return { buf: docxOf(docs.map(d => d.html), name, isHdSet(docs.map(d => d.t.code))), name };
 }
 
 // lưu bản Word của bộ hồ sơ vào Kho hồ sơ: gắn vào HĐ của bộ (vay / thanh lý vay → HĐ vay; còn lại → HĐMB, không có thì HĐ khác của căn), loại «Dự thảo»
@@ -454,7 +482,7 @@ async function batchDocs(units, bo, keys, user) {
   const want = new Set(String(keys || '').split(',').filter(Boolean)), out = [];
   for (const code of unitList(units)) {
     let f; try { f = await findUnit(code); } catch { continue; }
-    const ts = (await unitTemplates(f.id)).filter(t => t.bo === bo && (!want.size || want.has(tplKey(t.code))));
+    const all = (await unitTemplates(f.id)).filter(t => t.bo === bo), ts = withAnnex(all.filter(t => !want.size || want.has(tplKey(t.code))), all);
     if (!ts.length) continue;
     const D = await hsData(f.id, user);
     out.push({ unitId: f.id, code: D.map.ma_can, docs: ts.map(t => ({ t, html: merge(t.content, D) })) });
@@ -475,6 +503,6 @@ async function printBatch(units, bo, keys, user) {
 async function wordBatch(units, bo, keys, user) {
   const list = await batchDocs(units, bo, keys, user), flat = list.flatMap(u => u.docs);
   const name = `In_hang_loat_${list.length}_can_${bo}_${C.today()}.docx`;
-  return { buf: docxOf(flat.map(d => d.html), name, flat.every(d => /-MB-02/.test(d.t.code)), list.map(u => u.docs.length)), name };
+  return { buf: docxOf(flat.map(d => d.html), name, isHdSet(flat.map(d => d.t.code)), list.map(u => u.docs.length)), name };
 }
 module.exports = { batchKeys, batchPlan, printBatch, wordBatch, custHistory, wordFromHtml, demoFill, demoFillOn, saveTarget, BO, MAU_TNS, hsData, hsInfo, printHs, wordHs, merge, evalExpr };

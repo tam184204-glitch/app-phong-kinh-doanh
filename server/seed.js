@@ -169,6 +169,11 @@ async function ensureTemplates() {
         const key = t.code.replace(/-(DEFG|HIJ|DE|FG)$/, ''); if (done.has(key)) continue; done.add(key);   // cùng bản mà autoProjectTemplates đã chép
         await db.q("UPDATE kd_template SET content = $2 WHERE bo IS NOT NULL AND updated_by IS NULL AND upper(code) LIKE '%-' || upper($1) AND upper(code) NOT LIKE 'TNS-%' AND content IS DISTINCT FROM $2", [key.replace(/^TNS-/, ''), t.content]);
       } }
+    // bản vẽ mô tả căn hộ tòa K (CTS) + phụ lục HĐMB in kèm bản vẽ (13/11/2026)
+    for (const t of require('./ban-ve.json')) {
+      if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });
+      else await db.q('UPDATE kd_template SET content = $2, name = $3 WHERE code = $1 AND updated_by IS NULL AND content IS DISTINCT FROM $2', [t.code, t.content, t.name]);
+    }
     for (const t of require('./mau4').MAU_BIEN_BAN()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });
     for (const [code, cu, moi2] of require('./mau4').BB_CU()) await db.q('UPDATE kd_template SET content = replace(content, $1, $2) WHERE code = $3 AND strpos(content, $1) > 0', [cu, moi2, code]);
     for (const t of MAU_DANG_KY()) {

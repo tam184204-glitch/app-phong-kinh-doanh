@@ -722,7 +722,7 @@ function mergeTpl(content, map) {
   const base = html ? String(content).replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '') : escH(content).replace(/\n/g, '<br>');
   return fillToday(base.replace(/\{(\w+)\}/g, (m, k) => !(k in map) ? m : k === 'lich_thanh_toan' ? map[k] : map[k] === '' ? '…………………' : mergeVal(map, k)));
 }
-const GEN_CSS = `@page{size:A4;margin:20mm 15mm 20mm 30mm} body{font:13pt/1.4 "Times New Roman",serif;color:#000;max-width:165mm;margin:auto}   /* lề theo NĐ 30/2020/NĐ-CP */
+const GEN_CSS = `@page{size:A4;margin:20mm 15mm 20mm 30mm} body{font:13pt/1.4 "Times New Roman",serif;color:#000;max-width:165mm;margin:auto;text-align:justify}   /* lề theo NĐ 30/2020/NĐ-CP; căn đều 2 bên, chỗ mẫu căn giữa / phải giữ nguyên */
     .sch{border-collapse:collapse;width:100%;margin:6pt 0} .sch td,.sch th{border:1px solid #000;padding:3pt 5pt;font-size:12pt} table{border-collapse:collapse}`;
 async function printGeneric(ent, id, user, tplCode, draft) {
   if (!E[ent]) bad('Module không hợp lệ');

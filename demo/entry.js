@@ -29,8 +29,8 @@ async function syncTemplatesFromGit(q, one) {
   }
   // mẫu quản trị đã xóa: xóa theo; đang được bản ghi khác trỏ tới thì chỉ tắt
   // bộ MẪU HS TNS có sẵn trong app (12/11/2026): bản đẩy cũ chưa có thì không xóa
-  try { await q("DELETE FROM kd_template WHERE NOT (upper(code) = ANY($1)) AND upper(code) NOT LIKE 'TNS-%' AND bo IS NULL", [codes]); }
-  catch (e) { console.warn('xóa mẫu cũ', e); await q("UPDATE kd_template SET active = false WHERE NOT (upper(code) = ANY($1)) AND upper(code) NOT LIKE 'TNS-%' AND bo IS NULL", [codes]); }
+  try { await q("DELETE FROM kd_template WHERE NOT (upper(code) = ANY($1)) AND upper(code) NOT LIKE 'TNS-%' AND bo IS NULL AND kind IS DISTINCT FROM 'ban_ve'", [codes]); }
+  catch (e) { console.warn('xóa mẫu cũ', e); await q("UPDATE kd_template SET active = false WHERE NOT (upper(code) = ANY($1)) AND upper(code) NOT LIKE 'TNS-%' AND bo IS NULL AND kind IS DISTINCT FROM 'ban_ve'", [codes]); }
   await require('../server/biz').fillTplEnt({ q });   // bản đẩy trước 11/11/2026 chưa có module
   try { localStorage.setItem(TPL_VER, d.ver); } catch {}
   console.log(`mẫu biểu từ Git: ${codes.length} mẫu, bản ${d.ver}${d.by ? ' do ' + d.by : ''}`);
