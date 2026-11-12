@@ -66,7 +66,8 @@ async function hsData(unitId, user, custId) {
   const c = main || {};
   const bday = k?.birth ? dmy(k.birth) : '';
   const S = {
-    ten_kh: c.b_name || k?.full_name || res?.cust_name || '',   // tên bên mua ghi trên HĐ trước cccd: P(c.b_id_no || k?.id_no || res?.id_no), ngay_cap: P(dmy(c.b_id_date || k?.id_date || res?.id_date)), noi_cap: P(c.b_id_place || k?.id_place || res?.id_place),
+    ten_kh: c.b_name || k?.full_name || res?.cust_name || '',   // tên bên mua ghi trên HĐ trước
+    cccd: P(c.b_id_no || k?.id_no || res?.id_no), ngay_cap: P(dmy(c.b_id_date || k?.id_date || res?.id_date)), noi_cap: P(c.b_id_place || k?.id_place || res?.id_place),
     ngay_sinh: P(bday), thuong_tru: c.b_perm_addr || c.b_addr || k?.address || res?.address || '', dia_chi: c.b_addr || k?.address || res?.address || '', dien_thoai: c.b_phone || k?.phone || res?.phone || '',
     email: c.b_email || k?.email || '', mst: P(k?.tax_code || res?.tax_code), stk: P([c.b_bank_acc || k?.bank_account || res?.bank_account, c.b_bank_name && 'Ngân hàng ' + c.b_bank_name].filter(Boolean).join(' - ')),
     vc_ten: mem?.name || c.co_owner || '', vc_cccd: P(mem?.id_no), vc_ngay_cap: '', vc_noi_cap: '',
@@ -102,10 +103,11 @@ async function hsData(unitId, user, custId) {
   // thông báo nộp tiền: đợt đang phải thu = đợt đầu tiên mà lũy kế phải nộp vượt số đã nộp
   const im = await sched(hdmb), ih = await sched(ht);
   for (const k of ['phai_nop', 'da_nop', 'con_nop', 'con_tien_nha', 'con_hoan_thien', 'tong_phai_nop']) N[k] = null;
-  // các đợt thanh toán in trên HĐMB: lấy «Lần thanh toán» đã khai (đủ 3 đợt), chưa khai thì 30% / 65% / 5% giá bán như mẫu
-  const im3 = im.length === 3;   // HĐMB có 3 đợt: khai đúng 3 lần thanh toán → in số tiền / % đã khai; khác → in theo % của mẫu + cảnh báo
-  [1, 2, 3].forEach((n, j) => { N['tt_dot' + n] = im3 ? +im[j].amount : null; S['tt_pct' + n] = im3 && im[j].pct != null ? String(+im[j].pct) : ''; });
-  S._warn = im.length && !im3 ? [`Lần thanh toán đã khai ${im.length} đợt, mẫu HĐMB có 3 đợt — HĐMB in số tiền theo % của mẫu`] : [];   // chưa có lịch thu → in «……» (không để lộ {phai_nop})
+  // các đợt thanh toán in trên HĐMB (mẫu có K đợt dùng tt<K>_dot<n> / tt<K>_pct<n>): HĐ khai đúng K «Lần thanh toán» → in số tiền / % đã khai;
+  // khai số đợt khác hoặc chưa khai → in theo % ghi trên mẫu (× giá bán); màn hồ sơ cảnh báo khi số đợt khác mẫu
+  { const K = im.length; im.forEach((x, j) => { N[`tt${K}_dot${j + 1}`] = +x.amount; S[`tt${K}_pct${j + 1}`] = x.pct != null ? String(+x.pct) : ''; }); }
+  for (const K of [2, 3, 4, 5, 6]) for (let n = 1; n <= K; n++) { if (!(`tt${K}_pct${n}` in S)) S[`tt${K}_pct${n}`] = ''; }
+  S._n_dot = im.length;
   if (im.length) {
     const daNha = N.da_tt || 0, daHt = N.da_tt_ht || 0;
     let cum = 0, cumHt = 0, dot = im[im.length - 1];
@@ -199,7 +201,7 @@ async function autoProjectTemplates(unitId, user) {
   const IO = require('./io');
   const sc = await IO.recScope('unit', unitId); if (!sc.pcode) return 0;
   const have = (await q('SELECT bo, scope, bedrooms FROM kd_template WHERE active AND bo IS NOT NULL')).filter(t => IO.tplFitLevel(t, sc) >= 0);
-  const P = String(sc.pcode).toUpperCase(), base = MAU_TNS(), done = new Set(); let n = 0;
+  const P = String(sc.pcode).toUpperCase(), base = MAU_TNS().filter(t => /^TNS-/.test(t.code)), done = new Set(); let n = 0;
   const sysU = await one("SELECT * FROM kd_user WHERE role = 'admin' AND active ORDER BY id LIMIT 1") || C.SYS;
   for (const [bo] of BO) {
     if (have.some(t => t.bo === bo)) continue;
@@ -282,7 +284,8 @@ async function hsInfo(key, user, custId) {
     bos: BO.map(([k, l]) => { const list = ts.filter(t => t.bo === k), hd = list.some(t => tplKey(t.code) === 'MB-02'), anx = hd ? list.filter(t => ANNEX(tplKey(t.code))) : [];
       return { k, l, tpls: list.filter(t => !anx.includes(t)).map(t => { const isHd = tplKey(t.code) === 'MB-02' && anx.length;
         return { code: t.code, name: t.name, kind: t.kind, missing: isHd ? [...new Set([t, ...anx].flatMap(x => missOf(x.content, D)))] : missOf(t.content, D), annex: isHd ? anx.map(x => x.name) : undefined,
-        warn: tplKey(t.code) === 'MB-02' && /tt_dot/.test(t.content) && D.map._warn?.length ? D.map._warn : undefined }; }) }; }),
+        warn: (() => { const K = +(/\btt(\d)_dot/.exec(t.content || '') || [])[1], n = D.map._n_dot;   // số đợt đã khai khác số đợt của mẫu HĐMB
+          return K && n && n !== K ? [`Lần thanh toán đã khai ${n} đợt, mẫu HĐMB có ${K} đợt — HĐMB in số tiền theo % ghi trên mẫu`] : undefined; })() }; }) }; }),
   };
 }
 
@@ -300,6 +303,8 @@ function withAnnex(pick, ts) {
   const add = ts.filter(t => ANNEX(tplKey(t.code)) && !pick.includes(t)); if (!add.length) return pick;
   return [...pick, ...add].map((t, i) => [t, i]).sort((a, b) => tplKey(a[0].code).localeCompare(tplKey(b[0].code)) || a[1] - b[1]).map(x => x[0]);
 }
+// HĐMB (kèm phụ lục): khổ in theo bản HĐMB đã ký của phòng KD (HĐMB.pdf đo lại 13/11/2026) — lề trên 17, phải 12, dưới 15, trái 19,5 mm; Times 12, giãn dòng 1,15
+const HD_CSS = '@page{margin:17mm 12mm 15mm 19.5mm} body{font-size:12pt;line-height:1.15;max-width:178.5mm} table.xl td{padding:4pt 2pt}';
 async function hsDocs(unitId, codes, user, custId) {
   if (!can(user, E.unit, 'r')) deny();
   const ts = await unitTemplates(unitId), want = String(codes || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -313,7 +318,8 @@ async function printHs(unitId, codes, user, bo, custId) {
   const IO = require('./io');
   const { D, docs } = await hsDocs(unitId, codes, user, custId);
   await C.audit({ q }, 'unit', +unitId, 'in_bo_ho_so', null, null, user, docs.map(d => d.t.code).join(', '));
-  const body = docs.map(d => `<section class="hs" data-code="${escH(d.t.code)}"><div class="hs-t" contenteditable="false">${escH(d.t.name)}</div>${d.html}</section>`).join('');
+  const hasAnx = isHdSet(docs.map(d => d.t.code)) && docs.some(d => ANNEX(tplKey(d.t.code)));
+  const body = docs.map(d => `<section class="hs${hasAnx && ANNEX(tplKey(d.t.code)) ? ' pl' : ''}" data-code="${escH(d.t.code)}"><div class="hs-t" contenteditable="false">${escH(d.t.name)}</div>${d.html}</section>`).join('');
   // nút «Lưu bản đã sửa vào kho»: gửi đúng nội dung đang thấy (kể cả chữ đã sửa tay) → file Word trong Kho, gắn vào HĐ của căn (12/11/2026)
   const saveBtn = `<button id="hsSave" title="Lưu đúng bản đang thấy (kể cả chỗ đã sửa) thành file Word trong Kho hồ sơ của căn — mở lại lúc nào cũng còn">💾 Lưu bản đã sửa vào kho</button>`;
   const saveJs = `<script>(() => { const b = document.getElementById('hsSave'); if (!b) return;
@@ -331,8 +337,23 @@ async function printHs(unitId, codes, user, bo, custId) {
   const box = (k, v) => `@${k}{content:${v};font:${k.startsWith('bottom') ? '9pt' : '13pt'} "Times New Roman",serif}`;
   const pageCss = isHd ? `@page{${MB.map(k => box(k, k === 'bottom-right' ? '"Trang HĐ: " counter(page) "/" counter(pages)' : '""')).join('')}}`
     : `@page{${MB.map(k => box(k, k === 'top-center' ? 'counter(page)' : '""')).join('')}} @page:first{@top-center{content:""}}`;
-  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Hồ sơ ${escH(D.map.ma_can)}</title><style>${HS_CSS} ${pageCss}
-    ${IO.EDIT_CSS}</style></head><body>${IO.editBar(`Bộ hồ sơ căn <b>${escH(D.map.ma_can)}</b> · ${docs.length} hồ sơ — số liệu lấy theo dữ liệu đã khai báo; chỗ «${DOTS}» là dữ liệu còn trống`)}${IO.editDoc(body)}${saveJs}</body></html>`.replace('<button class="pri" onclick="print()">', saveBtn + '<button class="pri" onclick="print()">');
+  // HĐMB kèm phụ lục: «Trang HĐ: x/y» chỉ trên các trang hợp đồng (y = số trang của riêng HĐ), trang phụ lục không đánh số — như bản HĐMB đã ký.
+  // Trình duyệt chỉ biết tổng số trang cả tệp → đo trước số trang HĐ bằng khối nhiều cột đúng khổ giấy (mỗi cột = 1 trang), ghi vào chân trang; đo lại trước khi in.
+  const anxCss = hasAnx ? 'section.hs.pl{page:pl} @page pl{@bottom-right{content:""}} @page bv{@bottom-right{content:""}}' : '';
+  const anxJs = hasAnx ? `<script>(() => {
+    const css = document.createElement('style'); document.head.appendChild(css);
+    const count = () => { const s = document.querySelector('section.hs:not(.pl)'); if (!s) return;
+      const m = document.createElement('div'); m.setAttribute('aria-hidden', 'true');
+      m.style.cssText = 'position:absolute;left:-99999px;top:0;width:178.5mm;height:265mm;column-width:178.5mm;column-gap:0;column-fill:auto;font:12pt/1.15 "Times New Roman",serif;text-align:justify';   /* cùng HD_CSS */
+      const c = s.cloneNode(true); c.querySelectorAll('.hs-t').forEach(x => x.remove()); m.appendChild(c); document.body.appendChild(m);
+      for (const e of c.querySelectorAll('*')) { const cs = getComputedStyle(e); if (cs.breakBefore === 'page') e.style.breakBefore = 'column'; if (cs.breakAfter === 'page') e.style.breakAfter = 'column'; }   // ngắt trang bắt buộc = ngắt cột
+      const n = Math.max(1, Math.round(m.scrollWidth / m.clientWidth)); m.remove();
+      css.textContent = '@page{@bottom-right{content:"Trang HĐ: " counter(page) "/' + n + '";font:9pt "Times New Roman",serif}} @page pl{@bottom-right{content:""}} @page bv{@bottom-right{content:""}}'; document.documentElement.dataset.hdPages = n; };
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(count); else count();
+    window.addEventListener('beforeprint', count); window.addEventListener('load', count);
+  })()</` + `script>` : '';
+  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Hồ sơ ${escH(D.map.ma_can)}</title><style>${HS_CSS} ${isHd ? HD_CSS : ''} ${pageCss} ${anxCss}
+    ${IO.EDIT_CSS}</style></head><body>${IO.editBar(`Bộ hồ sơ căn <b>${escH(D.map.ma_can)}</b> · ${docs.length} hồ sơ — số liệu lấy theo dữ liệu đã khai báo; chỗ «${DOTS}» là dữ liệu còn trống`)}${IO.editDoc(body)}${saveJs}${anxJs}</body></html>`.replace('<button class="pri" onclick="print()">', saveBtn + '<button class="pri" onclick="print()">');
 }
 // bản đã sửa trên trang in → Word (bỏ script / thuộc tính on…, contenteditable)
 async function wordFromHtml(unitId, docs, user) {
@@ -343,18 +364,18 @@ async function wordFromHtml(unitId, docs, user) {
   const safe = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').replace(/[^\w.-]+/g, '_').replace(/_+/g, '_');
   const one1 = docs.length === 1 && names.find(n => n.code === docs[0].code);
   const name = `${one1 ? safe(one1.name) : 'Bo_ho_so'}_${u.code}_da-sua.docx`;
-  return { buf: docxOf(docs.map(d => clean(d.html)), name, isHdSet(docs.map(d => String(d.code || '')))), name };
+  return { buf: docxOf(docs.map(d => clean(d.html)), name, isHdSet(docs.map(d => String(d.code || ''))), null, docs.findIndex(d => ANNEX(tplKey(String(d.code || ''))))), name };
 }
 // Word: tệp .docx nhúng HTML (altChunk) — Word mở và sửa như văn bản thường
-function docxOf(htmls, title, isHd, groups) {   // groups: số hồ sơ của từng căn (in hàng loạt) → mỗi căn 1 section, số trang đánh lại từ 1
-  const css = HS_CSS.replace(/section\.hs \+ section\.hs\{[^}]*\}/, '') + ` body,td,p{font-family:"Times New Roman",serif;font-size:13pt} td{mso-line-height-rule:exactly}`;
+function docxOf(htmls, title, isHd, groups, annexFrom) {   // annexFrom: vị trí phụ lục đầu tiên của HĐMB → phụ lục sang vùng trang riêng, không đánh «Trang HĐ» (như bản HĐMB đã ký)   // groups: số hồ sơ của từng căn (in hàng loạt) → mỗi căn 1 section, số trang đánh lại từ 1
+  const css = HS_CSS.replace(/section\.hs \+ section\.hs\{[^}]*\}/, '') + (isHd ? HD_CSS + ' table.xl td{padding:2.5pt 2pt}' : '') + ` body,td,p{font-family:"Times New Roman",serif;font-size:${isHd ? 12 : 13}pt} td{mso-line-height-rule:exactly}`;
   // Word không vẽ border của <span>: gạch chân tiêu ngữ đổi sang underline
   // Word giãn dòng trống rộng hơn trình duyệt (bìa HĐMB tràn trang): dòng trống → ô &nbsp; cỡ chữ đúng bằng chiều cao dòng
   const wordFix = h => h.split("border-bottom:1px solid #000;padding-bottom:1px").join("text-decoration:underline")
     .split('class="bv-img"').join('class="bv-img" width="620" height="438"')   // bản vẽ: Word không hiểu max-width → khổ ngang vừa lề trang dọc
     .replace(/<tr style="height:(\d+)pt"><td colspan="(\d+)"><\/td><\/tr>/g, (m, ht, cs) => `<tr><td colspan="${cs}" style="font-size:${Math.max(2, Math.round(+ht * 0.6))}pt;line-height:${Math.max(2, Math.round(+ht * 0.6))}pt;padding:0">&nbsp;</td></tr>`);
   const page = h => `<!doctype html><html><head><meta charset="utf-8"><title>${escH(title)}</title><style>${css}</style></head><body>${wordFix(h)}</body></html>`;
-  const CT = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="htm" ContentType="text/html"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/><Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/><Override PartName="/word/header2.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/><Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/></Types>';
+  const CT = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="htm" ContentType="text/html"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/><Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/><Override PartName="/word/header2.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/><Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/><Override PartName="/word/footer2.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/></Types>';
   // font mặc định Times New Roman 13 (HTML nhúng không tự lấy font của trang)
   const STY = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="Times New Roman" w:cs="Times New Roman"/><w:sz w:val="26"/><w:szCs w:val="26"/><w:lang w:val="vi-VN"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>';
   const SET = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:compat><w:doNotExpandShiftReturn/></w:compat></w:settings>';
@@ -365,23 +386,25 @@ function docxOf(htmls, title, isHd, groups) {   // groups: số hồ sơ của t
   const HDR = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:sz w:val="26"/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:rPr><w:sz w:val="26"/></w:rPr><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:rPr><w:sz w:val="26"/></w:rPr><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:rPr><w:sz w:val="26"/></w:rPr><w:t>2</w:t></w:r><w:r><w:rPr><w:sz w:val="26"/></w:rPr><w:fldChar w:fldCharType="end"/></w:r></w:p></w:hdr>';
   const fld = (code, sz) => `<w:r><w:rPr><w:sz w:val="${sz}"/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:rPr><w:sz w:val="${sz}"/></w:rPr><w:instrText xml:space="preserve"> ${code} </w:instrText></w:r><w:r><w:rPr><w:sz w:val="${sz}"/></w:rPr><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:rPr><w:sz w:val="${sz}"/></w:rPr><w:t>1</w:t></w:r><w:r><w:rPr><w:sz w:val="${sz}"/></w:rPr><w:fldChar w:fldCharType="end"/></w:r>`;
   // HĐMB: «Trang HĐ: x/y» góc dưới bên phải, mọi trang (theo bản HĐMB chuẩn)
-  const FTR = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">Trang HĐ: </w:t></w:r>${fld('PAGE', 18)}<w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t>/</w:t></w:r>${fld(groups && groups.length > 1 ? 'SECTIONPAGES' : 'NUMPAGES', 18)}</w:p></w:ftr>`;
+  const FTR = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">Trang HĐ: </w:t></w:r>${fld('PAGE', 18)}<w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:t>/</w:t></w:r>${fld((groups && groups.length > 1) || annexFrom > 0 ? 'SECTIONPAGES' : 'NUMPAGES', 18)}</w:p></w:ftr>`;
+  const FTR0 = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p/></w:ftr>';
   const HDR0 = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p/></w:hdr>';
-  const sect = () => (isHd ? '<w:sectPr><w:footerReference w:type="default" r:id="rFt"/><w:pgSz' : '<w:sectPr><w:headerReference w:type="default" r:id="rHd"/><w:headerReference w:type="first" r:id="rHd0"/><w:pgSz') + ' w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="851" w:bottom="1134" w:left="1701" w:header="567" w:footer="567" w:gutter="0"/><w:pgNumType w:start="1"/>' + (isHd ? '' : '<w:titlePg/>') + '</w:sectPr>';
+  const sect = (pl) => (isHd ? `<w:sectPr><w:footerReference w:type="default" r:id="${pl ? 'rFt0' : 'rFt'}"/><w:pgSz` : '<w:sectPr><w:headerReference w:type="default" r:id="rHd"/><w:headerReference w:type="first" r:id="rHd0"/><w:pgSz') + ' w:w="11906" w:h="16838"/><w:pgMar ' + (isHd ? 'w:top="964" w:right="680" w:bottom="850" w:left="1106"' : 'w:top="1134" w:right="851" w:bottom="1134" w:left="1701"') + ' w:header="567" w:footer="567" w:gutter="0"/><w:pgNumType w:start="1"/>' + (isHd ? '' : '<w:titlePg/>') + '</w:sectPr>';
   const ends = new Set(); if (groups && groups.length > 1) { let n = 0; for (const g of groups.slice(0, -1)) { n += g; ends.add(n - 1); } }   // hồ sơ cuối của mỗi căn → ngắt section
+  const anx = isHd && !(groups && groups.length > 1) && annexFrom > 0 && annexFrom < htmls.length; if (anx) ends.add(annexFrom - 1);   // HĐMB | phụ lục
   const DOC = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>'
-    + htmls.map((h, i) => `<w:altChunk r:id="hc${i + 1}"/>` + (i === htmls.length - 1 ? '' : ends.has(i) ? `<w:p><w:pPr>${sect()}</w:pPr></w:p>` : brk)).join('')
-    + sect() + '</w:body></w:document>';
+    + htmls.map((h, i) => `<w:altChunk r:id="hc${i + 1}"/>` + (i === htmls.length - 1 ? '' : ends.has(i) ? `<w:p><w:pPr>${sect(false)}</w:pPr></w:p>` : brk)).join('')
+    + sect(anx) + '</w:body></w:document>';
   const DREL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-    + htmls.map((h, i) => `<Relationship Id="hc${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/aFChunk" Target="hs${i + 1}.htm"/>`).join('') + '<Relationship Id="rSty" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rSet" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/><Relationship Id="rHd" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/><Relationship Id="rHd0" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header2.xml"/><Relationship Id="rFt" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/></Relationships>';
-  return zip([['[Content_Types].xml', CT], ['_rels/.rels', RELS], ['word/document.xml', DOC], ['word/_rels/document.xml.rels', DREL], ['word/styles.xml', STY], ['word/settings.xml', SET], ['word/header1.xml', HDR], ['word/header2.xml', HDR0], ['word/footer1.xml', FTR], ...htmls.map((h, i) => [`word/hs${i + 1}.htm`, page(h)])]);
+    + htmls.map((h, i) => `<Relationship Id="hc${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/aFChunk" Target="hs${i + 1}.htm"/>`).join('') + '<Relationship Id="rSty" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rSet" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/><Relationship Id="rHd" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/><Relationship Id="rHd0" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header2.xml"/><Relationship Id="rFt" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/><Relationship Id="rFt0" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer2.xml"/></Relationships>';
+  return zip([['[Content_Types].xml', CT], ['_rels/.rels', RELS], ['word/document.xml', DOC], ['word/_rels/document.xml.rels', DREL], ['word/styles.xml', STY], ['word/settings.xml', SET], ['word/header1.xml', HDR], ['word/header2.xml', HDR0], ['word/footer1.xml', FTR], ['word/footer2.xml', FTR0], ...htmls.map((h, i) => [`word/hs${i + 1}.htm`, page(h)])]);
 }
 async function wordHs(unitId, codes, user, custId) {
   const { D, docs } = await hsDocs(unitId, codes, user, custId);
   await C.audit({ q }, 'unit', +unitId, 'tai_word_ho_so', null, null, user, docs.map(d => d.t.code).join(', '));
   const safe = s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').replace(/[^\w.-]+/g, '_').replace(/_+/g, '_');
   const name = docs.length === 1 ? `${safe(docs[0].t.name)}_${D.map.ma_can}.docx` : `Bo_ho_so_${D.map.ma_can}.docx`;
-  return { buf: docxOf(docs.map(d => d.html), name, isHdSet(docs.map(d => d.t.code))), name };
+  return { buf: docxOf(docs.map(d => d.html), name, isHdSet(docs.map(d => d.t.code)), null, docs.findIndex(d => ANNEX(tplKey(d.t.code)))), name };
 }
 
 // lưu bản Word của bộ hồ sơ vào Kho hồ sơ: gắn vào HĐ của bộ (vay / thanh lý vay → HĐ vay; còn lại → HĐMB, không có thì HĐ khác của căn), loại «Dự thảo»
