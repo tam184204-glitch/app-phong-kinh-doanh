@@ -438,6 +438,17 @@ async function batchPlan(units, bo, user) {
   }
   return { keys: [...keys].map(([key, name]) => ({ key, name })).sort((a, b) => a.key.localeCompare(b.key)), units: out };
 }
+async function batchKeys(units, bo, user) {   // danh sách loại hồ sơ của bước (nhanh: mỗi tòa xem 1 căn, không tính dữ liệu)
+  if (!can(user, E.unit, 'r')) deny();
+  const keys = new Map(), seen = new Set();
+  for (const code of unitList(units)) {
+    const g = String(code).toUpperCase().replace(/-[^-]+$/, ''); if (seen.has(g)) continue; seen.add(g);
+    try { const f = await findUnit(code); await autoProjectTemplates(f.id, user);
+      for (const t of (await unitTemplates(f.id)).filter(t => t.bo === bo)) if (!keys.has(tplKey(t.code))) keys.set(tplKey(t.code), shortName(t.name));
+    } catch (e) { seen.delete(g); }
+  }
+  return { keys: [...keys].map(([key, name]) => ({ key, name })).sort((a, b) => a.key.localeCompare(b.key)) };
+}
 async function batchDocs(units, bo, keys, user) {
   if (!can(user, E.unit, 'r')) deny();
   const want = new Set(String(keys || '').split(',').filter(Boolean)), out = [];
@@ -466,4 +477,4 @@ async function wordBatch(units, bo, keys, user) {
   const name = `In_hang_loat_${list.length}_can_${bo}_${C.today()}.docx`;
   return { buf: docxOf(flat.map(d => d.html), name, flat.every(d => /-MB-02/.test(d.t.code)), list.map(u => u.docs.length)), name };
 }
-module.exports = { batchPlan, printBatch, wordBatch, custHistory, wordFromHtml, demoFill, demoFillOn, saveTarget, BO, MAU_TNS, hsData, hsInfo, printHs, wordHs, merge, evalExpr };
+module.exports = { batchKeys, batchPlan, printBatch, wordBatch, custHistory, wordFromHtml, demoFill, demoFillOn, saveTarget, BO, MAU_TNS, hsData, hsInfo, printHs, wordHs, merge, evalExpr };

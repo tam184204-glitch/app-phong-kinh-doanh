@@ -1772,3 +1772,8 @@ label.tplr { display: flex; gap: 8px; align-items: center; padding: 7px 0; }
 .bt-units { border: 1px solid var(--line2); border-radius: 10px; max-height: 260px; overflow: auto; padding: 8px 12px; }
 .bt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 4px 10px; margin-top: 6px; font-size: 13px; }
 .bt-miss { max-height: 220px; overflow: auto; margin-top: 6px; }
+
+.bt-docs{border:1px solid var(--line,#e5e7eb);border-radius:8px;padding:8px 10px;margin-top:8px;background:var(--bg2,#fafafa)}
+.bt-docs .bt-uh{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+.bt-dgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:4px 14px;max-height:190px;overflow:auto}
+.bt-dgrid .chk{white-space:normal;line-height:1.3}

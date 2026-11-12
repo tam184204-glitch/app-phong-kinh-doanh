@@ -1188,26 +1188,42 @@ async function hosoPanel(main, params = {}) {
 // ---------- In hàng loạt nhiều căn (12/11/2026) ----------
 async function batchModal(bo0) {
   const BOS = [['mua_ban', 'HS mua bán'], ['vay', 'HS hợp đồng vay'], ['tl_vay', 'HS thanh lý HĐ vay'], ['ban_giao', 'HS bàn giao'], ['tl_mua_ban', 'HS thanh lý mua bán']];
-  const st = { bo: bo0, units: [], sel: new Set(), plan: null, keys: new Set() };
+  const st = { bo: bo0, units: [], sel: new Set(), plan: null, keys: new Set(), list: null, kq: 0 };
   const m = modal({ title: `${ico('fa-layer-group')} In hàng loạt nhiều căn`, wide: true, body: `<div class="bt">
     <div class="bt-row"><label>Dự án<select id="btP"><option value="">— Chọn dự án —</option>${M.projects.map(p => `<option value="${p.id}">${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select></label>
       <label>Tòa<select id="btB"><option value="">Tất cả tòa</option></select></label>
       <label class="bt-paste">hoặc dán mã căn (cách nhau dấu phẩy / xuống dòng)<textarea id="btT" rows="2" placeholder="TNS-G-0402, TNS-G-0403…"></textarea></label></div>
     <div class="bt-row"><b>Bước:</b> ${BOS.map(([k, l]) => `<label class="chk"><input type="radio" name="btBo" value="${k}" ${k === bo0 ? 'checked' : ''}> ${l}</label>`).join(' ')}</div>
     <div id="btU" class="bt-units"><div class="empty">Chọn dự án / tòa hoặc dán mã căn.</div></div>
-    <div id="btK"></div></div>`,
+    <div id="btD"></div><div id="btK"></div></div>`,
     foot: `<span class="small muted" id="btN"></span><button class="btn" data-x>Đóng</button><button class="btn" id="btC">${ico('fa-list-check')} Kiểm tra hồ sơ</button><button class="btn" id="btW" disabled>${ico('fa-file-word')} Tải Word</button><button class="btn pri" id="btI" disabled>${ico('fa-print')} In tất cả</button>` });
   const el = m.el, units = () => [...st.sel];
   const drawUnits = () => {
     $('#btU', el).innerHTML = st.units.length ? `<div class="bt-uh"><label class="chk"><input type="checkbox" id="btAll" ${st.sel.size === st.units.length ? 'checked' : ''}> Chọn tất cả (${st.units.length} căn)</label></div><div class="bt-grid">${st.units.map(c => `<label class="chk"><input type="checkbox" data-u="${esc(c)}" ${st.sel.has(c) ? 'checked' : ''}> ${esc(c)}</label>`).join('')}</div>` : '<div class="empty">Không có căn.</div>';
     $('#btN', el).textContent = `Đã chọn ${st.sel.size} căn${st.sel.size > 200 ? ' (tối đa 200 căn / lần)' : ''}`; st.plan = null; drawPlan();
   };
+  const drawDocs = () => {
+    const L = st.list, box = $('#btD', el);
+    if (!L) { box.innerHTML = st.units.length ? '<div class="small muted">Đang lấy danh sách hồ sơ…</div>' : ''; return; }
+    box.innerHTML = `<div class="bt-docs"><div class="bt-uh"><b>${ico('fa-file-lines')} Hồ sơ / mẫu biểu cần in</b> <label class="chk"><input type="checkbox" id="btKAll" ${L.length && st.keys.size === L.length ? 'checked' : ''}> Chọn tất cả (${L.length} mẫu)</label> <span class="small muted">— đã chọn ${st.keys.size}</span></div>
+      ${L.length ? `<div class="bt-dgrid">${L.map(k => `<label class="chk"><input type="checkbox" data-k="${esc(k.key)}" ${st.keys.has(k.key) ? 'checked' : ''}> ${esc(k.name)}</label>`).join('')}</div>` : '<div class="muted small">Bước này chưa có mẫu cho các căn đã chọn.</div>'}</div>`;
+    $('#btI', el).disabled = $('#btW', el).disabled = !st.sel.size || !st.keys.size;
+  };
+  const loadDocs = async () => {
+    const q = ++st.kq; st.list = null; drawDocs();
+    if (!st.units.length) return;
+    const r = await api('POST', '/api/hs-batch/keys', { units: (st.sel.size ? units() : st.units).slice(0, 200), bo: st.bo });
+    if (q !== st.kq) return;
+    const had = st.keys.size; st.list = r.keys;
+    st.keys = new Set(had ? r.keys.map(k => k.key).filter(k => st.keys.has(k)) : r.keys.map(k => k.key));
+    if (!st.keys.size) st.keys = new Set(r.keys.map(k => k.key));
+    drawDocs();
+  };
   const drawPlan = () => {
-    const p = st.plan; $('#btI', el).disabled = $('#btW', el).disabled = !p || !st.keys.size;
+    const p = st.plan; drawDocs();
     if (!p) { $('#btK', el).innerHTML = ''; return; }
     const ok = p.units.filter(u => !u.error && u.n), miss = ok.filter(u => u.missing.length);
-    $('#btK', el).innerHTML = `<div class="bt-row"><b>Hồ sơ cần in:</b> ${p.keys.map(k => `<label class="chk"><input type="checkbox" data-k="${esc(k.key)}" ${st.keys.has(k.key) ? 'checked' : ''}> ${esc(k.name)}</label>`).join(' ') || '<span class="muted">Không có mẫu cho bước này.</span>'}</div>
-      <div class="small">${ok.length} căn in được${p.units.length - ok.length ? ` · <span class="hs-miss">${p.units.length - ok.length} căn bỏ qua (${esc(p.units.filter(u => u.error || !u.n).map(u => u.code).slice(0, 6).join(', '))})</span>` : ''}${miss.length ? ` · <span class="hs-miss">${miss.length} căn còn thiếu dữ liệu (in ra «……» để điền tay)</span>` : ' · <span class="hs-ok">đủ dữ liệu</span>'}</div>
+    $('#btK', el).innerHTML = `<div class="small">${ok.length} căn in được${p.units.length - ok.length ? ` · <span class="hs-miss">${p.units.length - ok.length} căn bỏ qua (${esc(p.units.filter(u => u.error || !u.n).map(u => u.code).slice(0, 6).join(', '))})</span>` : ''}${miss.length ? ` · <span class="hs-miss">${miss.length} căn còn thiếu dữ liệu (in ra «……» để điền tay)</span>` : ' · <span class="hs-ok">đủ dữ liệu</span>'}</div>
       ${miss.length ? `<div class="tbl-wrap bt-miss"><table class="t"><thead><tr><th>Căn</th><th>Khách hàng</th><th>Còn thiếu</th></tr></thead><tbody>${miss.slice(0, 60).map(u => `<tr><td>${esc(u.code)}</td><td>${esc(u.customer || '—')}</td><td class="wrap">${esc(u.missing.join(', '))}</td></tr>`).join('')}</tbody></table></div>` : ''}`;
   };
   const loadUnits = async () => {
@@ -1215,23 +1231,24 @@ async function batchModal(bo0) {
     if (t) st.units = [...new Set(t.split(/[\s,;]+/).map(x => x.trim().toUpperCase()).filter(Boolean))];
     else { const pid = +$('#btP', el).value, bid = +$('#btB', el).value; if (!pid) { st.units = []; return drawUnits(); }
       const r = await api('GET', '/api/e/unit?limit=5000&sort=code'); st.units = r.rows.filter(u => u.project_id === pid && (!bid || u.building_id === bid)).map(u => u.code); }
-    st.sel = new Set(st.units.slice(0, 200)); drawUnits();
+    st.sel = new Set(st.units.slice(0, 200)); st.keys = new Set(); drawUnits(); loadDocs().catch(e => toast(e.message, true));
   };
   $('#btP', el).onchange = e => { $('#btB', el).innerHTML = '<option value="">Tất cả tòa</option>' + M.buildings.filter(b => b.project_id === +e.target.value).map(b => `<option value="${b.id}">${esc(b.name || 'Tòa ' + b.code)}</option>`).join(''); $('#btT', el).value = ''; run(loadUnits)(); };
   $('#btB', el).onchange = run(loadUnits);
   $('#btT', el).onchange = run(loadUnits);
   el.onchange = e => { const x = e.target;
-    if (x.name === 'btBo') { st.bo = x.value; st.plan = null; drawPlan(); }
+    if (x.name === 'btBo') { st.bo = x.value; st.plan = null; st.keys = new Set(); drawPlan(); loadDocs().catch(e => toast(e.message, true)); }
+    if (x.id === 'btKAll') { st.keys = x.checked ? new Set((st.list || []).map(k => k.key)) : new Set(); drawDocs(); }
     if (x.id === 'btAll') { st.sel = x.checked ? new Set(st.units) : new Set(); drawUnits(); }
     if (x.dataset.u) { x.checked ? st.sel.add(x.dataset.u) : st.sel.delete(x.dataset.u); $('#btN', el).textContent = `Đã chọn ${st.sel.size} căn`; st.plan = null; drawPlan(); }
-    if (x.dataset.k) { x.checked ? st.keys.add(x.dataset.k) : st.keys.delete(x.dataset.k); drawPlan(); } };
+    if (x.dataset.k) { x.checked ? st.keys.add(x.dataset.k) : st.keys.delete(x.dataset.k); drawDocs(); } };
   $('#btC', el).onclick = run(async () => {
     if (!st.sel.size) return toast('Chưa chọn căn', true);
     $('#btC', el).disabled = true; $('#btK', el).innerHTML = '<div class="empty">Đang kiểm tra từng căn…</div>';
-    try { st.plan = await api('POST', '/api/hs-batch/plan', { units: units().slice(0, 200), bo: st.bo }); st.keys = new Set(st.plan.keys.map(k => k.key)); drawPlan(); } finally { $('#btC', el).disabled = false; }
+    try { st.plan = await api('POST', '/api/hs-batch/plan', { units: units().slice(0, 200), bo: st.bo }); if (!st.list || st.plan.keys.length > st.list.length) { const add = st.plan.keys.filter(k => !(st.list || []).some(x => x.key === k.key)); st.list = st.plan.keys; if (!st.keys.size) add.forEach(k => st.keys.add(k.key)); } drawPlan(); } finally { $('#btC', el).disabled = false; }
   });
   const url = fmt => `/print/hs-batch?bo=${st.bo}&keys=${encodeURIComponent([...st.keys].join(','))}&units=${encodeURIComponent(units().slice(0, 200).join(','))}${fmt ? '&fmt=' + fmt : ''}`;
-  $('#btI', el).onclick = () => window.open(url(''), '_blank');
+  $('#btI', el).onclick = () => { if (!st.sel.size || !st.keys.size) return toast('Chọn căn và ít nhất 1 hồ sơ', true); window.open(url(''), '_blank'); };
   $('#btW', el).onclick = () => download(url('docx'));
 }
 // ---------- Mẫu biểu: cây thư mục theo module (12/11/2026) ----------
