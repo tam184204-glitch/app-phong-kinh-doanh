@@ -1167,7 +1167,7 @@ async function hosoPanel(main, params = {}) {
     if (x.closest('#hsP')) return window.open(`/print/hs/${d.unit.id}?bo=${S.bo}&tpl=${encodeURIComponent(codes().join(','))}`, '_blank');
     if (x.closest('#hsW')) return download(`/print/hs/${d.unit.id}?fmt=docx&tpl=${encodeURIComponent(codes().join(','))}`);
     const sv = x.closest('[data-sv]') || x.closest('#hsS'); if (sv) { sv.disabled = true;
-      try { const r = await api('POST', `/api/hs/${d.unit.id}/save`, { tpl: sv.dataset.sv || codes().join(','), bo: S.bo }); toast(`Đã lưu «${r.file.name}» vào kho, gắn với HĐ ${r.contract}`); await saved(); } finally { sv.disabled = false; } return; }
+      try { const r = await api('POST', `/api/hs/${d.unit.id}/save`, { tpl: sv.dataset.sv || codes().join(','), bo: S.bo }); toast(`Đã lưu «${r.file.name}» vào kho, gắn với ${r.where}`); await saved(); } finally { sv.disabled = false; } return; }
     if (x.closest('#hsD')) { const r = await api('POST', `/api/hs/${d.unit.id}/demo-fill`, {}); toast(r.did.length ? 'Đã thêm dữ liệu thử: ' + r.did.join('; ') : 'Căn này đã đủ dữ liệu thử'); return load(); }
     const hd = x.closest('[data-hd]'); if (hd) return download(`/api/file/${hd.dataset.hd}?dl=1`, null, hd.dataset.n);
     const hf = x.closest('[data-hf]'); if (hf) return window.open('/api/file/' + hf.dataset.hf, '_blank');

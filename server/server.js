@@ -592,7 +592,7 @@ async function saveHsFile(u, unitId, bo, x) {   // cất bản Word của bộ h
   const r = await one('INSERT INTO kd_file (ent, rec_id, kind, name, mime, size, path, version, uploaded_by, is_demo) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, name, version',
     [t.ent, g.row.id, t.kind, x.name, MIME['.docx'], x.buf.length, path.relative(FILES, disk), ver, u.id, g.row.is_demo]);
   await C.audit({ q }, t.ent, g.row.id, 'tai_tep', null, null, u, `Bộ hồ sơ: ${x.name}${ver > 1 ? ` (phiên bản ${ver})` : ''}`, g.row.is_demo);
-  return { file: r, contract: g.row.number || g.row.code };
+  return { file: r, where: `${t.what} ${g.row.number || g.row.code || ''}`.trim() };
 }
 R('POST', '/api/hs/:id/save', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await saveHsFile(u, p.id, b.bo, await HS.wordHs(p.id, b.tpl, u))); });
 R('POST', '/api/hs/:id/save-html', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await saveHsFile(u, p.id, b.bo, await HS.wordFromHtml(p.id, b.docs, u))); });   // bản đã sửa trên trang in

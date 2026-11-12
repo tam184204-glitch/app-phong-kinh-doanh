@@ -276,8 +276,11 @@ async function saveTarget(unitId, bo) {
   const cts = await q("SELECT id, kind, status FROM kd_contract WHERE unit_id = $1 ORDER BY (status IN ('huy', 'thanh_ly')), id DESC", [+unitId]);
   const want = ['vay', 'tl_vay'].includes(bo) ? ['vay'] : ['hdmb', 'thue_mua'];
   const c = cts.find(x => want.includes(x.kind)) || cts[0];
-  if (!c) bad('Căn chưa có hợp đồng nào để gắn tệp — lập hợp đồng trước (hoặc tải Word về máy)');
-  return { ent: 'contract', id: c.id, kind: 'du_thao' };
+  if (c) return { ent: 'contract', id: c.id, kind: 'du_thao', what: 'HĐ' };
+  // căn chưa có hợp đồng (đang soạn hồ sơ trước khi ký): gắn vào phiếu đăng ký của căn, chưa có phiếu thì gắn thẳng vào căn hộ (12/11/2026)
+  const r = await one("SELECT id FROM kd_reservation WHERE unit_id = $1 ORDER BY (status IN ('huy', 'het_han')), id DESC LIMIT 1", [+unitId]);
+  if (r) return { ent: 'reservation', id: r.id, kind: 'tai_lieu', what: 'phiếu đăng ký' };
+  return { ent: 'unit', id: +unitId, kind: 'tai_lieu', what: 'căn' };
 }
 // ---- dữ liệu thử cho bộ hồ sơ (CHỈ bản demo / máy thử có HS_DEMO_FILL=1) — dựa trên khách, căn, HĐ đã lưu của căn: chỉ điền chỗ còn trống, tạo thêm thứ còn thiếu ----
 const demoFillOn = () => (typeof process !== 'undefined' && (process.platform === 'browser' || process.env?.HS_DEMO_FILL === '1'));
