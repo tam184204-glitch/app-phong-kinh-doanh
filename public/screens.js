@@ -1162,9 +1162,9 @@ async function hosoPanel(main, params = {}) {
     const st = x.closest('[data-bo]'); if (st) { S.bo = st.dataset.bo; return draw(); }
     if (x.id === 'hsAll') { const bo = d.bos.find(b => b.k === S.bo); x.checked ? off.clear() : bo.tpls.forEach(t => off.add(t.code)); return draw(); }
     const ck = x.closest('[data-ck]'); if (ck) { ck.checked ? off.delete(ck.dataset.ck) : off.add(ck.dataset.ck); return draw(); }
-    const pv = x.closest('[data-pv]'); if (pv) return window.open(`/print/hs/${d.unit.id}?tpl=${encodeURIComponent(pv.dataset.pv)}`, '_blank');
+    const pv = x.closest('[data-pv]'); if (pv) return window.open(`/print/hs/${d.unit.id}?bo=${S.bo}&tpl=${encodeURIComponent(pv.dataset.pv)}`, '_blank');
     const wd = x.closest('[data-wd]'); if (wd) return download(`/print/hs/${d.unit.id}?fmt=docx&tpl=${encodeURIComponent(wd.dataset.wd)}`);
-    if (x.closest('#hsP')) return window.open(`/print/hs/${d.unit.id}?tpl=${encodeURIComponent(codes().join(','))}`, '_blank');
+    if (x.closest('#hsP')) return window.open(`/print/hs/${d.unit.id}?bo=${S.bo}&tpl=${encodeURIComponent(codes().join(','))}`, '_blank');
     if (x.closest('#hsW')) return download(`/print/hs/${d.unit.id}?fmt=docx&tpl=${encodeURIComponent(codes().join(','))}`);
     const sv = x.closest('[data-sv]') || x.closest('#hsS'); if (sv) { sv.disabled = true;
       try { const r = await api('POST', `/api/hs/${d.unit.id}/save`, { tpl: sv.dataset.sv || codes().join(','), bo: S.bo }); toast(`Đã lưu «${r.file.name}» vào kho, gắn với HĐ ${r.contract}`); await saved(); } finally { sv.disabled = false; } return; }
@@ -1172,6 +1172,7 @@ async function hosoPanel(main, params = {}) {
     const hd = x.closest('[data-hd]'); if (hd) return download(`/api/file/${hd.dataset.hd}?dl=1`, null, hd.dataset.n);
     const hf = x.closest('[data-hf]'); if (hf) return window.open('/api/file/' + hf.dataset.hf, '_blank');
   });
+  window.__ctgHsSaved = () => { if ($('#hsSv', main)?.isConnected) saved(); };   // trang in vừa «Lưu bản đã sửa vào kho»
   if (S.unit) await load();
 }
 // ---------- Mẫu biểu: cây thư mục theo module (12/11/2026) ----------

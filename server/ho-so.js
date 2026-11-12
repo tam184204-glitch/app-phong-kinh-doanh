@@ -215,13 +215,36 @@ async function hsDocs(unitId, codes, user) {
   return { D, docs: pickT.map(t => ({ t, html: merge(t.content, D) })) };
 }
 // in cả bộ: 1 trang HTML, mỗi hồ sơ một trang mới, sửa được trực tiếp trước khi in
-async function printHs(unitId, codes, user) {
+async function printHs(unitId, codes, user, bo) {
   const IO = require('./io');
   const { D, docs } = await hsDocs(unitId, codes, user);
   await C.audit({ q }, 'unit', +unitId, 'in_bo_ho_so', null, null, user, docs.map(d => d.t.code).join(', '));
-  const body = docs.map(d => `<section class="hs"><div class="hs-t" contenteditable="false">${escH(d.t.name)}</div>${d.html}</section>`).join('');
+  const body = docs.map(d => `<section class="hs" data-code="${escH(d.t.code)}"><div class="hs-t" contenteditable="false">${escH(d.t.name)}</div>${d.html}</section>`).join('');
+  // nút «Lưu bản đã sửa vào kho»: gửi đúng nội dung đang thấy (kể cả chữ đã sửa tay) → file Word trong Kho, gắn vào HĐ của căn (12/11/2026)
+  const saveBtn = `<button id="hsSave" title="Lưu đúng bản đang thấy (kể cả chỗ đã sửa) thành file Word trong Kho hồ sơ của căn — mở lại lúc nào cũng còn">💾 Lưu bản đã sửa vào kho</button>`;
+  const saveJs = `<script>(() => { const b = document.getElementById('hsSave'); if (!b) return;
+    b.onclick = async () => { b.disabled = true; const t = b.textContent; b.textContent = 'Đang lưu…';
+      try { const secs = [...document.querySelectorAll('section.hs')].map(s => { const c = s.cloneNode(true); c.querySelectorAll('.hs-t').forEach(x => x.remove()); return { code: s.dataset.code, html: c.innerHTML }; });
+        const f = (window.opener && !window.opener.closed && window.opener.fetch) ? window.opener.fetch.bind(window.opener) : fetch;   // bản demo: máy chủ chạy trong tab gốc
+        const r = await f('/api/hs/${+unitId}/save-html', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bo: ${JSON.stringify(bo || '')}, docs: secs }) });
+        const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Không lưu được');
+        b.textContent = '✓ Đã lưu «' + j.file.name + '»'; try { window.opener && window.opener.__ctgHsSaved && window.opener.__ctgHsSaved(); } catch (e) {}
+        setTimeout(() => { b.textContent = t; b.disabled = false; }, 4000);
+      } catch (e) { alert(e.message); b.textContent = t; b.disabled = false; } };
+  })()</` + `script>`;
   return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Hồ sơ ${escH(D.map.ma_can)}</title><style>${HS_CSS}
-    ${IO.EDIT_CSS}</style></head><body>${IO.editBar(`Bộ hồ sơ căn <b>${escH(D.map.ma_can)}</b> · ${docs.length} hồ sơ — số liệu lấy theo dữ liệu đã khai báo; chỗ «${DOTS}» là dữ liệu còn trống`)}${IO.editDoc(body)}</body></html>`;
+    ${IO.EDIT_CSS}</style></head><body>${IO.editBar(`Bộ hồ sơ căn <b>${escH(D.map.ma_can)}</b> · ${docs.length} hồ sơ — số liệu lấy theo dữ liệu đã khai báo; chỗ «${DOTS}» là dữ liệu còn trống`)}${IO.editDoc(body)}${saveJs}</body></html>`.replace('<button class="pri" onclick="print()">', saveBtn + '<button class="pri" onclick="print()">');
+}
+// bản đã sửa trên trang in → Word (bỏ script / thuộc tính on…, contenteditable)
+async function wordFromHtml(unitId, docs, user) {
+  if (!Array.isArray(docs) || !docs.length) bad('Không có nội dung để lưu');
+  const u = await one('SELECT code FROM kd_unit WHERE id = $1', [+unitId]); if (!u) bad('Không tìm thấy căn');
+  const clean = h => String(h || '').replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '').replace(/\scontenteditable="[^"]*"/gi, '');
+  const names = await q('SELECT code, name FROM kd_template WHERE code = ANY($1)', [docs.map(d => String(d.code || ''))]);
+  const safe = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').replace(/[^\w.-]+/g, '_').replace(/_+/g, '_');
+  const one1 = docs.length === 1 && names.find(n => n.code === docs[0].code);
+  const name = `${one1 ? safe(one1.name) : 'Bo_ho_so'}_${u.code}_da-sua.docx`;
+  return { buf: docxOf(docs.map(d => clean(d.html)), name), name };
 }
 // Word: tệp .docx nhúng HTML (altChunk) — Word mở và sửa như văn bản thường
 function docxOf(htmls, title) {
@@ -326,4 +349,4 @@ async function demoFill(unitId, user) {
   await C.audit({ q }, 'unit', u.id, 'du_lieu_thu_ho_so', null, null, user, did.join('; ') || 'đã đủ');
   return { did };
 }
-module.exports = { demoFill, demoFillOn, saveTarget, BO, MAU_TNS, hsData, hsInfo, printHs, wordHs, merge, evalExpr };
+module.exports = { wordFromHtml, demoFill, demoFillOn, saveTarget, BO, MAU_TNS, hsData, hsInfo, printHs, wordHs, merge, evalExpr };
