@@ -463,7 +463,60 @@ const EDIT_CSS = `.bar{font:13px system-ui;background:#f5f8fc;border:1px solid #
     .bar .tip{flex:1 1 220px;color:#5b6b7f} .bar button{font:600 13px system-ui;padding:6px 12px;border-radius:7px;border:1px solid #c7d4e4;background:#fff;cursor:pointer} .bar button.pri{background:#1e4e8c;color:#fff;border-color:#1e4e8c}
     .doc{outline:1px dashed #b8c7da;outline-offset:8px;border-radius:2px} .doc:focus{outline:2px solid #f2a65a} .doc *:focus{outline:none}
     @media screen and (max-width:640px){body{padding:0 14px} table.kv3 td{display:block;white-space:normal!important} table.b td{padding:3pt 4pt}}
-    @media print{.bar{display:none} .doc,.doc:focus{outline:none}}`;
+    @media print{.bar{display:none} .doc,.doc:focus{outline:none} .pvs{display:none!important}}
+    @media screen{html.pv body{max-width:none!important;margin:0!important;padding:0 0 40px!important;background:#d9dee5}
+      html.pv .bar{position:sticky;top:0;z-index:5;max-width:230mm;margin:0 auto 14px;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+      html.pv .pvw{position:relative;margin:0 auto} html.pv .pvs{position:absolute;inset:0;pointer-events:none;z-index:0}
+      html.pv .pvp{position:absolute;left:0;right:0;background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.28)}
+      html.pv .pvm{position:absolute;white-space:pre;color:#000;line-height:1} html.pv .pvn{position:absolute;left:0;right:0;text-align:center;font:11px system-ui;color:#6b7785}
+      html.pv .doc{position:relative;z-index:1;column-fill:auto;column-gap:0;column-wrap:wrap;outline:none!important} html.pv .hs-t{display:none}
+      html.pv [data-pvb]{break-before:column} html.pv [data-pva]{break-after:column} html:not(.pv) .pvs{display:none}}`;
+// 13/11/2026: «Xem dạng trang giấy» — màn sửa hiện đúng từng tờ A4 như bản in (lề lấy từ @page của trang, ngắt trang = ngắt cột của khối nhiều cột xuống dòng,
+// số trang / «Trang HĐ x/y» vẽ ở lề), sửa chữ đến đâu trang tự dàn lại đến đó. Trình duyệt chưa hỗ trợ column-wrap thì giữ màn cũ.
+function pvView() {
+  const d = document.querySelector('.doc'), H = document.documentElement; if (!d || !window.CSS || !CSS.supports('column-wrap', 'wrap')) return;
+  const MM = (() => { const e = document.createElement('div'); e.style.cssText = 'position:absolute;visibility:hidden;width:100mm'; document.body.append(e); const w = e.getBoundingClientRect().width / 100; e.remove(); return w; })();
+  const mm = v => { const e = document.createElement('div'); e.style.cssText = 'position:absolute;visibility:hidden;height:0;width:' + v; document.body.append(e); const w = e.getBoundingClientRect().width; e.remove(); return w / MM; };
+  const G = 8, wrap = document.createElement('div'), lay = document.createElement('div'), st = document.createElement('style');
+  wrap.className = 'pvw'; lay.className = 'pvs'; lay.setAttribute('contenteditable', 'false'); lay.setAttribute('aria-hidden', 'true');
+  d.before(wrap); wrap.append(lay, d); document.head.append(st);
+  const rules = () => { const o = { mg: [20, 15, 20, 30], land: false, box: {}, first: {} };
+    for (const sh of document.styleSheets) { let rs; try { rs = sh.cssRules; } catch (e) { continue; }
+      for (const r of rs) { if (!(r instanceof CSSPageRule)) continue; const sel = r.selectorText || '', s = r.style;
+        if (!sel) { if (s.marginTop) o.mg = [s.marginTop, s.marginRight, s.marginBottom, s.marginLeft].map(v => mm(v || '0')); if (s.size) o.land = /landscape/.test(s.size); }
+        if (sel && sel !== ':first') continue;
+        for (const m of r.cssRules || []) if (m.name && m.style) (sel ? o.first : o.box)[m.name] = { c: m.style.content, f: m.style.font }; } }
+    return o; };
+  const txt = (c, i, n) => { if (!c || c === 'none' || c === 'normal') return ''; let out = ''; const re = /"([^"]*)"|counter\((pages?)\)/g; let m;
+    while ((m = re.exec(c))) out += m[1] != null ? m[1] : m[2] === 'page' ? i + 1 : n; return out; };
+  let busy = false;
+  const draw = () => { if (busy || !H.classList.contains('pv')) return; busy = true;
+    try {
+      const R = rules(), [t, r, b, l] = R.mg, pw = R.land ? 297 : 210, ph = R.land ? 210 : 297, W = pw - l - r, Hc = ph - t - b, gap = b + G + t;
+      st.textContent = '@media screen{html.pv .pvw{width:' + W + 'mm;padding:' + t + 'mm ' + r + 'mm ' + b + 'mm ' + l + 'mm} html.pv .doc{width:' + W + 'mm;column-width:' + W + 'mm;column-height:' + Hc + 'mm;row-gap:' + gap + 'mm}}';
+      for (const e of d.querySelectorAll('*')) { const cs = getComputedStyle(e);
+        if (cs.breakBefore === 'page' || cs.pageBreakBefore === 'always') e.dataset.pvb = ''; if (cs.breakAfter === 'page' || cs.pageBreakAfter === 'always') e.dataset.pva = ''; }
+      const n = Math.max(1, Math.round((d.getBoundingClientRect().height / MM + gap) / (Hc + gap)));
+      const top0 = wrap.getBoundingClientRect().top, skip = new Set();   // trang phụ lục / bản vẽ: không in số trang HĐ
+      for (const s of d.querySelectorAll('section.pl, .bv-page')) for (const q of s.getClientRects()) skip.add(Math.floor((q.top - top0) / MM / (ph + G)));
+      let h = '';
+      for (let i = 0; i < n; i++) { const y = i * (ph + G); let mb = '';
+        if (!skip.has(i)) for (const k of Object.keys(R.box)) { const bx = (i === 0 && R.first[k]) || R.box[k], v = txt(bx.c, i, n); if (!v) continue;
+          const [vp, hp] = k.split('-'), ty = vp === 'top' ? t / 2 : ph - b / 2;
+          const pos = hp === 'left' ? 'left:' + l + 'mm' : hp === 'right' ? 'right:' + r + 'mm' : 'left:' + l + 'mm;right:' + r + 'mm;text-align:center';
+          mb += '<div class="pvm" style="top:' + ty + 'mm;transform:translateY(-50%);' + pos + ';font:' + (bx.f || '10pt serif') + '">' + String(v).replace(/</g, '&lt;') + '</div>'; }
+        h += '<div class="pvp" style="top:' + y + 'mm;height:' + ph + 'mm">' + mb + '</div><div class="pvn" style="top:' + (y + ph + 1) + 'mm">Trang ' + (i + 1) + ' / ' + n + '</div>'; }
+      lay.innerHTML = h;
+    } finally { busy = false; } };
+  let tm = 0; const later = () => { clearTimeout(tm); tm = setTimeout(draw, 120); };
+  const btn = document.createElement('button'), lab = () => { btn.textContent = H.classList.contains('pv') ? '📄 Đang xem dạng trang giấy — bấm để tắt' : '📄 Xem dạng trang giấy (như bản in)'; };
+  btn.onclick = () => { H.classList.toggle('pv'); try { localStorage.setItem('ctg-pv', H.classList.contains('pv') ? '1' : '0'); } catch (e) {} lab(); draw(); };
+  const bar = document.querySelector('.bar'); if (bar) bar.insertBefore(btn, bar.querySelector('button'));
+  let on = innerWidth >= 900; try { const v = localStorage.getItem('ctg-pv'); if (v) on = v === '1'; } catch (e) {}
+  H.classList.toggle('pv', on); lab(); draw();
+  new ResizeObserver(later).observe(d); d.addEventListener('input', later);
+  if (document.fonts) document.fonts.ready.then(() => setTimeout(draw, 300)); addEventListener('load', () => setTimeout(draw, 400));
+}
 const editBar = info => `<div class="bar"><span class="tip">${info}<br>✎ Bấm vào chữ để sửa trực tiếp, xong bấm <b>In</b>. Sửa ở đây chỉ áp dụng cho bản in này.</span><button onclick="location.reload()">Hoàn tác</button><button class="pri" onclick="print()">In / Lưu PDF</button></div>`;
 const editDoc = body => `<div class="doc" contenteditable="true" spellcheck="false">${body}</div>
 <script>(() => { ${MONEY_SRC}
@@ -477,7 +530,7 @@ const editDoc = body => `<div class="doc" contenteditable="true" spellcheck="fal
     if (!cur.s.isConnected && el && el !== cur.blk && cur.blk.contains(el) && /^[0-9.,\\s]*$/.test(el.textContent)) { el.dataset.so = cur.k; cur.s = el; }
     const v = cur.s.isConnected ? +cur.s.textContent.replace(/[^0-9]/g, '') : 0;
     d.querySelectorAll('[data-chu="' + cur.k + '"]').forEach(w => w.textContent = v ? moneyWords(v) : ''); });
-})()</script>`;
+})(); (${pvView.toString()})()</script>`;
 
 // bản đăng ký căn hộ / nội thất từ phiếu đăng ký (GD-01) — chọn mẫu ở Quản trị › Mẫu biểu
 const DOTS = '..............................';     // ô trống trên bản in → để khách / nhân viên điền tay

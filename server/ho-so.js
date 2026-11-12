@@ -324,7 +324,7 @@ async function printHs(unitId, codes, user, bo, custId) {
   const saveBtn = `<button id="hsSave" title="Lưu đúng bản đang thấy (kể cả chỗ đã sửa) thành file Word trong Kho hồ sơ của căn — mở lại lúc nào cũng còn">💾 Lưu bản đã sửa vào kho</button>`;
   const saveJs = `<script>(() => { const b = document.getElementById('hsSave'); if (!b) return;
     b.onclick = async () => { b.disabled = true; const t = b.textContent; b.textContent = 'Đang lưu…';
-      try { const secs = [...document.querySelectorAll('section.hs')].map(s => { const c = s.cloneNode(true); c.querySelectorAll('.hs-t').forEach(x => x.remove()); return { code: s.dataset.code, html: c.innerHTML }; });
+      try { const secs = [...document.querySelectorAll('section.hs')].map(s => { const c = s.cloneNode(true); c.querySelectorAll('.hs-t').forEach(x => x.remove()); c.querySelectorAll('[data-pvb],[data-pva]').forEach(x => { x.removeAttribute('data-pvb'); x.removeAttribute('data-pva'); }); return { code: s.dataset.code, html: c.innerHTML }; });
         const url = '/api/hs/${+unitId}/save-html', init = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bo: ${JSON.stringify(bo || '')}, cust: ${+custId || 0}, docs: secs }) };
         // tab in mở tách riêng (noopener) để hộp «In» không làm đơ tab app → bản demo (trang blob:) nhờ tab app chạy máy chủ qua BroadcastChannel
         const j = location.protocol === 'blob:' ? await new Promise((ok, no) => { const ch = new BroadcastChannel('ctg-hs'), id = Math.random().toString(36).slice(2);
