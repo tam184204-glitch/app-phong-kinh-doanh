@@ -1105,7 +1105,7 @@ V.catalog = async main => {
 // gộp vào Kho hồ sơ (12/11/2026, Tâm: «bộ hồ sơ với lưu trữ hồ sơ bản chất là 1») — mục «Bộ hồ sơ theo căn» trong #/v/vault
 V.hoso = (main, params = {}) => V.vault(main, { ...params, tab: 'bo' });
 async function hosoPanel(main, params = {}) {
-  const S = ST.hoso ||= { unit: '', bo: '', off: {} };
+  const S = ST.hoso ||= { unit: '', bo: '', off: {}, cust: '' };
   if (params.unit) S.unit = params.unit;
   main.innerHTML = `<div class="hs-emb">
     <div class="card hs-find"><form id="hsF" class="hs-q">${ico('fa-magnifying-glass')}<input id="hsQ" list="hsL" placeholder="Gõ mã căn hộ hoặc mã khách hàng (SĐT, CCCD cũng được) — ví dụ TNS-E-0303, KH000235" value="${esc(S.unit)}" autocomplete="off"><datalist id="hsL"></datalist><button class="btn pri">${ico('fa-arrow-right')} Mở bộ hồ sơ</button></form>
@@ -1125,6 +1125,7 @@ async function hosoPanel(main, params = {}) {
     box.innerHTML = `<div class="card hs-unit"><div class="hs-u1"><div class="hs-code">${ico('fa-building')} <b>${esc(d.unit.code)}</b></div><div class="muted">${esc(d.unit.project)} · ${esc(d.unit.building)}${d.unit.area ? ' · ' + String(d.unit.area).replace('.', ',') + ' m²' : ''}</div>
         <div class="hs-cust">${d.customer ? `${ico('fa-user')} <a href="#" data-op="customer:${d.customer.id}"><b>${esc(d.customer.name)}</b></a> <span class="muted">· Mã KH: <b>${esc(d.customer.code || '—')}</b>${d.customer.phone ? ' · ' + esc(d.customer.phone) : ''}</span>${d.units.length ? `<div class="hs-units small">Khách có ${d.units.length} căn: ${d.units.map(c => `<button class="tag${c === d.unit.code ? ' ok' : ''}" data-un="${esc(c)}">${esc(c)}</button>`).join(' ')}</div>` : ''}` : `<span class="muted">${ico('fa-user-slash')} Căn chưa có khách hàng</span>`}</div></div>
         <div class="hs-u2">${ct('HĐ mua bán', d.hdmb, 'contract')}${ct('HĐ thỏa thuận hoàn thiện', d.ht, 'contract')}${ct('HĐ vay', d.vay, 'contract')}</div></div>
+      ${hist()}
       <div class="hs-steps">${d.bos.map((b, i) => `<button class="hs-step${b.k === bo.k ? ' on' : ''}" data-bo="${b.k}"><span class="n">${i + 1}</span><span class="l">${esc(b.l)}</span><span class="c">${b.tpls.length} hồ sơ</span>${b.k === d.step ? '<span class="tag ok">bước hiện tại</span>' : ''}</button>`).join('')}</div>
       <div class="card hs-list">
         ${bo.tpls.length ? `<div class="hs-lh"><label class="chk"><input type="checkbox" id="hsAll" ${sel.length === bo.tpls.length ? 'checked' : ''}> <b>${esc(bo.l)}</b> — ${sel.length}/${bo.tpls.length} hồ sơ được chọn</label></div>
@@ -1144,32 +1145,39 @@ async function hosoPanel(main, params = {}) {
     let fs = []; try { fs = (await api('GET', '/api/vault')).filter(r => r.unit === d.unit.code); } catch { }
     el.innerHTML = `<div class="hs-lh"><b>${ico('fa-box-archive')} Đã lưu trong kho của căn ${esc(d.unit.code)}</b> — ${fs.length} tệp</div>${fs.length ? fs.map(r => `<div class="hs-row" data-hf="${r.id}" style="cursor:pointer">${vtIcon(r.name)}<div class="hs-n"><b>${esc(r.name)}</b><div class="small muted">${esc(r.ent_l)} ${esc(r.label || '')} · ${esc(r.kind_l)}${r.version > 1 ? ' · phiên bản ' + r.version : ''} · ${esc(dmyhm(r.uploaded_at))}${r.by ? ' · ' + esc(r.by) : ''}</div></div><div class="hs-a"><button class="btn sm" data-hd="${r.id}" data-n="${esc(r.name)}">${ico('fa-download')} Tải</button></div></div>`).join('') : '<div class="empty">Chưa có tệp nào — in xong bấm «Lưu» để cất bản Word vào đây.</div>'}`;
   };
+  // lịch sử khách hàng của căn (mỗi căn có thể qua nhiều khách: thanh lý / hủy rồi bán lại) — bấm khách để xem bộ hồ sơ của khách đó
+  const hist = () => d.history.length ? `<div class="card hs-hist"><div class="hs-lh"><b>${ico('fa-clock-rotate-left')} Lịch sử khách hàng của căn ${esc(d.unit.code)}</b> — ${d.history.length} khách · bấm một khách để xem / in bộ hồ sơ của khách đó</div>
+    <div class="tbl-wrap"><table class="t hs-ht"><thead><tr><th></th><th>Khách hàng · trạng thái</th><th>Giao dịch với căn</th><th>Thời gian</th></tr></thead><tbody>${d.history.map(h => `<tr data-cu="${h.id}" class="${h.id === d.cust ? 'on' : ''}">
+      <td>${h.id === d.cust ? ico('fa-circle-dot') : ico('fa-circle', 'muted')}</td><td><b>${esc(h.name)}</b> <span class="hs-st ${h.tone}">${esc(h.st)}</span>${h.current ? ' <span class="small muted">· khách hiện tại</span>' : ''}<div class="small muted">Mã KH: ${esc(h.code || '—')}${h.phone ? ' · ' + esc(h.phone) : ''}</div></td>
+      <td>${h.items.map(x => `<div class="small"><a href="#" data-op="${x.ent}:${x.id}">${esc(x.t)} ${esc(x.no)}</a> · ${esc(x.st)}${x.d ? ' · ' + esc(dmy(x.d)) : ''}</div>`).join('')}</td>
+      <td class="small nowrap">${esc(h.from || '')}${h.to && h.to !== h.from ? ' → ' + esc(h.to) : ''}</td></tr>`).join('')}</tbody></table></div></div>` : '';
   const codes = () => { const bo = d.bos.find(b => b.k === S.bo), off = S.off[d.unit.id + bo.k]; return bo.tpls.filter(t => !off.has(t.code)).map(t => t.code); };
   const load = async () => {
     const k = $('#hsQ', main).value.trim(); if (!k) return;
     box.innerHTML = '<div class="empty">Đang tải…</div>';
-    try { d = await api('GET', '/api/hs?unit=' + encodeURIComponent(k)); S.unit = d.unit.code; if (!d.bos.some(b => b.k === S.bo)) S.bo = ''; if (d.added) toast(`Dự án ${d.unit.project} chưa có mẫu — đã tự thêm ${d.added} mẫu hồ sơ cho dự án (sửa ở Quản trị › Mẫu biểu)`); history.replaceState(null, '', '#/v/vault?tab=bo&unit=' + encodeURIComponent(d.unit.code)); }
+    try { d = await api('GET', '/api/hs?unit=' + encodeURIComponent(k) + (S.cust ? '&cust=' + S.cust : '')); S.cust = d.cust || ''; S.unit = d.unit.code; if (!d.bos.some(b => b.k === S.bo)) S.bo = ''; if (d.added) toast(`Dự án ${d.unit.project} chưa có mẫu — đã tự thêm ${d.added} mẫu hồ sơ cho dự án (sửa ở Quản trị › Mẫu biểu)`); history.replaceState(null, '', '#/v/vault?tab=bo&unit=' + encodeURIComponent(d.unit.code)); }
     catch (e) { d = null; box.innerHTML = `<div class="empty">${ico('fa-circle-exclamation')} ${esc(e.message)}</div>`; return; }
     draw();
   };
-  $('#hsF', main).onsubmit = e => { e.preventDefault(); S.bo = ''; load(); };
+  $('#hsF', main).onsubmit = e => { e.preventDefault(); S.bo = ''; S.cust = ''; load(); };
   $('#hsQ', main).oninput = e => { clearTimeout(tmr); const v = e.target.value.trim(); if (v.length < 2) return;
     tmr = setTimeout(async () => { try { const [r, k] = await Promise.all([api('GET', '/api/e/unit?limit=10&sort=code&q=' + encodeURIComponent(v)), api('GET', '/api/e/customer?limit=8&q=' + encodeURIComponent(v)).catch(() => ({ rows: [] }))]);
       $('#hsL', main).innerHTML = r.rows.map(u => `<option value="${esc(u.code)}">Căn hộ</option>`).join('') + k.rows.filter(c => c.code).map(c => `<option value="${esc(c.code)}">Khách: ${esc(c.full_name)}${c.phone ? ' · ' + esc(c.phone) : ''}</option>`).join(''); } catch { } }, 250); };
-  $('#hsQ', main).onchange = e => { if (/^[A-Z]+-[A-Z0-9]+-\d+$|^KH\d+/i.test(e.target.value.trim())) { S.bo = ''; load(); } };
+  $('#hsQ', main).onchange = e => { if (/^[A-Z]+-[A-Z0-9]+-\d+$|^KH\d+/i.test(e.target.value.trim())) { S.bo = ''; S.cust = ''; load(); } };
   box.onclick = run(async e => {
     const x = e.target, off = d && S.off[d.unit.id + S.bo];
     const op = x.closest('[data-op]'); if (op) { e.preventDefault(); const [ent, id] = op.dataset.op.split(':'); return openForm(ent, { id: +id, onSaved: load }); }
-    const un = x.closest('[data-un]'); if (un) { $('#hsQ', main).value = un.dataset.un; S.bo = ''; return load(); }
+    const un = x.closest('[data-un]'); if (un) { $('#hsQ', main).value = un.dataset.un; S.bo = ''; S.cust = ''; return load(); }
+    const cu = x.closest('tr[data-cu]'); if (cu && !x.closest('a')) { S.cust = +cu.dataset.cu; S.bo = ''; $('#hsQ', main).value = d.unit.code; return load(); }
     const st = x.closest('[data-bo]'); if (st) { S.bo = st.dataset.bo; return draw(); }
     if (x.id === 'hsAll') { const bo = d.bos.find(b => b.k === S.bo); x.checked ? off.clear() : bo.tpls.forEach(t => off.add(t.code)); return draw(); }
     const ck = x.closest('[data-ck]'); if (ck) { ck.checked ? off.delete(ck.dataset.ck) : off.add(ck.dataset.ck); return draw(); }
-    const pv = x.closest('[data-pv]'); if (pv) return window.open(`/print/hs/${d.unit.id}?bo=${S.bo}&tpl=${encodeURIComponent(pv.dataset.pv)}`, '_blank');
-    const wd = x.closest('[data-wd]'); if (wd) return download(`/print/hs/${d.unit.id}?fmt=docx&tpl=${encodeURIComponent(wd.dataset.wd)}`);
-    if (x.closest('#hsP')) return window.open(`/print/hs/${d.unit.id}?bo=${S.bo}&tpl=${encodeURIComponent(codes().join(','))}`, '_blank');
-    if (x.closest('#hsW')) return download(`/print/hs/${d.unit.id}?fmt=docx&tpl=${encodeURIComponent(codes().join(','))}`);
+    const pv = x.closest('[data-pv]'); if (pv) return window.open(`/print/hs/${d.unit.id}?bo=${S.bo}&cust=${d.cust || ''}&tpl=${encodeURIComponent(pv.dataset.pv)}`, '_blank');
+    const wd = x.closest('[data-wd]'); if (wd) return download(`/print/hs/${d.unit.id}?fmt=docx&cust=${d.cust || ''}&tpl=${encodeURIComponent(wd.dataset.wd)}`);
+    if (x.closest('#hsP')) return window.open(`/print/hs/${d.unit.id}?bo=${S.bo}&cust=${d.cust || ''}&tpl=${encodeURIComponent(codes().join(','))}`, '_blank');
+    if (x.closest('#hsW')) return download(`/print/hs/${d.unit.id}?fmt=docx&cust=${d.cust || ''}&tpl=${encodeURIComponent(codes().join(','))}`);
     const sv = x.closest('[data-sv]') || x.closest('#hsS'); if (sv) { sv.disabled = true;
-      try { const r = await api('POST', `/api/hs/${d.unit.id}/save`, { tpl: sv.dataset.sv || codes().join(','), bo: S.bo }); toast(`Đã lưu «${r.file.name}» vào kho, gắn với ${r.where}`); await saved(); } finally { sv.disabled = false; } return; }
+      try { const r = await api('POST', `/api/hs/${d.unit.id}/save`, { tpl: sv.dataset.sv || codes().join(','), bo: S.bo, cust: d.cust }); toast(`Đã lưu «${r.file.name}» vào kho, gắn với ${r.where}`); await saved(); } finally { sv.disabled = false; } return; }
     if (x.closest('#hsD')) { const r = await api('POST', `/api/hs/${d.unit.id}/demo-fill`, {}); toast(r.did.length ? 'Đã thêm dữ liệu thử: ' + r.did.join('; ') : 'Căn này đã đủ dữ liệu thử'); return load(); }
     const hd = x.closest('[data-hd]'); if (hd) return download(`/api/file/${hd.dataset.hd}?dl=1`, null, hd.dataset.n);
     const hf = x.closest('[data-hf]'); if (hf) return window.open('/api/file/' + hf.dataset.hf, '_blank');

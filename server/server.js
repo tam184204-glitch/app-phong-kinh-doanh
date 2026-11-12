@@ -580,10 +580,10 @@ R('GET', '/api/template-fields/:ent', async (req, res, u, p) => send(res, 200, I
 R('POST', '/api/template-preview', async (req, res, u) => send(res, 200, { html: await IO.previewTemplate(await readJson(req), u) }));
 // Bộ hồ sơ theo căn (12/11/2026): gõ mã căn → bộ hồ sơ theo bước, in cả bộ / tải Word
 const HS = require('./ho-so');
-R('GET', '/api/hs', async (req, res, u, p, qs) => send(res, 200, await HS.hsInfo(qs.unit, u)));
+R('GET', '/api/hs', async (req, res, u, p, qs) => send(res, 200, await HS.hsInfo(qs.unit, u, qs.cust)));
 R('POST', '/api/hs/:id/demo-fill', async (req, res, u, p) => send(res, 200, await HS.demoFill(p.id, u)));   // chỉ bản demo
-async function saveHsFile(u, unitId, bo, x) {   // cất bản Word của bộ hồ sơ vào Kho (gắn vào hợp đồng của căn)
-  const t = await HS.saveTarget(unitId, bo);
+async function saveHsFile(u, unitId, bo, x, cust) {   // cất bản Word của bộ hồ sơ vào Kho hồ sơ (gắn vào hợp đồng của khách đang xem)
+  const t = await HS.saveTarget(unitId, bo, cust);
   const g = await C.get(t.ent, t.id, u); if (!g.perm.files) deny('Bạn không được đính kèm tệp cho hợp đồng này');
   const dir = path.join(FILES, t.ent, String(g.row.id)); fs.mkdirSync(dir, { recursive: true });
   const ver = (await one('SELECT coalesce(max(version),0)+1 AS v FROM kd_file WHERE ent = $1 AND rec_id = $2 AND kind = $3 AND name = $4', [t.ent, g.row.id, t.kind, x.name])).v;
@@ -594,11 +594,11 @@ async function saveHsFile(u, unitId, bo, x) {   // cất bản Word của bộ h
   await C.audit({ q }, t.ent, g.row.id, 'tai_tep', null, null, u, `Bộ hồ sơ: ${x.name}${ver > 1 ? ` (phiên bản ${ver})` : ''}`, g.row.is_demo);
   return { file: r, where: `${t.what} ${g.row.number || g.row.code || ''}`.trim() };
 }
-R('POST', '/api/hs/:id/save', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await saveHsFile(u, p.id, b.bo, await HS.wordHs(p.id, b.tpl, u))); });
-R('POST', '/api/hs/:id/save-html', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await saveHsFile(u, p.id, b.bo, await HS.wordFromHtml(p.id, b.docs, u))); });   // bản đã sửa trên trang in
+R('POST', '/api/hs/:id/save', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await saveHsFile(u, p.id, b.bo, await HS.wordHs(p.id, b.tpl, u, b.cust), b.cust)); });
+R('POST', '/api/hs/:id/save-html', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await saveHsFile(u, p.id, b.bo, await HS.wordFromHtml(p.id, b.docs, u), b.cust)); });   // bản đã sửa trên trang in
 R('GET', '/print/hs/:id', async (req, res, u, p, qs) => {
-  if (qs.fmt === 'docx') { const x = await HS.wordHs(p.id, qs.tpl, u); return sendFile(res, x.buf, x.name, MIME['.docx']); }
-  send(res, 200, await HS.printHs(p.id, qs.tpl, u, qs.bo), { 'Content-Type': 'text/html; charset=utf-8' });
+  if (qs.fmt === 'docx') { const x = await HS.wordHs(p.id, qs.tpl, u, qs.cust); return sendFile(res, x.buf, x.name, MIME['.docx']); }
+  send(res, 200, await HS.printHs(p.id, qs.tpl, u, qs.bo, qs.cust), { 'Content-Type': 'text/html; charset=utf-8' });
 }, { html: true });
 R('GET', '/print/tpl/:ent/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printGeneric(p.ent, p.id, u, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 R('GET', '/print/contract/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printContract(p.id, u, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });

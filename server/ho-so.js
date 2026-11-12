@@ -31,16 +31,19 @@ const num = v => v == null || v === '' ? null : +v;
 const area = v => v == null || v === '' ? '' : String(+v).replace('.', ',');
 
 // dữ liệu một căn → { map: trường → chữ, nums: trường → số, ctx: bản ghi gốc }
-async function hsData(unitId, user) {
+async function hsData(unitId, user, custId) {
   const u = await one(`SELECT u.*, b.code bcode, b.name bname, p.code pcode, p.name pname FROM kd_unit u JOIN kd_building b ON b.id = u.building_id JOIN kd_project p ON p.id = u.project_id WHERE u.id = $1`, [+unitId]);
   if (!u) bad('Không tìm thấy căn hộ');
-  const cts = await q(`SELECT c.* FROM kd_contract c WHERE c.unit_id = $1 ORDER BY (c.status IN ('huy', 'thanh_ly')), coalesce(c.contract_on, c.created_at::date) DESC, c.id DESC`, [u.id]);
+  const all = await q(`SELECT c.* FROM kd_contract c WHERE c.unit_id = $1 ORDER BY (c.status IN ('huy', 'thanh_ly')), coalesce(c.contract_on, c.created_at::date) DESC, c.id DESC`, [u.id]);
+  // một căn có thể qua nhiều khách (thanh lý / hủy rồi bán lại): custId = khách đang xem — chỉ lấy HĐ, phiếu của khách đó (12/11/2026)
+  const cid0 = +custId || (await custHistory(u.id)).find(h => h.current)?.id || null;
+  const cts = cid0 ? all.filter(c => c.customer_id === cid0) : all;
   const hdmb = pick(cts, 'hdmb') || pick(cts, 'thue_mua'), ht = pick(cts, 'hoan_thien'), vay = pick(cts, 'vay');
-  const res = await one(`SELECT * FROM kd_reservation WHERE unit_id = $1 ORDER BY (status IN ('huy', 'het_han')), id DESC LIMIT 1`, [u.id]);
+  const res = await one(`SELECT * FROM kd_reservation WHERE unit_id = $1 ${cid0 ? 'AND customer_id = $2' : ''} ORDER BY (status IN ('huy', 'het_han')), id DESC LIMIT 1`, cid0 ? [u.id, cid0] : [u.id]);
   const main = hdmb || vay || ht;
-  const kid = main?.customer_id || res?.customer_id;
+  const kid = cid0 || main?.customer_id || res?.customer_id;
   const k = kid ? await one('SELECT * FROM kd_customer WHERE id = $1', [kid]) : null;
-  const nx = await one(`SELECT * FROM kd_noxh_check WHERE unit_id = $1 ${kid ? 'OR customer_id = $2' : ''} ORDER BY (unit_id = $1) DESC, id DESC LIMIT 1`, kid ? [u.id, kid] : [u.id]);
+  const nx = await one(`SELECT * FROM kd_noxh_check WHERE unit_id = $1 ${kid ? 'OR customer_id = $2' : ''} ORDER BY ${kid ? '(customer_id = $2) DESC, ' : ''}(unit_id = $1) DESC, id DESC LIMIT 1`, kid ? [u.id, kid] : [u.id]);
   const pii = PII_PRINT.includes(user.role);
   const P = v => v == null || v === '' ? '' : pii ? String(v) : '(ẩn)';
   // vợ / chồng: thành viên hộ «Vợ (Chồng)» ở hồ sơ NOXH; không có thì lấy ô Đồng sở hữu của HĐ
@@ -197,10 +200,42 @@ async function findUnit(key) {
   if (!units.length) bad(`Khách ${k.code} · ${k.full_name} chưa gắn với căn nào (chưa có phiếu đăng ký / hợp đồng / hồ sơ NOXH)`);
   return { id: units[0].id, cust: k, units };
 }
+// lịch sử khách của căn: mọi khách từng có HĐ / phiếu đăng ký / hồ sơ NOXH với căn, kèm trạng thái (đang giao dịch, đã thanh lý, đã hủy…)
+const CT_KIND = { hdmb: 'HĐMB', thue_mua: 'HĐ thuê mua', hoan_thien: 'HĐ thỏa thuận', vay: 'HĐ vay', thue: 'HĐ thuê' };
+const CT_ST = { du_thao: 'Dự thảo', cho_duyet: 'Đang rà soát', cho_ky: 'Chờ ký', tu_choi: 'Trả lại', da_ky: 'Đã ký', thanh_ly: 'Đã thanh lý', huy: 'Đã hủy' };
+const RS_ST = { nhap: 'Nháp', cho_duyet: 'Chờ duyệt', giu_cho: 'Đang giữ chỗ', qua_han: 'Quá hạn giữ chỗ', da_coc: 'Đã đặt cọc', chuyen_hd: 'Đã chuyển hợp đồng', het_han: 'Hết hạn', tu_choi: 'Từ chối', huy: 'Đã hủy' };
+const NX_ST = { nhap: 'Dự thảo', cho_duyet: 'Chờ xét duyệt', da_duyet: 'Đã duyệt SXD', tu_choi: 'Trả lại' };
+async function custHistory(unitId) {
+  const cts = await q('SELECT id, customer_id, kind, number, status, contract_on, created_at FROM kd_contract WHERE unit_id = $1 AND customer_id IS NOT NULL', [+unitId]);
+  const rs = await q('SELECT id, customer_id, code, status, reg_date, created_at FROM kd_reservation WHERE unit_id = $1 AND customer_id IS NOT NULL', [+unitId]);
+  const nx = await q('SELECT id, customer_id, status, received_on, created_at FROM kd_noxh_check WHERE unit_id = $1 AND customer_id IS NOT NULL', [+unitId]);
+  const ids = [...new Set([...cts, ...rs, ...nx].map(r => r.customer_id))]; if (!ids.length) return [];
+  const ks = await q('SELECT id, code, full_name, phone FROM kd_customer WHERE id = ANY($1)', [ids]);
+  const day = r => String(r.contract_on || r.reg_date || r.received_on || r.created_at || '').slice(0, 10);
+  const out = ks.map(k => {
+    const c = cts.filter(x => x.customer_id === k.id), r = rs.filter(x => x.customer_id === k.id), n = nx.filter(x => x.customer_id === k.id);
+    const liveC = c.filter(x => !['huy', 'thanh_ly'].includes(x.status)), liveR = r.filter(x => !['huy', 'het_han', 'tu_choi', 'qua_han', 'chuyen_hd'].includes(x.status));
+    let st, tone;
+    if (liveC.length) { st = 'Đang giao dịch'; tone = 'ok'; }
+    else if (c.some(x => x.status === 'thanh_ly')) { st = 'Đã thanh lý'; tone = 'tl'; }
+    else if (c.length) { st = 'Đã hủy hợp đồng'; tone = 'huy'; }
+    else if (liveR.length) { st = 'Đang đăng ký · ' + (RS_ST[liveR[0].status] || liveR[0].status); tone = 'ok'; }
+    else if (r.length) { st = 'Đăng ký ' + (RS_ST[r[0].status] || r[0].status).toLowerCase(); tone = 'huy'; }
+    else { st = 'Hồ sơ NOXH · ' + (NX_ST[n[0].status] || n[0].status); tone = 'nx'; }
+    const items = [...c.map(x => ({ t: CT_KIND[x.kind] || 'HĐ', no: x.number || '#' + x.id, st: CT_ST[x.status] || x.status, d: day(x), ent: 'contract', id: x.id })),
+      ...r.map(x => ({ t: 'Phiếu đăng ký', no: x.code || '#' + x.id, st: RS_ST[x.status] || x.status, d: day(x), ent: 'reservation', id: x.id })),
+      ...n.map(x => ({ t: 'Hồ sơ NOXH', no: '#' + x.id, st: NX_ST[x.status] || x.status, d: day(x), ent: 'noxh_check', id: x.id }))].sort((a, b) => a.d.localeCompare(b.d));
+    const ds = items.map(x => x.d).filter(Boolean);
+    return { id: k.id, code: k.code, name: k.full_name, phone: k.phone, st, tone, current: !!(liveC.length || liveR.length), from: dmy(ds[0]), to: dmy(ds[ds.length - 1]), last: ds[ds.length - 1] || '', items };
+  });
+  return out.sort((a, b) => (b.current - a.current) || b.last.localeCompare(a.last));
+}
 // màn Bộ hồ sơ theo căn
-async function hsInfo(key, user) {
+async function hsInfo(key, user, custId) {
   if (!can(user, E.unit, 'r')) deny();
-  const f = await findUnit(key), id = f.id, D = await hsData(id, user), x = D.ctx;
+  const f = await findUnit(key), id = f.id, hist = await custHistory(id);
+  const cid = +custId || f.cust?.id || hist.find(h => h.current)?.id || hist[0]?.id || null;
+  const D = await hsData(id, user, cid), x = D.ctx;
   const others = f.units || (x.k ? await unitsOfCustomer(x.k.id) : []);
   const added = await autoProjectTemplates(id, user);
   const ts = await unitTemplates(id);
@@ -209,29 +244,31 @@ async function hsInfo(key, user) {
     unit: { id: x.u.id, code: x.u.code, project: x.u.pname, building: x.u.bname || 'Tòa ' + x.u.bcode, area: x.u.area_tt, status: x.u.status },
     customer: x.k && { id: x.k.id, code: x.k.code, name: x.k.full_name, phone: x.k.phone },
     hdmb: ctInfo(x.hdmb), ht: ctInfo(x.ht), vay: ctInfo(x.vay), reservation: x.res && { id: x.res.id, code: x.res.code, status: x.res.status }, noxh: x.nx && { id: x.nx.id },
+    history: hist, cust: cid,
     units: others.length > 1 ? others.map(r => r.code) : [], byCustomer: f.cust ? f.cust.code : null,
     step: stepOf(x), added, demoFill: demoFillOn(),
     bos: BO.map(([k, l]) => ({ k, l, tpls: ts.filter(t => t.bo === k).map(t => ({ code: t.code, name: t.name, kind: t.kind, missing: missOf(t.content, D) })) })),
   };
 }
 
-const HS_CSS = `@page{size:A4;margin:15mm 15mm 15mm 20mm} body{font:13pt/1.35 "Times New Roman",serif;color:#000;max-width:180mm;margin:auto}
-  table.xl{width:100%;border-collapse:collapse;table-layout:fixed} table.xl td{padding:1pt 3pt;vertical-align:top;overflow-wrap:break-word}
+// thể thức theo NĐ 30/2020/NĐ-CP Phụ lục I: A4, lề trên / dưới 20 mm, trái 30 mm, phải 15 mm; Times New Roman cỡ 13; giãn dòng ~1,3
+const HS_CSS = `@page{size:A4;margin:20mm 15mm 20mm 30mm} body{font:13pt/1.3 "Times New Roman",serif;color:#000;max-width:165mm;margin:auto}
+  table.xl{width:100%;border-collapse:collapse;table-layout:fixed} table.xl td{padding:1.5pt 2pt;vertical-align:top;overflow-wrap:break-word}
   .wd p{margin:0 0 4pt} table.bd{width:100%;border-collapse:collapse;margin:4pt 0} table.bd td{border:1px solid #000;padding:2pt 4pt;vertical-align:top} table.bd p{margin:0}
   section.hs + section.hs{page-break-before:always;break-before:page} .hs-t{font:600 12px system-ui;color:#5b6b7f;margin:18px 0 6px}
   @media print{.hs-t{display:none}}`;
-async function hsDocs(unitId, codes, user) {
+async function hsDocs(unitId, codes, user, custId) {
   if (!can(user, E.unit, 'r')) deny();
   const ts = await unitTemplates(unitId), want = String(codes || '').split(',').map(s => s.trim()).filter(Boolean);
   const pickT = want.length ? want.map(c => ts.find(t => t.code === c)).filter(Boolean) : ts;
   if (!pickT.length) bad('Chưa chọn hồ sơ (hoặc mẫu không áp dụng cho căn này)');
-  const D = await hsData(unitId, user);
+  const D = await hsData(unitId, user, custId);
   return { D, docs: pickT.map(t => ({ t, html: merge(t.content, D) })) };
 }
 // in cả bộ: 1 trang HTML, mỗi hồ sơ một trang mới, sửa được trực tiếp trước khi in
-async function printHs(unitId, codes, user, bo) {
+async function printHs(unitId, codes, user, bo, custId) {
   const IO = require('./io');
-  const { D, docs } = await hsDocs(unitId, codes, user);
+  const { D, docs } = await hsDocs(unitId, codes, user, custId);
   await C.audit({ q }, 'unit', +unitId, 'in_bo_ho_so', null, null, user, docs.map(d => d.t.code).join(', '));
   const body = docs.map(d => `<section class="hs" data-code="${escH(d.t.code)}"><div class="hs-t" contenteditable="false">${escH(d.t.name)}</div>${d.html}</section>`).join('');
   // nút «Lưu bản đã sửa vào kho»: gửi đúng nội dung đang thấy (kể cả chữ đã sửa tay) → file Word trong Kho, gắn vào HĐ của căn (12/11/2026)
@@ -240,7 +277,7 @@ async function printHs(unitId, codes, user, bo) {
     b.onclick = async () => { b.disabled = true; const t = b.textContent; b.textContent = 'Đang lưu…';
       try { const secs = [...document.querySelectorAll('section.hs')].map(s => { const c = s.cloneNode(true); c.querySelectorAll('.hs-t').forEach(x => x.remove()); return { code: s.dataset.code, html: c.innerHTML }; });
         const f = (window.opener && !window.opener.closed && window.opener.fetch) ? window.opener.fetch.bind(window.opener) : fetch;   // bản demo: máy chủ chạy trong tab gốc
-        const r = await f('/api/hs/${+unitId}/save-html', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bo: ${JSON.stringify(bo || '')}, docs: secs }) });
+        const r = await f('/api/hs/${+unitId}/save-html', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bo: ${JSON.stringify(bo || '')}, cust: ${+custId || 0}, docs: secs }) });
         const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Không lưu được');
         b.textContent = '✓ Đã lưu «' + j.file.name + '»'; try { window.opener && window.opener.__ctgHsSaved && window.opener.__ctgHsSaved(); } catch (e) {}
         setTimeout(() => { b.textContent = t; b.disabled = false; }, 4000);
@@ -263,22 +300,26 @@ async function wordFromHtml(unitId, docs, user) {
 // Word: tệp .docx nhúng HTML (altChunk) — Word mở và sửa như văn bản thường
 function docxOf(htmls, title) {
   const css = HS_CSS.replace(/section\.hs \+ section\.hs\{[^}]*\}/, '') + ` body,td,p{font-family:"Times New Roman",serif;font-size:13pt} td{mso-line-height-rule:exactly}`;
-  const page = h => `<!doctype html><html><head><meta charset="utf-8"><title>${escH(title)}</title><style>${css}</style></head><body>${h}</body></html>`;
-  const CT = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="htm" ContentType="text/html"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>';
+  // Word không vẽ border của <span>: gạch chân tiêu ngữ đổi sang underline
+  const page = h => `<!doctype html><html><head><meta charset="utf-8"><title>${escH(title)}</title><style>${css}</style></head><body>${h.split("border-bottom:1px solid #000;padding-bottom:1px").join("text-decoration:underline")}</body></html>`;
+  const CT = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="htm" ContentType="text/html"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/><Override PartName="/word/header2.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/></Types>';
   // font mặc định Times New Roman 13 (HTML nhúng không tự lấy font của trang)
   const STY = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="Times New Roman" w:cs="Times New Roman"/><w:sz w:val="26"/><w:szCs w:val="26"/><w:lang w:val="vi-VN"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>';
   const RELS = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>';
   // mỗi hồ sơ một khối HTML (altChunk), giữa các hồ sơ là ngắt trang của Word
   const brk = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+  // số trang ở giữa lề trên, cỡ 13, không hiện ở trang đầu (NĐ 30/2020)
+  const HDR = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:sz w:val="26"/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:rPr><w:sz w:val="26"/></w:rPr><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:rPr><w:sz w:val="26"/></w:rPr><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:rPr><w:sz w:val="26"/></w:rPr><w:t>2</w:t></w:r><w:r><w:rPr><w:sz w:val="26"/></w:rPr><w:fldChar w:fldCharType="end"/></w:r></w:p></w:hdr>';
+  const HDR0 = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p/></w:hdr>';
   const DOC = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>'
     + htmls.map((h, i) => `<w:altChunk r:id="hc${i + 1}"/>`).join(brk)
-    + '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="850" w:right="850" w:bottom="850" w:left="1134" w:header="425" w:footer="425" w:gutter="0"/></w:sectPr></w:body></w:document>';
+    + '<w:sectPr><w:headerReference w:type="default" r:id="rHd"/><w:headerReference w:type="first" r:id="rHd0"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="851" w:bottom="1134" w:left="1701" w:header="567" w:footer="567" w:gutter="0"/><w:titlePg/></w:sectPr></w:body></w:document>';
   const DREL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-    + htmls.map((h, i) => `<Relationship Id="hc${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/aFChunk" Target="hs${i + 1}.htm"/>`).join('') + '<Relationship Id="rSty" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>';
-  return zip([['[Content_Types].xml', CT], ['_rels/.rels', RELS], ['word/document.xml', DOC], ['word/_rels/document.xml.rels', DREL], ['word/styles.xml', STY], ...htmls.map((h, i) => [`word/hs${i + 1}.htm`, page(h)])]);
+    + htmls.map((h, i) => `<Relationship Id="hc${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/aFChunk" Target="hs${i + 1}.htm"/>`).join('') + '<Relationship Id="rSty" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rHd" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/><Relationship Id="rHd0" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header2.xml"/></Relationships>';
+  return zip([['[Content_Types].xml', CT], ['_rels/.rels', RELS], ['word/document.xml', DOC], ['word/_rels/document.xml.rels', DREL], ['word/styles.xml', STY], ['word/header1.xml', HDR], ['word/header2.xml', HDR0], ...htmls.map((h, i) => [`word/hs${i + 1}.htm`, page(h)])]);
 }
-async function wordHs(unitId, codes, user) {
-  const { D, docs } = await hsDocs(unitId, codes, user);
+async function wordHs(unitId, codes, user, custId) {
+  const { D, docs } = await hsDocs(unitId, codes, user, custId);
   await C.audit({ q }, 'unit', +unitId, 'tai_word_ho_so', null, null, user, docs.map(d => d.t.code).join(', '));
   const safe = s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').replace(/[^\w.-]+/g, '_').replace(/_+/g, '_');
   const name = docs.length === 1 ? `${safe(docs[0].t.name)}_${D.map.ma_can}.docx` : `Bo_ho_so_${D.map.ma_can}.docx`;
@@ -286,13 +327,13 @@ async function wordHs(unitId, codes, user) {
 }
 
 // lưu bản Word của bộ hồ sơ vào Kho hồ sơ: gắn vào HĐ của bộ (vay / thanh lý vay → HĐ vay; còn lại → HĐMB, không có thì HĐ khác của căn), loại «Dự thảo»
-async function saveTarget(unitId, bo) {
-  const cts = await q("SELECT id, kind, status FROM kd_contract WHERE unit_id = $1 ORDER BY (status IN ('huy', 'thanh_ly')), id DESC", [+unitId]);
+async function saveTarget(unitId, bo, custId) {
+  const cts = (await q("SELECT id, kind, status, customer_id FROM kd_contract WHERE unit_id = $1 ORDER BY (status IN ('huy', 'thanh_ly')), id DESC", [+unitId])).filter(c => !+custId || c.customer_id === +custId);
   const want = ['vay', 'tl_vay'].includes(bo) ? ['vay'] : ['hdmb', 'thue_mua'];
   const c = cts.find(x => want.includes(x.kind)) || cts[0];
   if (c) return { ent: 'contract', id: c.id, kind: 'du_thao', what: 'HĐ' };
   // căn chưa có hợp đồng (đang soạn hồ sơ trước khi ký): gắn vào phiếu đăng ký của căn, chưa có phiếu thì gắn thẳng vào căn hộ (12/11/2026)
-  const r = await one("SELECT id FROM kd_reservation WHERE unit_id = $1 ORDER BY (status IN ('huy', 'het_han')), id DESC LIMIT 1", [+unitId]);
+  const r = await one(`SELECT id FROM kd_reservation WHERE unit_id = $1 ${+custId ? 'AND customer_id = $2' : ''} ORDER BY (status IN ('huy', 'het_han')), id DESC LIMIT 1`, +custId ? [+unitId, +custId] : [+unitId]);
   if (r) return { ent: 'reservation', id: r.id, kind: 'tai_lieu', what: 'phiếu đăng ký' };
   return { ent: 'unit', id: +unitId, kind: 'tai_lieu', what: 'căn' };
 }
@@ -323,7 +364,7 @@ async function demoFill(unitId, user) {
   if (ck.length) did.push(`khách ${k.full_name}: điền ${ck.length} thông tin còn trống`);
   const area = +u.area_tt || 60, price = +u.base_price || 15990253, pre = Math.round(price * area / 1000) * 1000;
   if (!hd) {
-    hd = (await C.create('contract', { ptype: 'can_ho', kind: 'hdmb', unit_id: u.id, customer_id: kid, contract_on: addD(-30), base_price: price, area_tt: area }, sysU, { system: true })).row;
+    hd = (await C.create('contract', { ptype: 'can_ho', kind: 'hdmb', unit_id: u.id, customer_id: kid, contract_on: addD(-30), base_price: price, area_tt: area, value: Math.round(pre * 1.05 / 1000) * 1000 + Math.round(pre * 0.02 / 1000) * 1000 }, sysU, { system: true })).row;
     did.push('HĐ mua bán');
   }
   const hk = await setBlank('kd_contract', hd.id, { number: `${so4}/${today.slice(0, 4)}/HĐMB-${u.code.split('-').slice(0, 2).join('-')}`, contract_on: addD(-30), request_on: addD(-40),
@@ -366,4 +407,4 @@ async function demoFill(unitId, user) {
   await C.audit({ q }, 'unit', u.id, 'du_lieu_thu_ho_so', null, null, user, did.join('; ') || 'đã đủ');
   return { did };
 }
-module.exports = { wordFromHtml, demoFill, demoFillOn, saveTarget, BO, MAU_TNS, hsData, hsInfo, printHs, wordHs, merge, evalExpr };
+module.exports = { custHistory, wordFromHtml, demoFill, demoFillOn, saveTarget, BO, MAU_TNS, hsData, hsInfo, printHs, wordHs, merge, evalExpr };

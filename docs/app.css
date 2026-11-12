@@ -1753,3 +1753,12 @@ label.tplr { display: flex; gap: 8px; align-items: center; padding: 7px 0; }
 .hs-sp { flex: 1; }
 
 .hs-units { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; } .hs-units .tag { cursor: pointer; border: 0; font: inherit; }
+
+/* 12/11/2026: lịch sử khách hàng của căn */
+.hs-hist { margin-top: 12px; padding: 0; } .hs-hist .tbl-wrap { margin: 0; border: 0; }
+.hs-ht tbody tr { cursor: pointer; } .hs-ht tbody tr.on { background: #E8EEF8; } .hs-ht tbody tr.on td:first-child { color: var(--cobalt); }
+.hs-ht td { vertical-align: top; }
+.hs-st { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--line2); }
+.hs-st.ok { background: #DCFCE7; color: #166534; } .hs-st.tl { background: #FEF3C7; color: #92400E; } .hs-st.huy { background: #FEE2E2; color: #991B1B; } .hs-st.nx { background: #E0E7FF; color: #3730A3; }
+
+.hs-ht td { white-space: normal; } .hs-ht td:first-child { width: 28px; } .hs-ht td.nowrap { white-space: nowrap; }
