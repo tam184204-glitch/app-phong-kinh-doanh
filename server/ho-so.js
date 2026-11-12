@@ -264,8 +264,10 @@ async function hsInfo(key, user, custId) {
     history: hist, cust: cid,
     units: others.length > 1 ? others.map(r => r.code) : [], byCustomer: f.cust ? f.cust.code : null,
     step: stepOf(x), added, demoFill: demoFillOn(),
-    bos: BO.map(([k, l]) => ({ k, l, tpls: ts.filter(t => t.bo === k).map(t => ({ code: t.code, name: t.name, kind: t.kind, missing: missOf(t.content, D),
-      annex: tplKey(t.code) === 'MB-02' ? ts.filter(x => x.bo === k && ANNEX(tplKey(x.code))).map(x => x.name) : undefined, inHd: ANNEX(tplKey(t.code)) && ts.some(x => x.bo === k && tplKey(x.code) === 'MB-02') || undefined })) })),
+    // HĐMB + phụ lục (bản vẽ, vật liệu, quy chế) = 1 dòng «Hợp đồng mua bán căn hộ», in chung 1 file (13/11/2026)
+    bos: BO.map(([k, l]) => { const list = ts.filter(t => t.bo === k), hd = list.some(t => tplKey(t.code) === 'MB-02'), anx = hd ? list.filter(t => ANNEX(tplKey(t.code))) : [];
+      return { k, l, tpls: list.filter(t => !anx.includes(t)).map(t => { const isHd = tplKey(t.code) === 'MB-02' && anx.length;
+        return { code: t.code, name: t.name, kind: t.kind, missing: isHd ? [...new Set([t, ...anx].flatMap(x => missOf(x.content, D)))] : missOf(t.content, D), annex: isHd ? anx.map(x => x.name) : undefined }; }) }; }),
   };
 }
 
@@ -460,7 +462,7 @@ async function batchPlan(units, bo, user) {
       const f = await findUnit(code); await autoProjectTemplates(f.id, user);
       const ts = (await unitTemplates(f.id)).filter(t => t.bo === bo);
       const D = await hsData(f.id, user);
-      for (const t of ts) if (!keys.has(tplKey(t.code))) keys.set(tplKey(t.code), shortName(t.name));
+      for (const t of ts) if (!keys.has(tplKey(t.code)) && !(ANNEX(tplKey(t.code)) && ts.some(x => tplKey(x.code) === 'MB-02'))) keys.set(tplKey(t.code), shortName(t.name));
       out.push({ code: D.map.ma_can, id: f.id, customer: D.ctx.k ? `${D.ctx.k.full_name} · ${D.ctx.k.code || ''}` : '', n: ts.length, missing: [...new Set(ts.flatMap(t => missOf(t.content, D)))] });
     } catch (e) { out.push({ code, error: e.message }); }
   }
@@ -472,7 +474,8 @@ async function batchKeys(units, bo, user) {   // danh sách loại hồ sơ củ
   for (const code of unitList(units)) {
     const g = String(code).toUpperCase().replace(/-[^-]+$/, ''); if (seen.has(g)) continue; seen.add(g);
     try { const f = await findUnit(code); await autoProjectTemplates(f.id, user);
-      for (const t of (await unitTemplates(f.id)).filter(t => t.bo === bo)) if (!keys.has(tplKey(t.code))) keys.set(tplKey(t.code), shortName(t.name));
+      const all = (await unitTemplates(f.id)).filter(t => t.bo === bo), hd = all.some(t => tplKey(t.code) === 'MB-02');
+      for (const t of all.filter(t => !(hd && ANNEX(tplKey(t.code))))) if (!keys.has(tplKey(t.code))) keys.set(tplKey(t.code), shortName(t.name));
     } catch (e) { seen.delete(g); }
   }
   return { keys: [...keys].map(([key, name]) => ({ key, name })).sort((a, b) => a.key.localeCompare(b.key)) };
