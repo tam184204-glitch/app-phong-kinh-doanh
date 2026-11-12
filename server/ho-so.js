@@ -14,6 +14,7 @@ const PII_PRINT = ['truong_phong', 'lanh_dao', 'ho_so', 'admin'];
 
 // tên trường cho dòng «Thiếu dữ liệu»
 const LABEL = {
+  gia_ban: 'Giá bán căn hộ (Tổng tiền / Phí bảo trì)', tt_dot1: 'Số tiền đợt 1', tt_dot2: 'Số tiền đợt 2', tt_dot3: 'Số tiền đợt 3', tong_gia: 'Tổng tiền (giá trị hợp đồng)', phi_bao_tri: 'Phí bảo trì', so_hdmb: 'Số HĐ mua bán',
   ban_ve_can: 'Bản vẽ căn hộ (chưa có cho tầng / mã hiệu này)', ban_ve_tang: 'Bản vẽ mặt bằng tầng',
   ten_kh: 'Họ tên khách', ten_kh_hoa: 'Họ tên khách', cccd: 'Số CCCD', ngay_cap: 'Ngày cấp CCCD', noi_cap: 'Nơi cấp CCCD', ngay_sinh: 'Ngày sinh', thuong_tru: 'Địa chỉ thường trú', dia_chi: 'Địa chỉ liên hệ',
   dien_thoai: 'Điện thoại', email: 'Email', mst: 'Mã số thuế', stk: 'Tài khoản ngân hàng', vc_ten: 'Họ tên vợ / chồng', vc_cccd: 'CCCD vợ / chồng', vc_ngay_cap: 'Ngày cấp CCCD vợ / chồng', vc_noi_cap: 'Nơi cấp CCCD vợ / chồng',
@@ -65,7 +66,7 @@ async function hsData(unitId, user, custId) {
   const c = main || {};
   const bday = k?.birth ? dmy(k.birth) : '';
   const S = {
-    ten_kh: k?.full_name || res?.cust_name || '', cccd: P(c.b_id_no || k?.id_no || res?.id_no), ngay_cap: P(dmy(c.b_id_date || k?.id_date || res?.id_date)), noi_cap: P(c.b_id_place || k?.id_place || res?.id_place),
+    ten_kh: c.b_name || k?.full_name || res?.cust_name || '',   // tên bên mua ghi trên HĐ trước cccd: P(c.b_id_no || k?.id_no || res?.id_no), ngay_cap: P(dmy(c.b_id_date || k?.id_date || res?.id_date)), noi_cap: P(c.b_id_place || k?.id_place || res?.id_place),
     ngay_sinh: P(bday), thuong_tru: c.b_perm_addr || c.b_addr || k?.address || res?.address || '', dia_chi: c.b_addr || k?.address || res?.address || '', dien_thoai: c.b_phone || k?.phone || res?.phone || '',
     email: c.b_email || k?.email || '', mst: P(k?.tax_code || res?.tax_code), stk: P([c.b_bank_acc || k?.bank_account || res?.bank_account, c.b_bank_name && 'Ngân hàng ' + c.b_bank_name].filter(Boolean).join(' - ')),
     vc_ten: mem?.name || c.co_owner || '', vc_cccd: P(mem?.id_no), vc_ngay_cap: '', vc_noi_cap: '',
@@ -88,6 +89,11 @@ async function hsData(unitId, user, custId) {
     N.gia_truoc_thue ??= pre; N.thue_vat ??= pre * 0.05; N.phi_bao_tri ??= Math.round(pre * 0.02 / 1000) * 1000;
     N.gia_sau_thue ??= Math.round(pre * 1.05 / 1000) * 1000; N.tong_gia ??= N.gia_sau_thue + N.phi_bao_tri;
   }
+  // HĐMB in đúng số đã khai ở form hợp đồng (13/11/2026): giá bán = Tổng tiền − Phí bảo trì (đã gồm VAT, hệ số góc, giảm giá); chưa khai thì tính như file Excel
+  N.gia_ban = hdmb && hdmb.value != null && hdmb.maint_fee != null ? num(hdmb.value) - num(hdmb.maint_fee) : N.gia_sau_thue;
+  N.tong_gia ??= N.gia_ban != null && N.phi_bao_tri != null ? N.gia_ban + N.phi_bao_tri : null;
+  { const cd = hdmb?.contract_on ? dmy(hdmb.contract_on).split('/') : null;
+    S.ngay_viet_hdmb = cd ? `ngày ${cd[0]} tháng ${cd[1]} năm ${cd[2]}` : (() => { const d = C.today().split('-'); return `ngày ${d[2]} tháng ${d[1]} năm ${d[0]}`; })(); }
   // tiền đã thu (phiếu thu hợp lệ) & lịch thu
   const paid = async ct => ct ? +(await one("SELECT coalesce(sum(amount), 0) s FROM kd_receipt WHERE contract_id = $1 AND status <> 'huy'", [ct.id])).s : null;
   const sched = async ct => ct ? await q('SELECT * FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [ct.id]) : [];
@@ -95,7 +101,11 @@ async function hsData(unitId, user, custId) {
   const iv = await sched(vay); [1, 2, 3, 4].forEach(i => { N['vay_dot' + i] = iv[i - 1] ? +iv[i - 1].amount : null; });
   // thông báo nộp tiền: đợt đang phải thu = đợt đầu tiên mà lũy kế phải nộp vượt số đã nộp
   const im = await sched(hdmb), ih = await sched(ht);
-  for (const k of ['phai_nop', 'da_nop', 'con_nop', 'con_tien_nha', 'con_hoan_thien', 'tong_phai_nop']) N[k] = null;   // chưa có lịch thu → in «……» (không để lộ {phai_nop})
+  for (const k of ['phai_nop', 'da_nop', 'con_nop', 'con_tien_nha', 'con_hoan_thien', 'tong_phai_nop']) N[k] = null;
+  // các đợt thanh toán in trên HĐMB: lấy «Lần thanh toán» đã khai (đủ 3 đợt), chưa khai thì 30% / 65% / 5% giá bán như mẫu
+  const im3 = im.length === 3;   // HĐMB có 3 đợt: khai đúng 3 lần thanh toán → in số tiền / % đã khai; khác → in theo % của mẫu + cảnh báo
+  [1, 2, 3].forEach((n, j) => { N['tt_dot' + n] = im3 ? +im[j].amount : null; S['tt_pct' + n] = im3 && im[j].pct != null ? String(+im[j].pct) : ''; });
+  S._warn = im.length && !im3 ? [`Lần thanh toán đã khai ${im.length} đợt, mẫu HĐMB có 3 đợt — HĐMB in số tiền theo % của mẫu`] : [];   // chưa có lịch thu → in «……» (không để lộ {phai_nop})
   if (im.length) {
     const daNha = N.da_tt || 0, daHt = N.da_tt_ht || 0;
     let cum = 0, cumHt = 0, dot = im[im.length - 1];
@@ -117,7 +127,8 @@ async function hsData(unitId, user, custId) {
 }
 
 // ---- biểu thức {=…}: số, trường số, + - * / ( ), round(x, n), chu(x) — không dùng eval ----
-function evalExpr(src, N, miss) {
+function evalExpr(src, N, miss0) {
+  let miss = miss0;   // or(a, b): a thiếu dữ liệu thì dùng b (không báo thiếu a)
   const t = src.match(/\d+(?:\.\d+)?|[a-z_][a-z_0-9]*|[-+*/(),]/gi) || []; let i = 0;
   const peek = () => t[i], take = () => t[i++];
   const atom = () => {
@@ -127,7 +138,9 @@ function evalExpr(src, N, miss) {
     if (x === '+') return atom();
     if (/^\d/.test(x)) return +x;
     if (peek() === '(') {
-      take(); const a = [add()]; while (peek() === ',') { take(); a.push(add()); } take();
+      take();
+      if (x === 'or') { const sv = miss; miss = new Set(); const v1 = add(), bad = miss.size; miss = bad ? sv : new Set(); take(); const v2 = add(); miss = sv; take(); return bad ? v2 : v1; }
+      const a = [add()]; while (peek() === ',') { take(); a.push(add()); } take();
       if (x === 'round') { const f = 10 ** (a[1] || 0); return Math.round(a[0] * f) / f; }
       if (x === 'chu') return { chu: a[0] };
       throw new Error('hàm ' + x);
@@ -154,9 +167,10 @@ function merge(content, D, miss = new Set()) {
       if (v && typeof v === 'object') return escH(v.chu ? moneyWords(Math.round(v.chu)) : '');
       return escH(fmtMoney(Math.round(v)));
     })
-    .replace(/\{(\w+)\}/g, (m, k) => {
+    .replace(/\{(\w+)(?:\|([^{}<]*))?\}/g, (m, k, def) => {   // {truong|mặc định}: trống thì in mặc định
       if (!(k in D.map)) return m;
       const v = D.map[k];
+      if ((v === '' || v == null) && def != null) return escH(def);
       if (v === '' || v == null) { if (!NO_MISS.has(k)) miss.add(k.replace(/_chu$|_hoa$/, '')); if (SHORT.has(k)) return '……'; return k.startsWith('ban_ve_') ? '<p style="text-align:center;font-style:italic">(Chưa có bản vẽ cho căn này — bổ sung ở Mẫu biểu, loại «Bản vẽ»)</p>' : DOTS; }
       return k.startsWith('ban_ve_') ? v : escH(v);   // bản vẽ: HTML ảnh từ mẫu «Bản vẽ»
     }));
@@ -267,7 +281,8 @@ async function hsInfo(key, user, custId) {
     // HĐMB + phụ lục (bản vẽ, vật liệu, quy chế) = 1 dòng «Hợp đồng mua bán căn hộ», in chung 1 file (13/11/2026)
     bos: BO.map(([k, l]) => { const list = ts.filter(t => t.bo === k), hd = list.some(t => tplKey(t.code) === 'MB-02'), anx = hd ? list.filter(t => ANNEX(tplKey(t.code))) : [];
       return { k, l, tpls: list.filter(t => !anx.includes(t)).map(t => { const isHd = tplKey(t.code) === 'MB-02' && anx.length;
-        return { code: t.code, name: t.name, kind: t.kind, missing: isHd ? [...new Set([t, ...anx].flatMap(x => missOf(x.content, D)))] : missOf(t.content, D), annex: isHd ? anx.map(x => x.name) : undefined }; }) }; }),
+        return { code: t.code, name: t.name, kind: t.kind, missing: isHd ? [...new Set([t, ...anx].flatMap(x => missOf(x.content, D)))] : missOf(t.content, D), annex: isHd ? anx.map(x => x.name) : undefined,
+        warn: tplKey(t.code) === 'MB-02' && /tt_dot/.test(t.content) && D.map._warn?.length ? D.map._warn : undefined }; }) }; }),
   };
 }
 
