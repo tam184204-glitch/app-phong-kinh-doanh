@@ -578,6 +578,13 @@ R('GET', '/print/cancel_req/:id', async (req, res, u, p, qs) => send(res, 200, a
 R('GET', '/api/template-scope/:ent/:id', async (req, res, u, p) => send(res, 200, await IO.recScope(p.ent, p.id)));
 R('GET', '/api/template-fields/:ent', async (req, res, u, p) => send(res, 200, IO.tplFields(p.ent)));
 R('POST', '/api/template-preview', async (req, res, u) => send(res, 200, { html: await IO.previewTemplate(await readJson(req), u) }));
+// Bộ hồ sơ theo căn (12/11/2026): gõ mã căn → bộ hồ sơ theo bước, in cả bộ / tải Word
+const HS = require('./ho-so');
+R('GET', '/api/hs', async (req, res, u, p, qs) => send(res, 200, await HS.hsInfo(qs.unit, u)));
+R('GET', '/print/hs/:id', async (req, res, u, p, qs) => {
+  if (qs.fmt === 'docx') { const x = await HS.wordHs(p.id, qs.tpl, u); return sendFile(res, x.buf, x.name, MIME['.docx']); }
+  send(res, 200, await HS.printHs(p.id, qs.tpl, u), { 'Content-Type': 'text/html; charset=utf-8' });
+}, { html: true });
 R('GET', '/print/tpl/:ent/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printGeneric(p.ent, p.id, u, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 R('GET', '/print/contract/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printContract(p.id, u, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 

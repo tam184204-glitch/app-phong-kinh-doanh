@@ -154,6 +154,15 @@ async function ensureTemplates() {
     // mẫu chuẩn theo file Excel phòng Kinh doanh: lần đầu nạp thì tắt các mẫu khung cũ
     let moi = 0;
     for (const t of require('./mau-mo-ban').MAU_MO_BAN()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });
+    // bộ MẪU HS TNS (12/11/2026): nạp mẫu còn thiếu; mẫu đã có (kể cả đã sửa tay) chỉ gắn lại bộ hồ sơ nếu bị mất
+    for (const t of require('./ho-so').MAU_TNS()) {
+      if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });
+      else {
+        await db.q('UPDATE kd_template SET bo = $2 WHERE code = $1 AND bo IS NULL', [t.code, t.bo]);
+        // mẫu chưa ai sửa tay (updated_by trống) → nhận bản chuyển đổi mới nhất
+        await db.q('UPDATE kd_template SET content = $2, name = $3, scope = $4 WHERE code = $1 AND updated_by IS NULL AND content IS DISTINCT FROM $2', [t.code, t.content, t.name, t.scope]);
+      }
+    }
     for (const t of require('./mau4').MAU_BIEN_BAN()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });
     for (const [code, cu, moi2] of require('./mau4').BB_CU()) await db.q('UPDATE kd_template SET content = replace(content, $1, $2) WHERE code = $3 AND strpos(content, $1) > 0', [cu, moi2, code]);
     for (const t of MAU_DANG_KY()) {
