@@ -213,23 +213,64 @@ function input(f, v, rec = {}, { ro, id } = {}) {
 const CK = [['', '— chưa —'], ['da_nhan', 'Đã nhận / đạt'], ['thieu', 'Thiếu'], ['can_sua', 'Cần sửa / bổ sung']];
 // qty: thêm cột «Số lượng» (bản) — dùng in biên bản giao nhận hồ sơ
 function checkRows(items, qty) {
-  return `<div class="it hd"><div>Giấy tờ / hạng mục</div>${qty ? '<div>Số lượng</div>' : ''}<div>Tình trạng</div><div>Ghi chú</div><div></div></div>` + items.map((x, i) => `<div class="it ${x.st || ''}" data-i="${i}"><div class="ck-n">${esc(x.n)}</div>${qty ? `<div><input data-ck="qty" inputmode="numeric" value="${esc(x.qty ?? '')}" placeholder="0"></div>` : ''}<div><select data-ck="st">${CK.map(o => `<option value="${o[0]}" ${o[0] === (x.st || '') ? 'selected' : ''}>${o[1]}</option>`).join('')}</select></div><div><input data-ck="note" value="${esc(x.note || '')}" placeholder="Ghi chú (không bắt buộc)"></div><div class="ck-act"><button type="button" class="btn sm ghost" data-ck-ed title="Sửa tên giấy tờ">${ico('fa-pen')}</button><button type="button" class="btn sm ghost danger" data-ck-del title="Xóa giấy tờ này khỏi hồ sơ">${ico('fa-trash')}</button></div><input type="hidden" data-ck="n" value="${esc(x.n)}"></div>`).join('')
+  const nOk = items.filter(x => x.st === 'da_nhan').length;
+  return `<div class="ck-bar"><span class="ck-sum">Đã nhận <b>${nOk}</b>/${items.length}</span><button type="button" class="btn sm ok" data-ck-all="da_nhan" title="Đánh dấu tất cả giấy tờ «Đã nhận / đạt»">${ico('fa-check-double')} Đủ hết hồ sơ</button><button type="button" class="btn sm ghost" data-ck-all="" title="Xóa tình trạng tất cả giấy tờ">${ico('fa-rotate-left')} Xóa đánh dấu</button><span class="muted small">Bấm tên giấy tờ để đánh dấu / bỏ «Đã nhận»</span></div>`
+    + `<div class="it hd"><div>Giấy tờ / hạng mục</div>${qty ? '<div>Số lượng</div>' : ''}<div>Tình trạng</div><div>Ghi chú</div><div></div></div>` + items.map((x, i) => `<div class="it ${x.st || ''}" data-i="${i}"><div class="ck-n">${esc(x.n)}</div>${qty ? `<div><input data-ck="qty" inputmode="numeric" value="${esc(x.qty ?? '')}" placeholder="0"></div>` : ''}<div><select data-ck="st">${CK.map(o => `<option value="${o[0]}" ${o[0] === (x.st || '') ? 'selected' : ''}>${o[1]}</option>`).join('')}</select></div><div><input data-ck="note" value="${esc(x.note || '')}" placeholder="Ghi chú (không bắt buộc)"></div><div class="ck-act"><button type="button" class="btn sm ghost" data-ck-ed title="Sửa tên giấy tờ">${ico('fa-pen')}</button><button type="button" class="btn sm ghost danger" data-ck-del title="Xóa giấy tờ này khỏi hồ sơ">${ico('fa-trash')}</button></div><input type="hidden" data-ck="n" value="${esc(x.n)}"></div>`).join('')
     + `<div class="it"><div class="row"><input data-ck-new placeholder="+ Thêm giấy tờ khác…" style="flex:1"><button type="button" class="btn sm" data-ck-add>Thêm</button></div></div>`;
 }
 function readCheck(el) { return $$('.it[data-i]', el).map(r => { const q = $('[data-ck=qty]', r); return { n: $('[data-ck=n]', r).value, st: $('[data-ck=st]', r).value, note: $('[data-ck=note]', r).value, ...(q ? { qty: q.value.trim() } : {}) }; }); }
 const ckItem = s => { const m = /^(.*?)\s*\|\s*(\d+)\s*$/.exec(String(s)); return m ? { n: m[1].trim(), qty: +m[2] } : { n: String(s).trim() }; };
-const sugList = (id, xs) => `<datalist id="${id}">${xs.map(x => `<option value="${esc(x)}">`).join('')}</datalist>`;
+const sugList = (id, xs) => `<datalist id="${id}">${xs.map(x => Array.isArray(x) ? `<option value="${esc(x[1])}">${esc(x[0] + ' ' + x[1])}</option>` : `<option value="${esc(x)}">`).join('')}</datalist>`;   // [loại, tên] → hiện «Xã Yên Trung», ghi «Yên Trung»
 // bảng nhập nhiều dòng (VD thành viên hộ gia đình): mỗi cột là ô chữ / ô chọn / ô chữ có gợi ý; fixed = đúng 1 dòng (VD chủ hộ), cột ro = giá trị cố định
 function gridRows(f, rows) {
   if (f.fixed) rows = [rows[0] || {}];
   const cell = (c, v) => c.ro ? `<input data-gc="${c.k}" value="${esc(v || c.def || '')}" readonly tabindex="-1">` : c.o ? `<select data-gc="${c.k}"><option value="">— chọn —</option>${c.o.map(o => `<option ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`
-    : `<input data-gc="${c.k}" value="${esc(v ?? '')}"${c.ph ? ` placeholder="${esc(c.ph)}"` : ''}${c.sug ? ` list="dl_${f.k}_${c.k}"` : ''} autocomplete="off">`;
+    : `<input data-gc="${c.k}" value="${esc(v ?? c.def ?? '')}"${c.ph ? ` placeholder="${esc(c.ph)}"` : ''}${c.sug && !c.sugProv ? ` list="dl_${f.k}_${c.k}"` : ''}${c.sugProv ? ` data-sugprov="${esc(c.sugProv)}" data-sugid="dl_${f.k}_${c.k}" placeholder="Chọn hoặc gõ"` : ''}${DOB[c.k] ? ` inputmode="numeric" placeholder="${DOB[c.k].ph}"` : ''} autocomplete="off">`;
   return `<div class="tbl-wrap"><table class="t compact noclick gridt"><thead><tr><th>#</th>${f.grid.map(c => `<th style="min-width:${c.w || 120}px">${esc(c.l)}</th>`).join('')}${f.fixed ? '' : '<th></th>'}</tr></thead>
     <tbody>${rows.map((x, i) => `<tr data-gr><td class="center">${i + 1}</td>${f.grid.map(c => `<td>${cell(c, x[c.k])}</td>`).join('')}${f.fixed ? '' : `<td><button type="button" class="btn sm" data-gdel title="Bỏ dòng">${ico('fa-xmark')}</button></td>`}</tr>`).join('')}</tbody></table></div>
     ${f.fixed ? '' : `<button type="button" class="btn sm mt" data-gadd>${ico('fa-plus')} Thêm thành viên</button>`}${f.grid.filter(c => c.sug).map(c => sugList(`dl_${f.k}_${c.k}`, c.sug)).join('')}`;
 }
+// ===== ngày / tháng / năm sinh trong bảng hộ gia đình (11/11/2026) =====
+// gõ đủ số → tự nhảy ô sau (ngày → tháng → năm → cột tiếp); gõ «/ . -» hoặc khoảng trắng cũng sang ô; dán / gõ «12/05/1990» vào ô Ngày → tự tách 3 ô; sai thì ô đỏ ngay
+const DOB = { bday: { max: 2, ph: 'dd' }, bmonth: { max: 2, ph: 'mm' }, byear: { max: 4, ph: 'yyyy' } };
+const dobNext = el => { const xs = $$('input:not([readonly]),select', el.closest('tr')), i = xs.indexOf(el); const n = xs[i + 1]; if (n) { n.focus(); n.select?.(); } };
+function dobCheck(tr) {
+  const g = k => $(`[data-gc="${k}"]`, tr), d = g('bday'), m = g('bmonth'), y = g('byear'); if (!d || !m || !y) return;
+  const masked = [d, m, y].some(x => x.value.startsWith('•')); if (masked) return;
+  const dv = +d.value, mv = +m.value, yv = +y.value, now = new Date().getFullYear();
+  const bd = d.value !== '' && !(dv >= 1 && dv <= 31), bm = m.value !== '' && !(mv >= 1 && mv <= 12), by = y.value !== '' && (y.value.length === 4 ? !(yv >= 1900 && yv <= now) : document.activeElement !== y);
+  const all = !bd && !bm && !by && d.value && m.value && y.value.length === 4 && new Date(yv, mv - 1, dv).getDate() !== dv;   // VD 31/02
+  d.classList.toggle('bad', bd || all); m.classList.toggle('bad', bm || all); y.classList.toggle('bad', by || all);
+  d.title = bd ? 'Ngày phải từ 1 đến 31' : all ? 'Ngày không có trong tháng này' : ''; m.title = bm ? 'Tháng phải từ 1 đến 12' : ''; y.title = by ? `Năm sinh từ 1900 đến ${now}` : '';
+}
+function dobSplit(el, txt) {   // «12/05/1990», «12-5-1990», «12.05.1990», «12 05 1990»
+  const m = /^\s*(\d{1,2})\s*[\/.\- ]\s*(\d{1,2})\s*[\/.\- ]\s*(\d{4})\s*$/.exec(txt || ''); if (!m) return false;
+  const tr = el.closest('tr'), set = (k, v) => { const x = $(`[data-gc="${k}"]`, tr); if (x) x.value = v; };
+  set('bday', String(+m[1])); set('bmonth', String(+m[2])); set('byear', m[3]);
+  dobCheck(tr); dobNext($('[data-gc="byear"]', tr)); return true;
+}
+document.addEventListener('paste', e => { const el = e.target.closest?.('input[data-gc]'); if (!el || !DOB[el.dataset.gc]) return;
+  if (dobSplit(el, e.clipboardData?.getData('text'))) e.preventDefault(); });
+document.addEventListener('input', e => {
+  const el = e.target.closest?.('input[data-gc]'); const D = el && DOB[el.dataset.gc]; if (!D) return;
+  if (el.dataset.gc === 'bday' && /[\/.\- ]\d/.test(el.value) && dobSplit(el, el.value)) return;   // gõ cả ngày tháng năm vào ô Ngày
+  const sep = /[\/.\- ]$/.test(el.value);
+  el.value = el.value.replace(/\D/g, '').slice(0, D.max);
+  dobCheck(el.closest('tr'));
+  const v = el.value, first = +v[0];
+  const full = v.length >= D.max || (v.length === 1 && ((el.dataset.gc === 'bday' && first > 3) || (el.dataset.gc === 'bmonth' && first > 1)));   // 5 → ngày 5, không thể là 2 chữ số
+  if (v && (full || sep)) dobNext(el);
+});
+document.addEventListener('focusout', e => { const el = e.target.closest?.('input[data-gc]'); if (el && DOB[el.dataset.gc]) dobCheck(el.closest('tr')); });
+// ô «Thị trấn/xã»: danh sách phường, xã chỉ hiện khi Tỉnh của dòng đó là Bắc Ninh (tỉnh khác gõ tay)
+const noAcc = v => String(v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd').toLowerCase().replace(/^(tinh|thanh pho|tp\.?)\s+/, '').trim();
+document.addEventListener('focusin', e => {
+  const el = e.target.closest?.('input[data-sugprov]'); if (!el) return;
+  const prov = $('[data-gc="province"]', el.closest('tr'))?.value;
+  if (noAcc(prov) === noAcc(el.dataset.sugprov)) el.setAttribute('list', el.dataset.sugid); else el.removeAttribute('list');
+});
 const gridVals = (el, f) => $$('tr[data-gr]', el).map(tr => Object.fromEntries(f.grid.map(c => [c.k, $(`[data-gc="${c.k}"]`, tr).value.trim()])));
-const readGrid = (el, f) => gridVals(el, f).filter(x => f.grid.some(c => !c.ro && x[c.k]));
+const readGrid = (el, f) => gridVals(el, f).filter(x => f.grid.some(c => !c.ro && x[c.k] && x[c.k] !== c.def));   // dòng chỉ có giá trị mặc định (VD Tỉnh = Bắc Ninh) = dòng trống
 function wireInputs(root, onChange) {
   $$('[data-pick]', root).forEach(b => {
     const wrap = b.parentElement, txt = $('input[name]', wrap), nat = $(`input[type=${b.dataset.pick}]`, wrap);
@@ -248,7 +289,16 @@ function wireInputs(root, onChange) {
     });
   });
   $$('.cklist', root).forEach(el => {
-    el.addEventListener('change', e => { const r = e.target.closest('.it[data-i]'); if (r && e.target.dataset.ck === 'st') r.className = 'it ' + e.target.value; });
+    const ckSum = () => { const b = $('.ck-sum b', el); if (b) b.textContent = $$('[data-ck=st]', el).filter(x => x.value === 'da_nhan').length; };
+    const ckSet = (r, v) => { const sel = $('[data-ck=st]', r); if (!sel) return; sel.value = v; r.className = 'it ' + v; };
+    el.addEventListener('change', e => { const r = e.target.closest('.it[data-i]'); if (r && e.target.dataset.ck === 'st') r.className = 'it ' + e.target.value; ckSum(); });
+    // điền nhanh (11/11/2026): Đủ hết hồ sơ / còn lại là thiếu / xóa đánh dấu; bấm tên giấy tờ = bật / tắt «Đã nhận»
+    el.addEventListener('click', e => {
+      const all = e.target.closest('[data-ck-all]');
+      if (all) { const v = all.dataset.ckAll; $$('.it[data-i]', el).forEach(r => { const cur = $('[data-ck=st]', r)?.value; if (v === 'thieu' ? !cur : true) ckSet(r, v); }); ckSum(); el.dispatchEvent(new Event('change', { bubbles: true })); return; }
+      const nm = e.target.closest('.ck-n'); const r = nm && nm.closest('.it[data-i]');
+      if (r && !$('input', nm)) { ckSet(r, $('[data-ck=st]', r).value === 'da_nhan' ? '' : 'da_nhan'); ckSum(); el.dispatchEvent(new Event('change', { bubbles: true })); }
+    });
     el.addEventListener('click', e => { if (!e.target.matches('[data-ck-add]')) return; const inp = $('[data-ck-new]', el); const v = inp.value.trim(); if (!v) return; const items = readCheck(el); items.push({ n: v, st: '', note: '' }); el.innerHTML = checkRows(items, 'qty' in el.dataset); });
     // sửa tên / xóa từng giấy tờ (lưu khi bấm Lưu form)
     el.addEventListener('click', e => {
@@ -753,6 +803,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   const ssch = $('[data-ssched]', form);   // tiến độ thu tiền HĐMB của HĐ thuê / vay bán căn: % theo Giá trị HĐMB
   if (ssch) schedEditor(ssch, rec.sale_sched || [], { total: () => { const v = readField(form, E.fields.find(f => f.k === 'unit_total')); return v === undefined ? +rec.unit_total || 0 : +v || 0; } });
   htp?.rentDraw(); htp?.loanDraw?.();
+  if (ent === 'template') tplHelper(form, m);
   const vis = () => { const cur = collect(true); for (const f of fields) { const box = $(`[data-f="${f.k}"]`, form); if (box) box.classList.toggle('hidden', !isShown(f, cur)); } $$('.bv-row, .bv-sec:not(.loan-sec)', form).forEach(x => x.classList.toggle('hidden', !$('.fld:not(.hidden)', x))); htp?.sync(cur.ptype !== 'lien_ke' && ['hdmb', 'thue_mua', 'thue', 'vay'].includes(cur.kind)); };
   const collect = (all) => { const out = {}; for (const f of fields) { if (f.ro || (f.t === 'code' && !f.manual)) continue; if (lockKeep && !lockKeep.has(f.k)) continue; const v = readField(form, f); if (v !== undefined) out[f.k] = v; }
     if (form._b0 && !lockKeep && 'discount' in out) out.base_orig = +out.discount > 0 ? form._b0() : null;   // hợp đồng: giá nền gốc trước giảm giá (máy chủ tính lại từ giá này)
@@ -827,6 +878,29 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
         t.value = tf.t === 'money' ? moneyStr(v) : tf.t === 'date' ? dmy(v) : v;
       }
     }));
+  }
+  // hồ sơ NOXH (11/11/2026): chọn mã căn / đổi Hình thức → tìm phiếu Đăng ký mua / thuê đang hiệu lực của căn → điền phiếu, khách, chủ hộ, số tài khoản
+  if (ent === 'noxh_check' && !id) {
+    const setRef = (k, v, label) => { const h = form.elements[k]; if (!h) return; h.value = v ?? ''; const t = h.closest('.combo')?.querySelector('[data-combo]'); if (t) t.value = label || ''; };
+    const LIVE = ['cho_duyet', 'giu_cho', 'qua_han', 'da_coc', 'chuyen_hd', 'nhap'];
+    let last = null;
+    const fromUnit = async () => {
+      const uid = form.elements.unit_id?.value; if (!uid) return;
+      const want = form.elements.reg_kind?.value || 'mua';
+      const rs = (await api('GET', `/api/e/reservation?f_unit_id=${uid}&limit=50`)).rows.filter(r => LIVE.includes(r.status))
+        .sort((a, b) => (a.status === 'nhap') - (b.status === 'nhap') || b.id - a.id);   // phiếu đã giữ chỗ / đặt cọc trước phiếu mới đăng ký
+      const r = rs.find(x => (x.deal || 'mua') === want) || rs[0];
+      if (!r) { toast('Căn này chưa có phiếu Đăng ký mua / thuê đang hiệu lực — nhập thông tin khách bằng tay'); return; }
+      if (last && last !== r.customer_id) $('.gridin[name="head"] tr[data-gr] [data-gc]', form).forEach(el => { if (!el.readOnly) el.value = ''; });   // đổi sang căn của khách khác: xóa chủ hộ đã tự điền
+      setRef('reservation_id', r.id, [r.code, r.cust_name].filter(Boolean).join(' · '));
+      setRef('customer_id', r.customer_id, r.customer_id__l || r.cust_name);
+      if (form.elements.reg_kind && r.deal && form.elements.reg_kind.value !== r.deal) form.elements.reg_kind.value = r.deal;
+      const ba = form.elements.bank_account; if (ba && last && last !== r.customer_id) ba.value = '';
+      last = r.customer_id;
+      await fillHead(r.customer_id);
+      toast(`Đã lấy thông tin khách theo phiếu ${r.code || '#' + r.id} (${r.deal === 'thue' ? 'đăng ký thuê' : 'đăng ký mua'})`);
+    };
+    form.addEventListener('change', e => { if (['unit_id', 'reg_kind'].includes(e.target.name)) fromUnit().catch(err => toast(err.message, true)); });
   }
   // chọn căn / khách → tự điền các ô liên quan (giá theo danh mục sản phẩm, thông tin khách)
   for (const f of fields.filter(f => f.fill)) form.addEventListener('change', async e => {
@@ -1100,6 +1174,99 @@ async function unitPicker(el, root) {
   await load();
 }
 
+// ---------- Mẫu biểu theo từng module (11/11/2026) ----------
+// Mẫu gắn module (ô «Hiện ở module») → nút «Mẫu biểu» ở danh sách module đó (tạo / sửa / xem thử) và nút «In theo mẫu» trên từng bản ghi.
+const tplPlaces = () => M.ents.template?.fields.find(f => f.k === 'ent')?.o || [];
+const tplOn = ent => tplPlaces().some(o => o[0] === ent);
+const tplPlace = ent => tplPlaces().find(o => o[0] === ent)?.[1] || ent;
+// loại mẫu mặc định khi tạo trong module (loại = bộ in riêng cũ của hợp đồng, đơn đăng ký, biên bản giao nhận, thông báo mở bán)
+const TPL_KIND0 = { contract: 'hop_dong', contract_change: 'phu_luc', handover: 'bien_ban', defect: 'bien_ban', reservation: 'de_nghi', noxh_check: 'bien_ban_giao_nhan', sale_notice: 'thong_bao', notice: 'thong_bao', report: 'bao_cao', target: 'bao_cao', receipt: 'de_nghi', payment: 'de_nghi', pinkbook: 'de_nghi' };
+// mẫu dùng bộ in riêng (trường trộn riêng, xem chú thích ô Nội dung mẫu) — còn lại in bằng bộ in chung
+const tplSpecial = t => (t.ent === 'reservation' && ['dang_ky_can', 'dang_ky_noi_that'].includes(t.kind)) || (['reservation', 'noxh_check'].includes(t.ent) && t.kind === 'bien_ban_giao_nhan') || (t.ent === 'sale_notice' && t.kind === 'thong_bao' && /^TB-MOBAN/i.test(t.code || ''));
+function tplUrl(ent, id, t) {
+  const c = encodeURIComponent(t.code);
+  if (ent === 'reservation' && ['dang_ky_can', 'dang_ky_noi_that'].includes(t.kind)) return `/print/reservation/${id}?kind=${t.kind}&tpl=${c}`;
+  if (['reservation', 'noxh_check'].includes(ent) && t.kind === 'bien_ban_giao_nhan') return `/print/handover/${ent === 'reservation' ? 'reservation' : 'noxh'}/${id}?tpl=${c}`;
+  if (ent === 'sale_notice' && t.kind === 'thong_bao' && /^TB-MOBAN/i.test(t.code)) return `/print/sale_notice/${id}?kind=thong_bao&tpl=${c}`;
+  return `/print/tpl/${ent}/${id}?tpl=${c}`;
+}
+// --- mẫu theo dự án / tòa: dòng «căn … thuộc …», danh sách chọn, nút «Tạo mẫu riêng cho tòa / dự án này» (điền sẵn phạm vi)
+const scLabel = sc => sc?.pcode ? `${sc.pname || sc.pcode}${sc.bcode ? ' › ' + (sc.bname || 'Tòa ' + sc.bcode) : ''}` : '';
+const tplScopeBar = sc => sc?.pcode ? `<div class="tplsc">${ico('fa-location-dot')} ${sc.unit ? `Căn <b>${esc(sc.unit)}</b> · ` : ''}${esc(scLabel(sc))} — chỉ hiện mẫu của dự án / tòa này và mẫu chung</div>` : '';
+const LV_L = { 2: 'mẫu riêng của tòa', 1: 'mẫu riêng của dự án', 0: 'mẫu chung' };
+const tplRadios = (ts, pre) => ts.map(t => `<label class="chk tplr"><input type="radio" name="tpl" value="${esc(t.code)}" ${t === pre ? 'checked' : ''}><span><b>${esc(t.name)}</b> <span class="muted small">${esc(t.code)}${t.lv != null ? ' · ' + LV_L[t.lv] : ''}</span></span></label>`).join('');
+const tplNewBtn = sc => M.ents.template?.perm?.c && sc?.pcode ? `<button class="btn" id="pNew" title="Tạo mẫu mới, tự gắn với ${esc(scLabel(sc))}">${ico('fa-plus')} Tạo mẫu cho ${esc(sc.bcode ? (sc.bname || 'tòa ' + sc.bcode) : (sc.pname || sc.pcode))}</button>` : '';
+function tplNewWire(m, sc, ent, kind, reopen) {
+  const b = $('#pNew', m.el); if (!b) return;
+  b.onclick = () => { m.close(); openForm('template', { preset: { ent, kind, active: true, scope: sc.bcode ? `${sc.pcode}-${sc.bcode}` : sc.pcode, code: `${({ dang_ky_can: 'DK', dang_ky_noi_that: 'DK-NT', bien_ban_giao_nhan: 'BBGN', hop_dong: 'HD' })[kind] || 'MAU'}-${sc.pcode}${sc.bcode ? '-' + sc.bcode : ''}`.toUpperCase(), name: `Mẫu – ${scLabel(sc)}` }, title: `Tạo mẫu · ${esc(scLabel(sc))}`, onSaved: () => reopen() }); };
+}
+document.addEventListener('click', e => { const b = e.target.closest('[data-tpls]'); if (b) tplManager(b.dataset.tpls); });   // nút «Mẫu biểu» ở màn tự dựng (khách hàng, sản phẩm)
+async function tplPrint(ent, id) {
+  const [ts, sc] = await Promise.all([api('GET', `/api/templates?ent=${ent}&active=1&rec=${id}`), api('GET', `/api/template-scope/${ent}/${id}`)]);
+  const m = modal({ title: `${ico('fa-print')} In theo mẫu`, narrow: true, body: `${tplScopeBar(sc)}${ts.length ? `<div class="small muted mb">Chọn mẫu in</div>${tplRadios(ts, ts[0])}` : `<div class="empty">Chưa có mẫu cho ${esc(scLabel(sc) || tplPlace(ent))}.</div>`}`,
+    foot: `<button class="btn" data-x>Hủy</button>${tplNewBtn(sc)}${ts.length ? `<button class="btn pri" id="pOk">${ico('fa-print')} In</button>` : ''}` });
+  tplNewWire(m, sc, ent, TPL_KIND0[ent] || 'thong_bao', () => tplPrint(ent, id));
+  $('#pOk', m.el) && ($('#pOk', m.el).onclick = () => { const c = $('input[name=tpl]:checked', m.el).value; m.close(); window.open(tplUrl(ent, id, ts.find(t => t.code === c)), '_blank'); });
+}
+async function tplManager(ent) {
+  const E = M.ents[ent], TE = M.ents.template, canC = !!TE.perm?.c;
+  const kindL = Object.fromEntries(TE.fields.find(f => f.k === 'kind').o);
+  const m = modal({ title: `${ico('fa-file-lines')} Mẫu biểu · ${esc(E.title)}`, wide: true, body: `<div class="warnbar">${ico('fa-circle-info')}<span>Mẫu ở đây hiện ở nút <b>«In theo mẫu»</b> khi mở một ${esc(E.one)} — <b>${esc(tplPlace(ent))}</b>. Bấm một mẫu để sửa; trong form có danh sách trường trộn bấm để chèn và nút Xem thử.</span></div><div id="tmL"><div class="empty">Đang tải…</div></div>`,
+    foot: `<button class="btn" data-x>Đóng</button>${canC ? `<button class="btn pri" id="tmNew">${ico('fa-plus')} Tạo mẫu mới cho màn này</button>` : ''}` });
+  const load = async () => {
+    const ts = await api('GET', `/api/templates?ent=${ent}`);
+    $('#tmL', m.el).innerHTML = ts.length ? `<div class="tbl-wrap"><table class="t"><thead><tr><th>Mã mẫu</th><th>Tên mẫu</th><th>Loại</th><th>Áp dụng cho</th><th>Đang dùng</th><th></th></tr></thead><tbody>${ts.map(t => `<tr data-id="${t.id}" style="cursor:pointer"><td>${esc(t.code)}</td><td><b>${esc(t.name)}</b></td><td>${esc(kindL[t.kind] || t.kind)}</td><td>${t.scope ? esc(t.scope) : '<span class="muted">mẫu chung</span>'}${t.bedrooms ? ' · ' + t.bedrooms + ' PN' : ''}</td><td>${t.active ? `<span class="tag ok">Đang dùng</span>` : '<span class="tag">Tắt</span>'}</td><td style="text-align:right"><button class="btn sm ghost" data-ed="${t.id}">${ico('fa-pen')} ${canC ? 'Sửa' : 'Xem'}</button></td></tr>`).join('')}</tbody></table></div>`
+      : `<div class="empty">Chưa có mẫu nào cho màn này.${canC ? ' Bấm «Tạo mẫu mới cho màn này».' : ''}</div>`;
+  };
+  $('#tmL', m.el).onclick = e => { const tr = e.target.closest('tr[data-id]'); if (tr) openForm('template', { id: +tr.dataset.id, onSaved: load }); };
+  $('#tmNew', m.el) && ($('#tmNew', m.el).onclick = () => openForm('template', { preset: { ent, kind: TPL_KIND0[ent] || 'thong_bao', active: true }, title: `Tạo mẫu · ${esc(E.title)}`, onSaved: load }));
+  await load();
+}
+// form mẫu: tích dự án / tòa áp dụng → ghi vào ô «Áp dụng cho dự án / tòa» (CTS = cả dự án, CTS-O = tòa O)
+async function tplScopePick(form) {
+  const inp = form.elements.scope; if (!inp) return;
+  const [ps, bs] = await Promise.all([api('GET', '/api/e/project?limit=500&sort=code'), api('GET', '/api/e/building?limit=5000&sort=code')]);
+  const box = document.createElement('div'); box.className = 'fld wide tplsp';
+  const keys = () => new Set(String(inp.value || '').split(/[,;\s]+/).map(x => x.trim().toUpperCase()).filter(Boolean));
+  const draw = () => { const k = keys();
+    box.innerHTML = `<label>Tích dự án / tòa dùng mẫu này <span class="muted small">— không tích = mẫu chung cho mọi dự án</span></label><div class="tplsp-l">${ps.rows.map(p => { const P = p.code.toUpperCase(), tb = bs.rows.filter(b => b.project_id === p.id);
+      return `<div class="tplsp-p"><label class="chk"><input type="checkbox" data-sk="${esc(P)}" ${k.has(P) ? 'checked' : ''}> <b>${esc(p.name)}</b> <span class="muted small">${esc(p.code)}</span></label>${tb.length ? `<span class="tplsp-b">${tb.map(b => { const K = `${P}-${b.code.toUpperCase()}`; return `<label class="chk"><input type="checkbox" data-sk="${esc(K)}" ${k.has(K) || k.has(P) ? 'checked' : ''} ${k.has(P) ? 'disabled' : ''}> ${esc(b.name || 'Tòa ' + b.code)}</label>`; }).join('')}</span>` : ''}</div>`; }).join('')}</div>`; };
+  box.onchange = e => { const c = e.target.closest('[data-sk]'); if (!c) return; const k = keys(), K = c.dataset.sk;
+    if (c.checked) { k.add(K); if (!K.includes('-')) for (const x of [...k]) if (x.startsWith(K + '-')) k.delete(x); } else k.delete(K);   // tích cả dự án thì bỏ từng tòa của dự án đó
+    inp.value = [...k].join(', '); inp.dispatchEvent(new Event('input', { bubbles: true })); draw(); };
+  inp.readOnly = true; inp.placeholder = 'Mẫu chung — mọi dự án (tích chọn ở khung bên dưới)';   // chỉ chọn theo dự án / tòa hiện có, không gõ tay (Tâm 11/11/2026)
+  inp.closest('.fld').after(box); draw();
+}
+// form mẫu: dòng «Mẫu này hiện ở…», trường trộn theo module (bấm để chèn vào chỗ con trỏ), Xem thử với bản ghi mới nhất
+function tplHelper(form, m) {
+  const ta = form.elements.content, sel = form.elements.ent; if (!ta || !sel) return;
+  const box = document.createElement('div'); box.className = 'fld wide tplh';
+  box.innerHTML = `<div class="tplh-where" id="thW"></div><label>Trường trộn — bấm để chèn vào nội dung</label><div id="thC" class="tplh-chips"></div>
+    <div class="tplh-foot"><button type="button" class="btn sm" id="thP">${ico('fa-eye')} Xem thử với dữ liệu thật</button><span class="small muted" id="thN"></span></div>`;
+  ta.closest('.fld').after(box);
+  let pos = null; ta.addEventListener('blur', () => { pos = [ta.selectionStart, ta.selectionEnd]; });
+  const put = txt => { const [a, b] = pos || [ta.value.length, ta.value.length]; ta.value = ta.value.slice(0, a) + txt + ta.value.slice(b); ta.focus(); ta.selectionStart = ta.selectionEnd = a + txt.length; pos = [a + txt.length, a + txt.length]; ta.dispatchEvent(new Event('input', { bubbles: true })); };
+  const draw = async () => {
+    const ent = sel.value, kind = form.elements.kind?.value, code = form.elements.code?.value || '';
+    $('#thW', box).innerHTML = ent ? `${ico('fa-location-dot')} Mẫu này hiện ở <b>${esc(tplPlace(ent))}</b> — nút «In theo mẫu» khi mở một ${esc(M.ents[ent]?.one || 'bản ghi')}` : `${ico('fa-circle-info')} Chọn <b>Hiện ở module</b> để xem trường trộn`;
+    $('#thN', box).textContent = ent && tplSpecial({ ent, kind, code }) ? 'Loại mẫu này in bằng bộ in riêng — trường trộn riêng xem ở chú thích ô Nội dung mẫu' : '';
+    if (!ent) { $('#thC', box).innerHTML = ''; return; }
+    const gs = await api('GET', `/api/template-fields/${ent}`);
+    $('#thC', box).innerHTML = gs.map(g => `<div class="tplh-g"><b>${esc(g.g)}</b>${g.items.map(x => `<button type="button" class="tplh-chip" data-k="${esc(x.k)}" title="{${esc(x.k)}}">${esc(x.l)}</button>`).join('')}</div>`).join('');
+  };
+  $('#thC', box).onclick = e => { const b = e.target.closest('[data-k]'); if (b) put(`{${b.dataset.k}}`); };
+  tplScopePick(form);
+  sel.addEventListener('change', draw); form.elements.kind?.addEventListener('change', draw);
+  $('#thP', box).onclick = async () => {
+    const w = window.open('', '_blank');   // mở cửa sổ trước (sau khi chờ máy chủ trình duyệt chặn cửa sổ bật lên)
+    try {
+      const r = await api('POST', '/api/template-preview', { ent: sel.value, content: ta.value, name: form.elements.name?.value, code: form.elements.code?.value });
+      w.document.open(); w.document.write(r.html); w.document.close();
+    } catch (e) { w && w.close(); toast(e.message, true); }
+  };
+  draw();
+}
+
 // ---------- thao tác nghiệp vụ ----------
 async function doAct(ent, id, k, after, row) {
   const E = M.ents[ent], a0 = E.acts.find(x => x.k === k);
@@ -1129,23 +1296,26 @@ async function scheduleModal(contractId, after) {
 // in bản đăng ký từ phiếu GD-01: chọn mẫu in (Quản trị › Mẫu biểu, loại «Bản đăng ký căn hộ / nội thất»)
 async function printPick(id, kind) {   // bấm In → chọn 1 trong các mẫu đơn đăng ký (mẫu hợp với căn được chọn sẵn)
   const nt = kind === 'dang_ky_noi_that';   // nút Nội thất: mẫu có chữ «hoàn thiện căn hộ»; nút Căn hộ: các mẫu còn lại
-  const ts = (await api('GET', `/api/templates?all=1&res=${id}`)).filter(t => /hoàn thiện căn hộ/i.test(t.label) === nt);
-  if (!ts.length) return toast('Chưa có mẫu đơn đăng ký — tạo ở Quản trị › Mẫu biểu', true);
+  const [all, sc] = await Promise.all([api('GET', `/api/templates?all=1&res=${id}`), api('GET', `/api/template-scope/reservation/${id}`)]);
+  const ts = all.filter(t => (t.kind === 'dang_ky_noi_that' || /hoàn thiện căn hộ/i.test(t.label)) === nt && t.lv >= 0).sort((a, b) => b.lv - a.lv);   // chỉ mẫu của đúng dự án / tòa và mẫu chung
   const pre = ts.find(t => t.fit) || ts[0];
-  const m = modal({ title: `${ico('fa-print')} In đơn đăng ký`, narrow: true, body: `<div class="small muted mb">Chọn mẫu in</div>${ts.map(t => `<label class="chk" style="display:flex;gap:8px;align-items:center;padding:8px 0"><input type="radio" name="tpl" value="${esc(t.code)}" data-kind="${t.kind}" ${t === pre ? 'checked' : ''}> <b>${esc(t.label)}</b>${t.fit ? '' : '<span class="muted small">(khác dự án với căn)</span>'}</label>`).join('')}`,
-    foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="pOk">${ico('fa-print')} In</button>` });
-  $('#pOk', m.el).onclick = () => { const c = $('input[name=tpl]:checked', m.el); m.close(); window.open(`/print/reservation/${id}?kind=${c.dataset.kind}&tpl=${encodeURIComponent(c.value)}`, '_blank'); };
+  const m = modal({ title: `${ico('fa-print')} In đơn đăng ký`, narrow: true, body: `${tplScopeBar(sc)}${ts.length ? `<div class="small muted mb">Chọn mẫu in</div>${tplRadios(ts.map(t => ({ ...t, name: t.label })), pre)}` : `<div class="empty">Chưa có mẫu đơn đăng ký cho ${esc(scLabel(sc))}.</div>`}`,
+    foot: `<button class="btn" data-x>Hủy</button>${tplNewBtn(sc)}${ts.length ? `<button class="btn pri" id="pOk">${ico('fa-print')} In</button>` : ''}` });
+  tplNewWire(m, sc, 'reservation', kind, () => printPick(id, kind));
+  $('#pOk', m.el) && ($('#pOk', m.el).onclick = () => { const c = $('input[name=tpl]:checked', m.el); const t = ts.find(x => x.code === c.value); m.close(); window.open(`/print/reservation/${id}?kind=${t.kind}&tpl=${encodeURIComponent(t.code)}`, '_blank'); });
 }
 
 // in biên bản giao nhận hồ sơ (từ phiếu đăng ký / hồ sơ NOXH): chọn mẫu theo công ty — Cát Tường, Thống Nhất… (Quản trị › Mẫu biểu)
 async function handoverPick(kind, id) {
-  const ts = await api('GET', `/api/handover-templates?${kind}=${id}`);
+  const ent = kind === 'reservation' ? 'reservation' : 'noxh_check';
+  const [all, sc] = await Promise.all([api('GET', `/api/handover-templates?${kind}=${id}`), api('GET', `/api/template-scope/${ent}/${id}`)]);
   const go = code => window.open(`/print/handover/${kind}/${id}${code ? '?tpl=' + encodeURIComponent(code) : ''}`, '_blank');
-  if (ts.length < 2) return go(ts[0]?.code);
-  const pre = ts.find(t => t.fit) || ts[0];
-  const m = modal({ title: `${ico('fa-file-signature')} In biên bản giao nhận hồ sơ`, narrow: true, body: `<div class="small muted mb">Chọn mẫu in</div>${ts.map(t => `<label class="chk" style="display:flex;gap:8px;align-items:center;padding:8px 0"><input type="radio" name="tpl" value="${esc(t.code)}" ${t === pre ? 'checked' : ''}> <b>${esc(t.name)}</b>${t.fit ? '' : '<span class="muted small">(khác dự án với căn)</span>'}</label>`).join('')}`,
-    foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="pOk">${ico('fa-print')} In</button>` });
-  $('#pOk', m.el).onclick = () => { const c = $('input[name=tpl]:checked', m.el); m.close(); go(c.value); };
+  const ts = all.filter(t => t.fit).sort((a, b) => b.lv - a.lv);   // chỉ mẫu của đúng dự án / tòa và mẫu chung
+  const pre = ts.find(t => t.best) || ts[0];
+  const m = modal({ title: `${ico('fa-file-signature')} In biên bản giao nhận hồ sơ`, narrow: true, body: `${tplScopeBar(sc)}${ts.length ? `<div class="small muted mb">Chọn mẫu in</div>${tplRadios(ts, pre)}` : `<div class="empty">Chưa có mẫu biên bản cho ${esc(scLabel(sc))}.</div>`}`,
+    foot: `<button class="btn" data-x>Hủy</button>${tplNewBtn(sc)}${ts.length ? `<button class="btn pri" id="pOk">${ico('fa-print')} In</button>` : ''}` });
+  tplNewWire(m, sc, ent, 'bien_ban_giao_nhan', () => handoverPick(kind, id));
+  $('#pOk', m.el) && ($('#pOk', m.el).onclick = () => { const c = $('input[name=tpl]:checked', m.el); m.close(); go(c.value); });
 }
 
 // ---------- ngăn chi tiết ----------
@@ -1182,6 +1352,7 @@ async function openDetail(ent, id, tab, plain) {   // plain: chỉ xem (mở t�
       ${p.approve && !E.flow.custom ? `<button class="btn ok sm" data-do="ok">${ico('fa-check')} Duyệt</button><button class="btn danger sm" data-do="no">${ico('fa-xmark')} Từ chối</button>` : ''}
       ${p.selfApproval ? `<span class="small muted">${ico('fa-user-lock')} Đang chờ cấp khác duyệt</span>` : ''}
       ${acts.map(a => `<button class="btn sm ${a.danger ? 'danger' : ''}" data-act="${a.k}">${ico(a.icon)} ${esc(a.l)}</button>`).join('')}
+      ${tplOn(ent) ? `<button class="btn sm ghost" data-do="tplprint">${ico('fa-print')} In theo mẫu</button>` : ''}
       ${unitId ? `<button class="btn sm ghost" data-do="u360">${ico('fa-building')} Hồ sơ căn 360°</button>` : ''}
       ${ent === 'customer' ? `<button class="btn sm ghost" data-do="c360">${ico('fa-id-card')} Hồ sơ khách 360°</button>` : ''}
       ${ent === 'reservation' && r.deal !== 'thue' ? `<button class="btn sm ghost" data-do="pr_can">${ico('fa-print')} In bản đăng ký căn hộ</button><button class="btn sm ghost" data-do="pr_nt">${ico('fa-couch')} In bản đăng ký nội thất</button>` : ''}
@@ -1241,6 +1412,7 @@ async function openDetail(ent, id, tab, plain) {   // plain: chỉ xem (mở t�
     if (d === 'c360') { closeDetail(); location.hash = `#/v/cust360?id=${id}`; return; }
     if (d === 'pr_can' || d === 'pr_nt') return printPick(id, d === 'pr_can' ? 'dang_ky_can' : 'dang_ky_noi_that');
     if (d === 'copy') return copyCustomer(r.id);
+    if (d === 'tplprint') return tplPrint(ent, id);
     if (d === 'log') return openForm('contact_log', { preset: { customer_id: r.id, customer_id__l: `${r.code} · ${r.full_name}` }, onSaved: () => toast('Đã ghi nhật ký') });
     if (d === 'call') return openForm('debt_call', { preset: { contract_id: r.id, contract_id__l: r.number }, onSaved: () => reload() });
     if (d === 'chg') return openForm('contract_change', { preset: { contract_id: r.id, contract_id__l: r.number }, onSaved: row => openDetail('contract_change', row.id) });
@@ -1299,10 +1471,12 @@ async function listView(main, ent, params = {}) {
   const fltParams = () => {};   // ô Điều kiện lọc chỉ tick chọn trường hiện (user 04/11/2026: không lọc Từ – Đến)
   const projFilter = ['unit', 'building', 'price_policy', 'reservation', 'contract', 'collect_plan', 'handover', 'defect', 'pinkbook', 'debt_call', 'receipt', 'installment', 'noxh_check', 'ticket', 'contract_change', 'commission', 'target', 'agent_alloc', 'refund'].includes(ent);
   const extra = { collect_plan: `<button class="btn" data-x="suggest">${ico('fa-wand-magic-sparkles')} Gợi ý từ công nợ & cam kết</button>`, commission: `<button class="btn" data-x="calc">${ico('fa-calculator')} Tính / cập nhật hoa hồng</button>`,
-    receipt: (M.imports.misa ? `<button class="btn amb" data-x="imp" data-k="misa">${ico('fa-file-import')} Nhập phiếu thu MISA</button>` : '') + (M.imports.receipts ? `<button class="btn" data-x="imp" data-k="receipts">${ico('fa-file-import')} Nhập chứng từ Bravo</button>` : ''), unit: M.imports.units ? `<button class="btn" data-x="imp" data-k="units">${ico('fa-file-import')} Nhập bảng hàng</button>` : '',
-    customer: M.imports.customers ? `<button class="btn" data-x="imp" data-k="customers">${ico('fa-file-import')} Nhập Excel</button>` : '',
-    contact_log: `${M.imports.leads ? `<button class="btn" data-x="imp" data-k="leads">${ico('fa-file-import')} Nhập Excel khách</button>` : ''}${E.perm.c ? `<button class="btn amb" data-x="lead">${ico('fa-user-plus')} Thêm khách trực tiếp / Hotline</button>` : ''}`, contract: M.imports.contracts ? `<button class="btn" data-x="imp" data-k="contracts">${ico('fa-file-import')} Nhập HĐ cũ</button>` : '' }[ent] || '';
-  main.innerHTML = `<div class="page"><div class="ph"><div>${eyebrow(E)}<h1>${ico(E.icon)} ${esc(S.group === 'tiem_nang' ? E.title + ' tiềm năng' : E.groups?.[S.group] || E.title)}</h1></div><div class="acts">${E.purpose ? `<button class="btn ghost" id="infoBtn">${ico('fa-circle-info')} Quy trình</button>` : ''}${extra}${E.perm.x ? `<button class="btn" id="xls">${ico('fa-file-excel')} Xuất Excel</button>` : ''}<button class="btn" onclick="print()">${ico('fa-print')} In / PDF</button>${E.perm.c ? `<button class="btn pri" id="newBtn">${ico('fa-plus')} ${ent === 'reservation' ? 'Tạo phiếu đăng ký' : `Tạo ${esc(E.one)}`}</button>` : ''}</div></div>${infoBox(E)}
+    receipt: (M.imports.misa ? `<button class="btn amb" data-x="imp" data-k="misa">${ico('fa-file-import')} Nhập file MISA</button>` : '') + (M.imports.receipts ? `<button class="btn" data-x="imp" data-k="receipts">${ico('fa-file-import')} Nhập file Bravo</button>` : ''), unit: M.imports.units ? `<button class="btn" data-x="imp" data-k="units">${ico('fa-file-import')} Nhập file</button>` : '',
+    customer: M.imports.customers ? `<button class="btn" data-x="imp" data-k="customers">${ico('fa-file-import')} Nhập file</button>` : '',
+    contact_log: `${M.imports.leads ? `<button class="btn" data-x="imp" data-k="leads">${ico('fa-file-import')} Nhập file</button>` : ''}${E.perm.c ? `<button class="btn amb" data-x="lead">${ico('fa-user-plus')} Thêm khách trực tiếp / Hotline</button>` : ''}`, contract: M.imports.contracts ? `<button class="btn" data-x="imp" data-k="contracts">${ico('fa-file-import')} Nhập file</button>` : '',
+    // bản demo (không máy chủ): quản trị đẩy toàn bộ mẫu biểu lên Git → mọi người mở link dùng chung (demo/entry.js)
+    template: `<a class="btn" href="#/e/template">${ico('fa-folder-tree')} Dạng cây thư mục</a>` + (window.__ctgDemoPublish && M.me.role === 'admin' ? `<button class="btn amb" data-x="gitpub" title="Ghi toàn bộ mẫu biểu trên trình duyệt này vào kho GitHub — bản demo của mọi người cập nhật sau 1–2 phút">${ico('fa-cloud-arrow-up')} Đẩy mẫu biểu lên Git</button>` : '') }[ent] || '';
+  main.innerHTML = `<div class="page"><div class="ph"><div>${eyebrow(E)}<h1>${ico(E.icon)} ${esc(S.group === 'tiem_nang' ? E.title + ' tiềm năng' : E.groups?.[S.group] || E.title)}</h1></div><div class="acts">${E.purpose ? `<button class="btn ghost" id="infoBtn">${ico('fa-circle-info')} Quy trình</button>` : ''}${extra}${tplOn(ent) ? `<button class="btn" data-x="tpls" title="Mẫu in của màn này — tạo, sửa, xem thử">${ico('fa-file-lines')} Mẫu biểu</button>` : ''}${E.perm.x ? `<button class="btn" id="xls">${ico('fa-file-excel')} Xuất file</button>` : ''}<button class="btn" onclick="print()">${ico('fa-print')} In / PDF</button>${E.perm.c ? `<button class="btn pri" id="newBtn">${ico('fa-plus')} ${ent === 'reservation' ? 'Tạo phiếu đăng ký' : `Tạo ${esc(E.one)}`}</button>` : ''}</div></div>${infoBox(E)}
     <div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="q" placeholder="Tìm mã, tên, mã căn, khách hàng…" value="${esc(S.q)}"></div>
       ${projFilter ? `<select id="pj"><option value="">Tất cả dự án</option>${M.projects.map(p => `<option value="${p.id}" ${+S.project === p.id ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select>` : ''}
       ${hdKinds ? `<button class="btn sm" id="fltT">${ico('fa-filter')} Điều kiện lọc</button>` : ''}${E.fields.some(f => ['owner_id', 'assignee_id'].includes(f.k)) ? `<label class="chk"><input type="checkbox" id="mine" ${S.mine ? 'checked' : ''}> Của tôi</label>` : ''}
@@ -1374,6 +1548,14 @@ async function listView(main, ent, params = {}) {
     if (xb?.dataset.x === 'calc') { const r = await api('POST', '/api/commission/calc', {}); toast(`Đã rà soát ${r.checked} hợp đồng có đại lý / CTV`); return load(); }
     if (xb?.dataset.x === 'imp') return importModal(xb.dataset.k, load);
     if (xb?.dataset.x === 'lead') return leadModal(load);
+    if (xb?.dataset.x === 'tpls') return tplManager(ent);
+    if (xb?.dataset.x === 'gitpub') {   // bản demo: đẩy mẫu biểu lên kho GitHub (demo/entry.js)
+      if (!confirm('Đẩy toàn bộ mẫu biểu đang có trên trình duyệt này lên Git?\nMọi người mở link demo sẽ nhận đúng bộ mẫu này (sau 1–2 phút).')) return;
+      xb.disabled = true;
+      try { const r = await window.__ctgDemoPublish({ user: M.me.username }); if (r) toast(`Đã đẩy ${r.n} mẫu lên Git — bản demo của mọi người cập nhật sau 1–2 phút`); }
+      catch (e) { toast(e.message, true); } finally { xb.disabled = false; }
+      return;
+    }
     const ck = t.closest('[data-ck]'); if (ck) { S.ht = ck.dataset.ck; S.status = ''; S.sort = ''; S.sel.clear(); $$('button', ck.parentElement).forEach(b => b.classList.toggle('on', b === ck)); drawFlt(); return load(); }
     if (t.closest('#fltT') || t.closest('[data-fx=hide]')) { S.flt.hide = !S.flt.hide; $('.flt-wrap', main)?.classList.toggle('flt-off', S.flt.hide); return; }
     if (t.closest('[data-fx=all]') || t.closest('[data-fx=none]')) {   // đang tra cứu: chỉ chọn / bỏ các trường đang hiện trong kết quả tra cứu

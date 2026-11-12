@@ -148,11 +148,27 @@ NHÂN VIÊN KINH DOANH                                   KHÁCH HÀNG ĐĂNG KÝ
 // khi khởi động: thêm mẫu mặc định còn thiếu (không đè mẫu đã sửa) + bổ sung dữ liệu phiếu cũ
 async function ensureTemplates() {
   await tx(async db => {
+    await require('./biz').fillTplEnt(db);   // mẫu cũ chưa có module (11/11/2026)
     const sysU = await db.one("SELECT * FROM kd_user WHERE role = 'admin' ORDER BY id LIMIT 1") || C.SYS;
     for (const t of REG_TEMPLATES()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });
     // mẫu chuẩn theo file Excel phòng Kinh doanh: lần đầu nạp thì tắt các mẫu khung cũ
     let moi = 0;
     for (const t of require('./mau-mo-ban').MAU_MO_BAN()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });
+    // bộ MẪU HS TNS (12/11/2026): nạp mẫu còn thiếu; mẫu đã có (kể cả đã sửa tay) chỉ gắn lại bộ hồ sơ nếu bị mất
+    for (const t of require('./ho-so').MAU_TNS()) {
+      if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });
+      else {
+        await db.q('UPDATE kd_template SET bo = $2 WHERE code = $1 AND bo IS NULL', [t.code, t.bo]);
+        // mẫu chưa ai sửa tay (updated_by trống) → nhận bản chuyển đổi mới nhất
+        await db.q('UPDATE kd_template SET content = $2, name = $3, scope = $4 WHERE code = $1 AND updated_by IS NULL AND content IS DISTINCT FROM $2', [t.code, t.content, t.name, t.scope]);
+      }
+    }
+    // bản chép bộ mẫu sang dự án khác (CTS-MB-01, ABC-MB-01…, tự tạo ở Bộ hồ sơ theo căn) chưa ai sửa tay → nhận bản mới của mẫu chuẩn (12/11/2026)
+    { const done = new Set();
+      for (const t of require('./ho-so').MAU_TNS()) {
+        const key = t.code.replace(/-(DEFG|HIJ|DE|FG)$/, ''); if (done.has(key)) continue; done.add(key);   // cùng bản mà autoProjectTemplates đã chép
+        await db.q("UPDATE kd_template SET content = $2 WHERE bo IS NOT NULL AND updated_by IS NULL AND upper(code) LIKE '%-' || upper($1) AND upper(code) NOT LIKE 'TNS-%' AND content IS DISTINCT FROM $2", [key.replace(/^TNS-/, ''), t.content]);
+      } }
     for (const t of require('./mau4').MAU_BIEN_BAN()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });
     for (const [code, cu, moi2] of require('./mau4').BB_CU()) await db.q('UPDATE kd_template SET content = replace(content, $1, $2) WHERE code = $3 AND strpos(content, $1) > 0', [cu, moi2, code]);
     for (const t of MAU_DANG_KY()) {

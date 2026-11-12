@@ -297,12 +297,15 @@ const M4 = {
   quan_he: ['Vợ (Chồng)', 'Chồng (Vợ)', 'Con', 'Anh, chị, em', 'Cha (Mẹ)', 'Ông (Bà)', 'Cháu'],
 };
 // cột khai báo một người trong hộ theo Mẫu 4 — dùng chung cho dòng chủ hộ và thành viên (mỗi lần gọi trả bản mới, không dùng chung đối tượng)
+// 99 phường, xã tỉnh Bắc Ninh từ 01/7/2025 (Nghị quyết 1658/NQ-UBTVQH15; bỏ cấp huyện) — gợi ý ô «Thị trấn/xã» khi tỉnh là Bắc Ninh
+const BN_PHUONG = ['Kinh Bắc', 'Võ Cường', 'Vũ Ninh', 'Hạp Lĩnh', 'Nam Sơn', 'Từ Sơn', 'Tam Sơn', 'Đồng Nguyên', 'Phù Khê', 'Thuận Thành', 'Mão Điền', 'Trạm Lộ', 'Trí Quả', 'Song Liễu', 'Ninh Xá', 'Quế Võ', 'Phương Liễu', 'Nhân Hòa', 'Đào Viên', 'Bồng Lai', 'Bắc Giang', 'Đa Mai', 'Tiền Phong', 'Tân Tiến', 'Yên Dũng', 'Tân An', 'Cảnh Thụy', 'Việt Yên', 'Nếnh', 'Vân Hà', 'Tự Lạn', 'Chũ', 'Phượng Sơn'];
+const BN_XA = ['Chi Lăng', 'Phù Lãng', 'Yên Phong', 'Văn Môn', 'Tam Giang', 'Yên Trung', 'Tam Đa', 'Tiên Du', 'Liên Bão', 'Tân Chi', 'Đại Đồng', 'Phật Tích', 'Gia Bình', 'Nhân Thắng', 'Đại Lai', 'Cao Đức', 'Đông Cứu', 'Lương Tài', 'Lâm Thao', 'Trung Chính', 'Trung Kênh', 'Đồng Việt', 'Hiệp Hòa', 'Xuân Cẩm', 'Hợp Thịnh', 'Hoàng Vân', 'Tân Yên', 'Nhã Nam', 'Quang Trung', 'Phúc Hòa', 'Ngọc Thiện', 'Bố Hạ', 'Yên Thế', 'Xuân Lương', 'Đồng Kỳ', 'Tam Tiến', 'Lạng Giang', 'Tiên Lục', 'Tân Dĩnh', 'Mỹ Thái', 'Kép', 'Biển Động', 'Lục Ngạn', 'Đèo Gia', 'Sơn Hải', 'Tân Sơn', 'Biên Sơn', 'Sa Lý', 'Sơn Động', 'Tây Yên Tử', 'An Lạc', 'Tuấn Đạo', 'Dương Hưu', 'Yên Định', 'Đại Sơn', 'Vân Sơn', 'Kiên Lao', 'Nam Dương', 'Lục Nam', 'Bắc Lũng', 'Bảo Đài', 'Lục Sơn', 'Trường Sơn', 'Cẩm Lý', 'Nghĩa Phương', 'Đông Phú'];
 const M4_PERSON = () => [
   { k: 'name', l: 'Họ và Tên', w: 170 }, { k: 'phone', l: 'Số điện thoại', w: 115 }, { k: 'bday', l: 'Ngày sinh', w: 60, pii: 1 }, { k: 'bmonth', l: 'Tháng sinh', w: 60, pii: 1 }, { k: 'byear', l: 'Năm sinh', w: 70, pii: 1 },
   { k: 'old_id_no', l: 'Số CMND', w: 110, pii: 1 }, { k: 'id_no', l: 'Số CCCD', w: 125, pii: 1 }, { k: 'job', l: 'Nghề nghiệp', sug: M4.nghe, w: 170 },
   { k: 'doi_tuong', l: 'Đối tượng chính sách được hưởng nhà ở xã hội', sug: M4.doi_tuong, w: 240 }, { k: 'confirm_org', l: 'Cơ quan xác nhận về đối tượng', w: 180 },
   { k: 'housing', l: 'Điều kiện nhà ở (mô tả đúng hiện trạng nhà ở được VPĐKĐĐ xác nhận)', sug: M4.nha_o, w: 240 },
-  { k: 'province', l: 'Tỉnh', w: 100 }, { k: 'district', l: 'Huyện/ Thành phố', w: 120 }, { k: 'commune', l: 'Thị trấn/xã', w: 120 },
+  { k: 'province', l: 'Tỉnh', w: 100, def: 'Bắc Ninh' }, { k: 'district', l: 'Huyện/ Thành phố', w: 120 }, { k: 'commune', l: 'Thị trấn/xã', w: 150, sug: [...BN_PHUONG.map(x => ['Phường', x]), ...BN_XA.map(x => ['Xã', x])], sugProv: 'Bắc Ninh' },
   { k: 'income', l: 'Điều kiện thu nhập (mô tả theo đúng nội dung Giấy xác nhận)', sug: M4.thu_nhap, w: 240 }];
 const SIGN_ST = [['chua_lien_he', 'Chưa liên hệ', 's'], ['da_lien_he', 'Đã liên hệ', 'b'], ['da_hen', 'Đã hẹn', 'v'], ['can_bo_sung', 'Cần bổ sung hồ sơ', 'a'], ['da_ky', 'Đã ký', 'g']];
 def('noxh_check', {
@@ -990,15 +993,17 @@ def('report', {
 // ===================== 12. QUẢN TRỊ =====================
 def('template', {
   title: 'Mẫu biểu – thông báo', one: 'mẫu', mod: '12', icon: 'fa-file-lines', disp: "t.code||' · '||t.name",
-  c: ['admin', 'truong_phong'], fields: [
+  c: ['admin', 'truong_phong'], d: ['admin', 'truong_phong'], fields: [   // d: trưởng phòng xóa được mẫu ở cây thư mục (12/11/2026)
     { k: 'code', l: 'Mã mẫu', t: 'text', req: 1, uniq: 1 },
     { k: 'name', l: 'Tên mẫu', t: 'text', req: 1 },
     { k: 'kind', l: 'Loại', t: 'sel', req: 1, o: [['hop_dong', 'Hợp đồng'], ['phu_luc', 'Phụ lục'], ['bien_ban', 'Biên bản'], ['de_nghi', 'Phiếu đề nghị'], ['thong_bao', 'Thông báo'], ['bao_cao', 'Báo cáo'], ['dang_ky_can', 'Bản đăng ký căn hộ'], ['dang_ky_noi_that', 'Bản đăng ký nội thất'], ['bien_ban_giao_nhan', 'Biên bản giao nhận hồ sơ']] },
+    { k: 'ent', l: 'Hiện ở module', t: 'sel', o: [], help: 'Mẫu hiện ở nút «In theo mẫu» khi mở một bản ghi của màn này. Tạo / sửa mẫu ngay trong từng module: nút «Mẫu biểu» trên đầu danh sách' },   // o: điền sau MENU (TPL_PLACES)
     { k: 'content', l: 'Nội dung mẫu', t: 'long', req: 1, help: 'Trường trộn: {so_hd} {ten_kh} {dien_thoai} {cccd} {dia_chi} {ma_can} {du_an} {toa} {tang} {dien_tich} {gia_tri} {gia_tri_chu} {ngay} {lich_thanh_toan} — bản đăng ký: {ma_phieu} {ngay_dk} {tien_coc} {trang_thai} {tien_trinh} {ghi_chu} {goi_hoan_thien} {gia_tri_hoan_thien} {gia_tri_hoan_thien_chu} {danh_muc_noi_that} {so_don} {ky_hieu} {ngay_viet} {don_gia} {gia_truoc_thue} {thue_vat} {phi_bao_tri} {tong_gia} {tong_gia_chu} {chinh_sach} — nội dung bắt đầu bằng thẻ HTML thì in theo HTML' },
-    { k: 'scope', l: 'Áp dụng cho dự án / tòa', t: 'text', help: 'Mã dự án hoặc mã tòa, cách nhau dấu phẩy (TNS, G…) — để trống = mọi căn' },
+    { k: 'bo', l: 'Thuộc bộ hồ sơ', t: 'sel', o: [['mua_ban', 'HS mua bán'], ['vay', 'HS hợp đồng vay'], ['tl_vay', 'HS thanh lý hợp đồng vay'], ['ban_giao', 'HS bàn giao'], ['tl_mua_ban', 'HS thanh lý mua bán']], help: 'Mẫu thuộc bộ hồ sơ nào ở màn «Bộ hồ sơ theo căn» (05): gõ mã căn → chọn bộ → in cả bộ / tải Word, số liệu tự điền theo căn. Để trống = không thuộc bộ nào' },   // 12/11/2026
+    { k: 'scope', l: 'Áp dụng cho dự án / tòa', t: 'text', help: 'Tích chọn dự án / tòa ở khung bên dưới. Không tích = mẫu chung cho mọi dự án. Căn thuộc dự án / tòa nào chỉ thấy mẫu của dự án / tòa đó và mẫu chung' },
     { k: 'bedrooms', l: 'Áp dụng cho căn số phòng ngủ', t: 'int', help: 'Để trống = mọi loại căn' },
     { k: 'active', l: 'Đang dùng', t: 'bool', def: true },
-  ], list: ['code', 'name', 'kind', 'scope', 'bedrooms', 'active'],
+  ], list: ['code', 'name', 'ent', 'bo', 'kind', 'scope', 'bedrooms', 'active'],
 });
 
 // menu (12 phân hệ). view = màn tự dựng; ent = danh sách thực thể
@@ -1007,7 +1012,7 @@ const MENU = [
   ['02', 'Dự án & giỏ hàng', 'fa-city', [['board', 'Bảng hàng'], ['projects', 'Danh mục dự án'], ['products', 'Danh mục sản phẩm/căn hộ', 'DA-01'], ['customers', 'Danh mục khách hàng', 'KH-01'], ['e:price_policy']]],
   ['03', 'Khách hàng tiềm năng', 'fa-users', [['e:contact_log']]],   // hồ sơ khách tự sinh từ kênh liên hệ (Website, Messenger, Zalo, Hotline, trực tiếp)
   ['04', 'Giao dịch bán hàng', 'fa-handshake-angle', [['e:sale_notice'], ['e:reservation'], ['e:noxh_check'], ['signing', 'Lịch ký hợp đồng'], ['payouts', 'Theo dõi thanh lý & chi trả', 'GD-04']]],
-  ['05', 'Hồ sơ & hợp đồng', 'fa-file-contract', [['e:contract?group=can_ho', 'Hợp đồng căn hộ chung cư'], ['e:contract?group=lien_ke', 'Hợp đồng nhà liền kề'], ['loans', 'Theo dõi hợp đồng 3 bên', 'HD-05'], ['e:contract_change'], ['vault', 'Lưu trữ hồ sơ pháp lý']]],
+  ['05', 'Hồ sơ & hợp đồng', 'fa-file-contract', [['vault', 'Hồ sơ & lưu trữ theo căn', 'HD-06'], ['e:contract?group=can_ho', 'Hợp đồng căn hộ chung cư'], ['e:contract?group=lien_ke', 'Hợp đồng nhà liền kề'], ['loans', 'Theo dõi hợp đồng 3 bên', 'HD-05'], ['e:contract_change']]],
   ['06', 'Công nợ & kế hoạch thu', 'fa-sack-dollar', [['vouchers', 'Phiếu thu – Phiếu chi', 'CN-09'], ['loantrack', 'Theo dõi công nợ', 'CN-07'], ['unitstatus', 'Tình trạng công nợ đến hạn', 'CN-06'], ['ledger', 'Sổ công nợ căn hộ'], ['e:collect_plan']]],   // bỏ menu Nhật ký nhắc nợ (07/11/2026): ghi ở Tình trạng công nợ đến hạn, tự hiện ở Hồ sơ 360°
   ['07', 'Bàn giao căn hộ', 'fa-key', [['ready', 'Căn đủ điều kiện'], ['e:handover'], ['e:defect']]],
   ['08', 'Cấp sổ hồng', 'fa-book', [['e:pinkbook']]],
@@ -1016,6 +1021,21 @@ const MENU = [
   ['11', 'Báo cáo quản trị', 'fa-chart-pie', [['reports', 'Báo cáo tổng hợp'], ['e:report'], ['e:target']]],
   ['12', 'Quản trị hệ thống', 'fa-gear', [['users', 'Tài khoản – phân quyền'], ['catalog', 'Danh mục dùng chung'], ['flows', 'Luồng phê duyệt'], ['e:template'], ['audit', 'Nhật ký thao tác'], ['integr', 'Tích hợp MISA / Bravo / BSC']]],
 ];
+// nơi mẫu biểu hiện (11/11/2026): mọi màn danh sách bản ghi trong menu — «04 Giao dịch bán hàng › Đăng ký mua / thuê – giữ chỗ»…
+const VIEW_ENT = { products: ['unit'], customers: ['customer'], vouchers: ['receipt', 'payment'] };   // màn tự dựng nhưng mở bản ghi của thực thể
+const TPL_PLACES = (() => {
+  const out = new Map();
+  for (const [code, mod, , items] of MENU) for (const [key, label] of items) {
+    const ents = key.startsWith('e:') ? [key.slice(2).split('?')[0]] : VIEW_ENT[key] || [];
+    for (const k of ents) {
+      if (!E[k] || k === 'template' || out.has(k)) continue;
+      const l = k === 'contract' ? 'Hợp đồng (căn hộ chung cư / nhà liền kề)' : ents.length > 1 ? E[k].title : label || E[k].title;
+      out.set(k, `${code} ${mod} › ${l}`);
+    }
+  }
+  return [...out];
+})();
+E.template.fields.find(f => f.k === 'ent').o = TPL_PLACES;
 // màn tự dựng chỉ mở cho các vai trò
 const VIEW_ROLES = {
   users: ['admin'], mau4: PII_ROLES, catalog: ['admin', 'truong_phong'], audit: ['admin', 'truong_phong', 'lanh_dao'], integr: ['admin', 'ke_toan', 'truong_phong'],
@@ -1060,4 +1080,4 @@ const VIRT = {
   b_name: 'Họ và tên', days_out: 'Ngày tại cơ quan', sla: 'SLA', n_units: 'Số căn mở bán', n_reg: 'Đã đăng ký / giữ chỗ', n_free: 'Còn trống', project: 'Dự án', building: 'Tòa', stt: 'STT', prints: 'In bản đăng ký', ret_files: 'File scan trả hồ sơ', bbgn: 'In biên bản giao nhận',
 };
 
-module.exports = { M4, SELLERS, PROSPECT_ST, VIRT,  ROLES, ALL, MGR, PII_ROLES, E, MENU, VIEW_ROLES, LOOKUPS, SETTINGS, UNIT_ST };
+module.exports = { M4, SELLERS, PROSPECT_ST, VIRT,  ROLES, ALL, MGR, PII_ROLES, E, MENU, VIEW_ROLES, LOOKUPS, SETTINGS, UNIT_ST, TPL_PLACES };

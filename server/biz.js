@@ -1410,6 +1410,16 @@ async function noticeTargets(db, r) {
   }
   return rows;
 }
+// mẫu biểu: chưa chọn module thì suy theo loại mẫu (mẫu cũ trước 11/11/2026)
+const TPL_ENT_SQL = `CASE WHEN kind = 'hop_dong' THEN 'contract' WHEN kind = 'phu_luc' THEN 'contract_change' WHEN kind = 'bien_ban' THEN 'handover'
+  WHEN kind IN ('dang_ky_can', 'dang_ky_noi_that', 'de_nghi') THEN 'reservation' WHEN kind = 'bien_ban_giao_nhan' THEN 'noxh_check'
+  WHEN kind = 'thong_bao' AND upper(code) LIKE 'TB-MOBAN%' THEN 'sale_notice' WHEN kind = 'thong_bao' THEN 'notice' WHEN kind = 'bao_cao' THEN 'report' END`;
+const tplEntOf = (kind, code) => ({ hop_dong: 'contract', phu_luc: 'contract_change', bien_ban: 'handover', dang_ky_can: 'reservation', dang_ky_noi_that: 'reservation', de_nghi: 'reservation',
+  bien_ban_giao_nhan: 'noxh_check', bao_cao: 'report', thong_bao: /^TB-MOBAN/i.test(code || '') ? 'sale_notice' : 'notice' })[kind] || null;
+const fillTplEnt = db => db.q(`UPDATE kd_template SET ent = ${TPL_ENT_SQL} WHERE ent IS NULL`);
+H.template = {
+  async beforeSave(r) { if (!r.ent) r.ent = tplEntOf(r.kind, r.code); if (!r.ent) bad('Chọn module hiện mẫu', { fields: ['ent'] }); },
+};
 H.notice = {
   acts: {
     async send(r, d, { db }) {
@@ -1496,4 +1506,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

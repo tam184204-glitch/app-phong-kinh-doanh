@@ -239,15 +239,25 @@ R('GET', '/api/pii/:ent/:id', async (req, res, u, p) => {
   send(res, 200, Object.fromEntries(fs_.map(f => [f.k, g.row[f.k]])));
 });
 R('GET', '/api/templates', async (req, res, u, p, qs) => {
+  // ?ent=<module> → mẫu của module (nút «Mẫu biểu» / «In theo mẫu»); &active=1 chỉ mẫu đang dùng
+  if (qs.ent) {
+    const ts = await q(`SELECT id, code, name, kind, ent, scope, bedrooms, active, updated_at FROM kd_template WHERE ent = $1 ${qs.active ? 'AND active' : ''} ORDER BY active DESC, id`, [qs.ent]);
+    if (!qs.rec) return send(res, 200, ts);
+    // ?rec=<bản ghi> → chỉ mẫu hợp dự án / tòa của bản ghi, mẫu riêng của tòa / dự án xếp trước mẫu chung
+    const sc = await IO.recScope(qs.ent, qs.rec);
+    return send(res, 200, ts.map(t => ({ ...t, lv: IO.tplFitLevel(t, sc) })).filter(t => t.lv >= 0).sort((a, b) => b.lv - a.lv || a.id - b.id));
+  }
   // ?res=<phiếu đăng ký> → chỉ mẫu hợp với căn của phiếu (dự án / tòa / số phòng ngủ)
   if (qs.all && qs.res) {
     const r = await one('SELECT unit_id FROM kd_reservation WHERE id = $1', [+qs.res]);
-    const ts = await q("SELECT code, name, kind, scope, bedrooms FROM kd_template WHERE active AND kind IN ('dang_ky_can','dang_ky_noi_that') ORDER BY id");
+    const ts = await q("SELECT code, name, kind, scope, bedrooms FROM kd_template WHERE active AND kind IN ('dang_ky_can','dang_ky_noi_that') AND coalesce(ent, 'reservation') = 'reservation' ORDER BY id");
+    const sc = await IO.recScope('reservation', qs.res);
     const fit = new Set([...await IO.regTemplates('dang_ky_can', r?.unit_id), ...await IO.regTemplates('dang_ky_noi_that', r?.unit_id)].map(t => t.code));
     const out = new Map();
     for (const t of ts) {
       const key = t.name.replace(/\s*–?\s*hoàn thiện căn hộ \d phòng ngủ$/, '');   // 2PN / 3PN cùng một file → một lựa chọn
-      const o = out.get(key); if (!o || (!o.fit && fit.has(t.code))) out.set(key, { code: t.code, kind: t.kind, label: key === t.name ? t.name : key + ' – hoàn thiện căn hộ', fit: fit.has(t.code) });
+      const lv = IO.tplFitLevel(t, sc);
+      const o = out.get(key); if (!o || (!o.fit && fit.has(t.code))) out.set(key, { code: t.code, kind: t.kind, label: key === t.name ? t.name : key + ' – hoàn thiện căn hộ', fit: fit.has(t.code), lv: Math.max(lv, o?.lv ?? -1), scope: t.scope });
     }
     return send(res, 200, [...out.values()]);
   }
@@ -566,8 +576,34 @@ R('GET', '/api/mau4', async (req, res, u, p, qs) => send(res, 200, await M4.data
 R('POST', '/api/mau4/status', async (req, res, u) => send(res, 200, await M4.bulkStatus(u, await readJson(req))));
 R('POST', '/api/mau4/undo', async (req, res, u) => send(res, 200, await M4.bulkUndo(u, await readJson(req))));
 R('GET', '/api/mau4/xlsx', async (req, res, u, p, qs) => sendFile(res, await M4.xlsx(u, qs), `Mau4_ho_so_${qs.kind === 'thue' ? 'thue' : 'mua'}_NOXH_${C.today()}.xlsx`, MIME['.xlsx']));
-R('GET', '/print/sale_notice/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printSaleNotice(p.id, u, qs.kind), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
+R('GET', '/print/sale_notice/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printSaleNotice(p.id, u, qs.kind, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 R('GET', '/print/cancel_req/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printCancelReq(p.id, u), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
+R('GET', '/api/template-scope/:ent/:id', async (req, res, u, p) => send(res, 200, await IO.recScope(p.ent, p.id)));
+R('GET', '/api/template-fields/:ent', async (req, res, u, p) => send(res, 200, IO.tplFields(p.ent)));
+R('POST', '/api/template-preview', async (req, res, u) => send(res, 200, { html: await IO.previewTemplate(await readJson(req), u) }));
+// Bộ hồ sơ theo căn (12/11/2026): gõ mã căn → bộ hồ sơ theo bước, in cả bộ / tải Word
+const HS = require('./ho-so');
+R('GET', '/api/hs', async (req, res, u, p, qs) => send(res, 200, await HS.hsInfo(qs.unit, u, qs.cust)));
+R('POST', '/api/hs/:id/demo-fill', async (req, res, u, p) => send(res, 200, await HS.demoFill(p.id, u)));   // chỉ bản demo
+async function saveHsFile(u, unitId, bo, x, cust) {   // cất bản Word của bộ hồ sơ vào Kho hồ sơ (gắn vào hợp đồng của khách đang xem)
+  const t = await HS.saveTarget(unitId, bo, cust);
+  const g = await C.get(t.ent, t.id, u); if (!g.perm.files) deny('Bạn không được đính kèm tệp cho hợp đồng này');
+  const dir = path.join(FILES, t.ent, String(g.row.id)); fs.mkdirSync(dir, { recursive: true });
+  const ver = (await one('SELECT coalesce(max(version),0)+1 AS v FROM kd_file WHERE ent = $1 AND rec_id = $2 AND kind = $3 AND name = $4', [t.ent, g.row.id, t.kind, x.name])).v;
+  const disk = path.join(dir, `${Date.now()}-${crypto.randomBytes(3).toString('hex')}-${safeName(x.name)}`);
+  fs.writeFileSync(disk, x.buf);
+  const r = await one('INSERT INTO kd_file (ent, rec_id, kind, name, mime, size, path, version, uploaded_by, is_demo) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, name, version',
+    [t.ent, g.row.id, t.kind, x.name, MIME['.docx'], x.buf.length, path.relative(FILES, disk), ver, u.id, g.row.is_demo]);
+  await C.audit({ q }, t.ent, g.row.id, 'tai_tep', null, null, u, `Bộ hồ sơ: ${x.name}${ver > 1 ? ` (phiên bản ${ver})` : ''}`, g.row.is_demo);
+  return { file: r, where: `${t.what} ${g.row.number || g.row.code || ''}`.trim() };
+}
+R('POST', '/api/hs/:id/save', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await saveHsFile(u, p.id, b.bo, await HS.wordHs(p.id, b.tpl, u, b.cust), b.cust)); });
+R('POST', '/api/hs/:id/save-html', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await saveHsFile(u, p.id, b.bo, await HS.wordFromHtml(p.id, b.docs, u), b.cust)); });   // bản đã sửa trên trang in
+R('GET', '/print/hs/:id', async (req, res, u, p, qs) => {
+  if (qs.fmt === 'docx') { const x = await HS.wordHs(p.id, qs.tpl, u, qs.cust); return sendFile(res, x.buf, x.name, MIME['.docx']); }
+  send(res, 200, await HS.printHs(p.id, qs.tpl, u, qs.bo, qs.cust), { 'Content-Type': 'text/html; charset=utf-8' });
+}, { html: true });
+R('GET', '/print/tpl/:ent/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printGeneric(p.ent, p.id, u, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 R('GET', '/print/contract/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printContract(p.id, u, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 
 // ---------- máy chủ ----------
