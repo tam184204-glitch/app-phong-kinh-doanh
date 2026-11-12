@@ -179,16 +179,29 @@ async function autoProjectTemplates(unitId, user) {
   }
   return n;
 }
+// căn của khách: theo hợp đồng, phiếu đăng ký, hồ sơ NOXH (mới nhất trước)
+async function unitsOfCustomer(kid) {
+  return q(`SELECT u.id, u.code FROM kd_unit u WHERE u.id IN (
+      SELECT unit_id FROM kd_contract WHERE customer_id = $1 UNION SELECT unit_id FROM kd_reservation WHERE customer_id = $1 UNION SELECT unit_id FROM kd_noxh_check WHERE customer_id = $1)
+    ORDER BY u.code`, [kid]);
+}
+// ô tìm nhận mã căn, mã khách hàng, SĐT hoặc CCCD của khách (12/11/2026) → { id, cust, units }
 async function findUnit(key) {
-  const s = String(key || '').trim(); if (!s) bad('Nhập mã căn hộ');
-  const u = /^\d+$/.test(s) ? await one('SELECT id FROM kd_unit WHERE id = $1', [+s]) : await one('SELECT id FROM kd_unit WHERE upper(code) = upper($1)', [s]);
-  if (!u) bad(`Không tìm thấy căn «${s}»`);
-  return u.id;
+  const s = String(key || '').trim(); if (!s) bad('Nhập mã căn hộ hoặc mã khách hàng');
+  const u = /^\d+$/.test(s) && s.length < 8 ? await one('SELECT id FROM kd_unit WHERE id = $1', [+s]) : await one('SELECT id FROM kd_unit WHERE upper(code) = upper($1)', [s]);
+  if (u) return { id: u.id };
+  const k = await one(`SELECT id, code, full_name FROM kd_customer WHERE upper(code) = upper($1) OR regexp_replace(coalesce(phone, ''), '\\D', '', 'g') = regexp_replace($1, '\\D', '', 'g') AND length(regexp_replace($1, '\\D', '', 'g')) >= 9
+    OR (id_no = $1 AND length($1) >= 9) ORDER BY (upper(code) = upper($1)) DESC, id DESC LIMIT 1`, [s]);
+  if (!k) bad(`Không tìm thấy căn hoặc khách hàng «${s}»`);
+  const units = await unitsOfCustomer(k.id);
+  if (!units.length) bad(`Khách ${k.code} · ${k.full_name} chưa gắn với căn nào (chưa có phiếu đăng ký / hợp đồng / hồ sơ NOXH)`);
+  return { id: units[0].id, cust: k, units };
 }
 // màn Bộ hồ sơ theo căn
 async function hsInfo(key, user) {
   if (!can(user, E.unit, 'r')) deny();
-  const id = await findUnit(key), D = await hsData(id, user), x = D.ctx;
+  const f = await findUnit(key), id = f.id, D = await hsData(id, user), x = D.ctx;
+  const others = f.units || (x.k ? await unitsOfCustomer(x.k.id) : []);
   const added = await autoProjectTemplates(id, user);
   const ts = await unitTemplates(id);
   const ctInfo = c => c && { id: c.id, number: c.number, status: c.status, on: dmy(c.contract_on), value: c.value };
@@ -196,6 +209,7 @@ async function hsInfo(key, user) {
     unit: { id: x.u.id, code: x.u.code, project: x.u.pname, building: x.u.bname || 'Tòa ' + x.u.bcode, area: x.u.area_tt, status: x.u.status },
     customer: x.k && { id: x.k.id, code: x.k.code, name: x.k.full_name, phone: x.k.phone },
     hdmb: ctInfo(x.hdmb), ht: ctInfo(x.ht), vay: ctInfo(x.vay), reservation: x.res && { id: x.res.id, code: x.res.code, status: x.res.status }, noxh: x.nx && { id: x.nx.id },
+    units: others.length > 1 ? others.map(r => r.code) : [], byCustomer: f.cust ? f.cust.code : null,
     step: stepOf(x), added, demoFill: demoFillOn(),
     bos: BO.map(([k, l]) => ({ k, l, tpls: ts.filter(t => t.bo === k).map(t => ({ code: t.code, name: t.name, kind: t.kind, missing: missOf(t.content, D) })) })),
   };

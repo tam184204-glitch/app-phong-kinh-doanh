@@ -1108,7 +1108,7 @@ async function hosoPanel(main, params = {}) {
   const S = ST.hoso ||= { unit: '', bo: '', off: {} };
   if (params.unit) S.unit = params.unit;
   main.innerHTML = `<div class="hs-emb">
-    <div class="card hs-find"><form id="hsF" class="hs-q">${ico('fa-magnifying-glass')}<input id="hsQ" list="hsL" placeholder="Gõ mã căn hộ, ví dụ TNS-E-0303" value="${esc(S.unit)}" autocomplete="off"><datalist id="hsL"></datalist><button class="btn pri">${ico('fa-arrow-right')} Mở bộ hồ sơ</button></form>
+    <div class="card hs-find"><form id="hsF" class="hs-q">${ico('fa-magnifying-glass')}<input id="hsQ" list="hsL" placeholder="Gõ mã căn hộ hoặc mã khách hàng (SĐT, CCCD cũng được) — ví dụ TNS-E-0303, KH000235" value="${esc(S.unit)}" autocomplete="off"><datalist id="hsL"></datalist><button class="btn pri">${ico('fa-arrow-right')} Mở bộ hồ sơ</button></form>
       <div class="small muted">Chọn bước đang làm → app sổ ra các hồ sơ của bước đó, đã điền sẵn số liệu đã khai báo. Tích hồ sơ cần in → <b>In cả bộ</b> hoặc <b>Tải Word</b> để sửa tiếp.</div></div>
     <div id="hsB"></div></div>`;
   const box = $('#hsB', main);
@@ -1123,7 +1123,7 @@ async function hosoPanel(main, params = {}) {
     const sel = bo.tpls.filter(t => !off.has(t.code));
     const miss = [...new Set(sel.flatMap(t => t.missing))];
     box.innerHTML = `<div class="card hs-unit"><div class="hs-u1"><div class="hs-code">${ico('fa-building')} <b>${esc(d.unit.code)}</b></div><div class="muted">${esc(d.unit.project)} · ${esc(d.unit.building)}${d.unit.area ? ' · ' + String(d.unit.area).replace('.', ',') + ' m²' : ''}</div>
-        <div class="hs-cust">${d.customer ? `${ico('fa-user')} <a href="#" data-op="customer:${d.customer.id}"><b>${esc(d.customer.name)}</b></a> <span class="muted">${esc(d.customer.code || '')}${d.customer.phone ? ' · ' + esc(d.customer.phone) : ''}</span>` : `<span class="muted">${ico('fa-user-slash')} Căn chưa có khách hàng</span>`}</div></div>
+        <div class="hs-cust">${d.customer ? `${ico('fa-user')} <a href="#" data-op="customer:${d.customer.id}"><b>${esc(d.customer.name)}</b></a> <span class="muted">· Mã KH: <b>${esc(d.customer.code || '—')}</b>${d.customer.phone ? ' · ' + esc(d.customer.phone) : ''}</span>${d.units.length ? `<div class="hs-units small">Khách có ${d.units.length} căn: ${d.units.map(c => `<button class="tag${c === d.unit.code ? ' ok' : ''}" data-un="${esc(c)}">${esc(c)}</button>`).join(' ')}</div>` : ''}` : `<span class="muted">${ico('fa-user-slash')} Căn chưa có khách hàng</span>`}</div></div>
         <div class="hs-u2">${ct('HĐ mua bán', d.hdmb, 'contract')}${ct('HĐ thỏa thuận hoàn thiện', d.ht, 'contract')}${ct('HĐ vay', d.vay, 'contract')}</div></div>
       <div class="hs-steps">${d.bos.map((b, i) => `<button class="hs-step${b.k === bo.k ? ' on' : ''}" data-bo="${b.k}"><span class="n">${i + 1}</span><span class="l">${esc(b.l)}</span><span class="c">${b.tpls.length} hồ sơ</span>${b.k === d.step ? '<span class="tag ok">bước hiện tại</span>' : ''}</button>`).join('')}</div>
       <div class="card hs-list">
@@ -1154,11 +1154,13 @@ async function hosoPanel(main, params = {}) {
   };
   $('#hsF', main).onsubmit = e => { e.preventDefault(); S.bo = ''; load(); };
   $('#hsQ', main).oninput = e => { clearTimeout(tmr); const v = e.target.value.trim(); if (v.length < 2) return;
-    tmr = setTimeout(async () => { try { const r = await api('GET', '/api/e/unit?limit=15&sort=code&q=' + encodeURIComponent(v)); $('#hsL', main).innerHTML = r.rows.map(u => `<option value="${esc(u.code)}">`).join(''); } catch { } }, 250); };
-  $('#hsQ', main).onchange = e => { if (/^[A-Z]+-[A-Z0-9]+-\d+$/i.test(e.target.value.trim())) { S.bo = ''; load(); } };
+    tmr = setTimeout(async () => { try { const [r, k] = await Promise.all([api('GET', '/api/e/unit?limit=10&sort=code&q=' + encodeURIComponent(v)), api('GET', '/api/e/customer?limit=8&q=' + encodeURIComponent(v)).catch(() => ({ rows: [] }))]);
+      $('#hsL', main).innerHTML = r.rows.map(u => `<option value="${esc(u.code)}">Căn hộ</option>`).join('') + k.rows.filter(c => c.code).map(c => `<option value="${esc(c.code)}">Khách: ${esc(c.full_name)}${c.phone ? ' · ' + esc(c.phone) : ''}</option>`).join(''); } catch { } }, 250); };
+  $('#hsQ', main).onchange = e => { if (/^[A-Z]+-[A-Z0-9]+-\d+$|^KH\d+/i.test(e.target.value.trim())) { S.bo = ''; load(); } };
   box.onclick = run(async e => {
     const x = e.target, off = d && S.off[d.unit.id + S.bo];
     const op = x.closest('[data-op]'); if (op) { e.preventDefault(); const [ent, id] = op.dataset.op.split(':'); return openForm(ent, { id: +id, onSaved: load }); }
+    const un = x.closest('[data-un]'); if (un) { $('#hsQ', main).value = un.dataset.un; S.bo = ''; return load(); }
     const st = x.closest('[data-bo]'); if (st) { S.bo = st.dataset.bo; return draw(); }
     if (x.id === 'hsAll') { const bo = d.bos.find(b => b.k === S.bo); x.checked ? off.clear() : bo.tpls.forEach(t => off.add(t.code)); return draw(); }
     const ck = x.closest('[data-ck]'); if (ck) { ck.checked ? off.delete(ck.dataset.ck) : off.add(ck.dataset.ck); return draw(); }

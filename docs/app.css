@@ -1751,3 +1751,5 @@ label.tplr { display: flex; gap: 8px; align-items: center; padding: 7px 0; }
 .hs-saved { margin-top: 12px; padding: 0; }
 .hs-saved .hs-row > i, .hs-saved .hs-row > svg, .hs-saved .hs-row > span:first-child { flex: none; }
 .hs-sp { flex: 1; }
+
+.hs-units { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; } .hs-units .tag { cursor: pointer; border: 0; font: inherit; }
