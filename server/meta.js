@@ -988,7 +988,7 @@ def('report', {
 // ===================== 12. QUẢN TRỊ =====================
 def('template', {
   title: 'Mẫu biểu – thông báo', one: 'mẫu', mod: '12', icon: 'fa-file-lines', disp: "t.code||' · '||t.name",
-  c: ['admin', 'truong_phong'], fields: [
+  c: ['admin', 'truong_phong'], d: ['admin', 'truong_phong'], fields: [   // d: trưởng phòng xóa được mẫu ở cây thư mục (12/11/2026)
     { k: 'code', l: 'Mã mẫu', t: 'text', req: 1, uniq: 1 },
     { k: 'name', l: 'Tên mẫu', t: 'text', req: 1 },
     { k: 'kind', l: 'Loại', t: 'sel', req: 1, o: [['hop_dong', 'Hợp đồng'], ['phu_luc', 'Phụ lục'], ['bien_ban', 'Biên bản'], ['de_nghi', 'Phiếu đề nghị'], ['thong_bao', 'Thông báo'], ['bao_cao', 'Báo cáo'], ['dang_ky_can', 'Bản đăng ký căn hộ'], ['dang_ky_noi_that', 'Bản đăng ký nội thất'], ['bien_ban_giao_nhan', 'Biên bản giao nhận hồ sơ']] },
