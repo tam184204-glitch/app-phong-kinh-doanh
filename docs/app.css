@@ -1762,3 +1762,13 @@ label.tplr { display: flex; gap: 8px; align-items: center; padding: 7px 0; }
 .hs-st.ok { background: #DCFCE7; color: #166534; } .hs-st.tl { background: #FEF3C7; color: #92400E; } .hs-st.huy { background: #FEE2E2; color: #991B1B; } .hs-st.nx { background: #E0E7FF; color: #3730A3; }
 
 .hs-ht td { white-space: normal; } .hs-ht td:first-child { width: 28px; } .hs-ht td.nowrap { white-space: nowrap; }
+
+/* 12/11/2026: In hàng loạt */
+.hs-q #hsBatch { flex: none; }
+.bt { display: grid; gap: 12px; }
+.bt-row { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; }
+.bt-row > label:not(.chk) { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+.bt-row select { min-width: 200px; height: 34px; } .bt-paste { flex: 1 1 260px; } .bt-paste textarea { width: 100%; }
+.bt-units { border: 1px solid var(--line2); border-radius: 10px; max-height: 260px; overflow: auto; padding: 8px 12px; }
+.bt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 4px 10px; margin-top: 6px; font-size: 13px; }
+.bt-miss { max-height: 220px; overflow: auto; margin-top: 6px; }

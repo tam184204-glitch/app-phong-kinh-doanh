@@ -581,7 +581,11 @@ R('POST', '/api/template-preview', async (req, res, u) => send(res, 200, { html:
 // Bộ hồ sơ theo căn (12/11/2026): gõ mã căn → bộ hồ sơ theo bước, in cả bộ / tải Word
 const HS = require('./ho-so');
 R('GET', '/api/hs', async (req, res, u, p, qs) => send(res, 200, await HS.hsInfo(qs.unit, u, qs.cust)));
-R('POST', '/api/hs/:id/demo-fill', async (req, res, u, p) => send(res, 200, await HS.demoFill(p.id, u)));   // chỉ bản demo
+R('POST', '/api/hs-batch/plan', async (req, res, u) => { const b = await readJson(req); send(res, 200, await HS.batchPlan(b.units, b.bo, u)); });   // in hàng loạt: kiểm tra căn + hồ sơ
+R('GET', '/print/hs-batch', async (req, res, u, p, qs) => {
+  if (qs.fmt === 'docx') { const x = await HS.wordBatch(qs.units, qs.bo, qs.keys, u); return sendFile(res, x.buf, x.name, MIME['.docx']); }
+  send(res, 200, await HS.printBatch(qs.units, qs.bo, qs.keys, u), { 'Content-Type': 'text/html; charset=utf-8' });
+}, { html: true });
 async function saveHsFile(u, unitId, bo, x, cust) {   // cất bản Word của bộ hồ sơ vào Kho hồ sơ (gắn vào hợp đồng của khách đang xem)
   const t = await HS.saveTarget(unitId, bo, cust);
   const g = await C.get(t.ent, t.id, u); if (!g.perm.files) deny('Bạn không được đính kèm tệp cho hợp đồng này');
