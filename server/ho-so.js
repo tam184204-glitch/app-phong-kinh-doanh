@@ -159,6 +159,26 @@ async function unitTemplates(unitId) {
   const ts = await q('SELECT id, code, name, kind, bo, scope, bedrooms, content FROM kd_template WHERE active AND bo IS NOT NULL ORDER BY code');
   return ts.filter(t => IO.tplFitLevel(t, sc) >= 0);
 }
+// dự án chưa có mẫu cho bộ hồ sơ nào → tự chép bộ mẫu chuẩn (MẪU HS TNS) thành mẫu riêng của dự án đó (12/11/2026, Tâm: «thêm tự động tất cả các mẫu đã có»)
+// mỗi dự án vẫn dùng mẫu của mình (sửa mẫu dự án này không ảnh hưởng dự án khác); mẫu tách theo tòa của TNS chỉ lấy 1 bản (D-E-F-G / D-E)
+async function autoProjectTemplates(unitId, user) {
+  const IO = require('./io');
+  const sc = await IO.recScope('unit', unitId); if (!sc.pcode) return 0;
+  const have = (await q('SELECT bo, scope, bedrooms FROM kd_template WHERE active AND bo IS NOT NULL')).filter(t => IO.tplFitLevel(t, sc) >= 0);
+  const P = String(sc.pcode).toUpperCase(), base = MAU_TNS(), done = new Set(); let n = 0;
+  const sysU = await one("SELECT * FROM kd_user WHERE role = 'admin' AND active ORDER BY id LIMIT 1") || C.SYS;
+  for (const [bo] of BO) {
+    if (have.some(t => t.bo === bo)) continue;
+    for (const t of base.filter(x => x.bo === bo)) {
+      const key = t.code.replace(/-(DEFG|HIJ|DE|FG)$/, ''); if (done.has(key)) continue; done.add(key);
+      const code = key.replace(/^TNS-/, P + '-');
+      if (await one('SELECT 1 FROM kd_template WHERE upper(code) = upper($1)', [code])) continue;
+      await C.create('template', { code, name: t.name.replace(/\s*\(tòa [^)]*\)$/, ''), kind: t.kind, bo, ent: 'unit', scope: P, content: t.content, active: true }, sysU, { system: true });
+      n++;
+    }
+  }
+  return n;
+}
 async function findUnit(key) {
   const s = String(key || '').trim(); if (!s) bad('Nhập mã căn hộ');
   const u = /^\d+$/.test(s) ? await one('SELECT id FROM kd_unit WHERE id = $1', [+s]) : await one('SELECT id FROM kd_unit WHERE upper(code) = upper($1)', [s]);
@@ -169,13 +189,14 @@ async function findUnit(key) {
 async function hsInfo(key, user) {
   if (!can(user, E.unit, 'r')) deny();
   const id = await findUnit(key), D = await hsData(id, user), x = D.ctx;
+  const added = await autoProjectTemplates(id, user);
   const ts = await unitTemplates(id);
   const ctInfo = c => c && { id: c.id, number: c.number, status: c.status, on: dmy(c.contract_on), value: c.value };
   return {
     unit: { id: x.u.id, code: x.u.code, project: x.u.pname, building: x.u.bname || 'Tòa ' + x.u.bcode, area: x.u.area_tt, status: x.u.status },
     customer: x.k && { id: x.k.id, code: x.k.code, name: x.k.full_name, phone: x.k.phone },
     hdmb: ctInfo(x.hdmb), ht: ctInfo(x.ht), vay: ctInfo(x.vay), reservation: x.res && { id: x.res.id, code: x.res.code, status: x.res.status }, noxh: x.nx && { id: x.nx.id },
-    step: stepOf(x),
+    step: stepOf(x), added,
     bos: BO.map(([k, l]) => ({ k, l, tpls: ts.filter(t => t.bo === k).map(t => ({ code: t.code, name: t.name, kind: t.kind, missing: missOf(t.content, D) })) })),
   };
 }

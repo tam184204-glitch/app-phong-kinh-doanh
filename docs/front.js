@@ -2790,7 +2790,7 @@ V.hoso = async (main, params = {}) => {
   const load = async () => {
     const k = $('#hsQ', main).value.trim(); if (!k) return;
     box.innerHTML = '<div class="empty">Đang tải…</div>';
-    try { d = await api('GET', '/api/hs?unit=' + encodeURIComponent(k)); S.unit = d.unit.code; if (!d.bos.some(b => b.k === S.bo)) S.bo = ''; history.replaceState(null, '', '#/v/hoso?unit=' + encodeURIComponent(d.unit.code)); }
+    try { d = await api('GET', '/api/hs?unit=' + encodeURIComponent(k)); S.unit = d.unit.code; if (!d.bos.some(b => b.k === S.bo)) S.bo = ''; if (d.added) toast(`Dự án ${d.unit.project} chưa có mẫu — đã tự thêm ${d.added} mẫu hồ sơ cho dự án (sửa ở Quản trị › Mẫu biểu)`); history.replaceState(null, '', '#/v/hoso?unit=' + encodeURIComponent(d.unit.code)); }
     catch (e) { d = null; box.innerHTML = `<div class="empty">${ico('fa-circle-exclamation')} ${esc(e.message)}</div>`; return; }
     draw();
   };
