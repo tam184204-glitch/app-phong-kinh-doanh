@@ -1248,6 +1248,29 @@ function tplHelper(form, m) {
 }
 
 // ---------- thao tác nghiệp vụ ----------
+// 13/11/2026 (Tâm): hợp đồng chuyển trạng thái (VD «Đã ký», thanh lý) → thẻ gợi ý bộ hồ sơ của bước tiếp theo + dữ liệu còn thiếu,
+// bấm mở bộ hồ sơ / in cả bộ / điền dữ liệu thiếu ngay — không phải tự nhớ bước nào và tự mở từng hồ sơ
+async function hsNextHint(id, before) {
+  try {
+    const c = (await api('GET', `/api/e/contract/${id}`)).row; if (!c || !c.unit_id || c.status === before) return;
+    const d = await api('GET', `/api/hs?unit=${c.unit_id}&cust=${c.customer_id || ''}`), bo = d.bos.find(b => b.k === d.step); if (!bo || !bo.tpls.length) return;
+    const miss = [...new Set(bo.tpls.flatMap(t => t.missing || []))], codes = bo.tpls.map(t => t.code).join(',');
+    const st = M.ents.contract.fields.find(f => f.k === 'status')?.o?.find(o => o[0] === c.status)?.[1] || c.status;
+    $('#hsNext')?.remove();
+    const el = document.createElement('div'); el.id = 'hsNext'; el.setAttribute('role', 'dialog');
+    el.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:9000;width:min(420px,calc(100vw - 32px));background:var(--card,#fff);color:inherit;border:1px solid var(--line,#d4deea);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.22);padding:14px 16px;font-size:13px';
+    el.innerHTML = `<div style="display:flex;justify-content:space-between;gap:8px;align-items:start"><b style="font-size:14px">${ico('fa-lightbulb')} Gợi ý bước hồ sơ tiếp theo</b><button class="btn sm" data-n="x" title="Để sau">✕</button></div>
+      <div style="margin:6px 0;color:var(--muted,#5b6b7f)">Căn <b>${esc(d.unit.code)}</b>${d.customer ? ` · ${esc(d.customer.name)}` : ''} — hợp đồng ${esc(c.number || '#' + c.id)} vừa chuyển «${esc(st)}»</div>
+      <div style="margin:8px 0">Bộ hồ sơ cần làm: <b>${esc(bo.l)}</b> · ${bo.tpls.length} hồ sơ</div>
+      ${miss.length ? `<div class="warnbar" style="margin:6px 0">${ico('fa-triangle-exclamation')}<span>Còn thiếu ${miss.length} dữ liệu: ${esc(miss.slice(0, 8).join(', '))}${miss.length > 8 ? '…' : ''}</span></div>` : `<div style="color:#1d7a46;margin:6px 0">${ico('fa-circle-check')} Đủ dữ liệu — in được ngay</div>`}
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px"><button class="btn pri sm" data-n="open">${ico('fa-folder-open')} Mở bộ hồ sơ</button><button class="btn sm" data-n="print">${ico('fa-print')} In cả bộ</button>${miss.length ? `<button class="btn sm" data-n="fill">${ico('fa-pen')} Điền dữ liệu thiếu</button>` : ''}</div>`;
+    document.body.append(el);
+    el.onclick = e => { const n = e.target.closest('[data-n]')?.dataset.n; if (!n) return; el.remove();
+      if (n === 'open') location.hash = `#/v/vault?tab=bo&unit=${encodeURIComponent(d.unit.code)}&bo=${bo.k}&cust=${d.cust || ''}`;
+      if (n === 'print') window.open(`/print/hs/${d.unit.id}?bo=${bo.k}&cust=${d.cust || ''}&tpl=${encodeURIComponent(codes)}`, '_blank');
+      if (n === 'fill') openForm('contract', { id: c.id }); };
+  } catch (e) { console.warn('gợi ý hồ sơ', e); }
+}
 async function doAct(ent, id, k, after, row) {
   const E = M.ents[ent], a0 = E.acts.find(x => x.k === k);
   // Lập hợp đồng từ phiếu: phiếu đăng ký thuê → chỉ HĐ thuê; phiếu đăng ký mua → không có HĐ thuê
@@ -1256,7 +1279,10 @@ async function doAct(ent, id, k, after, row) {
   if (k === 'print') { window.open(`/print/contract/${id}`, '_blank'); return; }
   if (a?.url) { window.open(a.url.replace(':id', id), '_blank'); return; }
   if (a?.handover) return handoverPick(a.handover, id);
-  const go = async data => { const r = await api('POST', `/api/e/${ent}/${id}/act/${k}`, data); toast(r.msg || `Đã ${a.l.toLowerCase()}`); if (r.url) window.open(r.url, '_blank'); after && after(); if (r.open) openDetail(r.open[0], r.open[1]); return r; };
+  const go = async data => { const before = ent === 'contract' ? (row?.status ?? (await api('GET', `/api/e/contract/${id}`).catch(() => null))?.row?.status) : undefined;
+    const r = await api('POST', `/api/e/${ent}/${id}/act/${k}`, data); toast(r.msg || `Đã ${a.l.toLowerCase()}`); if (r.url) window.open(r.url, '_blank'); after && after(); if (r.open) openDetail(r.open[0], r.open[1]);
+    if (ent === 'contract') hsNextHint(id, before);   // HĐ đổi trạng thái → gợi ý bộ hồ sơ bước tiếp theo
+    return r; };
   if (!a.ask?.length) { if (a.danger && !await ask(a.l, 'Xác nhận thực hiện?', { danger: 1, okLabel: a.l })) return; return run(go)({}); }
   const rec = {}; for (const f of a.ask) if (f.def !== undefined) rec[f.k] = f.def === 'today' ? today() : f.def;
   const m = modal({ title: `${ico(a.icon)} ${esc(a.l)}`, narrow: a.ask.length < 3, body: `${a.help ? `<div class="warnbar">${ico('fa-circle-info')}<span>${esc(a.help)}</span></div>` : ''}<div id="aerr"></div><form class="form">${a.ask.map(f => `<div class="fld ${f.t === 'long' || a.ask.length < 2 ? 'wide' : ''}" data-f="${f.k}"><label>${esc(f.l)}${f.req ? '<span class="req">*</span>' : ''}</label>${input(f, rec[f.k], rec)}</div>`).join('')}</form>`,

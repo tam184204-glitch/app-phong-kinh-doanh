@@ -894,7 +894,7 @@ V.vault = async (main, params = {}) => {
     $$('#vtNav button', main).forEach(b => b.classList.toggle('on', b.dataset.tab === s.tab));
     if (s.tab === 'bo') {   // in bộ hồ sơ theo căn → lưu vào kho
       $('#vtC', main).innerHTML = `<button>Bộ hồ sơ theo căn</button>`;
-      if (!$('#hsHost', main)) { $('#vtB', main).innerHTML = '<div id="hsHost"></div>'; hosoPanel($('#hsHost', main), { unit: params.unit || '' }); }
+      if (!$('#hsHost', main)) { $('#vtB', main).innerHTML = '<div id="hsHost"></div>'; hosoPanel($('#hsHost', main), { unit: params.unit || '', bo: params.bo || '', cust: params.cust }); }
       $('#vtU', main).textContent = `${rows.length} tệp trong kho`;
       return;
     }
@@ -1107,6 +1107,8 @@ V.hoso = (main, params = {}) => V.vault(main, { ...params, tab: 'bo' });
 async function hosoPanel(main, params = {}) {
   const S = ST.hoso ||= { unit: '', bo: '', off: {}, cust: '' };
   if (params.unit) S.unit = params.unit;
+  if (params.unit && params.cust !== undefined) S.cust = +params.cust || '';   // mở từ thẻ gợi ý bước tiếp theo
+  if (params.bo) S.bo = params.bo;
   main.innerHTML = `<div class="hs-emb">
     <div class="card hs-find"><form id="hsF" class="hs-q">${ico('fa-magnifying-glass')}<input id="hsQ" list="hsL" placeholder="Gõ mã căn hộ hoặc mã khách hàng (SĐT, CCCD cũng được) — ví dụ TNS-E-0303, KH000235" value="${esc(S.unit)}" autocomplete="off"><datalist id="hsL"></datalist><button class="btn pri">${ico('fa-arrow-right')} Mở bộ hồ sơ</button><button type="button" class="btn" id="hsBatch" title="In bộ hồ sơ cho nhiều căn cùng lúc">${ico('fa-layer-group')} In hàng loạt</button></form>
       <div class="small muted">Chọn bước đang làm → app sổ ra các hồ sơ của bước đó, đã điền sẵn số liệu đã khai báo. Tích hồ sơ cần in → <b>In cả bộ</b> hoặc <b>Tải Word</b> để sửa tiếp.</div></div>
