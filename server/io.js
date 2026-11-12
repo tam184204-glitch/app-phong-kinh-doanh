@@ -709,10 +709,18 @@ async function tplMap(ent, row, user) {
   return map;
 }
 // nội dung mẫu → HTML: bắt đầu bằng thẻ HTML thì giữ (bỏ script / on…), không thì giữ xuống dòng; trường trộn chưa có giá trị in dấu chấm để điền tay
+// chỗ để trống ngày lập văn bản «ngày …… tháng …… năm 2026» / «Ngày   tháng   năm 20…» → tự điền ngày hôm nay (12/11/2026)
+// chỉ thay khi ngày & tháng còn trống (chấm, dấu …, khoảng trắng); ngày đã ghi số hoặc «ký ngày …/…/…» của giấy tờ khác giữ nguyên
+const GAP = String.raw`(?:[\s.…_\u00a0]|&nbsp;)`;
+const TODAY_RE = new RegExp(String.raw`(ngày)${GAP}+(tháng)${GAP}+(năm)(?:${GAP}*(?:20\d\d|20${GAP}*[.…]+|[.…]+))?`, 'gi');
+function fillToday(html, today) {
+  const [y, m, d] = String(today || C.today()).split('-');
+  return String(html).replace(/(<[^>]*>)|([^<]+)/g, (all, tag, text) => tag ? tag : text.replace(TODAY_RE, (s, a, b, c) => `${a} ${d} ${b} ${m} ${c} ${y}`));
+}
 function mergeTpl(content, map) {
   const html = /^\s*</.test(content || '');
   const base = html ? String(content).replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '') : escH(content).replace(/\n/g, '<br>');
-  return base.replace(/\{(\w+)\}/g, (m, k) => !(k in map) ? m : k === 'lich_thanh_toan' ? map[k] : map[k] === '' ? '…………………' : mergeVal(map, k));
+  return fillToday(base.replace(/\{(\w+)\}/g, (m, k) => !(k in map) ? m : k === 'lich_thanh_toan' ? map[k] : map[k] === '' ? '…………………' : mergeVal(map, k)));
 }
 const GEN_CSS = `@page{size:A4;margin:20mm 18mm 20mm 25mm} body{font:13pt/1.5 "Times New Roman",serif;color:#000;max-width:170mm;margin:auto}
     .sch{border-collapse:collapse;width:100%;margin:6pt 0} .sch td,.sch th{border:1px solid #000;padding:3pt 5pt;font-size:12pt} table{border-collapse:collapse}`;
@@ -736,5 +744,5 @@ async function previewTemplate(b, user) {
   return printGeneric(ent, id, user, null, { name: b.name, code: b.code, content: b.content || '' });
 }
 
-module.exports = { recScope, tplFitLevel, scopeKeys, tplFields, printGeneric, previewTemplate,
+module.exports = { fillToday, recScope, tplFitLevel, scopeKeys, tplFields, printGeneric, previewTemplate,
   misaSample, printSaleNotice, printCancelReq, EDIT_CSS, editBar, editDoc, A, strip, mapRows, exportList, sheet, importFile, importTemplate, IMPORTS, createUser, hashPw, checkPw, printContract, printReservation, regTemplates, moneyWords };

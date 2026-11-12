@@ -125,8 +125,8 @@ const escH = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': 
 const DOTS = '…………………';
 // trộn mẫu với dữ liệu căn; miss = trường còn trống
 function merge(content, D, miss = new Set()) {
-  const { moneyWords } = require('./io');
-  return String(content || '').replace(/<script[\s\S]*?<\/script>/gi, '')
+  const { moneyWords, fillToday } = require('./io');
+  return fillToday(String(content || '').replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/\{=([^{}]+)\}/g, (m, ex) => {
       const before = miss.size; let v;
       try { v = evalExpr(ex, D.nums, miss); } catch { return m; }
@@ -139,7 +139,7 @@ function merge(content, D, miss = new Set()) {
       const v = D.map[k];
       if (v === '' || v == null) { if (!NO_MISS.has(k)) miss.add(k.replace(/_chu$|_hoa$/, '')); return DOTS; }
       return escH(v);
-    });
+    }));
 }
 const missOf = (content, D) => { const s = new Set(); merge(content, D, s); return [...s].map(k => LABEL[k] || k); };
 
