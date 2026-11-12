@@ -577,6 +577,21 @@ R('GET', '/print/sale_notice/:id', async (req, res, u, p, qs) => send(res, 200, 
 R('GET', '/print/cancel_req/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printCancelReq(p.id, u), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 R('GET', '/api/template-scope/:ent/:id', async (req, res, u, p) => send(res, 200, await IO.recScope(p.ent, p.id)));
 R('GET', '/api/template-fields/:ent', async (req, res, u, p) => send(res, 200, IO.tplFields(p.ent)));
+// tải mẫu biểu lên: file Word / Excel / HTML → mẫu mới (mỗi file 1 mẫu) hoặc thay nội dung mẫu có sẵn (id)
+R('POST', '/api/template-upload', async (req, res, u) => {
+  const DH = require('./doc-html'), { files, fields: F } = await readUpload(req); if (!files.length) bad('Chưa chọn file');
+  if (F.id) { const html = DH.fileToHtml(files[0]); await C.update('template', +F.id, { content: html }, u); return send(res, 200, { updated: +F.id, n: 1 }); }
+  const used = new Set((await q('SELECT code FROM kd_template')).map(r => r.code.toUpperCase())), made = [], errors = [];
+  for (const f of files) {
+    try {
+      const html = DH.fileToHtml(f); let code = (F.code && files.length === 1 ? F.code.trim().toUpperCase() : DH.codeOf(f.name)) || 'UP-MAU', c = code;
+      for (let i = 2; used.has(c); i++) c = code + '-' + i; used.add(c);
+      const r = await C.create('template', { code: c, name: (files.length === 1 && F.name?.trim()) || DH.nameOf(f.name), kind: F.kind || (F.bo ? 'hop_dong' : 'thong_bao'), ent: F.ent || null, bo: F.bo || null, scope: F.scope || null, content: html, active: F.active !== '0' }, u);
+      made.push({ id: r.row.id, code: c, file: f.name });
+    } catch (e) { errors.push(`${f.name}: ${e.message}`); }
+  }
+  send(res, 200, { made, errors });
+});
 R('POST', '/api/template-preview', async (req, res, u) => send(res, 200, { html: await IO.previewTemplate(await readJson(req), u) }));
 // Bộ hồ sơ theo căn (12/11/2026): gõ mã căn → bộ hồ sơ theo bước, in cả bộ / tải Word
 const HS = require('./ho-so');

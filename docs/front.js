@@ -2924,8 +2924,8 @@ V.tpltree = async (main, params = {}) => {
   const placeOf = t => t.bo ? 'bo:' + t.bo : t.ent;
   let ts = [], ps = [], bs = [], fids = {};
   const gitBtn = window.__ctgDemoPublish && M.me.role === 'admin' ? `<button class="btn amb" id="ttGit" title="Ghi toàn bộ mẫu biểu trên trình duyệt này vào kho GitHub — bản demo của mọi người cập nhật sau 1–2 phút">${ico('fa-cloud-arrow-up')} Đẩy mẫu biểu lên Git</button>` : '';
-  main.innerHTML = `<div class="page">${head('12', 'Mẫu biểu – thông báo', 'fa-folder-tree', `${gitBtn}<a class="btn" href="#/e/template?view=list">${ico('fa-table-list')} Dạng bảng</a>${canC ? `<button class="btn pri" id="ttNew">${ico('fa-plus')} Tạo mẫu</button>` : ''}`)}
-    <div class="warnbar">${ico('fa-folder-tree')}<span>Mẫu xếp theo <b>module › màn có nút «In theo mẫu» › dự án / tòa áp dụng</b>. Bấm một mẫu để xem trước và sửa, thay, xóa; nút ${ico('fa-plus')} trên dòng thư mục tạo mẫu mới ngay đúng chỗ đó.</span></div>
+  main.innerHTML = `<div class="page">${head('12', 'Mẫu biểu – thông báo', 'fa-folder-tree', `${gitBtn}<a class="btn" href="#/e/template?view=list">${ico('fa-table-list')} Dạng bảng</a>${canC ? `<button class="btn" id="ttUp" title="Tải file Word / Excel / HTML lên làm mẫu mới">${ico('fa-file-arrow-up')} Tải mẫu lên</button><button class="btn pri" id="ttNew">${ico('fa-plus')} Tạo mẫu</button>` : ''}`)}
+    <div class="warnbar">${ico('fa-folder-tree')}<span>Mẫu xếp theo <b>module › màn có nút «In theo mẫu» › dự án / tòa áp dụng</b>. Bấm một mẫu để xem trước và sửa, thay, xóa; nút ${ico('fa-plus')} trên dòng thư mục tạo mẫu mới, nút ${ico('fa-file-arrow-up')} tải file Word / Excel lên làm mẫu ngay đúng chỗ đó. Trong file Word gõ trường trộn dạng <b>{ten_kh}</b>, <b>{ma_can}</b>… để in tự điền.</span></div>
     <div class="tt"><div class="card tt-l"><div class="tt-bar"><input id="ttQ" type="search" placeholder="Tìm mã / tên mẫu…" value="${esc(S.q)}"><label class="chk small"><input type="checkbox" id="ttE" ${S.empty ? 'checked' : ''}> Hiện cả màn chưa có mẫu</label>
       <button class="btn sm ghost" id="ttO" title="Mở hết thư mục">${ico('fa-folder-open')}</button><button class="btn sm ghost" id="ttC" title="Thu gọn hết">${ico('fa-folder-closed')}</button></div>
       <div id="ttBulk"></div><div id="ttTree" class="tt-tree"><div class="empty">Đang tải…</div></div></div>
@@ -2951,7 +2951,7 @@ V.tpltree = async (main, params = {}) => {
   const fRow = (lv, key, icon, label, ids, acts = '') => { fids[key] = ids; const o = isOpen(key), all = ids.length && ids.every(i => S.ck.has(i));
     return `<div class="tt-row tt-f lv${lv}" data-k="${esc(key)}">${ico(o ? 'fa-caret-down' : 'fa-caret-right', 'tt-car')}${canU || canD ? `<input type="checkbox" data-fk="${esc(key)}" ${all ? 'checked' : ''} ${ids.length ? '' : 'disabled'} title="Chọn cả thư mục">` : ''}${ico(icon || (o ? 'fa-folder-open' : 'fa-folder'), 'tt-ic')}<span class="tt-lb">${label}</span><span class="tt-n">${ids.length}</span><span class="tt-acts">${acts}</span></div>`; };
   const tRow = (lv, t) => `<div class="tt-row tt-t lv${lv}${S.sel === t.id ? ' on' : ''}${t.active ? '' : ' off'}" data-id="${t.id}"><span class="tt-car"></span>${canU || canD ? `<input type="checkbox" data-ck="${t.id}" ${S.ck.has(t.id) ? 'checked' : ''}>` : ''}${ico(/^\s*</.test(t.content || '') ? 'fa-file-code' : 'fa-file-lines', 'tt-ic')}<span class="tt-lb"><b>${esc(t.code)}</b> · ${esc(t.name)}</span>${t.bedrooms ? `<span class="tag">${t.bedrooms} PN</span>` : ''}${t.active ? '' : '<span class="tag">Tắt</span>'}</div>`;
-  const plus = (ent, sc) => canC && ent ? `<button class="btn sm ghost" data-new="${esc(ent)}" data-sc="${esc(sc ?? '')}" title="Tạo mẫu mới ở thư mục này">${ico('fa-plus')}</button>` : '';
+  const plus = (ent, sc) => canC && ent ? `<button class="btn sm ghost" data-up="${esc(ent)}" data-sc="${esc(sc ?? '')}" title="Tải file Word / Excel lên làm mẫu ở thư mục này">${ico('fa-file-arrow-up')}</button><button class="btn sm ghost" data-new="${esc(ent)}" data-sc="${esc(sc ?? '')}" title="Tạo mẫu mới ở thư mục này">${ico('fa-plus')}</button>` : '';
   const draw = () => {
     const mods = tree(); fids = {};
     if (!S.init) { S.init = true; for (const m of mods) { S.open.add(m.key); for (const s of m.scr) { S.open.add(s.key); for (const g of s.grp) S.open.add(g.key); } } }
@@ -2967,13 +2967,13 @@ V.tpltree = async (main, params = {}) => {
   const detail = async () => {
     const d = $('#ttD', main), t = ts.find(x => x.id === S.sel);
     if (!t) { d.innerHTML = `<div class="empty">${ico('fa-hand-pointer')} Chọn một mẫu ở cây bên trái để xem trước, sửa, thay hoặc xóa.</div>`; return; }
-    d.innerHTML = `<div class="tt-path small muted">${ico('fa-folder-open')} ${esc(t.ent ? tplPlace(t.ent) : 'Chưa gắn module')} › ${t.scope ? esc(scName(t.scope)) : 'Mẫu chung'}</div><h3 class="tt-h">${esc(t.name)}</h3>
+    d.innerHTML = `<div class="tt-path small muted">${ico('fa-folder-open')} ${esc(places.find(p => p[0] === placeOf(t))?.[1] || (t.ent ? tplPlace(t.ent) : 'Chưa gắn module'))} › ${t.scope ? esc(scName(t.scope)) : 'Mẫu chung'}</div><h3 class="tt-h">${esc(t.name)}</h3>
       <dl class="tt-dl"><dt>Mã mẫu</dt><dd><b>${esc(t.code)}</b></dd><dt>Loại</dt><dd>${esc(kindL[t.kind] || t.kind || '')}</dd><dt>Áp dụng</dt><dd>${t.scope ? esc(scName(t.scope)) : 'Mẫu chung — mọi dự án'}${t.bedrooms ? ` · căn ${t.bedrooms} phòng ngủ` : ''}</dd>
         <dt>Trạng thái</dt><dd>${t.active ? '<span class="tag ok">Đang dùng</span>' : '<span class="tag">Tắt</span>'}</dd><dt>Cập nhật</dt><dd>${esc(dmyhm(t.updated_at || t.created_at))}</dd>
-        ${canU ? `<dt>Hiện ở module</dt><dd><select id="ttMv"><option value="">— Chưa gắn —</option>${places.map(([k, l]) => `<option value="${esc(k)}" ${k === t.ent ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></dd>` : ''}</dl>
+        ${canU ? `<dt>Hiện ở module</dt><dd><select id="ttMv"><option value="">— Chưa gắn —</option>${places.map(([k, l]) => `<option value="${esc(k)}" ${k === placeOf(t) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></dd>` : ''}</dl>
       <div class="tt-btns">${canU ? `<button class="btn pri sm" data-a="edit">${ico('fa-pen')} Sửa</button><button class="btn sm" data-a="file">${ico('fa-file-arrow-up')} Thay bằng file…</button><button class="btn sm" data-a="tog">${ico(t.active ? 'fa-toggle-off' : 'fa-toggle-on')} ${t.active ? 'Tắt' : 'Bật'}</button>` : `<button class="btn sm" data-a="edit">${ico('fa-eye')} Xem</button>`}
         ${canC ? `<button class="btn sm" data-a="dup">${ico('fa-copy')} Nhân bản</button>` : ''}<button class="btn sm" data-a="dl">${ico('fa-download')} Tải về</button><button class="btn sm" data-a="pv">${ico('fa-up-right-from-square')} Xem toàn trang</button>
-        ${canD ? `<button class="btn sm danger" data-a="del">${ico('fa-trash')} Xóa</button>` : ''}<input type="file" id="ttFile" accept=".html,.htm,.txt" hidden></div>
+        ${canD ? `<button class="btn sm danger" data-a="del">${ico('fa-trash')} Xóa</button>` : ''}<input type="file" id="ttFile" accept=".docx,.xlsx,.html,.htm,.txt" hidden></div>
       <div class="tt-pv"><div class="small muted">Xem trước với dữ liệu thật mới nhất của màn</div><iframe id="ttF" title="Xem trước mẫu"></iframe></div>`;
     const f = $('#ttF', d);
     if (!t.ent) { f.srcdoc = `<pre style="white-space:pre-wrap;font:13px/1.5 system-ui">${esc(t.content)}</pre>`; return; }
@@ -2993,6 +2993,8 @@ V.tpltree = async (main, params = {}) => {
     toast(`Đã ${verb} ${ok} mẫu${tail}${errs.length ? ` · lỗi ${errs.length}: ${errs.join('; ')}` : ''}`, !!errs.length); await load(); };
   main.onclick = run(async e => {
     const x = e.target;
+    if (x.closest('#ttUp')) return upModal('', '');
+    const ub = x.closest('[data-up]'); if (ub) return upModal(ub.dataset.up, ub.dataset.sc);
     if (x.closest('#ttNew')) return openForm('template', { preset: { active: true, kind: 'thong_bao' }, onSaved: r => { S.sel = r?.id || S.sel; load(); } });
     if (x.closest('#ttGit')) { const b = x.closest('#ttGit'); if (!confirm('Đẩy toàn bộ mẫu biểu đang có trên trình duyệt này lên Git?\nMọi người mở link demo sẽ nhận đúng bộ mẫu này (sau 1–2 phút).')) return;
       b.disabled = true; try { const r = await window.__ctgDemoPublish({ user: M.me.username }); if (r) toast(`Đã đẩy ${r.n} mẫu lên Git — bản demo của mọi người cập nhật sau 1–2 phút`); } finally { b.disabled = false; } return; }
@@ -3023,13 +3025,37 @@ V.tpltree = async (main, params = {}) => {
   main.onchange = run(async e => {
     const x = e.target;
     if (x.id === 'ttE') { S.empty = x.checked; return draw(); }
-    if (x.id === 'ttMv') { await put(S.sel, { ent: x.value || null }); toast(x.value ? `Đã chuyển sang ${tplPlace(x.value)}` : 'Đã bỏ gắn module'); return load(); }
-    if (x.matches('select[data-b=mv]') && x.value) { const ent = x.value; return many([...S.ck], id => put(id, { ent }), 'chuyển', ` sang ${tplPlace(ent)}`); }
+    if (x.id === 'ttMv') { const v = x.value, bo = v.startsWith('bo:') ? v.slice(3) : null; await put(S.sel, { ent: bo ? 'unit' : v || null, bo }); toast(v ? `Đã chuyển sang ${places.find(p => p[0] === v)?.[1] || tplPlace(v)}` : 'Đã bỏ gắn module'); return load(); }
+    if (x.matches('select[data-b=mv]') && x.value) { const v = x.value, bo = v.startsWith('bo:') ? v.slice(3) : null; return many([...S.ck], id => put(id, { ent: bo ? 'unit' : v, bo }), 'chuyển', ` sang ${places.find(p => p[0] === v)?.[1] || tplPlace(v)}`); }
     if (x.id === 'ttFile' && x.files[0]) { const file = x.files[0], t = ts.find(y => y.id === S.sel); x.value = ''; if (!t) return;
-      const txt = await file.text(); if (!txt.trim()) throw new Error('File rỗng');
-      if (!await ask('Thay nội dung mẫu', `Thay toàn bộ nội dung mẫu «${t.code}» bằng file «${file.name}» (${Math.round(txt.length / 1024)} KB)? Bản cũ vẫn khôi phục được ở Nhật ký thao tác — hoặc bấm «Tải về» trước để giữ một bản.`, { okLabel: 'Thay nội dung' })) return;
-      await put(t.id, { content: txt }); toast('Đã thay nội dung mẫu'); return load(); }
+      if (!file.size) throw new Error('File rỗng');
+      if (!await ask('Thay nội dung mẫu', `Thay toàn bộ nội dung mẫu «${t.code}» bằng file «${file.name}» (${Math.max(1, Math.round(file.size / 1024))} KB)? Bản cũ vẫn khôi phục được ở Nhật ký thao tác — hoặc bấm «Tải về» trước để giữ một bản.`, { okLabel: 'Thay nội dung' })) return;
+      const fd = new FormData(); fd.append('id', t.id); fd.append('file', file, file.name); await api('POST', '/api/template-upload', fd); toast('Đã thay nội dung mẫu'); return load(); }
   });
+  const upModal = (place, sc) => {
+    const m = modal({ title: `${ico('fa-file-arrow-up')} Tải mẫu biểu lên`, body: `<div class="warnbar">${ico('fa-circle-info')}<div>Chọn <b>file Word (.docx)</b> — hoặc Excel .xlsx / .html — mỗi file thành 1 mẫu (chọn được nhiều file). Giữ nguyên căn lề, chữ đậm / nghiêng, bảng, logo, ngắt trang.<br>Chỗ cần tự điền khi in: gõ trong Word dạng <b>{ten_kh}</b>, <b>{cccd}</b>, <b>{ma_can}</b>, <b>{ngay_hdmb}</b>… (xem danh sách trường ở nút «Sửa» của mẫu). File .doc cũ: mở Word → Lưu thành .docx.</div></div>
+      <div class="form"><label>File mẫu<input type="file" id="uF" multiple accept=".docx,.xlsx,.html,.htm,.txt" class="inp"></label>
+      <label>Hiện ở module (nút «In theo mẫu» của màn)<select id="uP"><option value="">— Chưa gắn —</option>${places.map(([k, l]) => `<option value="${esc(k)}" ${k === place ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+      <label>Áp dụng cho dự án / tòa<select id="uS"><option value="">Mẫu chung — mọi dự án</option>${ps.map(p => `<option value="${esc(p.code)}" ${sc === p.code ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>${bs.filter(b => b.project_id === p.id).map(b => { const k = `${p.code}-${b.code}`; return `<option value="${esc(k)}" ${String(sc).toUpperCase() === k.toUpperCase() ? 'selected' : ''}>&nbsp;&nbsp;› ${esc(b.name || 'Tòa ' + b.code)}</option>`; }).join('')}`).join('')}${sc && !ps.some(p => p.code === sc) && !bs.some(b => ps.some(p => p.id === b.project_id && `${p.code}-${b.code}`.toUpperCase() === String(sc).toUpperCase())) ? `<option value="${esc(sc)}" selected>${esc(scName(sc))}</option>` : ''}</select></label>
+      <label>Loại<select id="uK">${TE.fields.find(f => f.k === 'kind').o.map(([k, l]) => `<option value="${esc(k)}">${esc(l)}</option>`).join('')}</select></label>
+      <div id="uOne" hidden><label>Mã mẫu<input id="uC" class="inp" placeholder="tự đặt theo tên file nếu để trống"></label><label>Tên mẫu<input id="uN" class="inp"></label></div></div><div id="uR"></div>`,
+      foot: `<button class="btn" data-x>Đóng</button><button class="btn pri" id="uGo">${ico('fa-file-arrow-up')} Tải lên</button>` });
+    const el = m.el, kindOf = p => p.startsWith('bo:') ? 'hop_dong' : TPL_KIND0[p] || 'thong_bao';
+    $('#uK', el).value = kindOf(place); $('#uP', el).onchange = e => { $('#uK', el).value = kindOf(e.target.value); };
+    $('#uF', el).onchange = e => { const fs = [...e.target.files]; $('#uOne', el).hidden = fs.length !== 1; if (fs.length === 1) $('#uN', el).value = fs[0].name.replace(/\.[^.]+$/, '').replace(/_+/g, ' '); };
+    $('#uGo', el).onclick = run(async () => {
+      const fs = [...$('#uF', el).files]; if (!fs.length) return toast('Chọn file mẫu', true);
+      const p = $('#uP', el).value, fd = new FormData(), bo = p.startsWith('bo:') ? p.slice(3) : '';
+      fd.append('ent', bo ? 'unit' : p); fd.append('bo', bo); fd.append('scope', $('#uS', el).value); fd.append('kind', $('#uK', el).value);
+      if (fs.length === 1) { fd.append('code', $('#uC', el).value); fd.append('name', $('#uN', el).value); }
+      fs.forEach(f => fd.append('file', f, f.name));
+      $('#uGo', el).disabled = true; $('#uR', el).innerHTML = '<div class="empty">Đang chuyển file…</div>';
+      try { const r = await api('POST', '/api/template-upload', fd);
+        $('#uR', el).innerHTML = (r.made.length ? `<div class="okbar">Đã thêm ${r.made.length} mẫu: ${r.made.map(x => `<b>${esc(x.code)}</b>`).join(', ')}</div>` : '') + (r.errors.length ? `<div class="warnbar">${r.errors.map(esc).join('<br>')}</div>` : '');
+        if (r.made.length) { S.sel = r.made[0].id; await load(); if (!r.errors.length) { m.close ? m.close() : el.querySelector('[data-x]')?.click(); toast(`Đã tải lên ${r.made.length} mẫu — kiểm tra bản xem trước bên phải`); } }
+      } finally { $('#uGo', el).disabled = false; }
+    });
+  };
   $('#ttQ', main).oninput = e => { S.q = e.target.value; draw(); };
   await load();
 };
