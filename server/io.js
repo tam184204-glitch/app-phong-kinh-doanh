@@ -425,6 +425,7 @@ function read3(n, full) {
 }
 function moneyWords(n) {
   n = Math.round(+n || 0); if (!n) return 'Không đồng';
+  if (n < 0) { const w = moneyWords(-n); return 'Âm ' + w[0].toLowerCase() + w.slice(1); }
   const scales = ['', 'nghìn', 'triệu', 'tỷ', 'nghìn tỷ', 'triệu tỷ'], groups = [];
   while (n > 0) { groups.push(n % 1000); n = Math.floor(n / 1000); }
   const parts = [];

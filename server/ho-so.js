@@ -71,7 +71,8 @@ async function hsData(unitId, user, custId) {
     ngay_sinh: P(bday), thuong_tru: c.b_perm_addr || c.b_addr || k?.address || res?.address || '', dia_chi: c.b_addr || k?.address || res?.address || '', dien_thoai: c.b_phone || k?.phone || res?.phone || '',
     email: c.b_email || k?.email || '', mst: P(k?.tax_code || res?.tax_code), stk: P([c.b_bank_acc || k?.bank_account || res?.bank_account, c.b_bank_name && 'Ngân hàng ' + c.b_bank_name].filter(Boolean).join(' - ')),
     vc_ten: mem?.name || c.co_owner || '', vc_cccd: P(mem?.id_no), vc_ngay_cap: '', vc_noi_cap: '',
-    ma_can: u.code, du_an: u.pname, toa: u.code.slice(4, 5), tang: u.code.slice(6, 8), can_so: u.code.slice(-2), so_can4: u.code.slice(-4), ma_can6: u.code.slice(-6), toa_ky: u.code.slice(3, 5),
+    ma_can: u.code, du_an: u.pname, // tòa / tầng lấy theo dữ liệu căn (không cắt mã căn theo vị trí — tòa «LK», mã dự án khác 3 ký tự vẫn đúng) (13/11/2026)
+    toa: u.bcode || u.code.slice(4, 5), tang: u.floor != null && u.floor !== '' ? String(u.floor).padStart(2, '0') : u.code.slice(6, 8), can_so: u.code.slice(-2), so_can4: u.code.slice(-4), ma_can6: u.code.slice(-6), toa_ky: u.bcode ? '-' + u.bcode : u.code.slice(3, 5),
     so_hdmb: hdmb?.number || '', ngay_hdmb: dmy(hdmb?.contract_on), ngay_don: dmy(hdmb?.request_on || res?.reg_date),
     so_hdtt: ht?.number || '', ngay_hdtt: dmy(ht?.contract_on), so_hdv: vay?.number || '', ngay_hdv: dmy(vay?.contract_on || vay?.loan_recv_on),
     so_vbtt_sc: hdmb?.agreement || '', ngay_vbtt_sc: '',
@@ -82,7 +83,7 @@ async function hsData(unitId, user, custId) {
   const N = {
     dt_tt: num(hdmb?.area_tt ?? vay?.area_tt ?? u.area_tt), dt_san: num(hdmb?.area_floor ?? u.area_xd), don_gia: num(hdmb?.base_price ?? vay?.base_price ?? u.base_price),
     gia_truoc_thue: num(hdmb?.pretax ?? u.pretax), thue_vat: num(hdmb?.vat_amt ?? u.tax_amt), phi_bao_tri: num(hdmb?.maint_fee ?? u.maint_fee), gia_sau_thue: num(hdmb?.after_tax ?? vay?.unit_total ?? u.price_net),
-    tong_gia: num(hdmb?.value ?? u.total_price), gia_tri_hdmb: num(hdmb?.value), gia_tri_ht: num(ht?.value ?? hdmb?.finish_value ?? u.finish_value), tien_vay: num(vay?.value), tien_s_chung: num(hdmb?.common_area_amt),
+    tong_gia: num(hdmb?.value ?? u.total_price), gia_tri_hdmb: num(hdmb?.value),   // HĐMB có giá: tính lại bên dưới, không gồm hoàn thiện gia_tri_ht: num(ht?.value ?? hdmb?.finish_value ?? u.finish_value), tien_vay: num(vay?.value), tien_s_chung: num(hdmb?.common_area_amt),
   };
   // HĐ chưa lưu sẵn giá trước thuế / VAT / bảo trì: tính theo đơn giá × diện tích như file Excel (VAT 5%, bảo trì 2%)
   if (N.don_gia && N.dt_tt) {
@@ -91,7 +92,10 @@ async function hsData(unitId, user, custId) {
     N.gia_sau_thue ??= Math.round(pre * 1.05 / 1000) * 1000; N.tong_gia ??= N.gia_sau_thue + N.phi_bao_tri;
   }
   // HĐMB in đúng số đã khai ở form hợp đồng (13/11/2026): giá bán = Tổng tiền − Phí bảo trì (đã gồm VAT, hệ số góc, giảm giá); chưa khai thì tính như file Excel
-  N.gia_ban = hdmb && hdmb.value != null && hdmb.maint_fee != null ? num(hdmb.value) - num(hdmb.maint_fee) : N.gia_sau_thue;
+  // Tâm 13/11/2026: giá bán trên HĐMB KHÔNG gồm giá trị hoàn thiện (ô Tổng tiền HĐMB của app có cộng hoàn thiện → trừ ra); phí bảo trì là khoản riêng
+  const finHd = +hdmb?.finish_value || 0;
+  N.gia_ban = hdmb && hdmb.value != null && hdmb.maint_fee != null ? num(hdmb.value) - num(hdmb.maint_fee) - finHd : N.gia_sau_thue;
+  if (hdmb && hdmb.value != null && N.gia_ban != null && N.phi_bao_tri != null) N.tong_gia = N.gia_tri_hdmb = N.gia_ban + N.phi_bao_tri;
   N.tong_gia ??= N.gia_ban != null && N.phi_bao_tri != null ? N.gia_ban + N.phi_bao_tri : null;
   { const cd = hdmb?.contract_on ? dmy(hdmb.contract_on).split('/') : null;
     S.ngay_viet_hdmb = cd ? `ngày ${cd[0]} tháng ${cd[1]} năm ${cd[2]}` : (() => { const d = C.today().split('-'); return `ngày ${d[2]} tháng ${d[1]} năm ${d[0]}`; })(); }
@@ -105,9 +109,12 @@ async function hsData(unitId, user, custId) {
   for (const k of ['phai_nop', 'da_nop', 'con_nop', 'con_tien_nha', 'con_hoan_thien', 'tong_phai_nop']) N[k] = null;
   // các đợt thanh toán in trên HĐMB (mẫu có K đợt dùng tt<K>_dot<n> / tt<K>_pct<n>): HĐ khai đúng K «Lần thanh toán» → in số tiền / % đã khai;
   // khai số đợt khác hoặc chưa khai → in theo % ghi trên mẫu (× giá bán); màn hồ sơ cảnh báo khi số đợt khác mẫu
-  { const K = im.length; im.forEach((x, j) => { N[`tt${K}_dot${j + 1}`] = +x.amount; S[`tt${K}_pct${j + 1}`] = x.pct != null ? String(+x.pct) : ''; }); }
+  // phí bảo trì là khoản riêng, không phải một đợt: bỏ dòng phí bảo trì khi đếm / in các đợt; đợt có % → số tiền = % × giá bán
+  // (lịch cũ cộng phí bảo trì / tiền hoàn thiện vào đợt thì số in vẫn đúng giá bán HĐMB) (13/11/2026)
+  const imD = im.filter(x => !x.is_maint);
+  { const K = imD.length; imD.forEach((x, j) => { N[`tt${K}_dot${j + 1}`] = x.pct != null && N.gia_ban != null ? Math.round(N.gia_ban * +x.pct / 100) : +x.amount; S[`tt${K}_pct${j + 1}`] = x.pct != null ? String(+x.pct) : ''; }); }
   for (const K of [2, 3, 4, 5, 6]) for (let n = 1; n <= K; n++) { if (!(`tt${K}_pct${n}` in S)) S[`tt${K}_pct${n}`] = ''; }
-  S._n_dot = im.length;
+  S._n_dot = imD.length;
   if (im.length) {
     const daNha = N.da_tt || 0, daHt = N.da_tt_ht || 0;
     let cum = 0, cumHt = 0, dot = im[im.length - 1];
@@ -120,7 +127,7 @@ async function hsData(unitId, user, custId) {
   } else S.dot = '';
   const { moneyWords } = require('./io');
   for (const [key, v] of Object.entries(N)) {
-    if (MONEY.includes(key)) { S[key] = v == null ? '' : fmtMoney(v); S[key + '_chu'] = v ? moneyWords(v) : ''; }
+    if (MONEY.includes(key)) { S[key] = v == null ? '' : fmtMoney(v); S[key + '_chu'] = v == null || v === '' ? '' : moneyWords(v); }   // 0 → «Không đồng» (không báo thiếu)
     else S[key] = key === 'don_gia' ? (v == null ? '' : fmtMoney(v)) : area(v);
   }
   const d = C.today().split('-');
