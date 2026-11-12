@@ -51,14 +51,17 @@ async function hsData(unitId, user, custId) {
   if (!u) bad('Không tìm thấy căn hộ');
   const all = await q(`SELECT c.* FROM kd_contract c WHERE c.unit_id = $1 ORDER BY (c.status IN ('huy', 'thanh_ly')), coalesce(c.contract_on, c.created_at::date) DESC, c.id DESC`, [u.id]);
   // một căn có thể qua nhiều khách (thanh lý / hủy rồi bán lại): custId = khách đang xem — chỉ lấy HĐ, phiếu của khách đó (12/11/2026)
-  const cid0 = +custId || (await custHistory(u.id)).find(h => h.current)?.id || null;
+  // không chỉ định khách (VD in hàng loạt): lấy khách đang giao dịch; căn không còn ai giao dịch → khách gần nhất — không bao giờ trộn HĐ của nhiều khách (13/11/2026)
+  const hist0 = +custId ? [] : await custHistory(u.id);
+  const cid0 = +custId || hist0.find(h => h.current)?.id || hist0[0]?.id || null;
   const cts = cid0 ? all.filter(c => c.customer_id === cid0) : all;
   const hdmb = pick(cts, 'hdmb') || pick(cts, 'thue_mua'), ht = pick(cts, 'hoan_thien'), vay = pick(cts, 'vay');
   const res = await one(`SELECT * FROM kd_reservation WHERE unit_id = $1 ${cid0 ? 'AND customer_id = $2' : ''} ORDER BY (status IN ('huy', 'het_han')), id DESC LIMIT 1`, cid0 ? [u.id, cid0] : [u.id]);
   const main = hdmb || vay || ht;
   const kid = cid0 || main?.customer_id || res?.customer_id;
   const k = kid ? await one('SELECT * FROM kd_customer WHERE id = $1', [kid]) : null;
-  const nx = await one(`SELECT * FROM kd_noxh_check WHERE unit_id = $1 ${kid ? 'OR customer_id = $2' : ''} ORDER BY ${kid ? '(customer_id = $2) DESC, ' : ''}(unit_id = $1) DESC, id DESC LIMIT 1`, kid ? [u.id, kid] : [u.id]);
+  // hồ sơ NOXH (vợ / chồng): chỉ của chính khách đang in — không lấy hồ sơ của khách cũ cùng căn (13/11/2026)
+  const nx = kid ? await one('SELECT * FROM kd_noxh_check WHERE customer_id = $1 ORDER BY (unit_id = $2) DESC, id DESC LIMIT 1', [kid, u.id]) : null;
   const pii = PII_PRINT.includes(user.role);
   const P = v => v == null || v === '' ? '' : pii ? String(v) : '(ẩn)';
   // vợ / chồng: thành viên hộ «Vợ (Chồng)» ở hồ sơ NOXH; không có thì lấy ô Đồng sở hữu của HĐ
@@ -510,7 +513,7 @@ async function batchPlan(units, bo, user) {
     try {
       const f = await findUnit(code); await autoProjectTemplates(f.id, user);
       const ts = (await unitTemplates(f.id)).filter(t => t.bo === bo);
-      const D = await hsData(f.id, user);
+      const D = await hsData(f.id, user, f.cust?.id);   // gõ mã KH / SĐT → đúng khách đó
       for (const t of ts) if (!keys.has(tplKey(t.code)) && !(ANNEX(tplKey(t.code)) && ts.some(x => tplKey(x.code) === 'MB-02'))) keys.set(tplKey(t.code), shortName(t.name));
       out.push({ code: D.map.ma_can, id: f.id, customer: D.ctx.k ? `${D.ctx.k.full_name} · ${D.ctx.k.code || ''}` : '', n: ts.length, missing: [...new Set(ts.flatMap(t => missOf(t.content, D)))] });
     } catch (e) { out.push({ code, error: e.message }); }
@@ -536,7 +539,7 @@ async function batchDocs(units, bo, keys, user) {
     let f; try { f = await findUnit(code); } catch { continue; }
     const all = (await unitTemplates(f.id)).filter(t => t.bo === bo), ts = withAnnex(all.filter(t => !want.size || want.has(tplKey(t.code))), all);
     if (!ts.length) continue;
-    const D = await hsData(f.id, user);
+    const D = await hsData(f.id, user, f.cust?.id);
     out.push({ unitId: f.id, code: D.map.ma_can, docs: ts.map(t => ({ t, html: merge(t.content, D) })) });
     await C.audit({ q }, 'unit', f.id, 'in_hang_loat', null, null, user, ts.map(t => t.code).join(', '));
   }
