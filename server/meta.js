@@ -452,7 +452,7 @@ def('contract', {
     { k: 'contract_on', l: 'Ngày ký hợp đồng mua bán', t: 'date', def: 'today' },
     { k: 'number', l: 'Số hợp đồng', t: 'text', uniq: 1, help: 'Để trống → tự cấp HDCH.YYMM-0001 (chung cư) / HDLK.YYMM-0001 (liền kề)' },
     { k: 'seller_unit', l: 'Đơn vị', t: 'text', def: SELLERS[0].unit, choose: SELLERS.map(s => s.unit), help: 'Chọn căn → tự lấy theo dự án' },
-    { k: 'agreement', l: 'Văn bản thỏa thuận', t: 'text', noForm: 1 },
+    { k: 'agreement', l: 'Số văn bản thỏa thuận sở hữu chung', t: 'text', help: 'Số VBTT về sở hữu chung của vợ chồng (nếu có) — in vào HĐMB' },
     { k: 'unit_id', l: 'Mã căn hộ', t: 'ref', ref: 'unit', req: 1, dep: 'building_id',
       fill: { area_tt: 'area_tt', base_price: 'base_price', pretax: 'pretax', vat_pct: 'vat_pct', vat_amt: 'tax_amt', after_tax: 'price_net', maint_fee: 'maint_fee', finish_value: 'finish_value', value: 'total_price', area_land: 'area_dat', area_build: 'area_xd' } },
     { k: 'reservation_id', l: 'Phiếu giữ chỗ', t: 'ref', ref: 'reservation', ro: 1 },
@@ -471,6 +471,11 @@ def('contract', {
     { k: 'b_bank_name', l: 'Tên ngân hàng', t: 'text' },
     { k: 'request_on', l: 'Ngày đề nghị mua', t: 'date' },
     { k: 'co_owner', l: 'Đồng sở hữu', t: 'text', help: 'Họ tên người đồng sở hữu (nếu có)' },
+    // 13/11/2026: giấy tờ người đồng sở hữu (vợ / chồng) + ngày VBTT — nhập 1 lần ở HĐ, bộ hồ sơ tự in (trước luôn in «……»)
+    { k: 'co_owner_id_no', l: 'Số CCCD người đồng sở hữu', t: 'text', pii: 1 },
+    { k: 'co_owner_id_date', l: 'Ngày cấp (người đồng sở hữu)', t: 'date', pii: 1 },
+    { k: 'co_owner_id_place', l: 'Nơi cấp (người đồng sở hữu)', t: 'text', pii: 1 },
+    { k: 'agreement_on', l: 'Ngày văn bản thỏa thuận sở hữu chung', t: 'date' },
     // bên bán nhà ở
     { k: 's_name', l: 'Bên A', t: 'text', def: SELLERS[0].name, choose: SELLERS.map(s => s.name), sec: 'Bên bán nhà ở', help: 'Chọn Bên A → tự điền các ô bên bán' },
     { k: 's_addr', l: 'Địa chỉ liên hệ (bên bán)', t: 'text', def: SELLERS[0].addr },

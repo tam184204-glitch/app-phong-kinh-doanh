@@ -73,12 +73,14 @@ async function hsData(unitId, user, custId) {
     cccd: P(c.b_id_no || k?.id_no || res?.id_no), ngay_cap: P(dmy(c.b_id_date || k?.id_date || res?.id_date)), noi_cap: P(c.b_id_place || k?.id_place || res?.id_place),
     ngay_sinh: P(bday), thuong_tru: c.b_perm_addr || c.b_addr || k?.address || res?.address || '', dia_chi: c.b_addr || k?.address || res?.address || '', dien_thoai: c.b_phone || k?.phone || res?.phone || '',
     email: c.b_email || k?.email || '', mst: P(k?.tax_code || res?.tax_code), stk: P([c.b_bank_acc || k?.bank_account || res?.bank_account, c.b_bank_name && 'Ngân hàng ' + c.b_bank_name].filter(Boolean).join(' - ')),
-    vc_ten: mem?.name || c.co_owner || '', vc_cccd: P(mem?.id_no), vc_ngay_cap: '', vc_noi_cap: '',
+    // vợ / chồng: ô Đồng sở hữu khai ở HĐ trước (bản sẽ ký), chưa khai thì lấy thành viên «Vợ (Chồng)» ở hồ sơ NOXH của khách (13/11/2026)
+    ...(() => { const h = hdmb || c, own = !!(h.co_owner || h.co_owner_id_no);
+      return { vc_ten: (own ? h.co_owner : mem?.name) || '', vc_cccd: P(own ? h.co_owner_id_no : mem?.id_no), vc_ngay_cap: P(dmy(own ? h.co_owner_id_date : '')), vc_noi_cap: P(own ? h.co_owner_id_place : '') }; })(),
     ma_can: u.code, du_an: u.pname, // tòa / tầng lấy theo dữ liệu căn (không cắt mã căn theo vị trí — tòa «LK», mã dự án khác 3 ký tự vẫn đúng) (13/11/2026)
     toa: u.bcode || u.code.slice(4, 5), tang: u.floor != null && u.floor !== '' ? String(u.floor).padStart(2, '0') : u.code.slice(6, 8), can_so: u.code.slice(-2), so_can4: u.code.slice(-4), ma_can6: u.code.slice(-6), toa_ky: u.bcode ? '-' + u.bcode : u.code.slice(3, 5),
     so_hdmb: hdmb?.number || '', ngay_hdmb: dmy(hdmb?.contract_on), ngay_don: dmy(hdmb?.request_on || res?.reg_date),
     so_hdtt: ht?.number || '', ngay_hdtt: dmy(ht?.contract_on), so_hdv: vay?.number || '', ngay_hdv: dmy(vay?.contract_on || vay?.loan_recv_on),
-    so_vbtt_sc: hdmb?.agreement || '', ngay_vbtt_sc: '',
+    so_vbtt_sc: hdmb?.agreement || '', ngay_vbtt_sc: dmy(hdmb?.agreement_on),
   };
   { const b = await banVe(u); S.ban_ve_can = b.can; S.ban_ve_tang = b.tang; }
   S.ten_kh_hoa = S.ten_kh.toUpperCase();
