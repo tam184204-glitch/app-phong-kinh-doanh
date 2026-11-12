@@ -1744,3 +1744,10 @@ label.tplr { display: flex; gap: 8px; align-items: center; padding: 7px 0; }
 .hs-foot { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px; }
 .hs-list .warnbar { margin: 10px 16px 0; }
 @media (max-width: 640px) { .hs-row { flex-wrap: wrap; } .hs-a { width: 100%; justify-content: flex-end; } .hs-q { flex-wrap: wrap; } .hs-q .btn { width: 100%; } }
+
+/* 12/11/2026: Bộ hồ sơ nằm trong Kho hồ sơ (mục «Bộ hồ sơ theo căn») */
+.vt-main.vt-bo .vt-q, .vt-main.vt-bo #vtS, .vt-main.vt-bo #vtV { display: none; }
+.hs-emb .hs-find { box-shadow: none; border: 1px solid var(--line2); }
+.hs-saved { margin-top: 12px; padding: 0; }
+.hs-saved .hs-row > i, .hs-saved .hs-row > svg, .hs-saved .hs-row > span:first-child { flex: none; }
+.hs-sp { flex: 1; }

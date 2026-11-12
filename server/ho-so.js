@@ -196,7 +196,7 @@ async function hsInfo(key, user) {
     unit: { id: x.u.id, code: x.u.code, project: x.u.pname, building: x.u.bname || 'Tòa ' + x.u.bcode, area: x.u.area_tt, status: x.u.status },
     customer: x.k && { id: x.k.id, code: x.k.code, name: x.k.full_name, phone: x.k.phone },
     hdmb: ctInfo(x.hdmb), ht: ctInfo(x.ht), vay: ctInfo(x.vay), reservation: x.res && { id: x.res.id, code: x.res.code, status: x.res.status }, noxh: x.nx && { id: x.nx.id },
-    step: stepOf(x), added,
+    step: stepOf(x), added, demoFill: demoFillOn(),
     bos: BO.map(([k, l]) => ({ k, l, tpls: ts.filter(t => t.bo === k).map(t => ({ code: t.code, name: t.name, kind: t.kind, missing: missOf(t.content, D) })) })),
   };
 }
@@ -248,4 +248,82 @@ async function wordHs(unitId, codes, user) {
   return { buf: docxOf(docs.map(d => d.html), name), name };
 }
 
-module.exports = { BO, MAU_TNS, hsData, hsInfo, printHs, wordHs, merge, evalExpr };
+// lưu bản Word của bộ hồ sơ vào Kho hồ sơ: gắn vào HĐ của bộ (vay / thanh lý vay → HĐ vay; còn lại → HĐMB, không có thì HĐ khác của căn), loại «Dự thảo»
+async function saveTarget(unitId, bo) {
+  const cts = await q("SELECT id, kind, status FROM kd_contract WHERE unit_id = $1 ORDER BY (status IN ('huy', 'thanh_ly')), id DESC", [+unitId]);
+  const want = ['vay', 'tl_vay'].includes(bo) ? ['vay'] : ['hdmb', 'thue_mua'];
+  const c = cts.find(x => want.includes(x.kind)) || cts[0];
+  if (!c) bad('Căn chưa có hợp đồng nào để gắn tệp — lập hợp đồng trước (hoặc tải Word về máy)');
+  return { ent: 'contract', id: c.id, kind: 'du_thao' };
+}
+// ---- dữ liệu thử cho bộ hồ sơ (CHỈ bản demo / máy thử có HS_DEMO_FILL=1) — dựa trên khách, căn, HĐ đã lưu của căn: chỉ điền chỗ còn trống, tạo thêm thứ còn thiếu ----
+const demoFillOn = () => (typeof process !== 'undefined' && (process.platform === 'browser' || process.env?.HS_DEMO_FILL === '1'));
+async function demoFill(unitId, user) {
+  if (!demoFillOn()) deny('Chỉ dùng trên bản demo');
+  const sysU = await one("SELECT * FROM kd_user WHERE role = 'admin' AND active ORDER BY id LIMIT 1") || C.SYS;
+  const u = await one('SELECT * FROM kd_unit WHERE id = $1', [+unitId]); if (!u) bad('Không tìm thấy căn');
+  const did = [], seed = [...u.code].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7), dig = n => String(seed * 7919 % 10 ** n).padStart(n, '0');
+  const today = C.today(), addD = n => C.addDays(today, n), tower = u.code.split('-')[1] || 'A', so4 = u.code.slice(-4);
+  const setBlank = async (table, id, vals) => {
+    const ks = [], r = await one(`SELECT * FROM ${table} WHERE id = $1`, [id]);
+    for (const [k, v] of Object.entries(vals)) if (k in r && (r[k] == null || r[k] === '' || r[k] === 0 || r[k] === '0')) { await q(`UPDATE ${table} SET ${k} = $2 WHERE id = $1`, [id, v]); ks.push(k); }
+    return ks;
+  };
+  const cts = await q("SELECT * FROM kd_contract WHERE unit_id = $1 AND status NOT IN ('huy', 'thanh_ly') ORDER BY id", [u.id]);
+  let hd = cts.find(c => c.kind === 'hdmb' || c.kind === 'thue_mua');
+  const res = await one('SELECT * FROM kd_reservation WHERE unit_id = $1 ORDER BY id DESC LIMIT 1', [u.id]);
+  let kid = hd?.customer_id || cts[0]?.customer_id || res?.customer_id;
+  if (!kid) {
+    kid = (await C.create('customer', { full_name: 'Nguyễn Văn Thử', phone: '09' + dig(8), source: 'truc_tiep' }, sysU, { system: true })).row.id;
+    did.push('khách hàng mới «Nguyễn Văn Thử»');
+  }
+  const k = await one('SELECT * FROM kd_customer WHERE id = $1', [kid]);
+  const ck = await setBlank('kd_customer', k.id, { id_no: '0272' + dig(8), id_date: '2021-04-25', id_place: 'Cục Cảnh sát QLHC về TTXH', birth: '1990-06-03',
+    address: 'Thôn Ngô Xá, Xã Yên Phong, Tỉnh Bắc Ninh', tax_code: '0272' + dig(8), bank_account: '1903' + dig(10), email: 'khach' + dig(3) + '@example.com', phone: '09' + dig(8) });
+  if (ck.length) did.push(`khách ${k.full_name}: điền ${ck.length} thông tin còn trống`);
+  const area = +u.area_tt || 60, price = +u.base_price || 15990253, pre = Math.round(price * area / 1000) * 1000;
+  if (!hd) {
+    hd = (await C.create('contract', { ptype: 'can_ho', kind: 'hdmb', unit_id: u.id, customer_id: kid, contract_on: addD(-30), base_price: price, area_tt: area }, sysU, { system: true })).row;
+    did.push('HĐ mua bán');
+  }
+  const hk = await setBlank('kd_contract', hd.id, { number: `${so4}/${today.slice(0, 4)}/HĐMB-${u.code.split('-').slice(0, 2).join('-')}`, contract_on: addD(-30), request_on: addD(-40),
+    base_price: price, area_tt: area, area_floor: Math.round(area * 1.07 * 10) / 10, pretax: pre, vat_pct: 5, vat_amt: pre * 0.05, after_tax: Math.round(pre * 1.05 / 1000) * 1000,
+    maint_fee: Math.round(pre * 0.02 / 1000) * 1000, b_perm_addr: k.address || 'Thôn Ngô Xá, Xã Yên Phong, Tỉnh Bắc Ninh', co_owner: 'Trần Thị Thử (vợ)',
+    agreement: `${so4}/VBTT-SC`, common_area_amt: 10000000 });
+  await q('UPDATE kd_contract SET value = after_tax + coalesce(maint_fee, 0) WHERE id = $1 AND (value IS NULL OR value = 0)', [hd.id]);
+  hd = await one('SELECT * FROM kd_contract WHERE id = $1', [hd.id]);
+  if (hk.length) did.push(`HĐ mua bán ${hd.number}: điền ${hk.length} thông tin còn trống`);
+  const sched = async (cid, parts) => {
+    if ((await one('SELECT count(*) n FROM kd_installment WHERE contract_id = $1 AND active', [cid])).n > 0) return false;
+    for (const [i, [name, amt, due]] of parts.entries()) await q('INSERT INTO kd_installment (contract_id, seq, name, due_on, amount, active) VALUES ($1, $2, $3, $4, $5, true)', [cid, i + 1, name, due, Math.round(amt)]);
+    return true;
+  };
+  const v = +hd.after_tax || +hd.value;
+  if (await sched(hd.id, [['Đợt 1 – 30% sau khi ký HĐ', v * 0.3, addD(-25)], ['Đợt 2 – 65% khi bàn giao', v * 0.65, addD(20)], ['Đợt 3 – 5% khi nhận sổ hồng', v * 0.05, addD(200)]])) did.push('lịch thu HĐ mua bán 3 đợt');
+  let ht = cts.find(c => c.kind === 'hoan_thien');
+  if (!ht) {
+    ht = (await C.create('contract', { ptype: 'can_ho', kind: 'hoan_thien', unit_id: u.id, customer_id: kid, contract_on: addD(-30), number: `${so4}/HĐTT/KH-${tower}`, value: +u.finish_value || 120000000 }, sysU, { system: true })).row;
+    did.push('HĐ thỏa thuận hoàn thiện');
+  }
+  if (await sched(ht.id, [['Đợt 1 – 50% gói hoàn thiện', +ht.value * 0.5, addD(-25)], ['Đợt 2 – 50% khi bàn giao', +ht.value * 0.5, addD(20)]])) did.push('lịch thu HĐ thỏa thuận');
+  let vay = cts.find(c => c.kind === 'vay');
+  if (!vay) {
+    vay = (await C.create('contract', { ptype: 'can_ho', kind: 'vay', unit_id: u.id, customer_id: kid, contract_on: addD(-30), loan_recv_on: addD(-29), term_months: 18, int_mode: 'lai_suat', loan_rate: 1,
+      number: `${so4}/HĐV/KH-${tower}`, value: Math.round(v * 0.7 / 1e6) * 1e6 }, sysU, { system: true })).row;
+    did.push('HĐ vay');
+    await q('DELETE FROM kd_installment WHERE contract_id = $1', [vay.id]);   // lịch tự lập khi tạo HĐ vay → thay bằng 4 đợt giải ngân
+  }
+  const tv = +vay.value;
+  if (await sched(vay.id, [['Giải ngân đợt 1', tv * 0.5, addD(-29)], ['Giải ngân đợt 2', tv * 0.25, addD(31)], ['Giải ngân đợt 3', tv * 0.15, addD(91)], ['Giải ngân đợt 4', tv * 0.1, addD(150)]])) did.push('4 đợt giải ngân HĐ vay');
+  const rc = async (ct, amt, no) => {
+    if (await one("SELECT 1 FROM kd_receipt WHERE contract_id = $1 AND status <> 'huy'", [ct.id])) return false;
+    await q("INSERT INTO kd_receipt (voucher_no, voucher_date, contract_id, unit_id, cust_code, cust_name, amount, content, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'hop_le')",
+      [no, addD(-24), ct.id, u.id, k.code, k.full_name, Math.round(amt), 'Thu đợt 1 (dữ liệu thử)']);
+    return true;
+  };
+  if (await rc(hd, v * 0.3, `PT-THU-${u.code}`)) did.push('phiếu thu đợt 1 HĐ mua bán');
+  if (await rc(ht, +ht.value * 0.5, `PT-THU-HT-${u.code}`)) did.push('phiếu thu đợt 1 HĐ thỏa thuận');
+  await C.audit({ q }, 'unit', u.id, 'du_lieu_thu_ho_so', null, null, user, did.join('; ') || 'đã đủ');
+  return { did };
+}
+module.exports = { demoFill, demoFillOn, saveTarget, BO, MAU_TNS, hsData, hsInfo, printHs, wordHs, merge, evalExpr };

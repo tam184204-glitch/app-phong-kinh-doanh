@@ -581,6 +581,19 @@ R('POST', '/api/template-preview', async (req, res, u) => send(res, 200, { html:
 // Bộ hồ sơ theo căn (12/11/2026): gõ mã căn → bộ hồ sơ theo bước, in cả bộ / tải Word
 const HS = require('./ho-so');
 R('GET', '/api/hs', async (req, res, u, p, qs) => send(res, 200, await HS.hsInfo(qs.unit, u)));
+R('POST', '/api/hs/:id/demo-fill', async (req, res, u, p) => send(res, 200, await HS.demoFill(p.id, u)));   // chỉ bản demo
+R('POST', '/api/hs/:id/save', async (req, res, u, p) => {   // in xong → lưu bản Word vào Kho hồ sơ (gắn vào hợp đồng của căn)
+  const b = await readJson(req), x = await HS.wordHs(p.id, b.tpl, u), t = await HS.saveTarget(p.id, b.bo);
+  const g = await C.get(t.ent, t.id, u); if (!g.perm.files) deny('Bạn không được đính kèm tệp cho hợp đồng này');
+  const dir = path.join(FILES, t.ent, String(g.row.id)); fs.mkdirSync(dir, { recursive: true });
+  const ver = (await one('SELECT coalesce(max(version),0)+1 AS v FROM kd_file WHERE ent = $1 AND rec_id = $2 AND kind = $3 AND name = $4', [t.ent, g.row.id, t.kind, x.name])).v;
+  const disk = path.join(dir, `${Date.now()}-${crypto.randomBytes(3).toString('hex')}-${safeName(x.name)}`);
+  fs.writeFileSync(disk, x.buf);
+  const r = await one('INSERT INTO kd_file (ent, rec_id, kind, name, mime, size, path, version, uploaded_by, is_demo) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, name, version',
+    [t.ent, g.row.id, t.kind, x.name, MIME['.docx'], x.buf.length, path.relative(FILES, disk), ver, u.id, g.row.is_demo]);
+  await C.audit({ q }, t.ent, g.row.id, 'tai_tep', null, null, u, `Bộ hồ sơ: ${x.name}${ver > 1 ? ` (phiên bản ${ver})` : ''}`, g.row.is_demo);
+  send(res, 200, { file: r, contract: g.row.number || g.row.code });
+});
 R('GET', '/print/hs/:id', async (req, res, u, p, qs) => {
   if (qs.fmt === 'docx') { const x = await HS.wordHs(p.id, qs.tpl, u); return sendFile(res, x.buf, x.name, MIME['.docx']); }
   send(res, 200, await HS.printHs(p.id, qs.tpl, u), { 'Content-Type': 'text/html; charset=utf-8' });
