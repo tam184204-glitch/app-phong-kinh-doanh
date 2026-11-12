@@ -5,6 +5,8 @@ let M = null;                 // meta từ máy chủ (/api/meta)
 const ST = { list: {} };
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+// 13/11/2026: trang in /print/… mở tab tách riêng (noopener) — hộp «In» của Chrome tạm dừng mọi tab dính opener, tab app bị đơ nút tới khi đóng tab in
+{ const o = window.open.bind(window); window.open = (u, t, f) => typeof u === 'string' && u.startsWith('/print/') && !/[?&]fmt=docx/.test(u) ? (o(u, t || '_blank', f ? f + ',noopener' : 'noopener'), null) : o(u, t, f); }
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fm = n => n == null || n === '' || isNaN(n) ? '' : Math.round(+n).toLocaleString('vi-VN');
 const fmB = n => { n = +n || 0; const a = Math.abs(n); return a >= 1e9 ? (n / 1e9).toLocaleString('vi-VN', { maximumFractionDigits: 2 }) + ' tỷ' : a >= 1e6 ? (n / 1e6).toLocaleString('vi-VN', { maximumFractionDigits: 1 }) + ' tr' : fm(n); };
@@ -2844,6 +2846,7 @@ async function hosoPanel(main, params = {}) {
     const hf = x.closest('[data-hf]'); if (hf) return window.open('/api/file/' + hf.dataset.hf, '_blank');
   });
   window.__ctgHsSaved = () => { if ($('#hsSv', main)?.isConnected) saved(); };   // trang in vừa «Lưu bản đã sửa vào kho»
+  if (!window.__ctgHsCh && window.BroadcastChannel) { window.__ctgHsCh = new BroadcastChannel('ctg-hs'); window.__ctgHsCh.addEventListener('message', e => { if (e.data?.t === 'saved') window.__ctgHsSaved?.(); }); }   // tab in mở tách riêng (noopener) báo về qua kênh
   if (S.unit) await load();
 }
 // ---------- In hàng loạt nhiều căn (12/11/2026) ----------

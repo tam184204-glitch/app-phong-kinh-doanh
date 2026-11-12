@@ -341,13 +341,32 @@ async function boot(pgliteUrl) {
     } catch (e) { win && win.close(); alert(e.message); }
   };
   const realOpen = window.open.bind(window);
-  window.open = (url, target, feat) => { if (!isApi(url)) return realOpen(url, target, feat); const w = realOpen('about:blank', target || '_blank', feat); openBlob(url, w); return w; };
+  // trang in: dựng xong mới mở tab blob tách riêng (noopener) — tab dính opener sẽ bị hộp «In» của Chrome làm đơ cả tab app (13/11/2026)
+  const isPrint = u => typeof u === 'string' && u.startsWith('/print/') && !/[?&]fmt=docx/.test(u);
+  const openPrint = async url => {
+    const t0 = Date.now();
+    try { window.toast?.('Đang dựng bản in…');
+      const r = await window.fetch(url); if (r.status === 302) return;
+      const href = URL.createObjectURL(await r.blob()), go = () => realOpen(href, '_blank', 'noopener');
+      if (Date.now() - t0 < 4000) go();   // còn trong thời gian Chrome cho mở tab từ cú bấm
+      else {   // dựng lâu quá 4 giây → Chrome chặn tự mở tab: hiện nút bấm mở
+        const b = document.createElement('button'); b.textContent = '🖨 Bản in đã xong — bấm để mở';
+        b.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:99999;padding:12px 18px;border:0;border-radius:10px;background:#1f4e8c;color:#fff;font:600 14px system-ui;box-shadow:0 6px 20px rgba(0,0,0,.25);cursor:pointer';
+        b.onclick = () => { b.remove(); go(); }; document.body.append(b); setTimeout(() => b.remove(), 120e3);
+      }
+      setTimeout(() => URL.revokeObjectURL(href), 30 * 60e3);
+    } catch (e) { alert(e.message); }
+  };
+  window.open = (url, target, feat) => { if (!isApi(url)) return realOpen(url, target, feat); if (isPrint(url)) { openPrint(url); return null; } const w = realOpen('about:blank', target || '_blank', feat); openBlob(url, w); return w; };
+  // tab in (blob, noopener) nhờ tab này chạy máy chủ: «Lưu bản đã sửa vào kho»
+  if (window.BroadcastChannel) { const ch = new BroadcastChannel('ctg-hs'); ch.onmessage = async e => { const m = e.data || {}; if (m.t !== 'req') return;
+    try { const r = await window.fetch(m.url, m.init); ch.postMessage({ t: 'res', id: m.id, ok: r.ok, body: await r.json() }); } catch (er) { ch.postMessage({ t: 'res', id: m.id, ok: false, body: { error: er.message } }); } }; }
   document.addEventListener('click', e => {
     const a = e.target.closest && e.target.closest('a[href]'); if (!a) return;
     const href = a.getAttribute('href'); if (!isApi(href)) return;
     e.preventDefault();
     if (a.hasAttribute('download') || /[?&]dl=1/.test(href)) openBlob(href, null, a.getAttribute('download') || 'tep-tai-ve');
-    else openBlob(href, a.target === '_blank' || !a.target ? realOpen('about:blank', '_blank') : null);
+    else if (isPrint(href)) openPrint(href); else openBlob(href, a.target === '_blank' || !a.target ? realOpen('about:blank', '_blank') : null);
   }, true);
   say('Đang mở giao diện…');
 }

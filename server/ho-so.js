@@ -325,10 +325,14 @@ async function printHs(unitId, codes, user, bo, custId) {
   const saveJs = `<script>(() => { const b = document.getElementById('hsSave'); if (!b) return;
     b.onclick = async () => { b.disabled = true; const t = b.textContent; b.textContent = 'Đang lưu…';
       try { const secs = [...document.querySelectorAll('section.hs')].map(s => { const c = s.cloneNode(true); c.querySelectorAll('.hs-t').forEach(x => x.remove()); return { code: s.dataset.code, html: c.innerHTML }; });
-        const f = (window.opener && !window.opener.closed && window.opener.fetch) ? window.opener.fetch.bind(window.opener) : fetch;   // bản demo: máy chủ chạy trong tab gốc
-        const r = await f('/api/hs/${+unitId}/save-html', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bo: ${JSON.stringify(bo || '')}, cust: ${+custId || 0}, docs: secs }) });
-        const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Không lưu được');
-        b.textContent = '✓ Đã lưu «' + j.file.name + '»'; try { window.opener && window.opener.__ctgHsSaved && window.opener.__ctgHsSaved(); } catch (e) {}
+        const url = '/api/hs/${+unitId}/save-html', init = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bo: ${JSON.stringify(bo || '')}, cust: ${+custId || 0}, docs: secs }) };
+        // tab in mở tách riêng (noopener) để hộp «In» không làm đơ tab app → bản demo (trang blob:) nhờ tab app chạy máy chủ qua BroadcastChannel
+        const j = location.protocol === 'blob:' ? await new Promise((ok, no) => { const ch = new BroadcastChannel('ctg-hs'), id = Math.random().toString(36).slice(2);
+            const tm = setTimeout(() => { ch.close(); no(new Error('Không kết nối được tab ứng dụng — mở lại tab ứng dụng rồi bấm Lưu lại')); }, 60000);
+            ch.onmessage = e => { const m = e.data || {}; if (m.t !== 'res' || m.id !== id) return; clearTimeout(tm); ch.close(); m.ok ? ok(m.body) : no(new Error((m.body && m.body.error) || 'Không lưu được')); };
+            ch.postMessage({ t: 'req', id, url, init }); })
+          : await fetch(url, init).then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Không lưu được'); return j; });
+        b.textContent = '✓ Đã lưu «' + j.file.name + '»'; try { const ch = new BroadcastChannel('ctg-hs'); ch.postMessage({ t: 'saved' }); ch.close(); } catch (e) {}
         setTimeout(() => { b.textContent = t; b.disabled = false; }, 4000);
       } catch (e) { alert(e.message); b.textContent = t; b.disabled = false; } };
   })()</` + `script>`;
