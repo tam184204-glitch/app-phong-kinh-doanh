@@ -814,6 +814,84 @@ H.sale_notice = {
   },
 };
 
+// ===== Thông báo bàn giao căn hộ (13/11/2026) =====
+// đợt bàn giao của HĐMB = kỳ thu (không phải phí bảo trì) có chữ «bàn giao» trong tên đợt
+const BG_RE = /b[àa]n\s*giao/i;
+const bgCodes = v => String(v || '').split(/[,;\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+const bgDue = r => { const b = r.pay_from === 'thong_bao' ? r.notice_on : r.handover_on; return b ? C.addDays(String(b).slice(0, 10), +r.pay_days || 0) : null; };
+// mọi căn của tòa + HĐMB đã ký + đợt bàn giao + hạn hiện tại / hạn mới + căn đã thuộc thông báo khác
+async function bgRows(db, r) {
+  if (!r.building_id) return [];
+  const us = await db.q('SELECT id, code, floor FROM kd_unit WHERE building_id = $1 ORDER BY floor NULLS LAST, code', [+r.building_id]);
+  if (!us.length) return [];
+  const cts = await db.q(`SELECT DISTINCT ON (c.unit_id) c.id, c.unit_id, c.number, c.contract_on, k.full_name, k.code kcode FROM kd_contract c LEFT JOIN kd_customer k ON k.id = c.customer_id
+    WHERE c.unit_id = ANY($1) AND c.kind = 'hdmb' AND c.status = 'da_ky' ORDER BY c.unit_id, c.id DESC`, [us.map(u => u.id)]);
+  const ins = cts.length ? await db.q('SELECT id, contract_id, seq, name, due_on, amount FROM kd_installment WHERE contract_id = ANY($1) AND active AND NOT coalesce(is_maint, false) ORDER BY contract_id, seq', [cts.map(c => c.id)]) : [];
+  const other = await db.q("SELECT id, code, doc_no, unit_list, handover_on FROM kd_handover_notice WHERE building_id = $1 AND status IN ('nhap', 'cho_duyet', 'da_duyet') AND id <> $2", [+r.building_id, +r.id || 0]);
+  const ctOf = new Map(cts.map(c => [c.unit_id, c])), due = bgDue(r);
+  return us.map(u => {
+    const c = ctOf.get(u.id), i = c && ins.find(x => x.contract_id === c.id && BG_RE.test(x.name || '')), o = other.find(n => bgCodes(n.unit_list).includes(u.code.toUpperCase()));
+    return { id: u.id, code: u.code, floor: u.floor, contract_id: c?.id || null, number: c?.number || '', contract_on: c?.contract_on || null, customer: c ? `${c.full_name || ''}${c.kcode ? ' · ' + c.kcode : ''}` : '',
+      inst_id: i?.id || null, inst_name: i?.name || '', amount: i ? +i.amount : null, due_old: i?.due_on || null, due_new: i ? due : null, other: o ? (o.doc_no || o.code) : '' };
+  });
+}
+async function bgSuggest(db, qs) {
+  const r = { id: +qs.id || 0, building_id: +qs.building || 0, handover_on: qs.on || null, notice_on: qs.notice || null, pay_from: qs.from || 'ban_giao', pay_days: +qs.days || 0 };
+  const rows = await bgRows(db, r);
+  const first = r.building_id ? await db.one("SELECT min(handover_on) d FROM kd_handover_notice WHERE building_id = $1 AND status = 'da_duyet' AND id <> $2", [r.building_id, r.id]) : null;
+  return { rows, due: bgDue(r), bg_from: first?.d || null };
+}
+H.handover_notice = {
+  noDelete: r => !['nhap', 'tu_choi'].includes(r.status) && 'Chỉ xóa được thông báo đang ở bản nháp / bị từ chối',
+  async beforeSave(r, old, { db }) {
+    const b = r.building_id && await db.one('SELECT project_id FROM kd_building WHERE id = $1', [+r.building_id]);
+    if (b && r.project_id && +b.project_id !== +r.project_id) bad('Tòa không thuộc dự án đã chọn');
+    if (r.pay_days != null && +r.pay_days < 0) bad('Số ngày được nộp tiền không được âm');
+    if (r.unit_list != null) r.unit_list = bgCodes(r.unit_list).join(',');
+    if (!r.unit_list) bad('Tích chọn ít nhất 1 căn hộ bàn giao');
+    const rows = await bgRows(db, r), pick = new Set(bgCodes(r.unit_list)), dup = rows.filter(x => pick.has(x.code.toUpperCase()) && x.other);
+    if (dup.length) bad(`Căn đã có trong thông báo bàn giao khác: ${dup.slice(0, 8).map(x => `${x.code} (${x.other})`).join(', ')}`);
+    const bad1 = [...pick].filter(c => !rows.some(x => x.code.toUpperCase() === c));
+    if (bad1.length) bad(`Căn không thuộc tòa đã chọn: ${bad1.slice(0, 8).join(', ')}`);
+  },
+  async onSubmit(r, { db }) { const rows = await bgRows(db, r), pick = new Set(bgCodes(r.unit_list)); if (!rows.some(x => pick.has(x.code.toUpperCase()) && x.inst_id)) bad('Chưa căn nào trong thông báo có HĐMB đã ký với đợt thu «bàn giao»'); },
+  // phát hành: hạn thu đợt bàn giao của từng HĐMB = hạn mới (ghi lại hạn cũ để hủy thông báo thì trả về)
+  async afterApprove(r, ok, { db, user }) {
+    if (!ok) return;
+    const pick = new Set(bgCodes(r.unit_list)), applied = [];
+    for (const x of (await bgRows(db, r)).filter(x => pick.has(x.code.toUpperCase()) && x.inst_id && x.due_new)) {
+      if (String(x.due_old).slice(0, 10) !== x.due_new) {
+        await db.q('UPDATE kd_installment SET due_on = $1 WHERE id = $2', [x.due_new, x.inst_id]);
+        await C.audit(db, 'contract', x.contract_id, 'han_dot_ban_giao', { due_on: x.due_old }, { due_on: x.due_new }, user, `${x.inst_name}: hạn thu theo thông báo bàn giao ${r.doc_no || r.code}`);
+      }
+      applied.push({ inst: x.inst_id, ct: x.contract_id, unit: x.code, old: x.due_old ? String(x.due_old).slice(0, 10) : null, new: x.due_new });
+    }
+    await db.q('UPDATE kd_handover_notice SET applied = $1 WHERE id = $2', [JSON.stringify(applied), r.id]);
+  },
+  acts: {
+    async revoke(r, d, { db, user }) {
+      let back = 0;
+      for (const a of r.applied || []) {
+        const i = await db.one('SELECT due_on FROM kd_installment WHERE id = $1', [a.inst]);
+        if (!i || !a.old || String(i.due_on).slice(0, 10) !== a.new) continue;   // đã sửa tay sau khi phát hành → giữ
+        await db.q('UPDATE kd_installment SET due_on = $1 WHERE id = $2', [a.old, a.inst]); back++;
+        await C.audit(db, 'contract', a.ct, 'han_dot_ban_giao', { due_on: a.new }, { due_on: a.old }, user, `Hủy thông báo bàn giao ${r.doc_no || r.code}: trả hạn thu đợt bàn giao`);
+      }
+      return { patch: { status: 'huy' }, msg: `Đã hủy thông báo — trả lại hạn thu đợt bàn giao của ${back} hợp đồng` };
+    },
+  },
+  async decorate(rows, { db, one }) {
+    if (!rows.length) return;
+    const first = new Map((await db.q("SELECT building_id, min(handover_on) d FROM kd_handover_notice WHERE status = 'da_duyet' AND building_id = ANY($1) GROUP BY 1", [[...new Set(rows.map(r => r.building_id).filter(Boolean))]])).map(x => [x.building_id, x.d]));
+    for (const r of rows) {
+      const pick = new Set(bgCodes(r.unit_list)), bs = (await bgRows(db, r)).filter(x => pick.has(x.code.toUpperCase()));
+      r.n_units = bs.length; r.n_hd = bs.filter(x => x.inst_id).length; r.bg_amount = bs.reduce((s, x) => s + (+x.amount || 0), 0);
+      r.bg_from = first.get(r.building_id) || null;
+      if (one) r._bg = bs.map(x => { const a = (r.applied || []).find(y => y.inst === x.inst_id); return a ? { ...x, due_old: a.old, due_new: a.new } : x; });
+    }
+  },
+};
+
 H.cancel_req = {
   async beforeSave(r, old, { db }) {
     // thông tin khách hàng theo hợp đồng / phiếu giữ chỗ (chọn lại thì lấy lại); số tiền đề nghị để trống = số khách đã nộp
@@ -1505,4 +1583,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { bgSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

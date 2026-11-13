@@ -550,6 +550,7 @@ R('GET', '/api/handover-templates', async (req, res, u, p, qs) => send(res, 200,
 R('GET', '/print/handover/:kind/:id', async (req, res, u, p, qs) => send(res, 200, await M4.printHandover(p.kind, p.id, u, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 // phiếu đề nghị hủy / đổi: tự điền theo hợp đồng / phiếu giữ chỗ
 R('GET', '/api/voucher-prefill', async (req, res, u, p, qs) => { if (!can(u, M.E.receipt, 'c') && !can(u, M.E.payment, 'c')) C.deny(); send(res, 200, await B.voucherPrefill({ q, one }, qs)); });
+R('GET', '/api/handover-notice/suggest', async (req, res, u, p, qs) => { if (!can(u, M.E.handover_notice, 'c') && !can(u, M.E.handover_notice, 'u') && !can(u, M.E.handover_notice, 'r')) C.deny(); send(res, 200, await B.bgSuggest({ q, one }, qs)); });   // thông báo bàn giao: gợi ý căn có HĐMB đã ký + hạn thu đợt bàn giao
 R('GET', '/api/cancel_prefill', async (req, res, u, p, qs) => { if (!can(u, M.E.cancel_req, 'c') && !can(u, M.E.cancel_req, 'u')) C.deny(); send(res, 200, await B.cancelPrefill({ q, one }, qs)); });
 // bên bán theo tên (Bên A): thông tin mặc định + ô đã ghi ở hợp đồng gần nhất cùng Bên A
 // thông tin bên bán: ghi nhớ theo từng Bên A ngay khi nhập (kd_setting.seller_info_v2), không phụ thuộc hợp đồng có lưu được hay không; chưa nhập thì lấy giá trị gần nhất trên hợp đồng

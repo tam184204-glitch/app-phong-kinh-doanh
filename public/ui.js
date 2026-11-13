@@ -80,8 +80,53 @@ function pill(label, color) { return `<span class="pill ${color || ''}">${esc(la
 const unitsTable = us => { const d1 = v => v == null ? '' : (+v).toLocaleString('vi-VN', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   return `<div class="small muted mb">${us.length} căn</div><div class="tbl-wrap ds-can"><table class="t compact noclick"><thead><tr><th class="center">STT</th><th class="center">Mã căn hộ</th><th class="center">Diện tích thông thủy</th><th class="center">Diện tích xây dựng</th></tr></thead>
     <tbody>${us.map((u, i) => `<tr><td class="center">${i + 1}</td><td class="center">${esc(u.code)}</td><td class="center">${d1(u.area_tt)}</td><td class="center">${d1(u.area_xd)}</td></tr>`).join('')}</tbody></table></div>`; };
+
+// ---------- Thông báo bàn giao (13/11/2026): bảng căn của tòa + HĐMB đã ký + đợt bàn giao, hạn hiện tại → hạn mới ----------
+const bgTable = (rs, { pick, sel } = {}) => {
+  const d = v => v ? dmy(String(v).slice(0, 10)) : '';
+  return `<div class="tbl-wrap bg-t"><table class="t compact noclick"><thead><tr>${pick ? '<th style="width:30px"></th>' : ''}<th>Mã căn</th><th>Khách hàng</th><th>Số HĐMB</th><th>Ngày ký</th><th>Đợt bàn giao</th><th class="num">Số tiền</th><th>Hạn hiện tại</th><th>Hạn thu mới</th><th>Ghi chú</th></tr></thead><tbody>
+    ${rs.map(x => { const on = pick && sel.has(x.code.toUpperCase()), chg = x.due_new && String(x.due_old || '').slice(0, 10) !== x.due_new;
+      return `<tr${on ? ' class="sel"' : ''}>${pick ? `<td><input type="checkbox" data-bgu="${esc(x.code)}" ${on ? 'checked' : ''} ${x.other ? 'disabled' : ''}></td>` : ''}<td>${esc(x.code)}</td><td>${esc(x.customer || '')}</td><td>${esc(x.number || '')}</td><td>${d(x.contract_on)}</td>
+        <td>${x.inst_name ? esc(x.inst_name) : x.contract_id ? '<span class="hs-miss">HĐMB chưa có đợt «bàn giao»</span>' : '<span class="muted">Chưa có HĐMB đã ký</span>'}</td><td class="num">${x.amount != null ? fm(x.amount) : ''}</td>
+        <td>${d(x.due_old)}</td><td>${x.due_new ? `<b${chg ? ' style="color:var(--cobalt)"' : ''}>${d(x.due_new)}</b>` : ''}</td><td class="small">${x.other ? `<span class="hs-miss">Đã có trong TB ${esc(x.other)}</span>` : ''}</td></tr>`; }).join('')}
+    </tbody></table></div>`;
+};
+async function bgPicker(el, form) {
+  const hid = $('input[type=hidden]', el), box = $('.upick-bd', el), F = k => M.ents.handover_notice.fields.find(f => f.k === k);
+  const val = k => readField(form, F(k));
+  let rows = [], key = '', auto = !hid.value, sel = new Set(String(hid.value).toUpperCase().split(/[,;\s]+/).filter(Boolean)), first = null;
+  const draw = () => {
+    if (!val('building_id')) { box.innerHTML = '<div class="muted small">Chọn dự án và mã tòa — app tự hiện các căn có HĐMB đã ký để tích.</div>'; return; }
+    if (!rows.length) { box.innerHTML = '<div class="muted small">Tòa này chưa có căn hộ.</div>'; return; }
+    box.innerHTML = `<div class="upick-sum">${sumHtml()}</div>
+      ${val('handover_on') ? '' : '<div class="small hs-miss">Điền «Ngày bàn giao» để xem hạn thu mới của đợt bàn giao.</div>'}${bgTable(rows, { pick: true, sel })}`;
+  };
+  const sumHtml = () => { const on = rows.filter(x => sel.has(x.code.toUpperCase())), hd = on.filter(x => x.inst_id), tot = hd.reduce((s, x) => s + (+x.amount || 0), 0);
+    return `<b>Đã chọn ${on.length}/${rows.length} căn</b> · ${hd.length} HĐMB có đợt bàn giao · tiền đợt bàn giao ${fm(tot)} đ
+      ${first ? ` · <span class="hs-ok">tòa đã bàn giao từ ${dmy(String(first).slice(0, 10))}</span>` : ''}<span class="grow"></span>
+      <button type="button" class="btn sm" data-bga="hd">Chọn căn có HĐMB đã ký</button><button type="button" class="btn sm" data-bga="1">Chọn tất cả</button><button type="button" class="btn sm ghost" data-bga="0">Bỏ chọn hết</button>`; };
+  const setHid = () => { hid.value = rows.filter(x => sel.has(x.code.toUpperCase())).map(x => x.code).join(','); };
+  const setSel = s => { sel = s; setHid(); draw(); };
+  const load = async () => {
+    const qs = new URLSearchParams({ id: form.dataset.id || '', building: val('building_id') || '', on: val('handover_on') || '', notice: val('notice_on') || '', from: val('pay_from') || 'ban_giao', days: val('pay_days') ?? 0 });
+    if (qs.toString() === key) return; const bChanged = !key.includes(`building=${qs.get('building')}&`); key = qs.toString();
+    if (!qs.get('building')) { rows = []; draw(); return; }
+    const r = await api('GET', '/api/handover-notice/suggest?' + qs); rows = r.rows; first = r.bg_from;
+    if (bChanged && (auto || !rows.some(x => sel.has(x.code.toUpperCase())))) { auto = true; setSel(new Set(rows.filter(x => x.inst_id && !x.other).map(x => x.code.toUpperCase()))); } else draw();
+  };
+  let tm = 0; const soon = () => { clearTimeout(tm); tm = setTimeout(() => load().catch(e => toast(e.message, true)), 250); };
+  form.addEventListener('change', e => { if (['project_id', 'building_id', 'handover_on', 'notice_on', 'pay_from', 'pay_days'].includes(e.target.name)) soon(); });
+  form.addEventListener('input', e => { if (['handover_on', 'notice_on', 'pay_days'].includes(e.target.name)) soon(); });
+  // tích 1 căn: chỉ cập nhật dòng + dòng tổng (không vẽ lại bảng → giữ chỗ đang cuộn)
+  box.addEventListener('change', e => { const c = e.target; if (!c.dataset.bgu) return; e.stopPropagation(); auto = false; const k = c.dataset.bgu.toUpperCase(); c.checked ? sel.add(k) : sel.delete(k);
+    setHid(); c.closest('tr').classList.toggle('sel', c.checked); $('.upick-sum', box).innerHTML = sumHtml(); });
+  box.addEventListener('click', e => { const b = e.target.closest('[data-bga]'); if (!b) return; auto = false;
+    setSel(new Set(rows.filter(x => !x.other && (b.dataset.bga === '1' || (b.dataset.bga === 'hd' && x.inst_id))).map(x => x.code.toUpperCase()))); });
+  await load();
+}
 function show(f, row, { plain } = {}) {
   if (f.pick === 'units' && Array.isArray(row._units) && !plain) return unitsTable(row._units);
+  if (f.pick === 'bg_units' && Array.isArray(row._bg) && !plain) return `<div class="small muted mb">${row._bg.length} căn · hạn thu đợt bàn giao ${row.status === 'da_duyet' ? 'đã cập nhật vào HĐMB' : 'sẽ cập nhật khi phát hành'}</div>` + bgTable(row._bg);
   const v = row[f.k];
   if (v == null || v === '') return plain ? '' : '<span class="muted">—</span>';
   switch (f.t) {
@@ -113,7 +158,7 @@ function retCell(k, r) {
   const fs = r.ret_files || [];
   return `<div class="ret-f">${fs.map(f => `<span class="ret-fi"><a href="/api/file/${f.id}" target="_blank" rel="noopener" title="${esc(f.name)}">${ico(/\.pdf$/i.test(f.name) ? 'fa-file-pdf' : /\.(png|jpe?g|webp)$/i.test(f.name) ? 'fa-file-image' : 'fa-file')} ${esc(f.name)}</a><button type="button" data-retdel="${f.id}" title="Xóa tệp">×</button></span>`).join('')}<button type="button" class="btn sm" data-retup>${ico('fa-paperclip')} ${fs.length ? 'Thêm' : 'Đính kèm'}</button></div>`;
 }
-const VIRT_MONEY = new Set(['paid', 'actual', 'gap']), VIRT_NUM = new Set(['n_units', 'n_reg', 'n_free']);
+const VIRT_MONEY = new Set(['paid', 'actual', 'gap', 'bg_amount']), VIRT_NUM = new Set(['n_units', 'n_reg', 'n_free', 'n_hd']);
 function cell(ent, k, row) {
   const f = M.ents[ent].fields.find(x => x.k === k);
   if (ent === 'reservation' && RET_COLS.includes(k)) return { html: retCell(k, row) };
@@ -125,6 +170,7 @@ function cell(ent, k, row) {
   if (k === 'prints') return { html: `<span class="nowrap"><button type="button" class="btn sm" data-print="dang_ky_can" title="In bản đăng ký căn hộ (chọn mẫu in)">${ico('fa-print')} Căn hộ</button> <button type="button" class="btn sm" data-print="dang_ky_noi_that" title="In bản đăng ký nội thất (chọn mẫu in)">${ico('fa-couch')} Nội thất</button></span>` };
   if (k === 'bbgn') return { html: `<button type="button" class="btn sm" data-bbgn title="In biên bản bàn giao tài liệu hồ sơ mua nhà (chọn mẫu Cát Tường / Thống Nhất)">${ico('fa-file-signature')} Biên bản</button>` };
   if (k === 'created_at') return { html: dmy(v) };
+  if (k === 'bg_from') return { html: v ? `<b>${dmy(String(v).slice(0, 10))}</b>` : '' };
   if (VIRT_NUM.has(k)) return { html: v == null ? '' : fnum(v), num: true };
   if (VIRT_MONEY.has(k)) return { html: v == null ? '' : `<span class="${k === 'gap' ? (v < 0 ? 'neg' : v > 0 ? 'pos' : '') : ''}">${fm(v)}</span>`, num: true };
   if (k === 'promise_st') return { html: v ? pill(v, /Thất/.test(v) ? 'r' : /Đúng/.test(v) ? 'g' : /một phần/.test(v) ? 'a' : 'b') : '' };
@@ -191,6 +237,7 @@ function input(f, v, rec = {}, { ro, id } = {}) {
   const nm = `name="${f.k}" data-t="${f.t}" id="${id || 'f_' + f.k}"`;
   if (ro) return `<div class="ro">${show(f, rec)}</div>`;
   if (f.upload) return `<div class="upfile"><input type="file" accept="${f.upload}" ${nm}>${v ? `<span class="small muted">Đang có: ${esc(v)} — chọn tệp mới để thay</span>` : ''}</div>`;
+  if (f.pick === 'bg_units') return `<div class="upick" data-pick-bg><input type="hidden" ${nm} value="${esc(v ?? '')}"><div class="upick-bd"></div></div>`;
   if (f.pick === 'units') return `<div class="upick" data-pick-units><input type="hidden" ${nm} value="${esc(v ?? f.def ?? '*')}"${f.def === '' ? ' data-none' : ''}><div class="upick-bd"></div></div>`;   // def '' = chưa chọn căn nào
   switch (f.t) {
     case 'long': return `<textarea ${nm} rows="3">${esc(v ?? '')}</textarea>`;
@@ -795,10 +842,11 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   const canSubmit = E.flow && !E.flow.custom && !E.direct && !id && E.flow.submit.includes(E.fields.find(f => f.k === E.flow.field)?.def);
   const m = modal({ title: title || (id ? `Sửa ${E.one} ${esc(rec.code || rec.number || '')}` : `${E.code ? `<span class="tag">${E.code}</span> ` : ''}Tạo ${E.one}`), wide: fields.length > 8 || fields.some(wide),
     body, foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="fSave">${ico('fa-floppy-disk')} ${id ? 'Lưu' : E.direct ? `Lưu ${E.one}` : 'Lưu nháp'}</button>${canSubmit ? `<button class="btn amb" id="fSub">${ico('fa-paper-plane')} Lưu và ${esc((E.flow.submitLabel || 'trình duyệt').toLowerCase())}</button>` : ''}` });
-  const form = $('form', m.el);
+  const form = $('form', m.el); if (id) form.dataset.id = id;   // id bản ghi cho bảng chọn căn (thông báo bàn giao)
   $('.mf', m.el).insertAdjacentHTML('afterend', traceLine(trace));
   for (const ev of ['click', 'focusin']) form.addEventListener(ev, e => { const d = e.target.closest('.fld[data-f]'); if (d) traceField($('.trace', m.el), trace, d.dataset.f, E.fields.find(f => f.k === d.dataset.f)?.l || ''); });
   let htp = null;
+  if (ent === 'handover_notice') $('.modal', m.el).classList.add('full');   // bảng căn bàn giao nhiều cột
   if (ent === 'contract') { bravoLayout(form, HD_LAYOUT); $('.modal', m.el).classList.add('full'); if (rec.kind !== 'hoan_thien') htp = hdPair(form, { ht: htRec, locked: htLocked, tab, draft: htDraft, oldFinish: +rec.finish_value > 0, kind: rec.kind, debt: rec._debt, rec0: rec }); }
   const sch = $('[data-sched]', form);
   if (sch) schedEditor(sch, rec.new_schedule || [], { mdot: () => rec.maint_dot ?? 3, maint: () => ent === 'contract' && ['hdmb', 'thue_mua'].includes(form.elements.kind?.value ?? rec.kind) ? readField(form, E.fields.find(f => f.k === 'maint_fee')) || 0 : null, total: () => ent === 'contract' ? readField(form, E.fields.find(f => f.k === 'value')) || 0 : readField(form, E.fields.find(f => f.k === 'value_after')) || rec.value_before || 0, first: ent === 'contract' ? () => { const kd = $('[name=kind]', form)?.value ?? rec.kind; return readField(form, E.fields.find(f => f.k === (kd === 'thue' ? 'eff_on' : kd === 'vay' && form.elements.loan_recv_on?.value ? 'loan_recv_on' : 'contract_on'))); } : null });
@@ -1048,6 +1096,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     for (const [k, v] of Object.entries(out)) if (form.elements[k]) form.elements[k].value = moneyStr(v);
   });
   $$('[data-pick-units]', form).forEach(el => unitPicker(el, form).catch(e => toast(e.message, true)));
+  $$('[data-pick-bg]', form).forEach(el => bgPicker(el, form).catch(e => toast(e.message, true)));
   if (ckF && !id) { fillCheck(); form.addEventListener('change', e => { if (e.target.name === ckF.srcBy || e.target.name === 'reg_kind') fillCheck(); }); }
   vis();
   const errBox = $('#ferr', m.el);
@@ -1160,7 +1209,7 @@ const tplPlaces = () => M.ents.template?.fields.find(f => f.k === 'ent')?.o || [
 const tplOn = ent => tplPlaces().some(o => o[0] === ent);
 const tplPlace = ent => tplPlaces().find(o => o[0] === ent)?.[1] || ent;
 // loại mẫu mặc định khi tạo trong module (loại = bộ in riêng cũ của hợp đồng, đơn đăng ký, biên bản giao nhận, thông báo mở bán)
-const TPL_KIND0 = { contract: 'hop_dong', contract_change: 'phu_luc', handover: 'bien_ban', defect: 'bien_ban', reservation: 'de_nghi', noxh_check: 'bien_ban_giao_nhan', sale_notice: 'thong_bao', notice: 'thong_bao', report: 'bao_cao', target: 'bao_cao', receipt: 'de_nghi', payment: 'de_nghi', pinkbook: 'de_nghi' };
+const TPL_KIND0 = { contract: 'hop_dong', contract_change: 'phu_luc', handover: 'bien_ban', defect: 'bien_ban', reservation: 'de_nghi', noxh_check: 'bien_ban_giao_nhan', sale_notice: 'thong_bao', handover_notice: 'thong_bao', notice: 'thong_bao', report: 'bao_cao', target: 'bao_cao', receipt: 'de_nghi', payment: 'de_nghi', pinkbook: 'de_nghi' };
 // mẫu dùng bộ in riêng (trường trộn riêng, xem chú thích ô Nội dung mẫu) — còn lại in bằng bộ in chung
 const tplSpecial = t => (t.ent === 'reservation' && ['dang_ky_can', 'dang_ky_noi_that'].includes(t.kind)) || (['reservation', 'noxh_check'].includes(t.ent) && t.kind === 'bien_ban_giao_nhan') || (t.ent === 'sale_notice' && t.kind === 'thong_bao' && /^TB-MOBAN/i.test(t.code || ''));
 function tplUrl(ent, id, t) {
