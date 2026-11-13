@@ -1840,3 +1840,9 @@ label.tplr { display: flex; gap: 8px; align-items: center; padding: 7px 0; }
 /* đợt bàn giao (13/11/2026) */
 .sched-bg{white-space:nowrap;vertical-align:top} .sched-bg .chk{font-weight:600}
 .bg-dot select{max-width:260px;height:30px} .bg-dot select.bg-none{border-color:#dc2626;color:#dc2626}
+
+/* thông báo bàn giao: nhiều đợt / căn */
+.bg-its{display:grid;gap:3px;min-width:520px}
+.bg-it{display:grid;grid-template-columns:minmax(160px,1fr) 118px 110px 170px;gap:8px;align-items:center;font-size:12.5px}
+.bg-it .bg-n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .bg-it .bg-a{text-align:right} .bg-it .bg-d input{width:48px;height:26px;text-align:right}
+.bg-its select{max-width:300px;height:28px;font-size:12.5px} .bg-its select.bg-none{border-color:#dc2626;color:#dc2626}
