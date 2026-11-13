@@ -1151,7 +1151,12 @@ H.contract = {
     if (old && r.kind !== 'hoan_thien' && ['plan_sign', 'sign_place', 'sign_status'].some(k => String(old[k] ?? '') !== String(r[k] ?? '')))
       await db.q(`UPDATE kd_noxh_check SET plan_sign = $1, sign_place = $2, sign_status = coalesce($3, sign_status), updated_at = now() WHERE customer_id = $4 AND (unit_id IS NULL OR unit_id = $5)`,
         [r.plan_sign ?? null, r.sign_place ?? null, r.sign_status ?? null, r.customer_id, r.unit_id]);
-    if (sched?.length && ['du_thao', 'tu_choi', 'cho_duyet', 'cho_ky'].includes(r.status)) {   // ghi lịch thu khi khác lịch đang có
+    if (sched?.length && ['thanh_ly', 'huy'].includes(r.status)) {   // HĐ đã thanh lý / hủy: không đổi lịch thu
+      const cur0 = await db.q('SELECT seq, name, due_on, pct, amount, is_maint FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [r.id]);
+      const k0 = xs => JSON.stringify(xs.map(x => [x.name, String(x.due_on).slice(0, 10), x.pct == null ? null : +x.pct, +x.amount, !!x.is_maint]));
+      if (k0(cur0) !== k0(sched)) bad('Hợp đồng đã thanh lý / hủy — không sửa Lần thanh toán');
+    }
+    if (sched?.length && ['du_thao', 'tu_choi', 'cho_duyet', 'cho_ky', 'da_ky'].includes(r.status)) {   // ghi lịch thu khi khác lịch đang có (13/11/2026: HĐ đã ký vẫn sửa được)
       const cur = await db.q('SELECT name, due_on, pct, amount, is_maint FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [r.id]);
       const key = xs => JSON.stringify(xs.map(x => [x.name, String(x.due_on).slice(0, 10), x.pct == null ? null : +x.pct, +x.amount, !!x.is_maint]));
       if (key(cur) !== key(sched)) await writeSchedule(db, r.id, sched, 'hop_dong', user, demo);

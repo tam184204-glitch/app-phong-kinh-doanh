@@ -434,7 +434,10 @@ async function update(entKey, id, input, user, opts = {}) {
     requireFields(e, rec);
     if (opts.check) return { ok: true, warnings: ctx.warn };
     const keys = Object.keys(rec).filter(k => F[entKey][k] && JSON.stringify(rec[k]) !== JSON.stringify(old[k]));
-    if (!keys.length) return { row: old, warnings: ctx.warn };
+    if (!keys.length) {   // chỉ sửa phần không nằm ở cột (vd. Lần thanh toán của HĐ → kd_installment): vẫn chạy afterSave để ghi
+      if (ctx.sched && H[entKey]?.afterSave) await H[entKey].afterSave(old, old, ctx);
+      return { row: ctx.sched ? await raw(db, entKey, old.id) : old, warnings: ctx.warn };
+    }
     const vals = keys.map(k => { const f = F[entKey][k]; return (f.t === 'check' || f.t === 'json') && rec[k] != null ? JSON.stringify(rec[k]) : rec[k]; });
     const row = await db.one(`UPDATE ${e.table} SET ${keys.map((k, i) => `${k} = $${i + 1}`).join(', ')}, updated_by = $${keys.length + 1}, updated_at = now() WHERE id = $${keys.length + 2} RETURNING *`,
       [...vals, user?.id ?? null, old.id]);
