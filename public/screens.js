@@ -1742,7 +1742,8 @@ V.debtsum = async main => {
       <tbody>${body}</tbody><tfoot>${sumTds('Tổng cộng:', rs, 'ds-tot')}</tfoot></table></div>`;
   };
   const load = async () => {
-    d = await api('GET', '/api/debt-summary?' + qsOf({ project: f.project, building: f.building, sign: s.sign, to: s.to, from: s.from, cond: s.cond }));
+    const ok = latest(main), r = await api('GET', '/api/debt-summary?' + qsOf({ project: f.project, building: f.building, sign: s.sign, to: s.to, from: s.from, cond: s.cond }));
+    if (!ok()) return; d = r;
     $('#srcLine', main).innerHTML = `<span>${ico('fa-database')} Thực thu đồng bộ Bravo${d.bravo_sync ? ' — chốt ' + dmyhm(d.bravo_sync) : ''}</span><span>Số liệu đến ${dmy(d.to)} · thu phát sinh từ ${dmy(d.from)}</span>`;
     draw(); drawFlt();
   };
@@ -1978,6 +1979,8 @@ V.unitstatus = async main => {
 // CN-07 theo dõi hợp đồng: chọn loại HĐ — vay (lãi & gốc trả khách) · thuê · mua bán · hoàn thiện (công nợ khách phải trả)
 const CT_KINDS = [['tonghop', 'Bảng tổng hợp', 'fa-table-list'], ['hdmb', 'HĐ mua bán', 'fa-file-signature'], ['hoan_thien', 'HĐ hoàn thiện căn hộ', 'fa-couch'], ['thue', 'HĐ thuê / thuê mua', 'fa-key'], ['vay', 'HĐ vay', 'fa-hand-holding-dollar']];   // 06/11/2026: HĐMB, hoàn thiện lên đầu
 const ctKindBar = k => `<div class="card mb"><div class="tabs" style="border-bottom:0">${CT_KINDS.map(([v, l, ic]) => `<button data-kind="${v}" class="${k === v ? 'on' : ''}">${ico(ic)} ${l}</button>`).join('')}</div></div>`;
+// 16/11/2026: chỉ vẽ kết quả của lần tải mới nhất trên khung — đổi tab khi bảng cũ đang tính / gõ ngày từng chữ số → kết quả cũ về sau không ghi đè (lỗi «Cannot set properties of null»)
+const latest = main => { const n = main._ld = (main._ld || 0) + 1; return () => main._ld === n; };
 const ctKindClick = (e, main) => { const b = e.target.closest('[data-kind]'); if (!b) return false; (ST.ctkind ||= {}).kind = b.dataset.kind; V.loantrack(main); return true; };
 V.loantrack = async main => { const k = (ST.ctkind ||= { kind: 'tonghop' }).kind; return k === 'tonghop' ? V.debtsum(main) : k === 'vay' ? loanView(main) : ctTrack(main, k); };   // Theo dõi công nợ (06/11/2026): tab Bảng tổng hợp đầu tiên
 // HĐ vay: gốc khách đã chuyển, lãi / gốc công ty phải trả khách, ghi nhận đã trả từng kỳ
@@ -2032,7 +2035,7 @@ const loanView = async main => {
     $('#ltN', main).textContent = `${shown().length} hợp đồng`;
     $('#ltT', main).innerHTML = rowsTable(cols, shown(), SUM, { no: 'STT' });
   };
-  const load = async () => { d = await api('GET', '/api/loan-track?' + qsOf({ project: f.project, building: f.building, from: s.from, to: s.to })); draw(); };
+  const load = async () => { const ok = latest(main), r = await api('GET', '/api/loan-track?' + qsOf({ project: f.project, building: f.building, from: s.from, to: s.to })); if (ok()) { d = r; draw(); } };
   // bấm 1 HĐ vay: các kỳ trả lãi / gốc, ghi nhận đã trả
   const items = async id => {
     const g = await api('GET', `/api/loan-track/${id}`), T = today(), rem = x => Math.max(0, +x.amount - (+x.paid_amt || 0));
@@ -2250,7 +2253,7 @@ const ctTrack = async (main, kind) => {
       còn lại theo hợp đồng = giá trị − tổng đã thu đến ${dmy(d.asof)}. <b>Phí bảo trì</b>: phải thu theo tiến độ = phí bảo trì khi dòng phí bảo trì đã đến hạn (chưa đến hạn = 0); còn lại theo tiến độ = phải thu theo tiến độ − đã thu; còn lại theo hợp đồng = phí bảo trì − đã thu. Tổng cộng = tiền nhà + phí bảo trì (cộng từng cột; tổng giá trị HĐ = giá trị HĐ + phí bảo trì). Số ngày quá hạn = từ hạn của đợt nợ sớm nhất đến ${dmy(d.asof)}.
       Số tiền quá hạn = cộng dồn (lũy kế) phần còn lại chưa thanh toán của các đợt đã quá hạn. Lãi quá hạn (lãi chậm trả) tính theo từng khoảng: từ hạn đợt, số tiền quá hạn = phần còn nợ, giảm dần từ mỗi ngày khách trả; mỗi khoảng = số tiền quá hạn × số ngày × lãi suất (%/năm) / 365 (khoảng cuối đến ${dmy(d.asof)}) — tính cả những ngày đã trễ trước khi khách trả${d.can_rate ? ' — gõ lãi suất vào cột «Lãi suất quá hạn» của từng hợp đồng' : ''}. Bấm 1 dòng để xem công nợ từng đợt, phiếu thu / phiếu chi của hợp đồng.`;
   };
-  const load = async () => { d = await api('GET', '/api/contract-track?' + qsOf({ kind, project: f.project, building: f.building, from: s.from, to: s.to })); draw(); };
+  const load = async () => { const ok = latest(main), r = await api('GET', '/api/contract-track?' + qsOf({ kind, project: f.project, building: f.building, from: s.from, to: s.to })); if (ok()) { d = r; draw(); } };
   main.innerHTML = `<div class="page">${head('06', `Theo dõi công nợ — ${KL[kind]}`, CT_KINDS.find(x => x[0] === kind)[2], `<button class="btn" id="ctX">${ico('fa-file-excel')} Xuất file</button>`, 'CN-07')}${ctKindBar(kind)}${filterBar(f, { period: false })}<div class="grid g4 mb" id="ctK"></div><div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="ctQ" placeholder="Tìm mã căn, khách hàng, số HĐ, SĐT…" value="${esc(s.q)}"></div><span id="ctDates" style="display:contents"><span class="small muted">Từ ngày</span>${segDate('ctFr', s.from)}<span class="small muted">Đến ngày</span>${segDate('ctTo', s.to || today())}</span><span class="grow"></span><span class="small muted" id="ctN"></span></div><div id="ctT"><div class="empty">Đang tải…</div></div><div class="small muted mt" id="ctNote">Phải thu theo lịch thanh toán của hợp đồng; đã thu theo Phiếu thu, đã chi theo Phiếu chi (hoàn tiền / hoàn cọc). Bấm 1 dòng để sổ ra phiếu thu / phiếu chi của hợp đồng.</div></div></div>`;
   wireFilter(main, f, load);
   { wireSegDate(main); $('#ctDates', main).addEventListener('sdchange', run(async e => { const v = segVal(e.target); if (v === null) return; if (e.target.id === 'ctFr') s.from = v; else s.to = v; await load(); })); }
