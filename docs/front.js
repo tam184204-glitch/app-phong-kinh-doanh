@@ -881,7 +881,16 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   const sch = $('[data-sched]', form);
   if (sch) schedEditor(sch, rec.new_schedule || [], { bgBase: () => rec._bg_base, mdot: () => rec.maint_dot ?? 3, maint: () => ent === 'contract' && ['hdmb', 'thue_mua'].includes(form.elements.kind?.value ?? rec.kind) ? (form.elements.maint_fee ? readField(form, E.fields.find(f => f.k === 'maint_fee')) : rec.maint_fee) || 0 : null, total: () => ent === 'contract' ? (form.elements.value ? readField(form, E.fields.find(f => f.k === 'value')) : rec.value) || 0 : readField(form, E.fields.find(f => f.k === 'value_after')) || rec.value_before || 0, first: ent === 'contract' ? () => { const kd = $('[name=kind]', form)?.value ?? rec.kind; const fk = kd === 'thue' ? 'eff_on' : kd === 'vay' && form.elements.loan_recv_on?.value ? 'loan_recv_on' : 'contract_on'; return form.elements[fk] ? readField(form, E.fields.find(f => f.k === fk)) : rec[fk]; } : null });
   const ssch = $('[data-ssched]', form);   // tiến độ thu tiền HĐMB của HĐ thuê / vay bán căn: % theo Giá trị HĐMB
-  if (ssch) schedEditor(ssch, rec.sale_sched || [], { total: () => { const v = readField(form, E.fields.find(f => f.k === 'unit_total')); return v === undefined ? +rec.unit_total || 0 : +v || 0; } });
+  if (ssch) {   // 16/11/2026: như «Lần thanh toán» HĐMB — chọn đợt gợi ý nội dung, hạn theo ngày ký HĐ, dòng phí bảo trì (theo căn), cột đợt bàn giao
+    let sm = null;
+    const getM = async () => { const u = form.elements.unit_id?.value || rec.unit_id; sm = u ? +((await api('GET', `/api/e/unit/${u}`)).row?.maint_fee || 0) : 0; ssch._redraw?.(); };
+    schedEditor(ssch, rec.sale_sched || [], { total: () => { const v = readField(form, E.fields.find(f => f.k === 'unit_total')); return v === undefined ? +rec.unit_total || 0 : +v || 0; },
+      maint: () => sm ?? 0, mdot: () => 3, bgBase: () => rec._bg_base,
+      first: () => form.elements.contract_on ? readField(form, E.fields.find(f => f.k === 'contract_on')) : rec.contract_on });
+    getM().catch(() => {});
+    form.addEventListener('change', e => { if (e.target.name === 'unit_id') getM().catch(() => {}); else if (['contract_on', 'unit_total', 'discount'].includes(e.target.name)) ssch._redraw?.(); });
+    form.addEventListener('input', e => { if (e.target.name === 'contract_on') ssch._redraw?.(); });
+  }
   htp?.rentDraw(); htp?.loanDraw?.();
   if (ent === 'template') tplHelper(form, m);
   const vis = () => { const cur = collect(true); for (const f of fields) { const box = $(`[data-f="${f.k}"]`, form); if (box) box.classList.toggle('hidden', !isShown(f, cur)); } $$('.bv-row, .bv-sec:not(.loan-sec)', form).forEach(x => x.classList.toggle('hidden', !$('.fld:not(.hidden)', x))); htp?.sync(cur.ptype !== 'lien_ke' && ['hdmb', 'thue_mua', 'thue', 'vay'].includes(cur.kind)); };

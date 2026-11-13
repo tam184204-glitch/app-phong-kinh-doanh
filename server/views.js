@@ -1039,7 +1039,14 @@ async function debtSummary(db, user, f = {}) {
     const d = D.get(c.id), Z = () => ({ total: 0, due: 0, paid: 0 }), o = { n: Z(), g: Z(), p: Z(), b: Z() };
     const value = +c.value || 0;
     // HĐ thuê / vay bán căn: tiến độ thu tiền HĐMB nhập trên hợp đồng → tiền nhà; đã thu = phiếu thu của hợp đồng đến ngày xem (HĐ vay: gốc khách đã chuyển)
-    if (['thue', 'vay'].includes(c.kind)) { const S = c.sale_sched || []; o.n.total = S.reduce((s, i) => s + +i.amount, 0); o.n.due = S.filter(i => i.due_on <= to).reduce((s, i) => s + +i.amount, 0); o.n.paid = d.paid; return o; }
+    if (['thue', 'vay'].includes(c.kind)) {   // tiến độ HĐMB của HĐ thuê / vay: dòng phí bảo trì → Bảo trì (16/11/2026), còn lại → Tiền nhà; đã thu chia theo thứ tự hạn
+      let left = +d.paid || 0;
+      for (const i of [...(c.sale_sched || [])].sort((a, b) => String(a.due_on).localeCompare(String(b.due_on)))) {
+        const k = i.maint ? 'b' : 'n', a = +i.amount || 0, take = Math.min(a, left); left -= take;
+        o[k].total += a; if (i.due_on <= to) o[k].due += a; o[k].paid += take;
+      }
+      o.n.paid += left; return o;
+    }
     if (c.kind === 'hoan_thien') { o.p.total = value; o.p.due = d.inst.filter(i => i.due_on <= to).reduce((s, i) => s + +i.amount, 0); o.p.paid = d.paid; return o; }
     const vat = c.vat_pct ?? 5, maint = +c.maint_fee || 0, fin = +c.finish_value || 0, corner = c.corner_amt ? Math.round(+c.corner_amt * (1 + vat / 100)) : 0;
     const house = Math.max(0, value - maint - fin - corner), nonM = house + corner + fin || 1;
