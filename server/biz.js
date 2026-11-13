@@ -58,9 +58,9 @@ async function recomputeUnit(db, unitId, user) {
     const c = await db.one(`SELECT c.id, c.status FROM kd_contract c WHERE c.unit_id = $1 AND c.kind IN ('hdmb','vay','thue','thue_mua') AND ${LIVE_CT('c', '$2::date')} ORDER BY (c.status = 'da_ky') DESC, c.id DESC LIMIT 1`, [unitId, today()]);   // có HĐ đã ký thì theo HĐ đó
     let r = await db.one(`SELECT status, deposit, reg_state FROM kd_reservation WHERE unit_id = $1 AND status IN ${ACTIVE_RES}`, [unitId]);
     const h = await db.one('SELECT status FROM kd_handover WHERE unit_id = $1', [unitId]);
-    if (c && h && ['da_ban_giao', 'hoan_tat'].includes(h.status)) st = 'da_ban_giao';
     if (!c && r?.status === 'chuyen_hd') r = null;   // phiếu đã chuyển hợp đồng nhưng hợp đồng không còn giữ căn (HĐ thuê hết hạn)
-    if (c?.status === 'da_ky' || r?.reg_state === 'ky_hdmb') st = 'da_ky_hd';
+    if (c && h && ['da_ban_giao', 'hoan_tat'].includes(h.status)) st = 'da_ban_giao';   // 13/11/2026: trước bị dòng dưới ghi đè → căn không bao giờ «Đã bàn giao»
+    else if (c?.status === 'da_ky' || r?.reg_state === 'ky_hdmb') st = 'da_ky_hd';
     else if (c) st = r?.deposit > 0 || r?.status === 'da_coc' ? 'da_coc' : 'giu_cho';
     else if (r) st = r.status === 'da_coc' || r.deposit > 0 ? 'da_coc' : 'giu_cho';
     else st = u.activated ? 'con_ban' : 'chua_mo_ban';
@@ -112,10 +112,15 @@ async function normSchedule(db, rows, value, label = 'Lịch thanh toán', maint
   return out;
 }
 async function writeSchedule(db, contractId, rows, src, user, demo) {
+  const prev = await db.q('SELECT id, seq, is_maint FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [contractId]);
   await db.q('UPDATE kd_installment SET active = false, updated_at = now(), updated_by = $2 WHERE contract_id = $1 AND active', [contractId, user?.id ?? null]);
-  for (const r of rows)
-    await db.q('INSERT INTO kd_installment (contract_id, seq, name, due_on, pct, amount, is_maint, src, active, created_by, is_demo, is_bg, bg_days) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$10,$11,$12)',
-      [contractId, r.seq, r.name, r.due_on, r.pct, r.amount, !!r.is_maint, src, user?.id ?? null, !!demo, !!r.is_bg, r.is_bg ? r.bg_days ?? null : null]);
+  const made = [];
+  for (const r of rows) made.push({ ...(await db.one('INSERT INTO kd_installment (contract_id, seq, name, due_on, pct, amount, is_maint, src, active, created_by, is_demo, is_bg, bg_days) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$10,$11,$12) RETURNING id',
+      [contractId, r.seq, r.name, r.due_on, r.pct, r.amount, !!r.is_maint, src, user?.id ?? null, !!demo, !!r.is_bg, r.is_bg ? r.bg_days ?? null : null])), is_maint: !!r.is_maint });
+  // phiếu thu đã chọn đợt: dòng phí bảo trì ↔ dòng phí bảo trì, đợt thứ k ↔ đợt thứ k (không có đợt tương ứng → bỏ gắn, chia theo thứ tự hạn)
+  const po = prev.filter(x => !x.is_maint), mo = made.filter(x => !x.is_maint), pm = prev.find(x => x.is_maint), mm = made.find(x => x.is_maint);
+  const pairs = [...po.map((x, k) => [x.id, mo[k]?.id ?? null]), ...(pm ? [[pm.id, mm?.id ?? null]] : [])];
+  for (const [a, b] of pairs) await db.q('UPDATE kd_receipt SET installment_id = $2 WHERE installment_id = $1', [a, b]);
   await C.audit(db, 'contract', contractId, 'lich_thanh_toan', null, { lich: rows }, user, `${rows.length} kỳ · ${src === 'phu_luc' ? 'theo phụ lục' : 'theo hợp đồng'}`, demo);
 }
 
@@ -619,7 +624,7 @@ H.reservation = {
       const u = await raw(db, 'unit', r.unit_id);
       if (u && !u.activated && !u.lock) await sys(db, 'unit', u.id, { activated: true }, user, 'kich_hoat', 'Mở bán khi lập phiếu đăng ký căn hộ');
     }
-    if (r.status === 'huy' && old?.status === 'chuyen_hd') {   // hủy đăng ký khi hợp đồng còn dự thảo / chờ ký → hủy luôn hợp đồng
+    if (r.status === 'huy' && old && old.status !== 'huy') {   // hủy đăng ký khi hợp đồng còn dự thảo / chờ ký → hủy luôn hợp đồng (13/11/2026: cả HĐ lập bằng form tay)
       for (const c of await db.q("SELECT id FROM kd_contract WHERE reservation_id = $1 AND status NOT IN ('da_ky', 'thanh_ly', 'huy')", [r.id])) {
         await sys(db, 'contract', c.id, { status: 'huy' }, user, 'huy', `Hủy theo phiếu đăng ký ${r.code || ''}`);
         await db.q("UPDATE kd_approval SET status = 'huy' WHERE ent = 'contract' AND rec_id = $1 AND status = 'cho_duyet'", [c.id]);
@@ -1222,6 +1227,12 @@ H.contract = {
       if (key(cur) !== key(sched)) { await writeSchedule(db, r.id, sched, 'hop_dong', user, demo); if (['hdmb', 'thue_mua'].includes(r.kind) && r.status === 'da_ky') await bgReapply(db, r.id, user); }
     }
     await resFromContract(db, r, user);
+    if (old && old.status !== r.status && ['huy', 'thanh_ly'].includes(r.status) && ['hdmb', 'thue_mua'].includes(r.kind) && r.customer_id)
+      for (const h of await db.q("SELECT id, status FROM kd_contract WHERE kind = 'hoan_thien' AND unit_id = $1 AND customer_id = $2 AND status NOT IN ('huy', 'thanh_ly')", [r.unit_id, r.customer_id])) {
+        const tl = h.status === 'da_ky';   // HĐ hoàn thiện đã ký → thanh lý cùng ngày; chưa ký → hủy
+        await sys(db, 'contract', h.id, tl ? { status: 'thanh_ly', liquidated_on: r.liquidated_on || today(), liquidate_reason: r.liquidate_reason || 'tra_lai' } : { status: 'huy' }, user, tl ? 'thanh_ly' : 'huy', `Theo HĐ mua bán ${r.number || ''} ${r.status === 'huy' ? 'đã hủy' : 'đã thanh lý'}`);
+        await db.q("UPDATE kd_approval SET status = 'huy' WHERE ent = 'contract' AND rec_id = $1 AND status = 'cho_duyet'", [h.id]);
+      }
     if (!old || old.status !== r.status || old.unit_id !== r.unit_id) { await recomputeUnit(db, r.unit_id, user); if (old && old.unit_id !== r.unit_id) await recomputeUnit(db, old.unit_id, user); }
     if (old && old.status !== r.status) await refreshCommission(db, r.id, user);
   },
@@ -1595,7 +1606,8 @@ C.hooks(H);
 // giữ chỗ quá hạn (chưa đặt cọc) → trạng thái căn hộ + tình trạng phiếu «Quá hạn giữ chỗ» (không tự giải phóng, không tự hoàn tiền)
 async function expireHolds(db) {   // chỉ đổi 2 cột trạng thái (không qua kiểm tra phiếu — dữ liệu cũ sai ngày không chặn cả lượt) + ghi nhật ký
   const rows = await db.q(`UPDATE kd_reservation SET reg_state = 'qua_han', status = CASE WHEN status = 'giu_cho' THEN 'qua_han' ELSE status END, updated_at = now()
-    WHERE hold_until < now() AND coalesce(deposit, 0) = 0 AND (reg_state = 'giu_cho' OR status = 'giu_cho') AND status IN ('nhap','cho_duyet','giu_cho','qua_han') RETURNING id, status, is_demo`);
+    WHERE hold_until < now() AND coalesce(deposit, 0) = 0 AND (reg_state = 'giu_cho' OR status = 'giu_cho') AND status IN ('nhap','cho_duyet','giu_cho','qua_han')
+      AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.reservation_id = kd_reservation.id AND c.status NOT IN ('huy','thanh_ly')) RETURNING id, status, is_demo`);   // đã lập HĐ từ phiếu → không quá hạn
   for (const r of rows) await C.audit(db, 'reservation', r.id, 'qua_han_giu_cho', null, { reg_state: 'qua_han', status: r.status }, null, 'Qua hạn giữ chỗ', r.is_demo);
 }
 async function jobs(db) {
