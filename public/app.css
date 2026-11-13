@@ -1783,3 +1783,4 @@ label.tplr { display: flex; gap: 8px; align-items: center; padding: 7px 0; }
 .bt-sel{margin-top:8px;font-size:13px;display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
 .bt-chip{border:1px solid var(--line2,#e5e7eb);border-radius:8px;padding:2px 6px;display:inline-flex;gap:4px;align-items:center;flex-wrap:wrap}
 .bt-c{background:var(--bg2,#f3f4f6);border-radius:6px;padding:0 2px 0 6px} .bt-c button{border:0;background:none;cursor:pointer;color:#94a3b8;padding:0 3px} .bt-c button:hover{color:#dc2626}
+.bt-c .bt-n{width:38px;margin:0 0 0 4px;padding:0 2px;height:20px;font-size:12px;text-align:center;border:1px solid #cbd5e1;border-radius:4px} .bt-cn{background:#fff3d6;outline:1px solid #f5a623} .bt-cpall{flex-basis:100%;margin-top:6px} .bt-cpall .bt-n{width:52px;height:24px;text-align:center;padding:0 4px}

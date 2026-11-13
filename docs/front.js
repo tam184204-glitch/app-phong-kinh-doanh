@@ -2882,10 +2882,10 @@ async function hosoPanel(main, params = {}) {
 async function batchModal(bo0) {
   // In hàng loạt (12–13/11/2026): chọn căn ở nhiều tòa / nhiều dự án cùng lúc — căn đã tích được giữ khi đổi tòa, đổi dự án hoặc dán thêm mã căn
   const BOS = [['mua_ban', 'HS mua bán'], ['vay', 'HS hợp đồng vay'], ['tl_vay', 'HS thanh lý HĐ vay'], ['ban_giao', 'HS bàn giao'], ['tl_mua_ban', 'HS thanh lý mua bán']];
-  const st = { bo: bo0, all: null, pid: 0, towers: new Set(), sel: new Set(), plan: null, keys: new Set(), list: null, kq: 0, open: new Set() };
+  const st = { bo: bo0, all: null, pid: 0, towers: new Set(), sel: new Set(), plan: null, keys: new Set(), list: null, kq: 0, open: new Set(), cp: new Map() };   // cp: mã căn → số bản in
   const m = modal({ title: `${ico('fa-layer-group')} In hàng loạt nhiều căn`, wide: true, body: `<div class="bt">
     <div class="bt-row"><label>Dự án<select id="btP"><option value="">— Chọn dự án —</option>${M.projects.map(p => `<option value="${p.id}">${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select></label>
-      <label class="bt-paste">hoặc dán mã căn — nhiều tòa, nhiều dự án đều được (cách nhau dấu phẩy / xuống dòng)<textarea id="btT" rows="2" placeholder="CTS-K-0201, CTS-O-0905, TNS-G-0402…"></textarea></label>
+      <label class="bt-paste">hoặc dán mã căn — nhiều tòa, nhiều dự án đều được (cách nhau dấu phẩy / xuống dòng)<textarea id="btT" rows="2" placeholder="CTS-K-0201, CTS-O-0905*3, TNS-G-0402…  (thêm *3 = in 3 bản)"></textarea></label>
       <button class="btn" id="btAdd" type="button">${ico('fa-plus')} Thêm vào danh sách</button></div>
     <div id="btTw" class="bt-row"></div>
     <div class="bt-row"><b>Bước:</b> ${BOS.map(([k, l]) => `<label class="chk"><input type="radio" name="btBo" value="${k}" ${k === bo0 ? 'checked' : ''}> ${l}</label>`).join(' ')}</div>
@@ -2894,6 +2894,7 @@ async function batchModal(bo0) {
     foot: `<span class="small muted" id="btN"></span><button class="btn" data-x>Đóng</button><button class="btn" id="btC">${ico('fa-list-check')} Kiểm tra hồ sơ</button><button class="btn" id="btW" disabled>${ico('fa-file-word')} Tải Word</button><button class="btn pri" id="btI" disabled>${ico('fa-print')} In tất cả</button>` });
   const el = m.el, units = () => [...st.sel].sort();
   const towerOf = c => String(c).split('-').slice(0, 2).join('-');   // CTS-K-0201 → CTS-K
+  const cpOf = c => st.cp.get(c) || 1, cpSet = (c, v) => { v = Math.min(50, Math.max(1, Math.round(+v) || 1)); v > 1 ? st.cp.set(c, v) : st.cp.delete(c); };
   const bName = (pid, code) => M.buildings.find(b => b.project_id === pid && b.code === code)?.name || 'Tòa ' + code;
   const projUnits = () => (st.all || []).filter(u => u.project_id === st.pid);
   const towersOfP = () => { const p = M.projects.find(x => x.id === st.pid); return M.buildings.filter(b => b.project_id === st.pid).map(b => ({ key: `${p.code}-${b.code}`, name: b.name || 'Tòa ' + b.code, n: projUnits().filter(u => u.building_id === b.id).length })).filter(t => t.n); };
@@ -2914,9 +2915,11 @@ async function batchModal(bo0) {
   };
   const drawSel = () => {   // tổng hợp căn đã chọn theo tòa (kể cả tòa / dự án khác đang không hiện)
     const by = new Map(); for (const c of units()) { const t = towerOf(c); if (!by.has(t)) by.set(t, []); by.get(t).push(c); }
-    $('#btS', el).innerHTML = st.sel.size ? `<div class="bt-sel"><b>Đã chọn ${st.sel.size} căn ở ${by.size} tòa:</b> ${[...by].map(([t, cs]) => `<span class="bt-chip"><b>${esc(t)}</b> ${cs.map(c => `<span class="bt-c">${esc(c.split('-').pop())}<button type="button" data-rm="${esc(c)}" title="Bỏ ${esc(c)}">×</button></span>`).join('')}</span>`).join('')}
-      <button class="btn sm ghost" id="btClr" type="button">Bỏ chọn hết</button></div>` : '';
-    $('#btN', el).textContent = `Đã chọn ${st.sel.size} căn${st.sel.size > 200 ? ' (tối đa 200 căn / lần — chỉ in 200 căn đầu)' : ''}`;
+    const nb = units().reduce((s, c) => s + cpOf(c), 0);
+    $('#btS', el).innerHTML = st.sel.size ? `<div class="bt-sel"><b>Đã chọn ${st.sel.size} căn ở ${by.size} tòa:</b> ${[...by].map(([t, cs]) => `<span class="bt-chip"><b>${esc(t)}</b> ${cs.map(c => `<span class="bt-c${cpOf(c) > 1 ? ' bt-cn' : ''}">${esc(c.split('-').pop())}<input type="number" class="bt-n" min="1" max="50" value="${cpOf(c)}" data-cp="${esc(c)}" title="Số bản in căn ${esc(c)}"><button type="button" data-rm="${esc(c)}" title="Bỏ ${esc(c)}">×</button></span>`).join('')}</span>`).join('')}
+      <button class="btn sm ghost" id="btClr" type="button">Bỏ chọn hết</button>
+      <div class="bt-cpall small">${ico('fa-copy')} <b>Số bản in</b> — gõ số vào ô cạnh từng căn (vd 0201 in 3 bản, 0208 in 5 bản), hoặc đặt cho tất cả căn: <input type="number" class="bt-n" id="btCpAll" min="1" max="50" value="${new Set(units().map(cpOf)).size === 1 ? cpOf(units()[0]) : ''}" placeholder="…"> bản${nb > st.sel.size ? ` · <b>tổng ${nb} bản</b>` : ''}</div></div>` : '';
+    $('#btN', el).textContent = `Đã chọn ${st.sel.size} căn${nb > st.sel.size ? ` · ${nb} bản` : ''}${st.sel.size > 200 ? ' (tối đa 200 căn / lần — chỉ in 200 căn đầu)' : ''}`;
     st.plan = null; drawPlan(); docsSoon();
   };
   const drawDocs = () => {
@@ -2953,13 +2956,15 @@ async function batchModal(bo0) {
     const t = $('#btT', el).value.trim(); if (!t) return;
     await ensureAll();
     const known = new Map(st.all.map(u => [u.code.toUpperCase(), u.code])), bad = [];
-    for (const x of [...new Set(t.split(/[\s,;]+/).map(x => x.trim().toUpperCase()).filter(Boolean))]) known.has(x) ? st.sel.add(known.get(x)) : bad.push(x);
+    for (const y of [...new Set(t.split(/[\s,;]+/).map(x => x.trim().toUpperCase()).filter(Boolean))]) {   // «CTS-K-0201*3» = căn đó in 3 bản
+      const [, x, n] = /^(.+?)(?:\*(\d+))?$/.exec(y);
+      if (known.has(x)) { st.sel.add(known.get(x)); if (n) cpSet(known.get(x), n); } else bad.push(x); }
     $('#btT', el).value = ''; drawUnits(); if (bad.length) toast(`Không có mã căn: ${bad.slice(0, 8).join(', ')}${bad.length > 8 ? '…' : ''}`, true);
   });
   $('#btAdd', el).onclick = addPaste; $('#btT', el).onchange = addPaste;
   el.onclick = e => { const x = e.target;
-    const rm = x.closest('[data-rm]'); if (rm) { st.sel.delete(rm.dataset.rm); return drawUnits(); }
-    if (x.closest('#btClr')) { st.sel.clear(); return drawUnits(); }
+    const rm = x.closest('[data-rm]'); if (rm) { st.sel.delete(rm.dataset.rm); st.cp.delete(rm.dataset.rm); return drawUnits(); }
+    if (x.closest('#btClr')) { st.sel.clear(); st.cp.clear(); return drawUnits(); }
     if (x.closest('#btTwAll')) { st.towers = new Set(towersOfP().map(t => t.key)); return drawUnits(); } };
   el.onchange = e => { const x = e.target;
     if (x.name === 'btBo') { st.bo = x.value; st.plan = null; st.list = null; st.keys = new Set(); drawPlan(); loadDocs().catch(e => toast(e.message, true)); }
@@ -2968,13 +2973,15 @@ async function batchModal(bo0) {
     if (x.id === 'btKAll') { st.keys = x.checked ? new Set((st.list || []).map(k => k.key)) : new Set(); drawDocs(); }
     if (x.dataset.u) { x.checked ? st.sel.add(x.dataset.u) : st.sel.delete(x.dataset.u); drawTowers(); drawSel();
       const g = x.closest('.bt-tg'), cs = $$('[data-u]', g), all = g && $('[data-twall]', g); if (all) all.checked = cs.every(i => i.checked); }
-    if (x.dataset.k) { x.checked ? st.keys.add(x.dataset.k) : st.keys.delete(x.dataset.k); drawDocs(); } };
+    if (x.dataset.k) { x.checked ? st.keys.add(x.dataset.k) : st.keys.delete(x.dataset.k); drawDocs(); }
+    if (x.dataset.cp) { cpSet(x.dataset.cp, x.value); drawSel(); }
+    if (x.id === 'btCpAll' && x.value) { for (const c of st.sel) cpSet(c, x.value); drawSel(); } };
   $('#btC', el).onclick = run(async () => {
     if (!st.sel.size) return toast('Chưa chọn căn', true);
     $('#btC', el).disabled = true; $('#btK', el).innerHTML = '<div class="empty">Đang kiểm tra từng căn…</div>';
     try { st.plan = await api('POST', '/api/hs-batch/plan', { units: units().slice(0, 200), bo: st.bo }); drawPlan(); } finally { $('#btC', el).disabled = false; }
   });
-  const url = fmt => `/print/hs-batch?bo=${st.bo}&keys=${encodeURIComponent([...st.keys].join(','))}&units=${encodeURIComponent(units().slice(0, 200).join(','))}${fmt ? '&fmt=' + fmt : ''}`;
+  const url = fmt => `/print/hs-batch?bo=${st.bo}&keys=${encodeURIComponent([...st.keys].join(','))}&units=${encodeURIComponent(units().slice(0, 200).map(c => cpOf(c) > 1 ? `${c}*${cpOf(c)}` : c).join(','))}${fmt ? '&fmt=' + fmt : ''}`;
   $('#btI', el).onclick = () => { if (!st.sel.size || !st.keys.size) return toast('Chọn căn và ít nhất 1 hồ sơ', true); window.open(url(''), '_blank'); };
   $('#btW', el).onclick = () => download(url('docx'));
 }

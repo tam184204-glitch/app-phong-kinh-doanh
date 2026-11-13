@@ -507,7 +507,12 @@ async function demoFill(unitId, user) {
 // ===== In hàng loạt nhiều căn (12/11/2026): chọn dự án / tòa / danh sách mã căn → chọn bước + hồ sơ → In tất cả / Tải Word (mỗi căn 1 phần) =====
 const tplKey = code => String(code).replace(/^[^-]+-/, '').replace(/-(DEFG|HIJ|DE|FG)$/, '');   // TNS-MB-02-DEFG / ABC-MB-02 → MB-02 (cùng loại hồ sơ, mẫu theo tòa / dự án)
 const shortName = n => String(n).replace(/\s*\(tòa [^)]*\)$/, '');
-const unitList = v => [...new Set((Array.isArray(v) ? v : String(v || '').split(/[\s,;]+/)).map(x => String(x).trim()).filter(Boolean))].slice(0, 200);
+const unitList = v => [...new Set((Array.isArray(v) ? v : String(v || '').split(/[\s,;]+/)).map(x => String(x).trim().replace(/\*\d+$/, '')).filter(Boolean))].slice(0, 200);
+// số bản in mỗi căn (13/11/2026): «CTS-K-0201*3» = in căn đó 3 bản giống nhau (tối đa 50 bản / căn)
+const unitCopies = v => { const m = new Map();
+  for (const x of (Array.isArray(v) ? v : String(v || '').split(/[\s,;]+/))) { const r = /^(.+?)(?:\*(\d+))?$/.exec(String(x).trim()); if (!r) continue;
+    m.set(r[1].toUpperCase(), Math.min(50, Math.max(1, +r[2] || 1))); }
+  return m; };
 async function batchPlan(units, bo, user) {
   if (!can(user, E.unit, 'r')) deny();
   const keys = new Map(), out = [];
@@ -536,30 +541,31 @@ async function batchKeys(units, bo, user) {   // danh sách loại hồ sơ củ
 }
 async function batchDocs(units, bo, keys, user) {
   if (!can(user, E.unit, 'r')) deny();
-  const want = new Set(String(keys || '').split(',').filter(Boolean)), out = [];
+  const want = new Set(String(keys || '').split(',').filter(Boolean)), out = [], cps = unitCopies(units);
   for (const code of unitList(units)) {
     let f; try { f = await findUnit(code); } catch { continue; }
     const all = (await unitTemplates(f.id)).filter(t => t.bo === bo), ts = withAnnex(all.filter(t => !want.size || want.has(tplKey(t.code))), all);
     if (!ts.length) continue;
     const D = await hsData(f.id, user, f.cust?.id);
-    out.push({ unitId: f.id, code: D.map.ma_can, docs: ts.map(t => ({ t, html: merge(t.content, D) })) });
-    await C.audit({ q }, 'unit', f.id, 'in_hang_loat', null, null, user, ts.map(t => t.code).join(', '));
+    const docs = ts.map(t => ({ t, html: merge(t.content, D) })), n = cps.get(String(code).toUpperCase()) || 1;
+    for (let i = 1; i <= n; i++) out.push({ unitId: f.id, code: D.map.ma_can, copy: i, copies: n, docs });   // mỗi bản là 1 phần riêng (Word: số trang đánh lại từ 1)
+    await C.audit({ q }, 'unit', f.id, 'in_hang_loat', null, null, user, ts.map(t => t.code).join(', ') + (n > 1 ? ` · ${n} bản` : ''));
   }
   if (!out.length) bad('Không có căn nào có hồ sơ phù hợp để in');
   return out;
 }
 async function printBatch(units, bo, keys, user) {
   const IO = require('./io'), list = await batchDocs(units, bo, keys, user);
-  const body = list.map(u => u.docs.map(d => `<section class="hs"><div class="hs-t" contenteditable="false">Căn ${escH(u.code)} · ${escH(shortName(d.t.name))}</div>${d.html}</section>`).join('')).join('');
-  const n = list.reduce((s, u) => s + u.docs.length, 0);
+  const body = list.map(u => u.docs.map(d => `<section class="hs"><div class="hs-t" contenteditable="false">Căn ${escH(u.code)}${u.copies > 1 ? ` · bản ${u.copy}/${u.copies}` : ''} · ${escH(shortName(d.t.name))}</div>${d.html}</section>`).join('')).join('');
+  const n = list.reduce((s, u) => s + u.docs.length, 0), nc = new Set(list.map(u => u.unitId)).size, codes = [...new Set(list.map(u => u.code))];
   // in liền nhiều căn: không đánh số trang chung (số trang từng căn đánh lại từ 1 có ở bản Word)
   const pageCss = `@page{${['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right'].map(k => `@${k}{content:""}`).join('')}}`;
-  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>In hàng loạt ${list.length} căn</title><style>${HS_CSS} ${pageCss}
-    ${IO.EDIT_CSS}</style></head><body>${IO.editBar(`In hàng loạt <b>${list.length} căn</b> · ${n} hồ sơ (${escH(list.map(u => u.code).slice(0, 8).join(', '))}${list.length > 8 ? '…' : ''}) — mỗi hồ sơ sang trang mới. Cần số trang «Trang HĐ: x/y» riêng từng căn thì dùng «Tải Word»`)}${IO.editDoc(body)}</body></html>`;
+  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>In hàng loạt ${nc} căn</title><style>${HS_CSS} ${pageCss}
+    ${IO.EDIT_CSS}</style></head><body>${IO.editBar(`In hàng loạt <b>${nc} căn</b>${list.length > nc ? ` · <b>${list.length} bản</b>` : ''} · ${n} hồ sơ (${escH(codes.slice(0, 8).join(', '))}${codes.length > 8 ? '…' : ''}) — mỗi hồ sơ sang trang mới. Cần số trang «Trang HĐ: x/y» riêng từng căn thì dùng «Tải Word»`)}${IO.editDoc(body)}</body></html>`;
 }
 async function wordBatch(units, bo, keys, user) {
   const list = await batchDocs(units, bo, keys, user), flat = list.flatMap(u => u.docs);
-  const name = `In_hang_loat_${list.length}_can_${bo}_${C.today()}.docx`;
+  const nc = new Set(list.map(u => u.unitId)).size, name = `In_hang_loat_${nc}_can${list.length > nc ? `_${list.length}_ban` : ''}_${bo}_${C.today()}.docx`;
   return { buf: docxOf(flat.map(d => d.html), name, isHdSet(flat.map(d => d.t.code)), list.map(u => u.docs.length)), name };
 }
 module.exports = { batchKeys, batchPlan, printBatch, wordBatch, custHistory, wordFromHtml, demoFill, demoFillOn, saveTarget, BO, MAU_TNS, hsData, hsInfo, printHs, wordHs, merge, evalExpr };
