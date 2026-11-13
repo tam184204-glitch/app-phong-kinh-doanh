@@ -491,7 +491,7 @@ async function setDebtDays(db, user, days) {
 
 // ======================= THEO DÕI HĐ VAY — LÃI & GỐC (CN-07) =======================
 // gốc: khách chuyển theo các đợt giải ngân (lịch thu + phiếu thu của HĐ vay); lãi / gốc công ty phải trả khách: kd_loan_pay
-const LP_ST = { qua_han: 'Quá hạn trả lãi', sap_toi: 'Đến hạn trong 7 ngày', dao_han: 'Đáo hạn trong 30 ngày', dang: 'Đang vay', xong: 'Đã trả hết' };
+const LP_ST = { thanh_ly: 'Đã thanh lý', qua_han: 'Quá hạn trả lãi', sap_toi: 'Đến hạn trong 7 ngày', dao_han: 'Đáo hạn trong 30 ngày', dang: 'Đang vay', xong: 'Đã trả hết' };
 async function loanTrack(db, user, f = {}) {
   if (!can(user, E.installment, 'r')) deny();
   const p = [], t = isoDay(f.to) || today(), from = isoDay(f.from) || null, t7 = addDays(t, 7), t30 = addDays(t, 30);
@@ -513,9 +513,10 @@ async function loanTrack(db, user, f = {}) {
   const accrued = x => !x.period_from || x.period_from > t ? 0 : !x.period_to || x.period_to <= t ? +x.amount : +x.amount * (dayDiff(x.period_from, t) + 1) / (dayDiff(x.period_from, x.period_to) + 1);
   const ML = { tien_thue: 'Tiền thuê 1 tháng / tháng', lai_suat: 'Lãi suất' }, PL = { 1: 'Hàng tháng', 3: 'Hàng quý', 6: '6 tháng', 12: 'Hàng năm', 0: 'Khi đáo hạn' };
   const rows = cs.map(c => {
-    const ls = L.filter(x => x.contract_id === c.id), lai = ls.filter(x => x.kind === 'lai'), goc = ls.filter(x => x.kind === 'goc'), next = ls.find(x => rem(x) > 0), d = D.get(c.id);
-    const laiQH = sum(lai.filter(x => x.due_on < t), rem), left = sum(ls, rem);
-    const state = !ls.length ? 'dang' : !left && d.paid > 0 ? 'xong' : laiQH > 0 ? 'qua_han' : next && next.due_on <= t7 ? 'sap_toi' : c.exp_on && c.exp_on <= t30 ? 'dao_han' : 'dang';
+    const ls = L.filter(x => x.contract_id === c.id), lai = ls.filter(x => x.kind === 'lai'), goc = ls.filter(x => x.kind === 'goc'), d = D.get(c.id), tl0 = c.status === 'thanh_ly';
+    const next = tl0 ? null : ls.find(x => rem(x) > 0 && x.due_on >= t);   // 16/11/2026: kỳ tới theo «Đến ngày» (kỳ đã quá hạn nằm ở lãi quá hạn); HĐ đã thanh lý không có kỳ tới
+    const laiQH = tl0 ? 0 : sum(lai.filter(x => x.due_on < t), rem), left = sum(ls, rem);
+    const state = tl0 ? 'thanh_ly' : !ls.length ? 'dang' : !left && d.paid > 0 ? 'xong' : laiQH > 0 ? 'qua_han' : next && next.due_on <= t7 ? 'sap_toi' : c.exp_on && c.exp_on <= t30 ? 'dao_han' : 'dang';
     return { contract_id: c.id, project: c.project, building: c.building, unit: c.unit, customer: c.customer, phone: c.phone, number: c.number, links: c.links || '', nature_l: c.nature === 'ban' ? 'Bán căn hộ' : 'Cho thuê',
       goc_hd: +c.value, goc_nhan: d.paid, goc_cho: d.left, eff_on: c.eff_on, exp_on: c.exp_on, term_months: c.term_months, mode_l: c.int_mode === 'lai_suat' ? `${ML.lai_suat} ${c.loan_rate ?? ''}%/năm` : ML.tien_thue, rent: c.int_mode === 'tien_thue' ? +c.rent : null, period_l: PL[c.int_period] || '',
       project_name: c.project_name, signed_on: c.signed_on || c.contract_on, term_l: c.term_months ? `${c.term_months} tháng` : '',
@@ -621,7 +622,7 @@ async function voucherList(db, user, f = {}) {
 // ======================= THEO DÕI HỢP ĐỒNG THUÊ / MUA BÁN / HOÀN THIỆN (CN-07) =======================
 // công nợ khách phải trả công ty theo lịch thu (kd_installment) + phiếu thu hợp lệ (kd_receipt); HĐ vay xem loanTrack
 const CT_KIND = { thue: ['thue', 'thue_mua'], hdmb: ['hdmb'], hoan_thien: ['hoan_thien'] };
-const CT_ST = { qua_han: 'Quá hạn thu', sap_toi: 'Đến hạn trong 7 ngày', het_han: 'Hết hạn trong 30 ngày', dang: 'Đang thu', xong: 'Đã thu đủ', chua_lich: 'Chưa có lịch thu' };
+const CT_ST = { thanh_ly: 'Đã thanh lý', qua_han: 'Quá hạn thu', sap_toi: 'Đến hạn trong 7 ngày', het_han: 'Hết hạn trong 30 ngày', dang: 'Đang thu', xong: 'Đã thu đủ', chua_lich: 'Chưa có lịch thu' };
 async function contractTrack(db, user, f = {}) {
   if (!can(user, E.installment, 'r')) deny();
   const kinds = CT_KIND[f.kind]; if (!kinds) bad('Loại hợp đồng không hợp lệ');
@@ -645,11 +646,14 @@ async function contractTrack(db, user, f = {}) {
   const opt = k => Object.fromEntries(E.contract.fields.find(x => x.k === k).o.map(o => [o[0], o[1]])), KL = opt('kind'), SL = opt('status'), t7 = addDays(t, 7);
   const rows = cs.map(c => {
     const d = D.get(c.id), rent = c.kind === 'thue' || c.kind === 'thue_mua';
-    const state = !d.inst.length ? 'chua_lich' : d.overdue > 0 ? 'qua_han' : d.left <= 0 ? 'xong' : d.due7 > 0 ? 'sap_toi' : rent && c.exp_on && c.exp_on >= t && c.exp_on <= t30 ? 'het_han' : 'dang';
+    const tl0 = c.status === 'thanh_ly';   // 16/11/2026: HĐ đã thanh lý — hết nghĩa vụ theo lịch: không quá hạn, không kỳ tới, không lãi chậm trả (thu / chi vẫn hiện)
+    if (tl0) Object.assign(d, { overdue: 0, overdue_days: 0, due7: 0 });
+    const nx = tl0 ? null : d.inst.find(i => i.rem > 0 && i.due_on >= t);   // kỳ tới = đợt còn nợ đầu tiên có hạn TỪ «Đến ngày» trở đi (16/11/2026: trước lấy đợt nợ sớm nhất, kể cả đã quá hạn → không đổi theo ngày)
+    const state = tl0 ? 'thanh_ly' : !d.inst.length ? 'chua_lich' : d.overdue > 0 ? 'qua_han' : d.left <= 0 ? 'xong' : d.due7 > 0 ? 'sap_toi' : rent && c.exp_on && c.exp_on >= t && c.exp_on <= t30 ? 'het_han' : 'dang';
     const row = { contract_id: c.id, project: c.project, building: c.building, unit: c.unit, customer: c.customer, phone: c.phone, number: c.number, kind_l: KL[c.kind] || c.kind, status_l: SL[c.status] || c.status,
       signed_on: c.signed_on || c.contract_on, rent: rent ? +c.rent || null : null, eff_on: c.eff_on, exp_on: c.exp_on, value: +c.value || 0,
       total: d.total, paid: d.paid, paid_pct: d.paid_pct, left: d.left, overdue: d.overdue, overdue_days: d.overdue_days || null, due7: d.due7,
-      next_name: d.next?.name || '', next_on: d.next?.due_on || null, next_amt: d.next?.rem ?? null, last_receipt: d.last_receipt, state, state_l: CT_ST[state] };
+      next_name: nx?.name || '', next_on: nx?.due_on || null, next_amt: nx ? nx.rem : null, last_receipt: d.last_receipt, state, state_l: CT_ST[state] };
     row.chi = +(PC.get(c.id)?.s || 0); row.net = row.paid - row.chi;
     // theo khoảng ngày: phải thu theo tiến độ = các kỳ có hạn trong khoảng; đã thu trong kỳ = phiếu thu trong khoảng (để trống «Từ ngày» = từ đầu HĐ)
     const inW = on => !from || on >= from, due_w = d.inst.filter(i => i.due_on && i.due_on <= t && inW(i.due_on)).reduce((a, i) => a + +i.amount, 0);
@@ -672,7 +676,7 @@ async function contractTrack(db, user, f = {}) {
       const mI = tl.I.filter(i => i.is_maint), mDue = mI.length ? mI.filter(i => i.due_on && i.due_on <= to).reduce((a, i) => a + i.amount, 0) : mv;
       Object.assign(row, { h_value: hv, h_due: hDue, h_paid: hPaid, h_left_due: hDue - hPaid, h_left: hv - hAll, m_value: mv, m_due: mDue, m_paid: mAll, m_left_due: mDue - mAll, m_left: mLeft,
         t_value: hv + mv, t_due: hDue + mDue, t_paid: hPaid + mAll, t_left_due: hDue - hPaid + mDue - mAll, t_left: hv + mv - hAll - mAll,
-        late_rate: rate, late_int: rate ? instDebt(d.inst, RC.get(c.id) || [], c, t, rate).reduce((a, i) => a + i.late, 0) : null, _act: hDue > 0 || hPaid > 0 || mPaidW > 0 });
+        late_rate: rate, late_int: rate && !tl0 ? instDebt(d.inst, RC.get(c.id) || [], c, t, rate).reduce((a, i) => a + i.late, 0) : null, _act: hDue > 0 || hPaid > 0 || mPaidW > 0 });
     }
     if (rent) {
       // theo mẫu «Bảng theo dõi hợp đồng thuê căn hộ» (05/11/2026): phải thu theo tiến độ = các kỳ đến hạn tới hôm nay; còn phải thu = phải thu − đã thu (âm = thu thừa)
