@@ -88,13 +88,13 @@ async function hsData(unitId, user, custId) {
   const N = {
     dt_tt: num(hdmb?.area_tt ?? vay?.area_tt ?? u.area_tt), dt_san: num(hdmb?.area_floor ?? u.area_xd), don_gia: num(hdmb?.base_price ?? vay?.base_price ?? u.base_price),
     gia_truoc_thue: num(hdmb?.pretax ?? u.pretax), thue_vat: num(hdmb?.vat_amt ?? u.tax_amt), phi_bao_tri: num(hdmb?.maint_fee ?? u.maint_fee), gia_sau_thue: num(hdmb?.after_tax ?? vay?.unit_total ?? u.price_net),
-    tong_gia: num(hdmb?.value ?? u.total_price), gia_tri_hdmb: num(hdmb?.value),   // HĐMB có giá: tính lại bên dưới, không gồm hoàn thiện gia_tri_ht: num(ht?.value ?? hdmb?.finish_value ?? u.finish_value), tien_vay: num(vay?.value), tien_s_chung: num(hdmb?.common_area_amt),
+    tong_gia: num(hdmb?.value ?? u.total_price), gia_tri_hdmb: num(hdmb?.value), gia_tri_ht: num(ht?.value ?? hdmb?.finish_value ?? u.finish_value), tien_vay: num(vay?.value), tien_s_chung: num(hdmb?.common_area_amt),   // HĐMB có giá: tính lại bên dưới, không gồm hoàn thiện
   };
-  // HĐ chưa lưu sẵn giá trước thuế / VAT / bảo trì: tính theo đơn giá × diện tích như file Excel (VAT 5%, bảo trì 2%)
+  // HĐ chưa lưu sẵn giá trước thuế / VAT / bảo trì: tính theo đơn giá × diện tích như file Excel — % thuế theo HĐ / căn (mặc định 5%), bảo trì 2% (13/11/2026: hết cứng 5%)
   if (N.don_gia && N.dt_tt) {
-    const pre = Math.round(N.don_gia * N.dt_tt / 1000) * 1000;
-    N.gia_truoc_thue ??= pre; N.thue_vat ??= pre * 0.05; N.phi_bao_tri ??= Math.round(pre * 0.02 / 1000) * 1000;
-    N.gia_sau_thue ??= Math.round(pre * 1.05 / 1000) * 1000; N.tong_gia ??= N.gia_sau_thue + N.phi_bao_tri;
+    const pre = Math.round(N.don_gia * N.dt_tt / 1000) * 1000, vp = num(hdmb?.vat_pct ?? vay?.vat_pct ?? u.vat_pct) ?? 5;
+    N.gia_truoc_thue ??= pre; N.thue_vat ??= Math.round(pre * vp / 100); N.phi_bao_tri ??= Math.round(pre * 0.02 / 1000) * 1000;
+    N.gia_sau_thue ??= Math.round(pre * (1 + vp / 100) / 1000) * 1000; N.tong_gia ??= N.gia_sau_thue + N.phi_bao_tri;
   }
   // HĐMB in đúng số đã khai ở form hợp đồng (13/11/2026): giá bán = Tổng tiền − Phí bảo trì (đã gồm VAT, hệ số góc, giảm giá); chưa khai thì tính như file Excel
   // Tâm 13/11/2026: giá bán trên HĐMB KHÔNG gồm giá trị hoàn thiện (ô Tổng tiền HĐMB của app có cộng hoàn thiện → trừ ra); phí bảo trì là khoản riêng
@@ -178,15 +178,19 @@ function merge(content, D, miss = new Set()) {
       const before = miss.size; let v;
       try { v = evalExpr(ex, D.nums, miss); } catch { return m; }
       if (miss.size > before) return DOTS;
-      if (v && typeof v === 'object') return escH(v.chu ? moneyWords(Math.round(v.chu)) : '');
-      return escH(fmtMoney(Math.round(v)));
+      const key = 'x' + ex.replace(/\s+/g, '').replace(/^chu\((.*)\)$/, '$1').replace(/[^\w]/g, '_');   // {=X} và {=chu(X)} cùng khóa
+      if (v && typeof v === 'object') return `<span data-chu="${key}">${escH(v.chu ? moneyWords(Math.round(v.chu)) : '')}</span>`;
+      return `<span data-so="${key}">${escH(fmtMoney(Math.round(v)))}</span>`;
     })
     .replace(/\{(\w+)(?:\|([^{}<]*))?\}/g, (m, k, def) => {   // {truong|mặc định}: trống thì in mặc định
       if (!(k in D.map)) return m;
       const v = D.map[k];
       if ((v === '' || v == null) && def != null) return escH(def);
       if (v === '' || v == null) { if (!NO_MISS.has(k)) miss.add(k.replace(/_chu$|_hoa$/, '')); if (SHORT.has(k)) return '……'; return k.startsWith('ban_ve_') ? '<p style="text-align:center;font-style:italic">(Chưa có bản vẽ cho căn này — bổ sung ở Mẫu biểu, loại «Bản vẽ»)</p>' : DOTS; }
-      return k.startsWith('ban_ve_') ? v : escH(v);   // bản vẽ: HTML ảnh từ mẫu «Bản vẽ»
+      if (k.startsWith('ban_ve_')) return v;   // bản vẽ: HTML ảnh từ mẫu «Bản vẽ»
+      if (k + '_chu' in D.map) return `<span data-so="${k}">${escH(v)}</span>`;   // sửa số trên trang in → «bằng chữ» tự đổi
+      if (k.endsWith('_chu') && k.slice(0, -4) in D.map) return `<span data-chu="${k.slice(0, -4)}">${escH(v)}</span>`;
+      return escH(v);
     }));
 }
 const missOf = (content, D) => { const s = new Set(); merge(content, D, s); return [...s].map(k => LABEL[k] || k); };
@@ -212,13 +216,15 @@ async function unitTemplates(unitId) {
 async function autoProjectTemplates(unitId, user) {
   const IO = require('./io');
   const sc = await IO.recScope('unit', unitId); if (!sc.pcode) return 0;
-  const have = (await q('SELECT bo, scope, bedrooms FROM kd_template WHERE active AND bo IS NOT NULL')).filter(t => IO.tplFitLevel(t, sc) >= 0);
+  const have = (await q('SELECT code, bo, scope, bedrooms FROM kd_template WHERE active AND bo IS NOT NULL')).filter(t => IO.tplFitLevel(t, sc) >= 0);
+  const STD = /^[A-Z0-9]+-(MB|VAY|TLV|BG|TLMB)-\d/i;   // mã theo chuẩn <DỰ ÁN>-<LOẠI>-<SỐ>; bộ có mẫu đặt mã riêng (tự tải lên) thì không chép thêm vào bộ đó
   const P = String(sc.pcode).toUpperCase(), base = MAU_TNS().filter(t => /^TNS-/.test(t.code)), done = new Set(); let n = 0;
   const sysU = await one("SELECT * FROM kd_user WHERE role = 'admin' AND active ORDER BY id LIMIT 1") || C.SYS;
   for (const [bo] of BO) {
-    if (have.some(t => t.bo === bo)) continue;
+    const mine = have.filter(t => t.bo === bo); if (mine.some(t => !STD.test(t.code))) continue;
     for (const t of base.filter(x => x.bo === bo)) {
       const key = t.code.replace(/-(DEFG|HIJ|DE|FG)$/, ''); if (done.has(key)) continue; done.add(key);
+      if (mine.some(m => tplKey(m.code) === tplKey(key))) continue;   // loại mẫu này dự án đã có
       const code = key.replace(/^TNS-/, P + '-');
       if (await one('SELECT 1 FROM kd_template WHERE upper(code) = upper($1)', [code])) continue;
       await C.create('template', { code, name: t.name.replace(/\s*\(tòa [^)]*\)$/, ''), kind: t.kind, bo, ent: 'unit', scope: P, content: t.content, active: true }, sysU, { system: true });
@@ -229,9 +235,12 @@ async function autoProjectTemplates(unitId, user) {
 }
 // căn của khách: theo hợp đồng, phiếu đăng ký, hồ sơ NOXH (mới nhất trước)
 async function unitsOfCustomer(kid) {
-  return q(`SELECT u.id, u.code FROM kd_unit u WHERE u.id IN (
-      SELECT unit_id FROM kd_contract WHERE customer_id = $1 UNION SELECT unit_id FROM kd_reservation WHERE customer_id = $1 UNION SELECT unit_id FROM kd_noxh_check WHERE customer_id = $1)
-    ORDER BY u.code`, [kid]);
+  // căn đang giao dịch (HĐ / phiếu còn hiệu lực) trước, mới nhất trước — khách nhiều căn thì vẫn chọn lại được
+  return q(`SELECT u.id, u.code FROM kd_unit u
+    LEFT JOIN LATERAL (SELECT bool_or(status NOT IN ('huy', 'thanh_ly')) live, max(coalesce(contract_on, created_at::date)) d FROM kd_contract WHERE customer_id = $1 AND unit_id = u.id) c ON true
+    LEFT JOIN LATERAL (SELECT bool_or(status NOT IN ('huy', 'het_han', 'tu_choi', 'qua_han')) live, max(coalesce(reg_date, created_at::date)) d FROM kd_reservation WHERE customer_id = $1 AND unit_id = u.id) r ON true
+    WHERE u.id IN (SELECT unit_id FROM kd_contract WHERE customer_id = $1 UNION SELECT unit_id FROM kd_reservation WHERE customer_id = $1 UNION SELECT unit_id FROM kd_noxh_check WHERE customer_id = $1)
+    ORDER BY (coalesce(c.live, false) OR coalesce(r.live, false)) DESC, greatest(c.d, r.d) DESC NULLS LAST, u.code`, [kid]);
 }
 // ô tìm nhận mã căn, mã khách hàng, SĐT hoặc CCCD của khách (12/11/2026) → { id, cust, units }
 async function findUnit(key) {
@@ -427,8 +436,9 @@ async function wordHs(unitId, codes, user, custId) {
 async function saveTarget(unitId, bo, custId) {
   const cts = (await q("SELECT id, kind, status, customer_id FROM kd_contract WHERE unit_id = $1 ORDER BY (status IN ('huy', 'thanh_ly')), id DESC", [+unitId])).filter(c => !+custId || c.customer_id === +custId);
   const want = ['vay', 'tl_vay'].includes(bo) ? ['vay'] : ['hdmb', 'thue_mua'];
-  const c = cts.find(x => want.includes(x.kind)) || cts[0];
-  if (c) return { ent: 'contract', id: c.id, kind: 'du_thao', what: 'HĐ' };
+  const c = cts.find(x => want.includes(x.kind)), c0 = c || cts[0];
+  const KL = { hdmb: 'HĐMB', thue_mua: 'HĐ thuê mua', hoan_thien: 'HĐ thỏa thuận', vay: 'HĐ vay', thue: 'HĐ thuê' };
+  if (c0) return { ent: 'contract', id: c0.id, kind: 'du_thao', what: c ? KL[c0.kind] || 'HĐ' : `${KL[c0.kind] || 'HĐ'} (căn chưa có ${want.includes('vay') ? 'HĐ vay' : 'HĐ mua bán'} — gắn tạm vào HĐ này)` };
   // căn chưa có hợp đồng (đang soạn hồ sơ trước khi ký): gắn vào phiếu đăng ký của căn, chưa có phiếu thì gắn thẳng vào căn hộ (12/11/2026)
   const r = await one(`SELECT id FROM kd_reservation WHERE unit_id = $1 ${+custId ? 'AND customer_id = $2' : ''} ORDER BY (status IN ('huy', 'het_han')), id DESC LIMIT 1`, +custId ? [+unitId, +custId] : [+unitId]);
   if (r) return { ent: 'reservation', id: r.id, kind: 'tai_lieu', what: 'phiếu đăng ký' };
