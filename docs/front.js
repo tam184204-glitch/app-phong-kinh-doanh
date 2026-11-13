@@ -3516,11 +3516,11 @@ V.debtsum = async main => {
   };
   main.innerHTML = `<div class="page">${head('06', 'Theo dõi công nợ — Bảng tổng hợp', 'fa-table-list', `<button class="btn" id="dsX">${ico('fa-file-excel')} Xuất file</button><a class="btn" href="#/v/ledger">${ico('fa-book-open')} Sổ công nợ chi tiết</a>`, 'CN-08')}${ctKindBar('tonghop')}${filterBar(f, { period: false })}
     <div class="grid g4 mb" id="dsK"></div>
-    <div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="dsQ" placeholder="Mã căn, mã KH, họ tên, SĐT, số HĐ…" value="${esc(s.q)}"></div>
+    <div class="card"><div class="toolbar"><button class="btn sm" id="dsFl">${ico('fa-filter')} Điều kiện lọc</button><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="dsQ" placeholder="Mã căn, mã KH, họ tên, SĐT, số HĐ…" value="${esc(s.q)}"></div>
       <select id="dsS"><option value="">Mọi hợp đồng</option><option value="da_ky">Đã ký hợp đồng</option><option value="chua">Chưa ký (dự thảo / chờ ký)</option></select>
       <span class="small muted">Số liệu đến ngày</span>${segDate('dsTo', s.to || today())}<span class="small muted">Thu phát sinh từ</span>${segDate('dsFr', s.from || today().slice(0, 7) + '-01')}
-      <button class="btn sm" id="dsFl">${ico('fa-filter')} Điều kiện lọc</button><span class="grow"></span><span class="small muted" id="dsN"></span></div>
-    <div class="flt-wrap ${s.flt ? '' : 'flt-off'}" id="dsW" style="padding:0 12px"><div class="flt-main"><div id="dsT"><div class="empty">Đang tính công nợ…</div></div></div><aside class="flt" id="dsF"></aside></div>
+      <span class="grow"></span><span class="small muted" id="dsN"></span></div>
+    <div class="flt-wrap ${s.flt ? '' : 'flt-off'}" id="dsW" style="padding:0 12px"><aside class="flt" id="dsF"></aside><div class="flt-main"><div id="dsT"><div class="empty">Đang tính công nợ…</div></div></div></div>
     <div class="small muted mt">Tiền nhà = tiền sau thuế không gồm hệ số góc · Hệ số lô góc tính sau thuế · Phát sinh = giá trị hoàn thiện (gộp HĐMB + HĐ hoàn thiện riêng) · Bảo trì = phí bảo trì 2%. Thu tiền Bravo không ghi theo khoản → mỗi kỳ thu chia theo cơ cấu của kỳ (đợt thu phí bảo trì gánh trọn phí bảo trì). «Theo tiến độ» = các kỳ đến hạn tới ngày chốt. Kế toán: thu quá khứ = thu trước ngày «từ», thu phát sinh = thu trong kỳ, công nợ còn lại = đến hạn chưa thu. Bấm 1 căn để mở hợp đồng & lịch thanh toán, bấm dòng tòa để thu gọn.</div></div></div>`;
   $('#dsS', main).value = s.sign;
   wireFilter(main, f, load); wireSegDate(main);
