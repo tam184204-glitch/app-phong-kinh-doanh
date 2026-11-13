@@ -659,7 +659,7 @@ async function contractTrack(db, user, f = {}) {
       // theo mẫu «Bảng theo dõi hợp đồng mua bán» + công thức phòng KD (05/11/2026), Tổng cộng = Tiền nhà + Phí bảo trì (cộng từng cột):
       //  tiền nhà: giá trị = tiền sau thuế (+ hoàn thiện nếu gộp HĐMB) · phải thu theo tiến độ = các đợt có hạn trong khoảng ngày · đã thu = phiếu thu (có «Từ ngày»: thu trong khoảng)
       //            còn lại theo tiến độ = phải thu − đã thu · còn lại theo hợp đồng = giá trị − tổng đã thu đến t
-      //  phí bảo trì: số phải thu = phí bảo trì (không theo hạn đợt) · còn lại = phí bảo trì − tổng đã thu phí bảo trì đến t
+      //  phí bảo trì: phải thu theo tiến độ = dòng phí bảo trì đã đến hạn · còn lại theo tiến độ = phải thu − tổng đã thu phí bảo trì đến t
       // phiếu thu chia vào đợt theo ngày (payTimeline): phần vào dòng phí bảo trì → phí bảo trì, còn lại (kể cả thu thừa) → tiền nhà
       //  lịch không có dòng phí bảo trì riêng (nhập file / lịch cũ) → tách phí bảo trì khỏi đợt chứa nó, không cộng 2 lần (06/11/2026)
       const tl = payTimeline(d.inst, RC.get(c.id) || [], c), inW = on => !from || on >= from, win = i => i.due_on <= to && (!from || i.due_on >= from);
@@ -668,8 +668,10 @@ async function contractTrack(db, user, f = {}) {
       const hDue = tl.I.filter(i => !i.is_maint && win(i)).reduce((a, i) => a + i.amount, 0), hPaid = sumP(hP, true), hAll = sumP(hP), mAll = sumP(mP), mPaidW = sumP(mP, true);
       const hv = c.after_tax != null ? +c.after_tax + (+c.finish_value || 0) : row.value - (+c.maint_fee || 0), mv = +c.maint_fee || 0, mLeft = mv - mAll, rate = c.late_rate != null ? +c.late_rate : null;
       //  phí bảo trì: số phải thu = phí bảo trì (không theo hạn đợt) nên số đã thu = tổng đã thu phí bảo trì đến t (không lọc «Từ ngày») → phải thu − đã thu = còn lại
-      Object.assign(row, { h_value: hv, h_due: hDue, h_paid: hPaid, h_left_due: hDue - hPaid, h_left: hv - hAll, m_value: mv, m_paid: mAll, m_left_due: mLeft,
-        t_value: hv + mv, t_due: hDue + mv, t_paid: hPaid + mAll, t_left_due: hDue - hPaid + mLeft, t_left: hv + mv - hAll - mAll,
+      //  13/11/2026: phí bảo trì cũng theo tiến độ — chỉ tính khi dòng phí bảo trì đã đến hạn (≤ «Đến ngày»); lịch không có dòng phí bảo trì → cả phí bảo trì
+      const mI = tl.I.filter(i => i.is_maint), mDue = mI.length ? mI.filter(i => i.due_on && i.due_on <= to).reduce((a, i) => a + i.amount, 0) : mv;
+      Object.assign(row, { h_value: hv, h_due: hDue, h_paid: hPaid, h_left_due: hDue - hPaid, h_left: hv - hAll, m_value: mv, m_due: mDue, m_paid: mAll, m_left_due: mDue - mAll, m_left: mLeft,
+        t_value: hv + mv, t_due: hDue + mDue, t_paid: hPaid + mAll, t_left_due: hDue - hPaid + mDue - mAll, t_left: hv + mv - hAll - mAll,
         late_rate: rate, late_int: rate ? instDebt(d.inst, RC.get(c.id) || [], c, t, rate).reduce((a, i) => a + i.late, 0) : null, _act: hDue > 0 || hPaid > 0 || mPaidW > 0 });
     }
     if (rent) {
