@@ -439,7 +439,7 @@ def('contract', {
       ['Giá trị hoàn thiện', ['finish_value', 'discount', 'value']]],   // bên mua: dữ liệu chung với HĐ mua bán cùng căn
       { dates: [['contract_on', 'Ngày ký']], label: { stt: 'STT', number: 'Số HĐ', contract_on: 'Ngày ký', unit_id: 'Mã căn', b_name: 'Họ và tên', b_id_no: 'Số CMND', b_id_date: 'Ngày cấp', b_id_place: 'Nơi cấp', b_addr: 'Địa chỉ', b_phone: 'Điện thoại', finish_value: 'Giá trị trước giảm giá', discount: 'Số giảm giá', value: 'Giá trị sau giảm giá' } }),
     can_ho: secList([['Hợp đồng', ['number', 'kind', 'contract_on']], ['Căn hộ', ['unit_id', 'area_tt', 'area_floor']], ['Tiền nhà', ['base_price', 'pretax', 'vat_pct', 'vat_amt', 'after_tax'], 'Xem tiền nhà'],
-      ['Hoàn thiện', ['finish_value'], 'Xem tiền hoàn thiện', false], ['Hệ số góc', ['corner_pct', 'corner_amt'], 'Xem tiền hệ số góc', false], ['Phí bảo trì', ['maint_fee'], 'Xem phí bảo trì'],
+      ['Hoàn thiện', ['finish_value'], 'Xem tiền hoàn thiện', false], ['Hệ số góc', ['corner_amt'], 'Xem tiền hệ số góc', false], ['Phí bảo trì', ['maint_fee'], 'Xem phí bảo trì'],
       ['Giảm giá', ['discount'], 'Xem tiền giảm giá', false], ['Tổng', ['value']], ['Thông tin bên mua nhà', ['b_name', 'b_id_no', 'b_id_date', 'b_id_place', 'b_addr', 'b_phone'], 'Xem thông tin khách hàng'],
       ['Hoa hồng', ['commission_amt', 'commission_pct'], 'Xem tiền hoa hồng', false], ['', ['status']]],
       { dates: [['contract_on', 'Ngày ký HĐMB'], ['signed_on', 'Ngày ký thực tế']], label: { contract_on: 'Ngày ký HĐMB', unit_id: 'Mã căn', area_tt: 'Diện tích nền (T.thủy)', area_floor: 'Diện tích sàn', base_price: 'Giá nền (chưa VAT)', value: 'Tổng tiền cả VAT', b_id_no: 'Số CMND', b_addr: 'Địa chỉ', b_phone: 'Điện thoại', status: 'Tình trạng' } }) },
