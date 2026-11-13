@@ -3780,17 +3780,30 @@ const vchToggle = async (tr, cid, { onLoan, reload, to } = {}) => {
         <td class="num">${x.rate != null ? fnum(x.rate) : ''}</td><td class="num">${x.late ? fm(x.late) : ''}</td><td>${pill(x.st_l, STC[x.st] || 's')}</td></tr>`).join('')}</tbody>
       <tfoot><tr><td></td><td>Cộng</td><td></td><td class="num">${fm(isum('amount'))}</td><td class="num">${fm(isum('paid'))}</td><td class="num">${fm(isum('rem'))}</td><td></td><td class="num">${fm(I.reduce((m, x) => x.od ?? m, 0))}</td><td></td><td></td><td class="num">${fm(isum('late'))}</td><td></td></tr></tfoot></table></div>
       <div class="small muted mb">Số tiền quá hạn lũy kế = cộng dồn phần còn lại chưa thanh toán của các đợt đã quá hạn. Lãi chậm trả tính theo từng khoảng: từ hạn đợt, số tiền quá hạn = phần còn nợ, giảm dần từ mỗi ngày khách trả; mỗi khoảng = số tiền quá hạn × số ngày × lãi suất / 365 (khoảng cuối đến ${dmy(g.asof)}) — tính cả những ngày đã trễ trước khi khách trả.</div>` : '<div class="empty mb">Hợp đồng chưa có lịch thu tiền</div>'}`;
-  const tb = (list, empty) => list.length ? `<table class="t compact noclick"><thead><tr><th>#</th><th>Số chứng từ</th><th>Ngày</th><th class="num">Số tiền</th><th>Nội dung</th><th>Nguồn</th><th>Trạng thái</th></tr></thead><tbody>${list.map((x, i) => `<tr class="${x.ok ? '' : 'muted'}" data-vo="${x.ent}:${x.id}" style="cursor:pointer"><td>${i + 1}</td><td><b>${esc(x.no || '')}</b></td><td>${dmy(x.on)}</td><td class="num">${x.ok ? fm(x.amount) : `<s>${fm(x.amount)}</s>`}</td><td class="wrap">${esc(x.content || '')}</td><td>${esc(x.src || '')}</td><td>${pill(x.st[0], x.st[1])}</td></tr>`).join('')}</tbody><tfoot><tr><td></td><td>Cộng (hợp lệ)</td><td></td><td class="num">${fm(list.filter(x => x.ok).reduce((t, x) => t + x.amount, 0))}</td><td colspan="3"></td></tr></tfoot></table>` : `<div class="empty">${empty}</div>`;
-  box.innerHTML = `<div class="vch-head"><b>${ico('fa-file-invoice-dollar')} Chứng từ — HĐ ${esc(c.number || '')}</b> <span class="muted small">căn ${esc(c.unit)} · ${esc(c.customer)}</span><span class="grow"></span>
-      <span class="small">Thu <b class="pos">${fm(g.thu_sum)}</b> · Chi <b class="neg">${fm(g.chi_sum)}</b> · Thu − chi <b>${fm(g.thu_sum - g.chi_sum)}</b></span></div>
-    ${inst}<div class="grid g2"><div><div class="vch-t">${ico('fa-arrow-down')} Phiếu thu <span class="n">${g.thu.length}</span>${g.can_thu ? `<button class="btn sm" data-vnew="receipt">${ico('fa-plus')} Phiếu thu</button>` : ''}</div>${tb(g.thu, 'Chưa có phiếu thu')}</div>
-      <div><div class="vch-t">${ico('fa-arrow-up')} Phiếu chi <span class="n">${g.chi.length}</span>${g.can_chi ? `<button class="btn sm" data-vnew="payment">${ico('fa-plus')} Phiếu chi</button>` : ''}${c.kind === 'vay' ? `<button class="btn sm" data-vloan>${ico('fa-hand-holding-dollar')} Lịch trả lãi & gốc</button>` : ''}</div>${tb(g.chi, c.kind === 'vay' ? 'Chưa có phiếu chi trả lãi / gốc' : 'Chưa có phiếu chi')}</div></div>
-    <div class="small muted mt">${c.kind === 'vay' ? 'Phiếu thu = tiền gốc khách chuyển cho công ty vay; phiếu chi = tiền lãi / gốc công ty đã trả khách (tự trừ vào kỳ trả).' : 'Phiếu thu = tiền khách đã nộp; phiếu chi = tiền công ty trả lại khách (hoàn tiền, hoàn cọc).'} Phòng KD tự ghi để theo dõi tiến độ. Bấm 1 phiếu để xem chi tiết.
-      <a href="#" data-vopen>Mở hợp đồng ›</a></div>`;
+  // 16/11/2026: gọn lại — 3 ô tóm tắt + 1 sổ chứng từ theo ngày (thu vào / chi ra), nút thao tác gom lên đầu
+  const vay = c.kind === 'vay', L = vay ? { thu: 'Khách chuyển gốc vay', chi: 'Công ty đã trả khách', net: 'Công ty còn giữ của khách', in: 'Khách chuyển', out: 'Trả khách' }
+    : { thu: 'Khách đã nộp', chi: 'Đã trả lại khách', net: 'Thực thu (nộp − trả lại)', in: 'Thu vào', out: 'Chi ra' };
+  const all = [...g.thu.map(x => ({ ...x, io: 'in' })), ...g.chi.map(x => ({ ...x, io: 'out' }))].sort((x, y) => String(x.on || '').localeCompare(String(y.on || '')) || (x.io === 'in' ? -1 : 1));
+  const kpi = (l, v, cls, sub) => `<div class="vch-k"><div class="l">${l}</div><div class="v ${cls}">${fm(v)}</div><div class="s">${sub}</div></div>`;
+  const book = all.length ? `<table class="t compact noclick vch-book"><thead><tr><th>Ngày</th><th>Loại</th><th>Số chứng từ</th><th>Nội dung</th><th class="num">${L.in}</th><th class="num">${L.out}</th></tr></thead><tbody>
+      ${all.map(x => `<tr class="${x.ok ? '' : 'muted'}" data-vo="${x.ent}:${x.id}" style="cursor:pointer" title="Bấm để xem chi tiết phiếu"><td class="nowrap">${dmy(x.on)}</td>
+        <td>${x.io === 'in' ? `<span class="vk-in">${ico('fa-arrow-down')} Thu</span>` : `<span class="vk-out">${ico('fa-arrow-up')} Chi</span>`}</td>
+        <td class="nowrap"><b>${esc(x.no || '')}</b></td>
+        <td class="wrap">${esc(x.content || '')}${x.src ? `<div class="small muted">${esc(x.src)}</div>` : ''}${x.ok ? '' : ` ${pill(x.st[0], x.st[1])}`}</td>
+        <td class="num">${x.io === 'in' ? (x.ok ? `<b class="pos">${fm(x.amount)}</b>` : `<s>${fm(x.amount)}</s>`) : ''}</td>
+        <td class="num">${x.io === 'out' ? (x.ok ? `<b class="neg">${fm(x.amount)}</b>` : `<s>${fm(x.amount)}</s>`) : ''}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td colspan="4">Cộng (phiếu hợp lệ)</td><td class="num pos">${fm(g.thu_sum)}</td><td class="num neg">${fm(g.chi_sum)}</td></tr></tfoot></table>`
+    : `<div class="empty">${vay ? 'Chưa có phiếu thu gốc / phiếu chi trả lãi, gốc' : 'Chưa có phiếu thu / phiếu chi'}</div>`;
+  box.innerHTML = `<div class="vch-head"><div><b>${ico('fa-file-invoice-dollar')} Chứng từ — HĐ ${esc(c.number || '')}</b><div class="muted small">Căn ${esc(c.unit)} · ${esc(c.customer)}</div></div><span class="grow"></span>
+      ${g.can_thu ? `<button class="btn sm" data-vnew="receipt">${ico('fa-plus')} Phiếu thu</button>` : ''}${g.can_chi ? `<button class="btn sm" data-vnew="payment">${ico('fa-plus')} Phiếu chi</button>` : ''}
+      ${vay ? `<button class="btn sm" data-vloan>${ico('fa-hand-holding-dollar')} Lịch trả lãi & gốc</button>` : ''}<button class="btn ghost sm" data-vopen>${ico('fa-up-right-from-square')} Mở hợp đồng</button></div>
+    <div class="vch-ks">${kpi(L.thu, g.thu_sum, 'pos', `${g.thu.filter(x => x.ok).length} phiếu thu`)}${kpi(L.chi, g.chi_sum, 'neg', `${g.chi.filter(x => x.ok).length} phiếu chi${vay ? ' (lãi / gốc)' : ''}`)}${kpi(L.net, g.thu_sum - g.chi_sum, '', 'thu − chi')}</div>
+    ${inst}<div class="vch-t">${ico('fa-book')} Sổ chứng từ <span class="n">${all.length}</span><span class="small muted">theo ngày · bấm 1 dòng để xem phiếu</span></div>${book}
+    <div class="small muted mt">${vay ? 'Thu = tiền gốc khách chuyển cho công ty vay · Chi = tiền lãi / gốc công ty trả khách (tự trừ vào kỳ trả).' : 'Thu = tiền khách nộp · Chi = tiền công ty trả lại khách (hoàn tiền, hoàn cọc).'}</div>`;
   box.onclick = run(async e => {
     e.stopPropagation();
     const n = e.target.closest('[data-vnew]'), o = e.target.closest('[data-vo]');
-    if (e.target.closest('[data-vopen]')) { e.preventDefault(); return openDetail('contract', cid, c.kind === 'vay' ? undefined : 'debt'); }
+    if (e.target.closest('[data-vopen]')) { e.preventDefault?.(); return openDetail('contract', cid, c.kind === 'vay' ? undefined : 'debt'); }
     if (e.target.closest('[data-vloan]')) return onLoan?.(cid);
     if (n) return openForm(n.dataset.vnew, { preset: { contract_id: cid, contract_id__l: c.number, voucher_date: today(), ...(n.dataset.vnew === 'payment' ? { kind: c.kind === 'vay' ? 'tra_lai' : ['thue', 'thue_mua'].includes(c.kind) ? 'hoan_coc' : 'hoan_tien' } : {}) }, onSaved: async () => { await reload?.(); } });
     if (o) { const [ent, id] = o.dataset.vo.split(':'); return openDetail(ent, +id); }
