@@ -1836,3 +1836,7 @@ label.tplr { display: flex; gap: 8px; align-items: center; padding: 7px 0; }
 .hsb-cp{grid-template-columns:1fr 70px;align-items:center} .hsb-cp input{height:30px;text-align:center}
 .hsb-act{display:grid;gap:8px} .hsb-act .btn{justify-content:center}
 .hsb-part{display:flex;gap:6px;align-items:center;font-size:13px} .hsb-part span{flex:1} .hsb-part.done span{color:#059669;text-decoration:line-through}
+
+/* đợt bàn giao (13/11/2026) */
+.sched-bg{white-space:nowrap;vertical-align:top} .sched-bg .chk{font-weight:600}
+.bg-dot select{max-width:260px;height:30px} .bg-dot select.bg-none{border-color:#dc2626;color:#dc2626}

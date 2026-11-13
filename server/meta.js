@@ -594,7 +594,10 @@ def('installment', {
     { k: 'due_on', l: 'Ngày đến hạn', t: 'date', req: 1 },
     { k: 'pct', l: 'Tỷ lệ (%)', t: 'num' },
     money('amount', 'Số tiền', { req: 1 }),
-    { k: 'is_maint', l: 'Dòng phí bảo trì', t: 'bool', ro: 1, hide: 1, def: false },   // HĐMB: phí bảo trì thu ở dòng riêng cố định (không cộng vào đợt nào)
+    { k: 'is_maint', l: 'Dòng phí bảo trì', t: 'bool', ro: 1, hide: 1, def: false },
+    // đợt bàn giao (13/11/2026): mỗi HĐMB tự chọn đợt nào là đợt thu khi bàn giao (đợt 2, 3, 4… tùy HĐ) + số ngày được nộp kể từ ngày bàn giao (trống = theo thông báo bàn giao)
+    { k: 'is_bg', l: 'Đợt bàn giao', t: 'bool', ro: 1, hide: 1, def: false },
+    { k: 'bg_days', l: 'Số ngày nộp kể từ bàn giao', t: 'int', ro: 1, hide: 1 },   // HĐMB: phí bảo trì thu ở dòng riêng cố định (không cộng vào đợt nào)
     { k: 'src', l: 'Căn cứ', t: 'sel', ro: 1, def: 'hop_dong', o: [['hop_dong', 'Hợp đồng', 'b'], ['phu_luc', 'Phụ lục', 'v']] },
     { k: 'active', l: 'Hiệu lực', t: 'bool', ro: 1, def: true },
   ], list: ['contract_id', 'seq', 'name', 'due_on', 'pct', 'amount', 'paid', 'pay_status', 'src'],
@@ -815,7 +818,7 @@ def('handover_notice', {
   title: 'Thông báo bàn giao căn hộ', one: 'thông báo bàn giao', code: 'BG-00', mod: '07', icon: 'fa-bullhorn', disp: "coalesce(t.doc_no, t.code)",
   purpose: 'Chốt ngày bàn giao từng tòa và hạn thu tiền đợt bàn giao của các HĐMB', users: 'Trưởng phòng / nhân viên kinh doanh, công nợ',
   how: 'Chọn dự án, tòa → app tự tích các căn có HĐMB đã ký → điền ngày bàn giao (xem trước hạn thu mới) → trình duyệt → duyệt (phát hành) là hạn thu đợt bàn giao của các HĐMB tự cập nhật',
-  rules: 'Mỗi căn chỉ thuộc 1 thông báo bàn giao còn hiệu lực; đợt bàn giao = kỳ thu có chữ «bàn giao» trong tên đợt của HĐMB',
+  rules: 'Mỗi căn chỉ thuộc 1 thông báo bàn giao còn hiệu lực; đợt bàn giao của từng HĐMB = đợt được đánh dấu «Bàn giao» ở Lần thanh toán (chưa đánh dấu thì app tự nhận đợt có nội dung nhắc bàn giao / nhận nhà); sửa đợt / số ngày ở HĐMB sau khi phát hành thì hạn tự tính lại',
   c: ['truong_phong', 'ban_hang', 'cong_no', 'cskh'], u: ['truong_phong', 'ban_hang', 'cong_no', 'cskh'], d: ['truong_phong', 'ban_hang', 'cong_no', 'cskh'], a: MGR,
   search: ['code', 'doc_no'], files: [['van_ban', 'Văn bản thông báo bàn giao']], fields: [
     { k: 'code', l: 'Mã thông báo', t: 'code', prefix: 'TBBG-{Y}-', pad: 4 },
@@ -825,7 +828,7 @@ def('handover_notice', {
     { k: 'notice_on', l: 'Ngày thông báo', t: 'date', def: 'today' },
     { k: 'handover_on', l: 'Ngày bàn giao', t: 'date', req: 1, help: 'Ngày bắt đầu bàn giao căn hộ của tòa' },
     { k: 'pay_from', l: 'Hạn nộp tiền đợt bàn giao tính từ', t: 'sel', def: 'ban_giao', o: [['ban_giao', 'Ngày bàn giao'], ['thong_bao', 'Ngày thông báo']] },
-    { k: 'pay_days', l: 'Số ngày được nộp tiền', t: 'int', def: 0, help: '0 = hạn nộp đúng ngày bàn giao / ngày thông báo; VD 15 = trong 15 ngày kể từ ngày đó' },
+    { k: 'pay_days', l: 'Số ngày được nộp tiền (mặc định)', t: 'int', def: 0, help: 'Hạn nộp tiền đợt bàn giao của HĐMB = ngày bàn giao (hoặc ngày thông báo) + số ngày. Dùng cho HĐMB chưa ghi số ngày riêng; HĐ nào có số ngày riêng (ở bảng căn bên dưới / Lần thanh toán của HĐMB) thì theo HĐ đó. 0 = nộp ngay trong ngày' },
     { k: 'unit_list', l: 'Căn hộ bàn giao', t: 'text', req: 1, def: '', pick: 'bg_units', help: 'Tự tích các căn có HĐMB đã ký của tòa — bỏ tích căn chưa bàn giao đợt này' },
     { k: 'note', l: 'Ghi chú', t: 'long' },
     { k: 'applied', l: 'Hạn thu đã cập nhật', t: 'json', ro: 1, hide: 1 },
