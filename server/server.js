@@ -597,7 +597,8 @@ R('POST', '/api/template-preview', async (req, res, u) => send(res, 200, { html:
 const HS = require('./ho-so');
 R('GET', '/api/hs', async (req, res, u, p, qs) => send(res, 200, await HS.hsInfo(qs.unit, u, qs.cust)));
 R('POST', '/api/hs-batch/keys', async (req, res, u) => { const b = await readJson(req); send(res, 200, await HS.batchKeys(b.units, b.bo, u)); });   // in hàng loạt: loại hồ sơ / mẫu của bước
-R('POST', '/api/hs-batch/plan', async (req, res, u) => { const b = await readJson(req); send(res, 200, await HS.batchPlan(b.units, b.bo, u)); });   // in hàng loạt: kiểm tra căn + hồ sơ
+R('POST', '/api/hs-batch/plan', async (req, res, u) => { const b = await readJson(req); send(res, 200, await HS.batchPlan(b.units, b.bo, u, b.keys)); });   // in hàng loạt: kiểm tra căn + hồ sơ (bo = 'auto': bước của từng căn)
+R('GET', '/api/hs-batch/scan', async (req, res, u, p, qs) => send(res, 200, await HS.batchScan(qs.project, u)));   // quét dự án: bước / khách / lần in gần nhất của từng căn   // in hàng loạt: kiểm tra căn + hồ sơ
 R('GET', '/print/hs-batch', async (req, res, u, p, qs) => {
   if (qs.fmt === 'docx') { const x = await HS.wordBatch(qs.units, qs.bo, qs.keys, u); return sendFile(res, x.buf, x.name, MIME['.docx']); }
   send(res, 200, await HS.printBatch(qs.units, qs.bo, qs.keys, u), { 'Content-Type': 'text/html; charset=utf-8' });
@@ -614,6 +615,10 @@ async function saveHsFile(u, unitId, bo, x, cust) {   // cất bản Word của 
   await C.audit({ q }, t.ent, g.row.id, 'tai_tep', null, null, u, `Bộ hồ sơ: ${x.name}${ver > 1 ? ` (phiên bản ${ver})` : ''}`, g.row.is_demo);
   return { file: r, where: `${t.what} ${g.row.number || g.row.code || ''}`.trim() };
 }
+// in hàng loạt → lưu bản Word của từng căn vào Kho (gắn HĐ của khách đang giao dịch), căn lỗi thì bỏ qua và báo lại (13/11/2026)
+R('POST', '/api/hs-batch/save', async (req, res, u) => { const b = await readJson(req), ok = [], err = [];
+  for (const x of await HS.batchPick(b.units, b.bo, b.keys, u)) { try { const cust = x.D.ctx.k?.id; await saveHsFile(u, x.f.id, x.bo, await HS.wordHs(x.f.id, x.ts.map(t => t.code).join(','), u, cust), cust); ok.push(x.D.map.ma_can); } catch (e) { err.push(`${x.D.map.ma_can}: ${e.message}`); } }
+  send(res, 200, { ok, err }); });
 R('POST', '/api/hs/:id/save', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await saveHsFile(u, p.id, b.bo, await HS.wordHs(p.id, b.tpl, u, b.cust), b.cust)); });
 R('POST', '/api/hs/:id/save-html', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await saveHsFile(u, p.id, b.bo, await HS.wordFromHtml(p.id, b.docs, u), b.cust)); });   // bản đã sửa trên trang in
 R('GET', '/print/hs/:id', async (req, res, u, p, qs) => {

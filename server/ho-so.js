@@ -513,50 +513,88 @@ const unitCopies = v => { const m = new Map();
   for (const x of (Array.isArray(v) ? v : String(v || '').split(/[\s,;]+/))) { const r = /^(.+?)(?:\*(\d+))?$/.exec(String(x).trim()); if (!r) continue;
     m.set(r[1].toUpperCase(), Math.min(50, Math.max(1, +r[2] || 1))); }
   return m; };
-async function batchPlan(units, bo, user) {
+// bước tự động (13/11/2026): bo = 'auto' → mỗi căn in bộ hồ sơ của bước đang làm của căn đó (theo HĐ của khách đang giao dịch)
+const BO_L = Object.fromEntries(BO), BO_PFX = { mua_ban: 'MB', vay: 'VAY', tl_vay: 'TLV', ban_giao: 'BG', tl_mua_ban: 'TLMB' };
+const boFor = (bo, D) => bo && bo !== 'auto' ? bo : stepOf(D.ctx);
+const keyOk = (want, t) => !want.size || want.has(tplKey(t.code));
+async function batchPlan(units, bo, user, keys) {
   if (!can(user, E.unit, 'r')) deny();
-  const keys = new Map(), out = [];
+  const kk = new Map(), out = [], want = new Set(String(keys || '').split(',').filter(Boolean));
   for (const code of unitList(units)) {
     try {
       const f = await findUnit(code); await autoProjectTemplates(f.id, user);
-      const ts = (await unitTemplates(f.id)).filter(t => t.bo === bo);
       const D = await hsData(f.id, user, f.cust?.id);   // gõ mã KH / SĐT → đúng khách đó
-      for (const t of ts) if (!keys.has(tplKey(t.code)) && !(ANNEX(tplKey(t.code)) && ts.some(x => tplKey(x.code) === 'MB-02'))) keys.set(tplKey(t.code), shortName(t.name));
-      out.push({ code: D.map.ma_can, id: f.id, customer: D.ctx.k ? `${D.ctx.k.full_name} · ${D.ctx.k.code || ''}` : '', n: ts.length, missing: [...new Set(ts.flatMap(t => missOf(t.content, D)))] });
+      const b = boFor(bo, D), all = (await unitTemplates(f.id)).filter(t => t.bo === b), ts = withAnnex(all.filter(t => keyOk(want, t)), all);
+      for (const t of all) if (!kk.has(tplKey(t.code)) && !(ANNEX(tplKey(t.code)) && all.some(x => tplKey(x.code) === 'MB-02'))) kk.set(tplKey(t.code), shortName(t.name));
+      out.push({ code: D.map.ma_can, id: f.id, bo: b, bo_l: BO_L[b], customer: D.ctx.k ? `${D.ctx.k.full_name} · ${D.ctx.k.code || ''}` : '', cust_id: D.ctx.k?.id || null,
+        hdmb_id: D.ctx.hdmb?.id || null, vay_id: D.ctx.vay?.id || null, n: ts.length, missing: [...new Set(ts.flatMap(t => missOf(t.content, D)))] });
     } catch (e) { out.push({ code, error: e.message }); }
   }
-  return { keys: [...keys].map(([key, name]) => ({ key, name })).sort((a, b) => a.key.localeCompare(b.key)), units: out };
+  return { keys: [...kk].map(([key, name]) => ({ key, name })).sort((a, b) => a.key.localeCompare(b.key)), units: out };
 }
-async function batchKeys(units, bo, user) {   // danh sách loại hồ sơ của bước (nhanh: mỗi tòa xem 1 căn, không tính dữ liệu)
+// quét cả dự án (13/11/2026): mỗi căn → khách đang giao dịch, bước hồ sơ đang làm, ngày ký HĐMB, lần in gần nhất của bước đó — để gợi ý «căn cần in»
+async function batchScan(pid, user) {
   if (!can(user, E.unit, 'r')) deny();
-  const keys = new Map(), seen = new Set();
+  const us = await q(`SELECT u.id, u.code, u.status, b.code bcode, b.name bname, p.code pcode FROM kd_unit u JOIN kd_building b ON b.id = u.building_id JOIN kd_project p ON p.id = u.project_id WHERE u.project_id = $1 ORDER BY u.code`, [+pid]);
+  if (!us.length) return { units: [] };
+  const ids = us.map(u => u.id);
+  const cts = await q(`SELECT id, unit_id, customer_id, kind, status, closed, contract_on, signed_on, created_at FROM kd_contract WHERE unit_id = ANY($1) AND customer_id IS NOT NULL ORDER BY (status IN ('huy', 'thanh_ly')), coalesce(contract_on, created_at::date) DESC, id DESC`, [ids]);
+  const rs = await q(`SELECT unit_id, customer_id, status, coalesce(reg_date, created_at::date) d FROM kd_reservation WHERE unit_id = ANY($1) AND customer_id IS NOT NULL`, [ids]);
+  const ks = new Map((await q('SELECT id, code, full_name FROM kd_customer WHERE id = ANY($1)', [[...new Set([...cts, ...rs].map(r => r.customer_id))]])).map(k => [k.id, k]));
+  const pr = await q(`SELECT rec_id, note, at FROM kd_audit WHERE ent = 'unit' AND rec_id = ANY($1) AND action IN ('in_bo_ho_so', 'tai_word_ho_so', 'in_hang_loat') ORDER BY at DESC`, [ids]);
+  const RS_DEAD = ['huy', 'het_han', 'tu_choi', 'qua_han', 'chuyen_hd'], d10 = v => v ? (v instanceof Date ? v.toISOString() : String(v)).slice(0, 10) : '';
+  return { units: us.map(u => {
+    const c = cts.filter(x => x.unit_id === u.id), r = rs.filter(x => x.unit_id === u.id);
+    const liveC = c.find(x => live(x)), liveR = r.filter(x => !RS_DEAD.includes(x.status)).sort((a, b) => d10(b.d).localeCompare(d10(a.d)))[0];
+    const kid = liveC?.customer_id || liveR?.customer_id || c[0]?.customer_id || null, k = kid && ks.get(kid);
+    const mine = kid ? c.filter(x => x.customer_id === kid) : [];
+    const hdmb = pick(mine, 'hdmb') || pick(mine, 'thue_mua'), ht = pick(mine, 'hoan_thien'), vay = pick(mine, 'vay');
+    const step = kid ? stepOf({ hdmb, vay, ht, cts: mine }) : '';
+    const tag = `-${BO_PFX[step]}-`, last = step && pr.find(a => a.rec_id === u.id && String(a.note || '').toUpperCase().includes(tag));
+    return { code: u.code, tower: `${u.pcode}-${u.bcode}`, tname: u.bname || 'Tòa ' + u.bcode, cust: k ? k.full_name : '', kcode: k?.code || '', step, current: !!(liveC || liveR),
+      hdmb: hdmb ? hdmb.status : '', signed: d10(hdmb?.signed_on || (hdmb?.status === 'da_ky' ? hdmb.contract_on : '')), printed: last ? d10(last.at) : '' };
+  }) };
+}
+async function batchKeys(units, bo, user) {   // danh sách loại hồ sơ của bước (nhanh: mỗi tòa xem 1 căn, không tính dữ liệu) · bo = 'auto': lấy mẫu của mọi bước
+  if (!can(user, E.unit, 'r')) deny();
+  const keys = new Map(), seen = new Set(), steps = bo === 'auto' ? Object.keys(BO_PFX) : [bo];
   for (const code of unitList(units)) {
     const g = String(code).toUpperCase().replace(/-[^-]+$/, ''); if (seen.has(g)) continue; seen.add(g);
     try { const f = await findUnit(code); await autoProjectTemplates(f.id, user);
-      const all = (await unitTemplates(f.id)).filter(t => t.bo === bo), hd = all.some(t => tplKey(t.code) === 'MB-02');
-      for (const t of all.filter(t => !(hd && ANNEX(tplKey(t.code))))) if (!keys.has(tplKey(t.code))) keys.set(tplKey(t.code), shortName(t.name));
+      const ts = await unitTemplates(f.id);
+      for (const s of steps) { const all = ts.filter(t => t.bo === s), hd = all.some(t => tplKey(t.code) === 'MB-02');
+        for (const t of all.filter(t => !(hd && ANNEX(tplKey(t.code))))) if (!keys.has(tplKey(t.code))) keys.set(tplKey(t.code), { name: shortName(t.name), bo: s }); }
     } catch (e) { seen.delete(g); }
   }
-  return { keys: [...keys].map(([key, name]) => ({ key, name })).sort((a, b) => a.key.localeCompare(b.key)) };
+  const ord = Object.keys(BO_PFX);
+  return { keys: [...keys].map(([key, x]) => ({ key, name: x.name, bo: x.bo, bo_l: BO_L[x.bo] })).sort((a, b) => ord.indexOf(a.bo) - ord.indexOf(b.bo) || a.key.localeCompare(b.key)) };
 }
-async function batchDocs(units, bo, keys, user) {
+// căn + mẫu sẽ in (dùng chung cho In / Word / Lưu vào kho)
+async function batchPick(units, bo, keys, user) {
   if (!can(user, E.unit, 'r')) deny();
   const want = new Set(String(keys || '').split(',').filter(Boolean)), out = [], cps = unitCopies(units);
   for (const code of unitList(units)) {
     let f; try { f = await findUnit(code); } catch { continue; }
-    const all = (await unitTemplates(f.id)).filter(t => t.bo === bo), ts = withAnnex(all.filter(t => !want.size || want.has(tplKey(t.code))), all);
+    const D = await hsData(f.id, user, f.cust?.id), b = boFor(bo, D);
+    const all = (await unitTemplates(f.id)).filter(t => t.bo === b), ts = withAnnex(all.filter(t => keyOk(want, t)), all);
     if (!ts.length) continue;
-    const D = await hsData(f.id, user, f.cust?.id);
-    const docs = ts.map(t => ({ t, html: merge(t.content, D) })), n = cps.get(String(code).toUpperCase()) || 1;
-    for (let i = 1; i <= n; i++) out.push({ unitId: f.id, code: D.map.ma_can, copy: i, copies: n, docs });   // mỗi bản là 1 phần riêng (Word: số trang đánh lại từ 1)
-    await C.audit({ q }, 'unit', f.id, 'in_hang_loat', null, null, user, ts.map(t => t.code).join(', ') + (n > 1 ? ` · ${n} bản` : ''));
+    out.push({ f, D, bo: b, ts, copies: cps.get(String(code).toUpperCase()) || 1 });
   }
   if (!out.length) bad('Không có căn nào có hồ sơ phù hợp để in');
   return out;
 }
+async function batchDocs(units, bo, keys, user) {
+  const out = [];
+  for (const x of await batchPick(units, bo, keys, user)) {
+    const docs = x.ts.map(t => ({ t, html: merge(t.content, x.D) })), n = x.copies;
+    for (let i = 1; i <= n; i++) out.push({ unitId: x.f.id, code: x.D.map.ma_can, bo: x.bo, copy: i, copies: n, docs });   // mỗi bản là 1 phần riêng (Word: số trang đánh lại từ 1)
+    await C.audit({ q }, 'unit', x.f.id, 'in_hang_loat', null, null, user, x.ts.map(t => t.code).join(', ') + (n > 1 ? ` · ${n} bản` : ''));
+  }
+  return out;
+}
 async function printBatch(units, bo, keys, user) {
   const IO = require('./io'), list = await batchDocs(units, bo, keys, user);
-  const body = list.map(u => u.docs.map(d => `<section class="hs"><div class="hs-t" contenteditable="false">Căn ${escH(u.code)}${u.copies > 1 ? ` · bản ${u.copy}/${u.copies}` : ''} · ${escH(shortName(d.t.name))}</div>${d.html}</section>`).join('')).join('');
+  const body = list.map(u => u.docs.map(d => `<section class="hs"><div class="hs-t" contenteditable="false">Căn ${escH(u.code)} · ${escH(BO_L[u.bo] || '')}${u.copies > 1 ? ` · bản ${u.copy}/${u.copies}` : ''} · ${escH(shortName(d.t.name))}</div>${d.html}</section>`).join('')).join('');
   const n = list.reduce((s, u) => s + u.docs.length, 0), nc = new Set(list.map(u => u.unitId)).size, codes = [...new Set(list.map(u => u.code))];
   // in liền nhiều căn: không đánh số trang chung (số trang từng căn đánh lại từ 1 có ở bản Word)
   const pageCss = `@page{${['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right'].map(k => `@${k}{content:""}`).join('')}}`;
@@ -568,4 +606,4 @@ async function wordBatch(units, bo, keys, user) {
   const nc = new Set(list.map(u => u.unitId)).size, name = `In_hang_loat_${nc}_can${list.length > nc ? `_${list.length}_ban` : ''}_${bo}_${C.today()}.docx`;
   return { buf: docxOf(flat.map(d => d.html), name, isHdSet(flat.map(d => d.t.code)), list.map(u => u.docs.length)), name };
 }
-module.exports = { batchKeys, batchPlan, printBatch, wordBatch, custHistory, wordFromHtml, demoFill, demoFillOn, saveTarget, BO, MAU_TNS, hsData, hsInfo, printHs, wordHs, merge, evalExpr };
+module.exports = { batchKeys, batchPlan, batchScan, batchPick, BO_L, printBatch, wordBatch, custHistory, wordFromHtml, demoFill, demoFillOn, saveTarget, BO, MAU_TNS, hsData, hsInfo, printHs, wordHs, merge, evalExpr };
