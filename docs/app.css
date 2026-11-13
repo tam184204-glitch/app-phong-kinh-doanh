@@ -1762,3 +1762,81 @@ label.tplr { display: flex; gap: 8px; align-items: center; padding: 7px 0; }
 .hs-st.ok { background: #DCFCE7; color: #166534; } .hs-st.tl { background: #FEF3C7; color: #92400E; } .hs-st.huy { background: #FEE2E2; color: #991B1B; } .hs-st.nx { background: #E0E7FF; color: #3730A3; }
 
 .hs-ht td { white-space: normal; } .hs-ht td:first-child { width: 28px; } .hs-ht td.nowrap { white-space: nowrap; }
+
+/* 12/11/2026: In hàng loạt */
+.hs-q #hsBatch { flex: none; }
+.bt { display: grid; gap: 12px; }
+.bt-row { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; }
+.bt-row > label:not(.chk) { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+.bt-row select { min-width: 200px; height: 34px; } .bt-paste { flex: 1 1 260px; } .bt-paste textarea { width: 100%; }
+.bt-units { border: 1px solid var(--line2); border-radius: 10px; max-height: 260px; overflow: auto; padding: 8px 12px; }
+.bt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 4px 10px; margin-top: 6px; font-size: 13px; }
+.bt-miss { max-height: 220px; overflow: auto; margin-top: 6px; }
+
+.bt-docs{border:1px solid var(--line,#e5e7eb);border-radius:8px;padding:8px 10px;margin-top:8px;background:var(--bg2,#fafafa)}
+.bt-docs .bt-uh{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+.bt-dgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:4px 14px;max-height:190px;overflow:auto}
+.bt-dgrid .chk{white-space:normal;line-height:1.3}
+
+.bt-tw{border:1px solid var(--line2,#e5e7eb);border-radius:8px;padding:3px 8px} .bt-tw.on{border-color:var(--amb,#f59e0b);background:rgba(245,158,11,.08)}
+.bt-tg + .bt-tg{margin-top:10px;padding-top:8px;border-top:1px dashed var(--line2,#e5e7eb)} .bt-tg .bt-uh{display:flex;gap:10px;align-items:center}
+.bt-sel{margin-top:8px;font-size:13px;display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.bt-chip{border:1px solid var(--line2,#e5e7eb);border-radius:8px;padding:2px 6px;display:inline-flex;gap:4px;align-items:center;flex-wrap:wrap}
+.bt-c{background:var(--bg2,#f3f4f6);border-radius:6px;padding:0 2px 0 6px} .bt-c button{border:0;background:none;cursor:pointer;color:#94a3b8;padding:0 3px} .bt-c button:hover{color:#dc2626}
+.bt-c .bt-n{width:38px;margin:0 0 0 4px;padding:0 2px;height:20px;font-size:12px;text-align:center;border:1px solid #cbd5e1;border-radius:4px} .bt-cn{background:#fff3d6;outline:1px solid #f5a623} .bt-cpall{flex-basis:100%;margin-top:6px} .bt-cpall .bt-n{width:52px;height:24px;text-align:center;padding:0 4px}
+
+/* ===== In bộ hồ sơ: 2 chế độ + In hàng loạt (13/11/2026) ===== */
+.hsm-sw{display:inline-flex;background:var(--bg2,#eef2f7);border-radius:12px;padding:4px;gap:4px;margin-bottom:14px}
+.hsm-sw button{border:0;background:none;padding:8px 16px;border-radius:9px;font-weight:600;color:var(--muted);cursor:pointer;display:inline-flex;gap:8px;align-items:center}
+.hsm-sw button.on{background:#fff;color:var(--cobalt,#1e3a8a);box-shadow:0 1px 4px rgba(15,23,42,.12)}
+.hsb-top{padding:14px 16px;margin-bottom:14px}
+.hsb-r1{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.hsb-r1 select{height:40px;min-width:220px;border-radius:10px}
+.hsb-q{flex:1 1 360px;display:flex;align-items:center;gap:8px;border:1px solid var(--line2,#d6dde8);border-radius:10px;padding:0 12px;background:#fff;height:40px}
+.hsb-q:focus-within{border-color:var(--cobalt,#1e3a8a);box-shadow:0 0 0 3px rgba(30,58,138,.1)}
+.hsb-q i{color:var(--muted)} .hsb-q input{border:0;outline:0;flex:1;height:100%;font-size:14px;background:none}
+.hsb-sug{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+.hsb-lbl{font-size:12.5px;color:var(--muted);font-weight:600}
+.hsb-chip{border:1px solid var(--line2,#d6dde8);background:#fff;border-radius:999px;padding:5px 12px;font-size:13px;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
+.hsb-chip:hover:not(:disabled){border-color:var(--cobalt,#1e3a8a);color:var(--cobalt,#1e3a8a)} .hsb-chip:disabled{opacity:.45;cursor:default}
+.hsb-chip b{background:var(--bg2,#eef2f7);border-radius:999px;padding:0 7px;font-size:12px}
+.hsb-chip.hot{border-color:var(--amber,#F5A623);background:var(--amber-50,#FFF6E4)} .hsb-chip.hot b{background:var(--amber,#F5A623);color:#3a2600}
+.hsb-chip.ghost{border-style:dashed;color:var(--muted)} .hsb-chip .dot{width:9px;height:9px;border-radius:50%}
+.hsb-main{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:14px;align-items:start}
+@media (max-width:1100px){.hsb-main{grid-template-columns:1fr}}
+.hsb-units{padding:12px 14px;min-height:300px}
+.hsb-tws{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.hsb-tws button{border:1px solid var(--line2,#d6dde8);background:#fff;border-radius:8px;padding:4px 10px;font-size:13px;cursor:pointer}
+.hsb-tws button.on{background:var(--cobalt,#1e3a8a);border-color:var(--cobalt,#1e3a8a);color:#fff} .hsb-tws button b{color:var(--amber-d,#C98210)} .hsb-tws button.on b{color:var(--amber,#F5A623)}
+.hsb-leg{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted);margin-bottom:6px} .hsb-leg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.hsb-tg{margin-top:10px} .hsb-th{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+.hsb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px}
+.hsb-u{position:relative;border:1px solid var(--line2,#d6dde8);border-left:4px solid var(--c);background:#fff;border-radius:8px;padding:5px 7px;text-align:left;cursor:pointer;display:grid;gap:1px;min-width:0}
+.hsb-u .c{font-weight:700;font-size:13px;display:flex;gap:4px;align-items:center} .hsb-u .c .pr{color:#059669;font-size:11px} .hsb-u .c em{font-style:normal;font-size:11px;color:var(--amber-d,#C98210)}
+.hsb-u .n{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hsb-u:hover{border-color:var(--c);box-shadow:0 1px 6px rgba(15,23,42,.1)}
+.hsb-u.on{background:color-mix(in srgb,var(--c) 14%,#fff);border-color:var(--c);box-shadow:inset 0 0 0 1px var(--c)}
+.hsb-u.on::after{content:"✓";position:absolute;top:3px;right:6px;font-size:12px;font-weight:800;color:var(--c)}
+.hsb-u.off{opacity:.55;border-left-color:#cbd5e1}
+.hsb-side{position:sticky;top:84px;padding:14px 16px;display:grid;gap:12px;max-height:calc(100vh - 100px);overflow:auto}
+.hsb-empty{display:grid;gap:8px;text-align:center;color:var(--muted);padding:30px 6px;font-size:13px} .hsb-empty i{font-size:28px;color:var(--amber,#F5A623)} .hsb-empty b{color:var(--ink,#0f172a);font-size:15px}
+.hsb-sum{font-size:15px} .hsb-sum > b{font-size:22px;color:var(--cobalt,#1e3a8a)} .hsb-sum .small{margin-top:4px;display:flex;flex-wrap:wrap;gap:4px}
+.hsb-st{border-left:3px solid var(--c);padding:0 6px;background:var(--bg2,#f3f6fa);border-radius:4px}
+.hsb-f{display:grid;gap:5px;font-size:12.5px;font-weight:600;color:var(--muted)} .hsb-f select{height:36px;border-radius:8px;font-weight:500;color:var(--ink,#0f172a)}
+.hsb-fh{display:flex;gap:8px;align-items:center} .hsb-fh .lnk{margin-left:auto}
+.lnk{border:0;background:none;color:var(--cobalt,#1e3a8a);cursor:pointer;font-size:12px;padding:0}
+.lnk:hover{text-decoration:underline}
+.hsb-keys{border:1px solid var(--line2,#e5e7eb);border-radius:8px;padding:6px 8px;max-height:220px;overflow:auto;font-weight:400;color:var(--ink,#0f172a);display:grid;gap:3px}
+.hsb-keys .chk{white-space:normal;line-height:1.3;font-size:13px}
+.hsb-kg{font-size:11.5px;font-weight:700;color:var(--c);border-left:3px solid var(--c);padding-left:6px;margin-top:4px}
+.hsb-chk{display:flex;gap:12px;font-size:13px;font-weight:600}
+.hsb-miss{border:1px solid #fde4c4;background:#fffaf2;border-radius:8px;max-height:220px;overflow:auto;margin:6px 0;font-weight:400;color:var(--ink,#0f172a)}
+.hsb-miss > div{padding:6px 8px;font-size:12.5px} .hsb-miss > div + div{border-top:1px solid #fde4c4}
+.hsb-fix{display:flex;gap:10px;margin-top:3px}
+.hsb-cp{grid-template-columns:1fr 70px;align-items:center} .hsb-cp input{height:30px;text-align:center}
+.hsb-act{display:grid;gap:8px} .hsb-act .btn{justify-content:center}
+.hsb-part{display:flex;gap:6px;align-items:center;font-size:13px} .hsb-part span{flex:1} .hsb-part.done span{color:#059669;text-decoration:line-through}
+
+/* đợt bàn giao (13/11/2026) */
+.sched-bg{white-space:nowrap;vertical-align:top} .sched-bg .chk{font-weight:600}
+.bg-dot select{max-width:260px;height:30px} .bg-dot select.bg-none{border-color:#dc2626;color:#dc2626}

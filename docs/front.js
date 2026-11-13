@@ -5,6 +5,8 @@ let M = null;                 // meta từ máy chủ (/api/meta)
 const ST = { list: {} };
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+// 13/11/2026: trang in /print/… mở tab tách riêng (noopener) — hộp «In» của Chrome tạm dừng mọi tab dính opener, tab app bị đơ nút tới khi đóng tab in
+{ const o = window.open.bind(window); window.open = (u, t, f) => typeof u === 'string' && u.startsWith('/print/') && !/[?&]fmt=docx/.test(u) ? (o(u, t || '_blank', f ? f + ',noopener' : 'noopener'), null) : o(u, t, f); }
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fm = n => n == null || n === '' || isNaN(n) ? '' : Math.round(+n).toLocaleString('vi-VN');
 const fmB = n => { n = +n || 0; const a = Math.abs(n); return a >= 1e9 ? (n / 1e9).toLocaleString('vi-VN', { maximumFractionDigits: 2 }) + ' tỷ' : a >= 1e6 ? (n / 1e6).toLocaleString('vi-VN', { maximumFractionDigits: 1 }) + ' tr' : fm(n); };
@@ -79,8 +81,61 @@ function pill(label, color) { return `<span class="pill ${color || ''}">${esc(la
 const unitsTable = us => { const d1 = v => v == null ? '' : (+v).toLocaleString('vi-VN', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   return `<div class="small muted mb">${us.length} căn</div><div class="tbl-wrap ds-can"><table class="t compact noclick"><thead><tr><th class="center">STT</th><th class="center">Mã căn hộ</th><th class="center">Diện tích thông thủy</th><th class="center">Diện tích xây dựng</th></tr></thead>
     <tbody>${us.map((u, i) => `<tr><td class="center">${i + 1}</td><td class="center">${esc(u.code)}</td><td class="center">${d1(u.area_tt)}</td><td class="center">${d1(u.area_xd)}</td></tr>`).join('')}</tbody></table></div>`; };
+
+// ---------- Thông báo bàn giao (13/11/2026): bảng căn của tòa + HĐMB đã ký + đợt bàn giao, hạn hiện tại → hạn mới ----------
+const bgTable = (rs, { pick, sel } = {}) => {
+  const d = v => v ? dmy(String(v).slice(0, 10)) : '';
+  return `<div class="tbl-wrap bg-t"><table class="t compact noclick"><thead><tr>${pick ? '<th style="width:30px"></th>' : ''}<th>Mã căn</th><th>Khách hàng</th><th>Số HĐMB</th><th>Ngày ký</th><th>Đợt bàn giao</th><th>Số ngày</th><th class="num">Số tiền</th><th>Hạn hiện tại</th><th>Hạn thu mới</th><th>Ghi chú</th></tr></thead><tbody>
+    ${rs.map(x => { const on = pick && sel.has(x.code.toUpperCase()), chg = x.due_new && String(x.due_old || '').slice(0, 10) !== x.due_new;
+      return `<tr${on ? ' class="sel"' : ''}>${pick ? `<td><input type="checkbox" data-bgu="${esc(x.code)}" ${on ? 'checked' : ''} ${x.other ? 'disabled' : ''}></td>` : ''}<td>${esc(x.code)}</td><td>${esc(x.customer || '')}</td><td>${esc(x.number || '')}</td><td>${d(x.contract_on)}</td>
+        <td class="bg-dot">${!x.contract_id ? '<span class="muted">Chưa có HĐMB đã ký</span>' : pick && x.dots?.length
+          ? `<select data-bgd="${x.contract_id}" class="${x.inst_seq ? '' : 'bg-none'}" title="${esc(x.inst_name || '')}"><option value="">${x.inst_seq ? '— bỏ đánh dấu —' : '— Chưa rõ đợt — chọn —'}</option>${x.dots.map(o => { const nm = String(o.name || '').slice(0, 55); return `<option value="${o.seq}" ${o.seq === x.inst_seq ? 'selected' : ''}>${esc(/^đợt\s*\d/i.test(nm) ? nm : `Đợt ${o.seq} · ${nm}`)}</option>`; }).join('')}</select>${x.how === 'text' ? '<div class="small muted">tự nhận theo nội dung — chọn lại nếu sai</div>' : ''}`
+          : x.inst_seq ? esc(/^đợt\s*\d/i.test(x.inst_name || '') ? String(x.inst_name).slice(0, 60) : `Đợt ${x.inst_seq} · ${String(x.inst_name || '').slice(0, 60)}`) : '<span class="hs-miss">Chưa rõ đợt bàn giao</span>'}</td>
+        <td>${pick && x.inst_seq ? `<input data-bgn="${x.contract_id}" data-seq="${x.inst_seq}" value="${x.days_own ?? ''}" placeholder="${x.days}" inputmode="numeric" style="width:54px;text-align:right" title="Số ngày riêng của HĐ này — để trống = theo ô «Số ngày được nộp tiền (mặc định)»">` : x.inst_seq ? `${x.days}${x.days_own == null ? ' <span class="muted small">(mặc định)</span>' : ''}` : ''}</td><td class="num">${x.amount != null ? fm(x.amount) : ''}</td>
+        <td>${d(x.due_old)}</td><td>${x.due_new ? `<b${chg ? ' style="color:var(--cobalt)"' : ''}>${d(x.due_new)}</b>` : ''}</td><td class="small">${x.other ? `<span class="hs-miss">Đã có trong TB ${esc(x.other)}</span>` : ''}</td></tr>`; }).join('')}
+    </tbody></table></div>`;
+};
+async function bgPicker(el, form) {
+  const hid = $('input[type=hidden]', el), box = $('.upick-bd', el), F = k => M.ents.handover_notice.fields.find(f => f.k === k);
+  const val = k => readField(form, F(k));
+  let rows = [], key = '', auto = !hid.value, sel = new Set(String(hid.value).toUpperCase().split(/[,;\s]+/).filter(Boolean)), first = null;
+  const draw = () => {
+    if (!val('building_id')) { box.innerHTML = '<div class="muted small">Chọn dự án và mã tòa — app tự hiện các căn có HĐMB đã ký để tích.</div>'; return; }
+    if (!rows.length) { box.innerHTML = '<div class="muted small">Tòa này chưa có căn hộ.</div>'; return; }
+    box.innerHTML = `<div class="upick-sum">${sumHtml()}</div>
+      ${val('handover_on') ? '' : '<div class="small hs-miss">Điền «Ngày bàn giao» để xem hạn thu mới của đợt bàn giao.</div>'}${bgTable(rows, { pick: true, sel })}`;
+  };
+  const sumHtml = () => { const on = rows.filter(x => sel.has(x.code.toUpperCase())), hd = on.filter(x => x.inst_id), tot = hd.reduce((s, x) => s + (+x.amount || 0), 0);
+    const unk = on.filter(x => x.contract_id && !x.inst_id).length;
+    return `<b>Đã chọn ${on.length}/${rows.length} căn</b> · ${hd.length} HĐMB có đợt bàn giao · tiền đợt bàn giao ${fm(tot)} đ${unk ? ` · <span class="hs-miss">${unk} HĐ chưa rõ đợt bàn giao — chọn ở cột «Đợt bàn giao»</span>` : ''}
+      ${first ? ` · <span class="hs-ok">tòa đã bàn giao từ ${dmy(String(first).slice(0, 10))}</span>` : ''}<span class="grow"></span>
+      <button type="button" class="btn sm" data-bga="hd">Chọn căn có HĐMB đã ký</button><button type="button" class="btn sm" data-bga="1">Chọn tất cả</button><button type="button" class="btn sm ghost" data-bga="0">Bỏ chọn hết</button>`; };
+  const setHid = () => { hid.value = rows.filter(x => sel.has(x.code.toUpperCase())).map(x => x.code).join(','); };
+  const setSel = s => { sel = s; setHid(); draw(); };
+  const load = async () => {
+    const qs = new URLSearchParams({ id: form.dataset.id || '', building: val('building_id') || '', on: val('handover_on') || '', notice: val('notice_on') || '', from: val('pay_from') || 'ban_giao', days: val('pay_days') ?? 0 });
+    if (qs.toString() === key) return; const bChanged = !key.includes(`building=${qs.get('building')}&`); key = qs.toString();
+    if (!qs.get('building')) { rows = []; draw(); return; }
+    const r = await api('GET', '/api/handover-notice/suggest?' + qs); rows = r.rows; first = r.bg_from;
+    if (bChanged && (auto || !rows.some(x => sel.has(x.code.toUpperCase())))) { auto = true; setSel(new Set(rows.filter(x => x.inst_id && !x.other).map(x => x.code.toUpperCase()))); } else draw();
+  };
+  let tm = 0; const soon = () => { clearTimeout(tm); tm = setTimeout(() => load().catch(e => toast(e.message, true)), 250); };
+  form.addEventListener('change', e => { if (['project_id', 'building_id', 'handover_on', 'notice_on', 'pay_from', 'pay_days'].includes(e.target.name)) soon(); });
+  form.addEventListener('input', e => { if (['handover_on', 'notice_on', 'pay_days'].includes(e.target.name)) soon(); });
+  // tích 1 căn: chỉ cập nhật dòng + dòng tổng (không vẽ lại bảng → giữ chỗ đang cuộn)
+  box.addEventListener('change', e => { const c = e.target; if (!c.dataset.bgu) return; e.stopPropagation(); auto = false; const k = c.dataset.bgu.toUpperCase(); c.checked ? sel.add(k) : sel.delete(k);
+    setHid(); c.closest('tr').classList.toggle('sel', c.checked); $('.upick-sum', box).innerHTML = sumHtml(); });
+  // đổi đợt bàn giao / số ngày của 1 HĐ: ghi thẳng vào Lần thanh toán của HĐMB (lần sau mọi thông báo đều nhận đúng)
+  box.addEventListener('change', run(async e => { const c = e.target, d = c.dataset; if (!d.bgd && !d.bgn) return; e.stopPropagation();
+    const body = d.bgd ? { contract_id: +d.bgd, seq: +c.value || 0, days: rows.find(x => x.contract_id === +d.bgd)?.days_own ?? null } : { contract_id: +d.bgn, seq: +d.seq, days: c.value.trim() };
+    c.disabled = true; try { await api('POST', '/api/handover-notice/set-bg', body); toast(d.bgd ? (body.seq ? `Đã đặt đợt ${body.seq} là đợt bàn giao của HĐMB` : 'Đã bỏ đánh dấu đợt bàn giao') : 'Đã lưu số ngày vào HĐMB'); key = ''; await load(); } finally { c.disabled = false; } }));
+  box.addEventListener('click', e => { const b = e.target.closest('[data-bga]'); if (!b) return; auto = false;
+    setSel(new Set(rows.filter(x => !x.other && (b.dataset.bga === '1' || (b.dataset.bga === 'hd' && x.inst_id))).map(x => x.code.toUpperCase()))); });
+  await load();
+}
 function show(f, row, { plain } = {}) {
   if (f.pick === 'units' && Array.isArray(row._units) && !plain) return unitsTable(row._units);
+  if (f.pick === 'bg_units' && Array.isArray(row._bg) && !plain) return `<div class="small muted mb">${row._bg.length} căn · hạn thu đợt bàn giao ${row.status === 'da_duyet' ? 'đã cập nhật vào HĐMB' : 'sẽ cập nhật khi phát hành'}</div>` + bgTable(row._bg);
   const v = row[f.k];
   if (v == null || v === '') return plain ? '' : '<span class="muted">—</span>';
   switch (f.t) {
@@ -112,7 +167,7 @@ function retCell(k, r) {
   const fs = r.ret_files || [];
   return `<div class="ret-f">${fs.map(f => `<span class="ret-fi"><a href="/api/file/${f.id}" target="_blank" rel="noopener" title="${esc(f.name)}">${ico(/\.pdf$/i.test(f.name) ? 'fa-file-pdf' : /\.(png|jpe?g|webp)$/i.test(f.name) ? 'fa-file-image' : 'fa-file')} ${esc(f.name)}</a><button type="button" data-retdel="${f.id}" title="Xóa tệp">×</button></span>`).join('')}<button type="button" class="btn sm" data-retup>${ico('fa-paperclip')} ${fs.length ? 'Thêm' : 'Đính kèm'}</button></div>`;
 }
-const VIRT_MONEY = new Set(['paid', 'actual', 'gap']), VIRT_NUM = new Set(['n_units', 'n_reg', 'n_free']);
+const VIRT_MONEY = new Set(['paid', 'actual', 'gap', 'bg_amount']), VIRT_NUM = new Set(['n_units', 'n_reg', 'n_free', 'n_hd']);
 function cell(ent, k, row) {
   const f = M.ents[ent].fields.find(x => x.k === k);
   if (ent === 'reservation' && RET_COLS.includes(k)) return { html: retCell(k, row) };
@@ -124,6 +179,7 @@ function cell(ent, k, row) {
   if (k === 'prints') return { html: `<span class="nowrap"><button type="button" class="btn sm" data-print="dang_ky_can" title="In bản đăng ký căn hộ (chọn mẫu in)">${ico('fa-print')} Căn hộ</button> <button type="button" class="btn sm" data-print="dang_ky_noi_that" title="In bản đăng ký nội thất (chọn mẫu in)">${ico('fa-couch')} Nội thất</button></span>` };
   if (k === 'bbgn') return { html: `<button type="button" class="btn sm" data-bbgn title="In biên bản bàn giao tài liệu hồ sơ mua nhà (chọn mẫu Cát Tường / Thống Nhất)">${ico('fa-file-signature')} Biên bản</button>` };
   if (k === 'created_at') return { html: dmy(v) };
+  if (k === 'bg_from') return { html: v ? `<b>${dmy(String(v).slice(0, 10))}</b>` : '' };
   if (VIRT_NUM.has(k)) return { html: v == null ? '' : fnum(v), num: true };
   if (VIRT_MONEY.has(k)) return { html: v == null ? '' : `<span class="${k === 'gap' ? (v < 0 ? 'neg' : v > 0 ? 'pos' : '') : ''}">${fm(v)}</span>`, num: true };
   if (k === 'promise_st') return { html: v ? pill(v, /Thất/.test(v) ? 'r' : /Đúng/.test(v) ? 'g' : /một phần/.test(v) ? 'a' : 'b') : '' };
@@ -190,6 +246,7 @@ function input(f, v, rec = {}, { ro, id } = {}) {
   const nm = `name="${f.k}" data-t="${f.t}" id="${id || 'f_' + f.k}"`;
   if (ro) return `<div class="ro">${show(f, rec)}</div>`;
   if (f.upload) return `<div class="upfile"><input type="file" accept="${f.upload}" ${nm}>${v ? `<span class="small muted">Đang có: ${esc(v)} — chọn tệp mới để thay</span>` : ''}</div>`;
+  if (f.pick === 'bg_units') return `<div class="upick" data-pick-bg><input type="hidden" ${nm} value="${esc(v ?? '')}"><div class="upick-bd"></div></div>`;
   if (f.pick === 'units') return `<div class="upick" data-pick-units><input type="hidden" ${nm} value="${esc(v ?? f.def ?? '*')}"${f.def === '' ? ' data-none' : ''}><div class="upick-bd"></div></div>`;   // def '' = chưa chọn căn nào
   switch (f.t) {
     case 'long': return `<textarea ${nm} rows="3">${esc(v ?? '')}</textarea>`;
@@ -380,13 +437,18 @@ function combo(c, root, onChange) {
 }
 
 // lịch thanh toán (soạn các đợt)
-function schedEditor(el, rows, { total, base, first, maint, mdot } = {}) {   // maint(): phí bảo trì, mdot(): đợt mặc định cho hạn phí bảo trì   // first(): ngày cố định của đợt 1 (hợp đồng: ngày ký HĐMB)
+function schedEditor(el, rows, { total, base, first, maint, mdot, bgBase } = {}) {   // bgBase(): { doc, on, days } — căn đã có thông báo bàn giao phát hành   // maint(): phí bảo trì, mdot(): đợt mặc định cho hạn phí bảo trì   // first(): ngày cố định của đợt 1 (hợp đồng: ngày ký HĐMB)
   let R = (rows || []).map(r => ({ ...r }));
   // HĐMB: phí bảo trì là DÒNG RIÊNG cố định cuối bảng (không xóa, số tiền = phí bảo trì); hạn tự theo đợt thu phí bảo trì cho đến khi sửa tay —
   // đợt có nội dung nhắc «bảo trì» (mẫu: «… và 2% phí bảo trì»), không có thì đợt mặc định (3)
   const mIdx = () => { const k = R.findIndex(r => /bảo trì/i.test(r.name || '')); return k >= 0 ? k : Math.max(1, +(mdot?.() || 3)) - 1; };
   let MR = maint ? R.find(r => r.maint) || null : null;
   if (maint) { R = R.filter(r => !r.maint); if (MR) MR = { name: MR.name, due_on: MR.due_on, auto: !MR.due_on || MR.due_on === R[mIdx()]?.due_on }; }
+  // đợt bàn giao (13/11/2026): HĐMB tự chọn đợt nào là đợt bàn giao (đợt 2 / 3 / 4… tùy HĐ) + số ngày được nộp kể từ ngày bàn giao.
+  // Chưa đánh dấu thì tự nhận đợt có nội dung nhắc «bàn giao / nhận nhà» (số ngày lấy từ câu «… 15 ngày kể từ ngày bàn giao»)
+  const BG_T = /b[àa]n\s*giao|nh[ậa]n\s*nh[àa]|giao\s*nh[àa]/i;
+  const bgDaysIn = s => { const m = /(\d+)\s*(?:\([^)]*\)\s*)?ngày[^.;]{0,60}?(?:b[àa]n\s*giao|nh[ậa]n\s*nh[àa]|giao\s*nh[àa])/i.exec(s || ''); return m ? +m[1] : null; };
+  if (maint && maint() != null && !R.some(r => r.bg)) { const k = R.findIndex(r => BG_T.test(r.name || '')); if (k >= 0) { R[k].bg = true; R[k]._bgAuto = true; R[k].bg_days ??= bgDaysIn(R[k].name); } }
   const totalOf = () => typeof total === 'function' ? total() : total;
   const C = first ? M.settings.schedule_contents || [] : [];   // gợi ý nội dung từng đợt (hợp đồng)
   // «Sau 60 ngày…», «Trong 60 ngày…», «Trong vòng 60 (sáu mươi) ngày…» = số ngày sau ngày ký; «… ngày kể từ ngày Bên Bán…» theo sự kiện khác nên không tính
@@ -410,17 +472,19 @@ function schedEditor(el, rows, { total, base, first, maint, mdot } = {}) {   // 
     // tỷ lệ % các đợt × tiền sau thuế (= tổng − phí bảo trì); phí bảo trì ở dòng riêng cố định
     // maint() = null: không áp dụng (HĐ thuê, vay…); số (kể cả 0 khi chưa chọn căn): HĐMB — luôn có dòng phí bảo trì
     const tot = totalOf() || 0, mv = maint?.(), on = mv != null, mt = +(mv || 0), hasM = mt > 0, mi = on ? mIdx() : -1, base = hasM ? tot - mt : tot;
+    const bgB = on ? bgBase?.() : null;   // đã phát hành thông báo bàn giao: hạn đợt bàn giao = ngày bàn giao + số ngày
+    if (bgB?.on) R.forEach(r => { if (r.bg) r.due_on = addDays(bgB.on, r.bg_days ?? bgB.days ?? 0); });
     if (on) { MR ||= { name: 'Thu phí bảo trì (2% tiền trước thuế)', due_on: '', auto: true }; if (MR.auto) MR.due_on = R[mi]?.due_on || ''; }
     const pa = r => r.pct ? Math.round(base * r.pct / 100) : 0, sum = R.reduce((s, r) => s + (+r.amount || pa(r)), 0) + (hasM ? mt : 0);
-    const mRow = on ? `<tr data-m class="sched-m"><td><b>Phí bảo trì</b></td><td><input data-mk="name" value="${esc(MR.name || '')}" style="width:100%"></td><td><input data-mk="due_on" value="${esc(dmy(MR.due_on) || '')}" placeholder="dd/mm/yyyy" style="width:120px" title="Tự theo hạn đợt ${mi + 1} (đợt có nội dung nhắc phí bảo trì, không có thì đợt 3) — sửa được; xóa trống thì lại tự theo"></td><td class="num muted">—</td><td><input value="${mt ? fm(mt) : ''}" placeholder="chọn căn để tính" readonly style="width:150px;text-align:right" title="Phí bảo trì = 2% tiền trước thuế — tự tính khi chọn căn / nhập giá"></td><td></td></tr>` : '';
+    const mRow = on ? `<tr data-m class="sched-m"><td><b>Phí bảo trì</b></td><td><input data-mk="name" value="${esc(MR.name || '')}" style="width:100%"></td><td><input data-mk="due_on" value="${esc(dmy(MR.due_on) || '')}" placeholder="dd/mm/yyyy" style="width:120px" title="Tự theo hạn đợt ${mi + 1} (đợt có nội dung nhắc phí bảo trì, không có thì đợt 3) — sửa được; xóa trống thì lại tự theo"></td><td class="num muted">—</td><td><input value="${mt ? fm(mt) : ''}" placeholder="chọn căn để tính" readonly style="width:150px;text-align:right" title="Phí bảo trì = 2% tiền trước thuế — tự tính khi chọn căn / nhập giá"></td><td></td><td></td></tr>` : '';
     el.innerHTML = `<div class="row mb">${(M.settings.schedule_presets || []).map((p, i) => `<button type="button" class="btn sm" data-pre="${i}">${ico('fa-wand-magic-sparkles')} ${esc(p.name)}</button>`).join('')}<span class="muted small">Mẫu tính ngày từ ngày gốc</span><input class="inp" style="width:120px;height:30px" data-base value="${esc(dmy(d1 || base || today()))}"></div>
-      <table class="t compact noclick sched ${C.length ? 'pick' : ''}"><thead><tr><th>Đợt</th><th>Nội dung</th><th>Ngày đến hạn</th><th class="num">Tỷ lệ %</th><th class="num">Số tiền</th><th></th></tr></thead><tbody>
-      ${R.map((r, i) => `<tr data-i="${i}"><td>${C.length ? `<select data-sug="${i}" title="Chọn đợt để gợi ý nội dung, tỷ lệ, hạn"><option value="">Đợt ${i + 1}</option>${C.map((c, j) => `<option value="${j}" ${c.name === r.name ? 'selected' : ''}>${esc(c.dot)}</option>`).join('')}</select>` : i + 1}</td><td>${C.length ? `<textarea data-k="name" rows="2" placeholder="Chọn đợt để gợi ý hoặc tự ghi nội dung">${esc(r.name || '')}</textarea>` : `<input data-k="name" value="${esc(r.name || '')}">`}</td><td><input data-k="due_on" value="${esc(dmy(r.due_on) || r.due_on || '')}" placeholder="dd/mm/yyyy" style="width:120px"${d1 && !i ? ' readonly title="Tự theo ngày ký hợp đồng mua bán"' : ''}></td><td><input data-k="pct" value="${r.pct ?? ''}" style="width:70px;text-align:right"></td><td><input data-k="amount" value="${r.amount ? fm(r.amount) : ''}" placeholder="${r.pct && tot ? fm(pa(r)) : ''}" style="width:150px;text-align:right"></td><td><div class="sched-acts"><button type="button" class="btn ghost sm" data-del="${i}" title="Xóa đợt">${ico('fa-trash')}</button></div></td></tr>`).join('')}<tr class="sched-add"><td colspan="6"><button type="button" class="btn sm" data-add>${ico('fa-plus')} Thêm đợt</button></td></tr>${mRow}
-      </tbody><tfoot><tr><td colspan="3"><b>Tổng</b></td><td class="num">${fnum(R.reduce((s, r) => s + (+r.pct || 0), 0))}%</td><td class="num ${tot && Math.abs(sum - tot) > 1000 * (R.length + 1) ? 'neg' : 'pos'}">${fm(sum)}</td><td></td></tr></tfoot></table>
+      <table class="t compact noclick sched ${C.length ? 'pick' : ''}"><thead><tr><th>Đợt</th><th>Nội dung</th><th>Ngày đến hạn</th><th class="num">Tỷ lệ %</th><th class="num">Số tiền</th>${on ? `<th title="Tích đợt thu khi bàn giao nhà (đợt 2, 3, 4… tùy hợp đồng) — Thông báo bàn giao phát hành thì hạn đợt này = ngày bàn giao + số ngày">Đợt bàn giao</th>` : ''}<th></th></tr></thead><tbody>
+      ${R.map((r, i) => `<tr data-i="${i}"><td>${C.length ? `<select data-sug="${i}" title="Chọn đợt để gợi ý nội dung, tỷ lệ, hạn"><option value="">Đợt ${i + 1}</option>${C.map((c, j) => `<option value="${j}" ${c.name === r.name ? 'selected' : ''}>${esc(c.dot)}</option>`).join('')}</select>` : i + 1}</td><td>${C.length ? `<textarea data-k="name" rows="2" placeholder="Chọn đợt để gợi ý hoặc tự ghi nội dung">${esc(r.name || '')}</textarea>` : `<input data-k="name" value="${esc(r.name || '')}">`}</td><td><input data-k="due_on" value="${esc(dmy(r.due_on) || r.due_on || '')}" placeholder="dd/mm/yyyy" style="width:120px"${d1 && !i ? ' readonly title="Tự theo ngày ký hợp đồng mua bán"' : r.bg && bgB?.on ? ` readonly title="Theo thông báo bàn giao ${esc(bgB.doc || '')}: ngày bàn giao ${dmy(bgB.on)} + ${r.bg_days ?? bgB.days ?? 0} ngày"` : ''}></td><td><input data-k="pct" value="${r.pct ?? ''}" style="width:70px;text-align:right"></td><td><input data-k="amount" value="${r.amount ? fm(r.amount) : ''}" placeholder="${r.pct && tot ? fm(pa(r)) : ''}" style="width:150px;text-align:right"></td>${on ? `<td class="sched-bg"><label class="chk small"><input type="checkbox" data-bg="${i}" ${r.bg ? 'checked' : ''}> Bàn giao</label>${r.bg ? `<div class="small nowrap"><input data-k="bg_days" value="${r.bg_days ?? ''}" placeholder="${bgB?.days ?? 0}" inputmode="numeric" style="width:46px;text-align:right" title="Số ngày được nộp kể từ ngày bàn giao — để trống = theo thông báo bàn giao"> ngày${r._bgAuto ? ' <span class="muted" title="App tự nhận theo nội dung đợt — bỏ tích nếu sai">· tự nhận</span>' : ''}</div>${bgB?.on ? `<div class="small hs-ok" title="Thông báo bàn giao ${esc(bgB.doc || '')}">BG ${dmy(bgB.on)}</div>` : ''}` : ''}</td>` : ''}<td><div class="sched-acts"><button type="button" class="btn ghost sm" data-del="${i}" title="Xóa đợt">${ico('fa-trash')}</button></div></td></tr>`).join('')}<tr class="sched-add"><td colspan="${on ? 7 : 6}"><button type="button" class="btn sm" data-add>${ico('fa-plus')} Thêm đợt</button></td></tr>${mRow}
+      </tbody><tfoot><tr><td colspan="3"><b>Tổng</b></td><td class="num">${fnum(R.reduce((s, r) => s + (+r.pct || 0), 0))}%</td><td class="num ${tot && Math.abs(sum - tot) > 1000 * (R.length + 1) ? 'neg' : 'pos'}">${fm(sum)}</td>${on ? '<td></td>' : ''}<td></td></tr></tfoot></table>
       <div class="small muted mt">Phải khớp nghĩa vụ phải thu: <b>${fm(tot)}</b> đ.${hasM ? ` Tỷ lệ % các đợt tính trên tiền sau thuế <b>${fm(base)}</b> đ; phí bảo trì <b>${fm(mt)}</b> đ thu ở dòng riêng${R[mi] ? `, cùng hạn đợt ${mi + 1}` : ''}.` : ''} Nhập tỷ lệ % hoặc số tiền; chênh lệch làm tròn (≤ 1.000đ/đợt) dồn vào đợt cuối.</div>`;
   };
   const sync = () => {
-    $$('tbody tr[data-i]', el).forEach(tr => { const r = R[+tr.dataset.i]; for (const i of $$('input,textarea', tr)) { const k = i.dataset.k; r[k] = k === 'pct' ? (i.value.trim() ? num(i.value) : null) : k === 'amount' ? (i.value.trim() ? num(i.value, true) : null) : k === 'due_on' ? parseDmy(i.value) : i.value; } });
+    $$('tbody tr[data-i]', el).forEach(tr => { const r = R[+tr.dataset.i]; for (const i of $$('input[data-k],textarea[data-k]', tr)) { const k = i.dataset.k; r[k] = k === 'bg_days' ? (i.value.trim() === '' ? null : Math.max(0, parseInt(i.value, 10) || 0)) : k === 'pct' ? (i.value.trim() ? num(i.value) : null) : k === 'amount' ? (i.value.trim() ? num(i.value, true) : null) : k === 'due_on' ? parseDmy(i.value) : i.value; } });
     const mr = $('tbody tr[data-m]', el);   // dòng phí bảo trì: sửa hạn thì thôi tự theo đợt; xóa trống thì lại tự theo
     if (mr && MR) { MR.name = $('[data-mk=name]', mr).value; const d = parseDmy($('[data-mk=due_on]', mr).value); if (d !== MR.due_on) { MR.due_on = d; MR.auto = !d; } }
   };
@@ -434,6 +498,8 @@ function schedEditor(el, rows, { total, base, first, maint, mdot } = {}) {   // 
   el.addEventListener('change', e => {
     const d = e.target.dataset;
     if (d.sug !== undefined) { sync(); if (e.target.value) useC(R[+d.sug], C[+e.target.value]); draw(); }
+    if (d.bg !== undefined) { sync(); const k = +d.bg; R.forEach((r, j) => { delete r._bgAuto; if (j === k && e.target.checked) { r.bg = true; r.bg_days ??= bgDaysIn(r.name); } else { r.bg = false; r.bg_days = null; } }); draw(); }   // chỉ 1 đợt bàn giao
+    if (d.k === 'bg_days') { sync(); draw(); }
     if (d.k === 'due_on') { sync(); delete R[+e.target.closest('tr').dataset.i]._days; }   // sửa tay hạn đợt thì không còn tự theo ngày ký
     if (d.k === 'pct') {   // sửa ô Tỷ lệ → số % trong nội dung đổi theo (nội dung có ghi tỷ lệ)
       const i = +e.target.closest('tr').dataset.i, old = R[i]?.name; sync();
@@ -464,7 +530,7 @@ function schedEditor(el, rows, { total, base, first, maint, mdot } = {}) {   // 
   });
   el._set = rows => { R = rows.map(r => ({ ...r })); draw(); };   // điền sẵn các đợt (HĐ thuê tự chia kỳ)
   el._get = () => {
-    sync(); const out = R.filter(r => r.name || r.due_on || r.pct || r.amount).map(r => ({ name: r.name, due_on: r.due_on, pct: r.pct, amount: r.amount }));
+    sync(); const out = R.filter(r => r.name || r.due_on || r.pct || r.amount).map(r => ({ name: r.name, due_on: r.due_on, pct: r.pct, amount: r.amount, ...(r.bg ? { bg: true, bg_days: r.bg_days ?? null } : {}) }));
     if (MR && +(maint?.() || 0) > 0) {
       if (MR.auto) MR.due_on = R[mIdx()]?.due_on || '';
       out.push({ name: MR.name, due_on: MR.due_on, pct: null, amount: null, maint: true });   // máy chủ tự xếp dòng này theo ngày đến hạn
@@ -480,7 +546,8 @@ function schedEditor(el, rows, { total, base, first, maint, mdot } = {}) {   // 
 const HD_LAYOUT = [
   { rows: [['unit_id', 'seller_unit']], cols: 2 },   // dùng chung cho HĐ mua bán và HĐ hoàn thiện
   { side: [
-    { t: 'Bên mua nhà ở', rows: [['customer_id'], ['b_id_no'], ['b_id_date'], ['b_id_place'], ['b_addr'], ['b_perm_addr'], ['b_temp_addr'], ['b_phone', 'b_email'], ['b_bank_acc'], ['b_bank_name'], ['request_on', 'co_owner']] },
+    { t: 'Bên mua nhà ở', rows: [['customer_id'], ['b_id_no'], ['b_id_date'], ['b_id_place'], ['b_addr'], ['b_perm_addr'], ['b_temp_addr'], ['b_phone', 'b_email'], ['b_bank_acc'], ['b_bank_name'], ['request_on'],
+      ['co_owner'], ['co_owner_id_no'], ['co_owner_id_date', 'co_owner_id_place'], ['agreement', 'agreement_on']] },   // người đồng sở hữu (vợ / chồng) + VBTT sở hữu chung (13/11/2026)
     { t: 'Bên bán nhà ở', rows: [['s_name'], ['s_addr'], ['s_phone', 's_tax'], ['s_bank_acc'], ['s_bank_name'], ['s_rep'], ['s_title'], ['s_poa'], ['owner_id'], ['commission_amt', 'commission_pct'], ['common_area_amt', 'all_signed']] }] },
   { t: 'Thông tin chi tiết', cols: 4, rows: [['number', 'contract_on'], ['ptype', 'building_id', 'kind', 'nature'], ['base_price', 'area_tt', 'area_floor'], ['area_land', 'land_price', 'land_amt'], ['area_build', 'build_price', 'build_amt'],
     ['pretax', 'vat_pct', 'vat_amt', 'after_tax'], ['finish_value', 'maint_fee', 'corner_pct', 'corner_amt'],
@@ -793,13 +860,14 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   const canSubmit = E.flow && !E.flow.custom && !E.direct && !id && E.flow.submit.includes(E.fields.find(f => f.k === E.flow.field)?.def);
   const m = modal({ title: title || (id ? `Sửa ${E.one} ${esc(rec.code || rec.number || '')}` : `${E.code ? `<span class="tag">${E.code}</span> ` : ''}Tạo ${E.one}`), wide: fields.length > 8 || fields.some(wide),
     body, foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="fSave">${ico('fa-floppy-disk')} ${id ? 'Lưu' : E.direct ? `Lưu ${E.one}` : 'Lưu nháp'}</button>${canSubmit ? `<button class="btn amb" id="fSub">${ico('fa-paper-plane')} Lưu và ${esc((E.flow.submitLabel || 'trình duyệt').toLowerCase())}</button>` : ''}` });
-  const form = $('form', m.el);
+  const form = $('form', m.el); if (id) form.dataset.id = id;   // id bản ghi cho bảng chọn căn (thông báo bàn giao)
   $('.mf', m.el).insertAdjacentHTML('afterend', traceLine(trace));
   for (const ev of ['click', 'focusin']) form.addEventListener(ev, e => { const d = e.target.closest('.fld[data-f]'); if (d) traceField($('.trace', m.el), trace, d.dataset.f, E.fields.find(f => f.k === d.dataset.f)?.l || ''); });
   let htp = null;
+  if (ent === 'handover_notice') $('.modal', m.el).classList.add('full');   // bảng căn bàn giao nhiều cột
   if (ent === 'contract') { bravoLayout(form, HD_LAYOUT); $('.modal', m.el).classList.add('full'); if (rec.kind !== 'hoan_thien') htp = hdPair(form, { ht: htRec, locked: htLocked, tab, draft: htDraft, oldFinish: +rec.finish_value > 0, kind: rec.kind, debt: rec._debt, rec0: rec }); }
   const sch = $('[data-sched]', form);
-  if (sch) schedEditor(sch, rec.new_schedule || [], { mdot: () => rec.maint_dot ?? 3, maint: () => ent === 'contract' && ['hdmb', 'thue_mua'].includes(form.elements.kind?.value ?? rec.kind) ? readField(form, E.fields.find(f => f.k === 'maint_fee')) || 0 : null, total: () => ent === 'contract' ? readField(form, E.fields.find(f => f.k === 'value')) || 0 : readField(form, E.fields.find(f => f.k === 'value_after')) || rec.value_before || 0, first: ent === 'contract' ? () => { const kd = $('[name=kind]', form)?.value ?? rec.kind; return readField(form, E.fields.find(f => f.k === (kd === 'thue' ? 'eff_on' : kd === 'vay' && form.elements.loan_recv_on?.value ? 'loan_recv_on' : 'contract_on'))); } : null });
+  if (sch) schedEditor(sch, rec.new_schedule || [], { bgBase: () => rec._bg_base, mdot: () => rec.maint_dot ?? 3, maint: () => ent === 'contract' && ['hdmb', 'thue_mua'].includes(form.elements.kind?.value ?? rec.kind) ? (form.elements.maint_fee ? readField(form, E.fields.find(f => f.k === 'maint_fee')) : rec.maint_fee) || 0 : null, total: () => ent === 'contract' ? (form.elements.value ? readField(form, E.fields.find(f => f.k === 'value')) : rec.value) || 0 : readField(form, E.fields.find(f => f.k === 'value_after')) || rec.value_before || 0, first: ent === 'contract' ? () => { const kd = $('[name=kind]', form)?.value ?? rec.kind; const fk = kd === 'thue' ? 'eff_on' : kd === 'vay' && form.elements.loan_recv_on?.value ? 'loan_recv_on' : 'contract_on'; return form.elements[fk] ? readField(form, E.fields.find(f => f.k === fk)) : rec[fk]; } : null });
   const ssch = $('[data-ssched]', form);   // tiến độ thu tiền HĐMB của HĐ thuê / vay bán căn: % theo Giá trị HĐMB
   if (ssch) schedEditor(ssch, rec.sale_sched || [], { total: () => { const v = readField(form, E.fields.find(f => f.k === 'unit_total')); return v === undefined ? +rec.unit_total || 0 : +v || 0; } });
   htp?.rentDraw(); htp?.loanDraw?.();
@@ -1046,6 +1114,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     for (const [k, v] of Object.entries(out)) if (form.elements[k]) form.elements[k].value = moneyStr(v);
   });
   $$('[data-pick-units]', form).forEach(el => unitPicker(el, form).catch(e => toast(e.message, true)));
+  $$('[data-pick-bg]', form).forEach(el => bgPicker(el, form).catch(e => toast(e.message, true)));
   if (ckF && !id) { fillCheck(); form.addEventListener('change', e => { if (e.target.name === ckF.srcBy || e.target.name === 'reg_kind') fillCheck(); }); }
   vis();
   const errBox = $('#ferr', m.el);
@@ -1158,7 +1227,7 @@ const tplPlaces = () => M.ents.template?.fields.find(f => f.k === 'ent')?.o || [
 const tplOn = ent => tplPlaces().some(o => o[0] === ent);
 const tplPlace = ent => tplPlaces().find(o => o[0] === ent)?.[1] || ent;
 // loại mẫu mặc định khi tạo trong module (loại = bộ in riêng cũ của hợp đồng, đơn đăng ký, biên bản giao nhận, thông báo mở bán)
-const TPL_KIND0 = { contract: 'hop_dong', contract_change: 'phu_luc', handover: 'bien_ban', defect: 'bien_ban', reservation: 'de_nghi', noxh_check: 'bien_ban_giao_nhan', sale_notice: 'thong_bao', notice: 'thong_bao', report: 'bao_cao', target: 'bao_cao', receipt: 'de_nghi', payment: 'de_nghi', pinkbook: 'de_nghi' };
+const TPL_KIND0 = { contract: 'hop_dong', contract_change: 'phu_luc', handover: 'bien_ban', defect: 'bien_ban', reservation: 'de_nghi', noxh_check: 'bien_ban_giao_nhan', sale_notice: 'thong_bao', handover_notice: 'thong_bao', notice: 'thong_bao', report: 'bao_cao', target: 'bao_cao', receipt: 'de_nghi', payment: 'de_nghi', pinkbook: 'de_nghi' };
 // mẫu dùng bộ in riêng (trường trộn riêng, xem chú thích ô Nội dung mẫu) — còn lại in bằng bộ in chung
 const tplSpecial = t => (t.ent === 'reservation' && ['dang_ky_can', 'dang_ky_noi_that'].includes(t.kind)) || (['reservation', 'noxh_check'].includes(t.ent) && t.kind === 'bien_ban_giao_nhan') || (t.ent === 'sale_notice' && t.kind === 'thong_bao' && /^TB-MOBAN/i.test(t.code || ''));
 function tplUrl(ent, id, t) {
@@ -1246,6 +1315,29 @@ function tplHelper(form, m) {
 }
 
 // ---------- thao tác nghiệp vụ ----------
+// 13/11/2026 (Tâm): hợp đồng chuyển trạng thái (VD «Đã ký», thanh lý) → thẻ gợi ý bộ hồ sơ của bước tiếp theo + dữ liệu còn thiếu,
+// bấm mở bộ hồ sơ / in cả bộ / điền dữ liệu thiếu ngay — không phải tự nhớ bước nào và tự mở từng hồ sơ
+async function hsNextHint(id, before) {
+  try {
+    const c = (await api('GET', `/api/e/contract/${id}`)).row; if (!c || !c.unit_id || c.status === before) return;
+    const d = await api('GET', `/api/hs?unit=${c.unit_id}&cust=${c.customer_id || ''}`), bo = d.bos.find(b => b.k === d.step); if (!bo || !bo.tpls.length) return;
+    const miss = [...new Set(bo.tpls.flatMap(t => t.missing || []))], codes = bo.tpls.map(t => t.code).join(',');
+    const st = M.ents.contract.fields.find(f => f.k === 'status')?.o?.find(o => o[0] === c.status)?.[1] || c.status;
+    $('#hsNext')?.remove();
+    const el = document.createElement('div'); el.id = 'hsNext'; el.setAttribute('role', 'dialog');
+    el.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:9000;width:min(420px,calc(100vw - 32px));background:var(--card,#fff);color:inherit;border:1px solid var(--line,#d4deea);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.22);padding:14px 16px;font-size:13px';
+    el.innerHTML = `<div style="display:flex;justify-content:space-between;gap:8px;align-items:start"><b style="font-size:14px">${ico('fa-lightbulb')} Gợi ý bước hồ sơ tiếp theo</b><button class="btn sm" data-n="x" title="Để sau">✕</button></div>
+      <div style="margin:6px 0;color:var(--muted,#5b6b7f)">Căn <b>${esc(d.unit.code)}</b>${d.customer ? ` · ${esc(d.customer.name)}` : ''} — hợp đồng ${esc(c.number || '#' + c.id)} vừa chuyển «${esc(st)}»</div>
+      <div style="margin:8px 0">Bộ hồ sơ cần làm: <b>${esc(bo.l)}</b> · ${bo.tpls.length} hồ sơ</div>
+      ${miss.length ? `<div class="warnbar" style="margin:6px 0">${ico('fa-triangle-exclamation')}<span>Còn thiếu ${miss.length} dữ liệu: ${esc(miss.slice(0, 8).join(', '))}${miss.length > 8 ? '…' : ''}</span></div>` : `<div style="color:#1d7a46;margin:6px 0">${ico('fa-circle-check')} Đủ dữ liệu — in được ngay</div>`}
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px"><button class="btn pri sm" data-n="open">${ico('fa-folder-open')} Mở bộ hồ sơ</button><button class="btn sm" data-n="print">${ico('fa-print')} In cả bộ</button>${miss.length ? `<button class="btn sm" data-n="fill">${ico('fa-pen')} Điền dữ liệu thiếu</button>` : ''}</div>`;
+    document.body.append(el);
+    el.onclick = e => { const n = e.target.closest('[data-n]')?.dataset.n; if (!n) return; el.remove();
+      if (n === 'open') location.hash = `#/v/vault?tab=bo&unit=${encodeURIComponent(d.unit.code)}&bo=${bo.k}&cust=${d.cust || ''}`;
+      if (n === 'print') window.open(`/print/hs/${d.unit.id}?bo=${bo.k}&cust=${d.cust || ''}&tpl=${encodeURIComponent(codes)}`, '_blank');
+      if (n === 'fill') openForm('contract', { id: c.id }); };
+  } catch (e) { console.warn('gợi ý hồ sơ', e); }
+}
 async function doAct(ent, id, k, after, row) {
   const E = M.ents[ent], a0 = E.acts.find(x => x.k === k);
   // Lập hợp đồng từ phiếu: phiếu đăng ký thuê → chỉ HĐ thuê; phiếu đăng ký mua → không có HĐ thuê
@@ -1254,7 +1346,10 @@ async function doAct(ent, id, k, after, row) {
   if (k === 'print') { window.open(`/print/contract/${id}`, '_blank'); return; }
   if (a?.url) { window.open(a.url.replace(':id', id), '_blank'); return; }
   if (a?.handover) return handoverPick(a.handover, id);
-  const go = async data => { const r = await api('POST', `/api/e/${ent}/${id}/act/${k}`, data); toast(r.msg || `Đã ${a.l.toLowerCase()}`); if (r.url) window.open(r.url, '_blank'); after && after(); if (r.open) openDetail(r.open[0], r.open[1]); return r; };
+  const go = async data => { const before = ent === 'contract' ? (row?.status ?? (await api('GET', `/api/e/contract/${id}`).catch(() => null))?.row?.status) : undefined;
+    const r = await api('POST', `/api/e/${ent}/${id}/act/${k}`, data); toast(r.msg || `Đã ${a.l.toLowerCase()}`); if (r.url) window.open(r.url, '_blank'); after && after(); if (r.open) openDetail(r.open[0], r.open[1]);
+    if (ent === 'contract') hsNextHint(id, before);   // HĐ đổi trạng thái → gợi ý bộ hồ sơ bước tiếp theo
+    return r; };
   if (!a.ask?.length) { if (a.danger && !await ask(a.l, 'Xác nhận thực hiện?', { danger: 1, okLabel: a.l })) return; return run(go)({}); }
   const rec = {}; for (const f of a.ask) if (f.def !== undefined) rec[f.k] = f.def === 'today' ? today() : f.def;
   const m = modal({ title: `${ico(a.icon)} ${esc(a.l)}`, narrow: a.ask.length < 3, body: `${a.help ? `<div class="warnbar">${ico('fa-circle-info')}<span>${esc(a.help)}</span></div>` : ''}<div id="aerr"></div><form class="form">${a.ask.map(f => `<div class="fld ${f.t === 'long' || a.ask.length < 2 ? 'wide' : ''}" data-f="${f.k}"><label>${esc(f.l)}${f.req ? '<span class="req">*</span>' : ''}</label>${input(f, rec[f.k], rec)}</div>`).join('')}</form>`,
@@ -1394,7 +1489,7 @@ async function openDetail(ent, id, tab, plain) {   // plain: chỉ xem (mở t�
     if (d === 'log') return openForm('contact_log', { preset: { customer_id: r.id, customer_id__l: `${r.code} · ${r.full_name}` }, onSaved: () => toast('Đã ghi nhật ký') });
     if (d === 'call') return openForm('debt_call', { preset: { contract_id: r.id, contract_id__l: r.number }, onSaved: () => reload() });
     if (d === 'chg') return openForm('contract_change', { preset: { contract_id: r.id, contract_id__l: r.number }, onSaved: row => openDetail('contract_change', row.id) });
-    if (d === 'pii') { const x = await api('GET', `/api/pii/${ent}/${id}`); for (const [k, v] of Object.entries(x)) { const f = E.fields.find(f => f.k === k), dd = $('.kv dt', body).find(t => t.textContent === f.l)?.nextElementSibling; if (dd) dd.innerHTML = show(f, { [k]: v }); } toast('Đã ghi nhật ký xem dữ liệu định danh'); }
+    if (d === 'pii') { const x = await api('GET', `/api/pii/${ent}/${id}`); for (const [k, v] of Object.entries(x)) { const f = E.fields.find(f => f.k === k), dd = $$('.kv dt', body).find(t => t.textContent === f.l)?.nextElementSibling; if (dd) dd.innerHTML = show(f, { [k]: v }); } toast('Đã ghi nhật ký xem dữ liệu định danh'); }
   }));
 }
 function debtTiles(d) {
@@ -2506,7 +2601,7 @@ V.signing = async main => {
 // Kho hồ sơ kiểu Drive: thư mục ảo Loại hồ sơ → Hồ sơ → Tệp, tệp vẫn gắn với hồ sơ gốc
 const VT_ENTS = ['contract', 'contract_change', 'reservation', 'pinkbook', 'handover', 'defect', 'noxh_check', 'refund', 'cancel_req', 'ticket', 'price_policy'];
 const VT_TYPES = { pdf: ['PDF', '#d93025'], doc: ['DOC', '#1a73e8'], docx: ['DOC', '#1a73e8'], xls: ['XLS', '#188038'], xlsx: ['XLS', '#188038'], jpg: ['ẢNH', '#7b5cd6'], jpeg: ['ẢNH', '#7b5cd6'], png: ['ẢNH', '#7b5cd6'], webp: ['ẢNH', '#7b5cd6'], dwg: ['DWG', '#c98210'], zip: ['ZIP', '#64748b'], rar: ['ZIP', '#64748b'] };
-const VT_NAV = [['bo', 'fa-file-signature', 'Bộ hồ sơ theo căn'], ['all', 'fa-box-archive', 'Hồ sơ dự án'], ['recent', 'fa-clock', 'Gần đây'], ['star', 'fa-star', 'Có gắn sao'], ['trash', 'fa-trash-can', 'Thùng rác']];
+const VT_NAV = [['bo', 'fa-file-signature', 'In bộ hồ sơ'], ['all', 'fa-box-archive', 'Hồ sơ dự án'], ['recent', 'fa-clock', 'Gần đây'], ['star', 'fa-star', 'Có gắn sao'], ['trash', 'fa-trash-can', 'Thùng rác']];
 const VT_CSS = `.vt { display: grid; grid-template-columns: 232px minmax(0, 1fr); gap: 22px; align-items: start; } .vt-side { position: sticky; top: 84px; display: flex; flex-direction: column; gap: 4px; } .vt-new { display: inline-flex; align-items: center; gap: 10px; align-self: flex-start; padding: 12px 24px 12px 18px; margin-bottom: 10px; border: 1px solid var(--line2); border-radius: 16px; background: var(--card); box-shadow: var(--soft2); font: inherit; font-size: 14px; font-weight: 700; color: var(--ink); cursor: pointer; } .vt-new:hover { box-shadow: var(--soft); } .vt-new:disabled { opacity: .5; cursor: not-allowed; } .vt-nav button { display: flex; align-items: center; gap: 14px; width: 100%; padding: 9px 16px; border: 0; border-radius: 20px; background: none; font: inherit; font-size: 13.5px; color: var(--muted); text-align: left; cursor: pointer; } .vt-nav button i { width: 16px; text-align: center; } .vt-nav button:hover { background: var(--cobalt-50); } .vt-nav button.on { background: var(--cobalt-100); color: var(--cobalt); font-weight: 700; } .vt-use { padding: 14px 16px 0; font-size: 12px; color: var(--muted); } .vt-main { min-width: 0; min-height: calc(100vh - 210px); padding: 16px 24px 30px; border: 1px solid var(--line2); border-radius: 18px; background: var(--card); transition: background .15s; } .vt-main.drop { outline: 2px dashed var(--cobalt-l); outline-offset: -8px; background: var(--cobalt-50); } .vt-q { position: relative; margin-bottom: 12px; } .vt-q i { position: absolute; left: 20px; top: 50%; transform: translateY(-50%); color: var(--muted); } .vt-q input { width: 100%; padding: 12px 18px 12px 46px; border: 1px solid transparent; border-radius: 24px; outline: none; background: var(--paper); font: inherit; font-size: 14.5px; } .vt-q input:focus { border-color: var(--cobalt-l); background: var(--card); } .vt-top { display: flex; align-items: center; gap: 8px; min-height: 44px; } .vt-crumbs { display: flex; align-items: center; flex: 1 1 0; min-width: 0; overflow: hidden; font-size: 19px; } .vt-crumbs i { font-size: 11px; color: var(--muted2); } .vt-crumbs button { max-width: 300px; padding: 4px 10px; border: 0; border-radius: 10px; background: none; font: inherit; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; } .vt-crumbs button:hover { background: var(--cobalt-50); } .vt-crumbs button:last-child { color: var(--ink); font-weight: 600; } .vt-seg { display: inline-flex; border: 1px solid var(--line2); border-radius: 10px; overflow: hidden; } .vt-seg button { padding: 7px 11px; border: 0; background: var(--card); color: var(--muted); cursor: pointer; } .vt-seg button.on { background: var(--cobalt-100); color: var(--cobalt); } .vt-h { margin: 18px 0 10px; font-size: 13px; font-weight: 600; color: var(--muted); } .vt-fgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; } .vt-dgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; } .vt-f { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 12px 14px; border: 1px solid transparent; border-radius: 12px; background: var(--paper); font: inherit; color: inherit; text-align: left; cursor: pointer; } .vt-f:hover { background: var(--cobalt-50); } .vt-f > i { font-size: 18px; color: var(--amber); } .vt-f > span { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .vt-f small { display: block; font-size: 11px; font-weight: 400; color: var(--muted); overflow: hidden; text-overflow: ellipsis; } .vt-d { min-width: 0; padding: 8px 8px 10px; border: 1px solid transparent; border-radius: 12px; background: var(--paper); cursor: pointer; } .vt-d:hover { background: var(--cobalt-50); } .vt-d:focus-visible, .vt-f:focus-visible { outline: 2px solid var(--cobalt-l); } .vt-th { display: grid; place-items: center; aspect-ratio: 4 / 3; border-radius: 8px; background: var(--card); } .vt-ic { --c: #64748b; display: inline-grid; place-items: center; width: 54px; height: 62px; border: 1px solid color-mix(in srgb, var(--c) 25%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--c) 14%, transparent); font-size: 13px; font-weight: 700; color: var(--c); } .vt-ic.sm { width: 30px; height: 26px; border-radius: 5px; font-size: 9.5px; flex: none; } .vt-nm { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 9px 2px 0; font-size: 13px; font-weight: 600; } .vt-tx { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .vt-mt { padding: 2px 2px 0; font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .vt-st { color: var(--amber); font-size: 12px; flex: none; } .vt-more { flex: none; width: 26px; height: 26px; border: 0; border-radius: 7px; background: none; color: var(--muted); cursor: pointer; opacity: 0; } .vt-more:hover { background: var(--line2); } .vt-more:focus-visible, .vt-d:hover .vt-more, tr:hover .vt-more { opacity: 1; } .vt-rn { display: flex; align-items: center; gap: 10px; min-width: 240px; font-weight: 600; } .vt-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 70px 20px; text-align: center; color: var(--muted); } .vt-empty > i { font-size: 44px; opacity: .45; } .vt-empty b { font-size: 16px; font-weight: 600; color: var(--text); } .vt-ctx { position: fixed; z-index: 250; min-width: 210px; padding: 6px; border: 1px solid var(--line2); border-radius: 12px; background: var(--card); box-shadow: var(--deep); } .vt-ctx button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 12px; border: 0; border-radius: 8px; background: none; font: inherit; font-size: 13.5px; color: var(--text); text-align: left; cursor: pointer; } .vt-ctx button i { width: 16px; text-align: center; color: var(--muted); } .vt-ctx button:hover { background: var(--cobalt-50); } .vt-ctx button.danger, .vt-ctx button.danger i { color: var(--r-c); } .vt-ctx hr { margin: 5px 0; border: 0; border-top: 1px solid var(--line2); } @media (max-width: 900px) { .vt { grid-template-columns: 1fr; gap: 12px; } .vt-side { position: static; flex-direction: row; flex-wrap: wrap; align-items: center; } .vt-new { margin: 0; } .vt-nav { display: flex; flex-wrap: wrap; gap: 2px; } .vt-use { display: none; } } @media (hover: none) { .vt-more { opacity: 1; } } @media (max-width: 640px) { .vt-main { padding: 12px 12px 24px; } .vt-top { flex-wrap: wrap; } .vt-crumbs { flex-basis: 100%; font-size: 16px; } .vt-dgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .vt-fgrid { grid-template-columns: 1fr; } }`;
 const vtSize = n => { n = +n || 0; return n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(0)} KB` : n < 1073741824 ? `${(n / 1048576).toFixed(1)} MB` : `${(n / 1073741824).toFixed(1)} GB`; };
 const vtIcon = (name, sm) => { const ext = String(name).split('.').pop().toLowerCase(), [t, c] = Object.hasOwn(VT_TYPES, ext) ? VT_TYPES[ext] : ['TỆP', '#64748b']; return `<span class="vt-ic ${sm ? 'sm' : ''}" style="--c:${c}">${t}</span>`; };
@@ -2554,8 +2649,8 @@ V.vault = async (main, params = {}) => {
     $('#vtM', main).classList.toggle('vt-bo', s.tab === 'bo');
     $$('#vtNav button', main).forEach(b => b.classList.toggle('on', b.dataset.tab === s.tab));
     if (s.tab === 'bo') {   // in bộ hồ sơ theo căn → lưu vào kho
-      $('#vtC', main).innerHTML = `<button>Bộ hồ sơ theo căn</button>`;
-      if (!$('#hsHost', main)) { $('#vtB', main).innerHTML = '<div id="hsHost"></div>'; hosoPanel($('#hsHost', main), { unit: params.unit || '' }); }
+      $('#vtC', main).innerHTML = `<button>In bộ hồ sơ</button>`;
+      if (!$('#hsHost', main)) { $('#vtB', main).innerHTML = '<div id="hsHost"></div>'; hsTabs($('#hsHost', main), { unit: params.unit || '', bo: params.bo || '', cust: params.cust }); }
       $('#vtU', main).textContent = `${rows.length} tệp trong kho`;
       return;
     }
@@ -2768,6 +2863,8 @@ V.hoso = (main, params = {}) => V.vault(main, { ...params, tab: 'bo' });
 async function hosoPanel(main, params = {}) {
   const S = ST.hoso ||= { unit: '', bo: '', off: {}, cust: '' };
   if (params.unit) S.unit = params.unit;
+  if (params.unit && params.cust !== undefined) S.cust = +params.cust || '';   // mở từ thẻ gợi ý bước tiếp theo
+  if (params.bo) S.bo = params.bo;
   main.innerHTML = `<div class="hs-emb">
     <div class="card hs-find"><form id="hsF" class="hs-q">${ico('fa-magnifying-glass')}<input id="hsQ" list="hsL" placeholder="Gõ mã căn hộ hoặc mã khách hàng (SĐT, CCCD cũng được) — ví dụ TNS-E-0303, KH000235" value="${esc(S.unit)}" autocomplete="off"><datalist id="hsL"></datalist><button class="btn pri">${ico('fa-arrow-right')} Mở bộ hồ sơ</button></form>
       <div class="small muted">Chọn bước đang làm → app sổ ra các hồ sơ của bước đó, đã điền sẵn số liệu đã khai báo. Tích hồ sơ cần in → <b>In cả bộ</b> hoặc <b>Tải Word</b> để sửa tiếp.</div></div>
@@ -2791,11 +2888,11 @@ async function hosoPanel(main, params = {}) {
       <div class="card hs-list">
         ${bo.tpls.length ? `<div class="hs-lh"><label class="chk"><input type="checkbox" id="hsAll" ${sel.length === bo.tpls.length ? 'checked' : ''}> <b>${esc(bo.l)}</b> — ${sel.length}/${bo.tpls.length} hồ sơ được chọn</label></div>
           ${bo.tpls.map(t => `<div class="hs-row${off.has(t.code) ? ' off' : ''}"><label class="chk"><input type="checkbox" data-ck="${esc(t.code)}" ${off.has(t.code) ? '' : 'checked'}></label>
-            <div class="hs-n">${ico(t.kind === 'hop_dong' ? 'fa-file-signature' : t.kind === 'bien_ban' ? 'fa-file-circle-check' : t.kind === 'phu_luc' ? 'fa-file-lines' : 'fa-file-pen')} <b>${esc(t.name)}</b>
+            <div class="hs-n">${ico(t.kind === 'hop_dong' ? 'fa-file-signature' : t.kind === 'bien_ban' ? 'fa-file-circle-check' : t.kind === 'phu_luc' ? 'fa-file-lines' : 'fa-file-pen')} <b>${esc(t.name)}</b>${t.annex?.length ? `<div class="small muted">${ico('fa-paperclip')} In chung 1 file gồm: Hợp đồng + ${esc(t.annex.join(' + '))}</div>` : ''}${(t.warn || []).map(w => `<div class="small hs-miss">${ico('fa-circle-exclamation')} ${esc(w)}</div>`).join('')}
               <div class="small">${t.missing.length ? `<span class="hs-miss">${ico('fa-triangle-exclamation')} Thiếu: ${esc(t.missing.join(', '))}</span>` : `<span class="hs-ok">${ico('fa-circle-check')} Đủ dữ liệu</span>`}</div></div>
             <div class="hs-a"><button class="btn sm" data-pv="${esc(t.code)}" title="Xem / in riêng hồ sơ này">${ico('fa-print')} In</button><button class="btn sm" data-wd="${esc(t.code)}" title="Tải Word để sửa">${ico('fa-file-word')} Word</button><button class="btn sm" data-sv="${esc(t.code)}" title="Lưu bản Word vào Kho hồ sơ (gắn vào hợp đồng của căn)">${ico('fa-box-archive')} Lưu</button></div></div>`).join('')}
           ${miss.length ? `<div class="warnbar mt">${ico('fa-circle-info')}<span>Hồ sơ đã chọn còn thiếu: <b>${esc(miss.join(', '))}</b>. Chỗ thiếu in ra «…………» để điền tay — hoặc bổ sung ở ${d.customer ? `<a href="#" data-op="customer:${d.customer.id}">khách hàng</a>` : 'khách hàng'}${d.hdmb ? `, <a href="#" data-op="contract:${d.hdmb.id}">HĐ mua bán</a>` : ''}${d.vay ? `, <a href="#" data-op="contract:${d.vay.id}">HĐ vay</a>` : ''} rồi mở lại.</span></div>` : ''}
-          <div class="hs-foot"><button class="btn pri" id="hsP" ${sel.length ? '' : 'disabled'}>${ico('fa-print')} In cả bộ (${sel.length})</button><button class="btn" id="hsW" ${sel.length ? '' : 'disabled'}>${ico('fa-file-word')} Tải Word cả bộ</button><button class="btn" id="hsS" ${sel.length ? '' : 'disabled'} title="Lưu bản Word cả bộ vào Kho hồ sơ, gắn vào hợp đồng của căn">${ico('fa-box-archive')} Lưu cả bộ vào kho</button>${d.demoFill ? `<span class="hs-sp"></span><button class="btn amb" id="hsD" title="Bản demo: điền dữ liệu thử còn thiếu cho căn này — dựa trên khách, HĐ đã lưu">${ico('fa-wand-magic-sparkles')} Điền dữ liệu thử cho căn này</button>` : ''}</div>`
+          <div class="hs-foot"><button class="btn pri" id="hsP" ${sel.length ? '' : 'disabled'}>${ico('fa-print')} In cả bộ (${sel.length})</button><button class="btn" id="hsW" ${sel.length ? '' : 'disabled'}>${ico('fa-file-word')} Tải Word cả bộ</button><button class="btn" id="hsS" ${sel.length ? '' : 'disabled'} title="Lưu bản Word cả bộ vào Kho hồ sơ, gắn vào hợp đồng của căn">${ico('fa-box-archive')} Lưu cả bộ vào kho</button></div>`
         : `<div class="empty">Chưa có mẫu nào cho ${esc(bo.l)} của căn này — thêm ở Quản trị › Mẫu biểu (ô «Thuộc bộ hồ sơ»).</div>`}</div>
       <div class="card hs-saved" id="hsSv"><div class="empty">Đang tải tệp đã lưu…</div></div>`;
     saved();
@@ -2839,12 +2936,147 @@ async function hosoPanel(main, params = {}) {
     if (x.closest('#hsW')) return download(`/print/hs/${d.unit.id}?fmt=docx&cust=${d.cust || ''}&tpl=${encodeURIComponent(codes().join(','))}`);
     const sv = x.closest('[data-sv]') || x.closest('#hsS'); if (sv) { sv.disabled = true;
       try { const r = await api('POST', `/api/hs/${d.unit.id}/save`, { tpl: sv.dataset.sv || codes().join(','), bo: S.bo, cust: d.cust }); toast(`Đã lưu «${r.file.name}» vào kho, gắn với ${r.where}`); await saved(); } finally { sv.disabled = false; } return; }
-    if (x.closest('#hsD')) { const r = await api('POST', `/api/hs/${d.unit.id}/demo-fill`, {}); toast(r.did.length ? 'Đã thêm dữ liệu thử: ' + r.did.join('; ') : 'Căn này đã đủ dữ liệu thử'); return load(); }
     const hd = x.closest('[data-hd]'); if (hd) return download(`/api/file/${hd.dataset.hd}?dl=1`, null, hd.dataset.n);
     const hf = x.closest('[data-hf]'); if (hf) return window.open('/api/file/' + hf.dataset.hf, '_blank');
   });
   window.__ctgHsSaved = () => { if ($('#hsSv', main)?.isConnected) saved(); };   // trang in vừa «Lưu bản đã sửa vào kho»
+  if (!window.__ctgHsCh && window.BroadcastChannel) { window.__ctgHsCh = new BroadcastChannel('ctg-hs'); window.__ctgHsCh.addEventListener('message', e => { if (e.data?.t === 'saved') window.__ctgHsSaved?.(); }); }   // tab in mở tách riêng (noopener) báo về qua kênh
   if (S.unit) await load();
+}
+// ---------- Bộ hồ sơ: 2 chế độ «In hàng loạt» (mặc định — Tâm dùng nhiều nhất, 13/11/2026) / «Một căn» ----------
+const HSB_KEY = 'ctg-hs-batch';
+async function hsTabs(main, params = {}) {
+  let mode = params.unit ? 'one' : (lsGet('ctg-hs-mode') || 'batch');
+  main.innerHTML = `<div class="hsm"><div class="hsm-sw" id="hsmSw"><button data-m="batch">${ico('fa-layer-group')} In hàng loạt</button><button data-m="one">${ico('fa-building')} Một căn</button></div><div id="hsmB"></div></div>`;
+  const show = async () => { $$('#hsmSw button', main).forEach(b => b.classList.toggle('on', b.dataset.m === mode)); const host = $('#hsmB', main);
+    if (mode === 'one') await hosoPanel(host, params); else await batchPanel(host, { openOne: code => { mode = 'one'; params = { unit: code }; show(); } }); };
+  $('#hsmSw', main).onclick = e => { const b = e.target.closest('[data-m]'); if (!b || b.dataset.m === mode) return; mode = b.dataset.m; lsSet('ctg-hs-mode', mode); if (mode === 'batch') params = {}; show(); };
+  await show();
+}
+// ---------- In hàng loạt (13/11/2026): màn chính, tự động hóa tối đa ----------
+// · App quét cả dự án: mỗi căn biết khách đang giao dịch, bước hồ sơ đang làm, đã in bộ của bước đó chưa → nút gợi ý «Cần in», «Mới ký HĐMB», theo bước
+// · Bước «Tự động»: mỗi căn in đúng bộ của bước căn đó đang làm (căn A bộ mua bán, căn B bộ bàn giao… trong cùng 1 lần in)
+// · Kiểm tra thiếu dữ liệu tự chạy khi đổi lựa chọn, có nút «Sửa» mở thẳng HĐ / khách
+// · Trên 30 căn tự chia phần để máy không treo; «Lưu vào kho» cả loạt; nhớ dự án / bước / mẫu bỏ chọn theo máy
+const HSB_STEPS = [['mua_ban', 'Mua bán', '#2563eb'], ['vay', 'HĐ vay', '#7c3aed'], ['ban_giao', 'Bàn giao', '#059669'], ['tl_vay', 'Thanh lý HĐ vay', '#d97706'], ['tl_mua_ban', 'Thanh lý mua bán', '#dc2626']];
+const HSB_PART = 30;
+async function batchPanel(main, { openOne } = {}) {
+  let saved0 = {}; try { saved0 = JSON.parse(lsGet(HSB_KEY) || '{}'); } catch { }
+  const S = ST.hsb ||= { pid: +filt().project || saved0.pid || M.projects[0]?.id || 0, bo: saved0.bo || 'auto', sel: new Set(), cp: new Map(), off: new Set(saved0.off || []), tw: '', info: new Map(), scanned: new Set(), done: new Set() };
+  const keep = () => lsSet(HSB_KEY, JSON.stringify({ pid: S.pid, bo: S.bo, off: [...S.off] }));
+  let units = [], keys = null, plan = null, kq = 0, pq = 0, tk = 0, tp = 0;
+  const stepL = k => HSB_STEPS.find(s => s[0] === k)?.[1] || '', stepC = k => HSB_STEPS.find(s => s[0] === k)?.[2] || '#94a3b8';
+  const dayAgo = n => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
+  main.innerHTML = `<div class="hsb">
+    <div class="card hsb-top">
+      <div class="hsb-r1"><select id="hbP">${M.projects.map(p => `<option value="${p.id}" ${p.id === S.pid ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select>
+        <div class="hsb-q">${ico('fa-magnifying-glass')}<input id="hbQ" placeholder="Gõ hoặc dán mã căn / mã KH — nhiều mã cách nhau dấu phẩy, xuống dòng (CTS-K-0201*3 = in 3 bản) rồi Enter" autocomplete="off"></div></div>
+      <div class="hsb-sug" id="hbSug"></div></div>
+    <div class="hsb-main"><div class="card hsb-units" id="hbU"><div class="empty">Đang quét dự án…</div></div>
+      <aside class="card hsb-side" id="hbS"></aside></div></div>`;
+  const U = $('#hbU', main), SD = $('#hbS', main);
+  const list = () => [...S.sel].sort();
+  const info = c => S.info.get(c);
+  // ---- quét dự án
+  const scan = async () => { U.innerHTML = '<div class="empty">Đang quét dự án…</div>';
+    const r = await api('GET', '/api/hs-batch/scan?project=' + S.pid); units = r.units; for (const u of units) S.info.set(u.code, u); drawSug(); drawUnits(); };
+  // ---- gợi ý nhanh
+  const groups = () => {
+    const live = units.filter(u => u.cust && u.current);
+    return [
+      ['need', 'fa-bolt', 'Cần in', 'Căn có khách đang giao dịch mà chưa in bộ hồ sơ của bước đang làm', live.filter(u => !u.printed)],
+      ['new', 'fa-pen-nib', 'Mới ký HĐMB 7 ngày', 'HĐMB ký trong 7 ngày qua', live.filter(u => u.signed && u.signed >= dayAgo(7))],
+      ...HSB_STEPS.map(([k, l]) => ['st:' + k, 'fa-circle', l, `Căn đang ở bước ${l}`, live.filter(u => u.step === k)]).filter(g => g[4].length) ];
+  };
+  const drawSug = () => { const gs = groups();
+    $('#hbSug', main).innerHTML = `<span class="hsb-lbl">${ico('fa-wand-magic-sparkles')} Chọn nhanh:</span>${gs.map(([k, i, l, t, us]) => `<button class="hsb-chip${k === 'need' ? ' hot' : ''}" data-g="${k}" title="${esc(t)} — bấm để chọn ${us.length} căn" ${us.length ? '' : 'disabled'}>${k.startsWith('st:') ? `<span class="dot" style="background:${stepC(k.slice(3))}"></span>` : ico(i)} ${esc(l)} <b>${us.length}</b></button>`).join('')}
+      ${S.sel.size ? `<button class="hsb-chip ghost" data-g="clr">${ico('fa-xmark')} Bỏ chọn hết (${S.sel.size})</button>` : ''}`; };
+  // ---- lưới căn theo tòa
+  const drawUnits = () => {
+    if (!units.length) { U.innerHTML = '<div class="empty">Dự án chưa có căn hộ.</div>'; return; }
+    const tws = [...new Map(units.map(u => [u.tower, u.tname]))];
+    if (S.tw && !tws.some(t => t[0] === S.tw)) S.tw = '';
+    const show = units.filter(u => !S.tw || u.tower === S.tw), byT = new Map(); for (const u of show) (byT.get(u.tower) || byT.set(u.tower, []).get(u.tower)).push(u);
+    U.innerHTML = `<div class="hsb-tws"><button class="${S.tw ? '' : 'on'}" data-tw="">Tất cả tòa</button>${tws.map(([k, n]) => { const c = units.filter(u => u.tower === k && S.sel.has(u.code)).length; return `<button class="${S.tw === k ? 'on' : ''}" data-tw="${esc(k)}">${esc(n)}${c ? ` <b>${c}</b>` : ''}</button>`; }).join('')}</div>
+      <div class="hsb-leg">${HSB_STEPS.map(([, l, c]) => `<span><i style="background:${c}"></i>${l}</span>`).join('')}<span><i style="background:#cbd5e1"></i>Chưa có khách</span><span>${ico('fa-check')} đã in bộ của bước</span></div>
+      ${[...byT].map(([t, us]) => { const ok = us.filter(u => u.cust), k = ok.filter(u => S.sel.has(u.code)).length;
+        return `<div class="hsb-tg"><div class="hsb-th"><b>${esc(us[0].tname)}</b><span class="muted small">${us.length} căn · ${ok.length} có khách</span><label class="chk small"><input type="checkbox" data-twall="${esc(t)}" ${ok.length && k === ok.length ? 'checked' : ''}> Chọn cả tòa</label>${k ? `<span class="small hs-ok">đã chọn ${k}</span>` : ''}</div>
+          <div class="hsb-grid">${us.map(u => `<button class="hsb-u${S.sel.has(u.code) ? ' on' : ''}${u.cust ? '' : ' off'}" data-u="${esc(u.code)}" style="--c:${stepC(u.step)}" title="${esc(u.code)}${u.cust ? ` · ${u.cust}${u.kcode ? ' (' + u.kcode + ')' : ''} · bước ${stepL(u.step)}${u.printed ? ' · đã in ' + dmy(u.printed) : ' · chưa in'}` : ' · chưa có khách'}"><span class="c">${esc(u.code.split('-').pop())}${u.printed ? ico('fa-check', 'pr') : ''}${(S.cp.get(u.code) || 1) > 1 ? `<em>×${S.cp.get(u.code)}</em>` : ''}</span><span class="n">${esc(u.cust ? u.cust.split(' ').slice(-2).join(' ') : '—')}</span></button>`).join('')}</div></div>`; }).join('')}`;
+  };
+  // ---- khung phải: bước, hồ sơ, kiểm tra, in
+  const drawSide = () => {
+    const L = list(), by = new Map(), pb = new Map((plan?.units || []).map(u => [u.code, u.bo])); for (const c of L) { const s = S.bo !== 'auto' ? S.bo : info(c)?.step || pb.get(c) || '?'; by.set(s, (by.get(s) || 0) + 1); }
+    const nb = L.reduce((s, c) => s + (S.cp.get(c) || 1), 0), parts = Math.ceil(L.length / HSB_PART);
+    const other = L.filter(c => !units.some(u => u.code === c));
+    const P = plan, ok = P ? P.units.filter(u => !u.error && u.n) : [], miss = ok.filter(u => u.missing.length), skip = P ? P.units.filter(u => u.error || !u.n) : [];
+    const kOn = keys ? keys.filter(k => !S.off.has(k.key)) : [];
+    SD.innerHTML = !L.length ? `<div class="hsb-empty">${ico('fa-hand-pointer')}<b>Chưa chọn căn nào</b><span>Bấm một nút <b>Chọn nhanh</b> ở trên (ví dụ «Cần in»), bấm từng căn trong lưới, hoặc dán danh sách mã căn.</span></div>` : `
+      <div class="hsb-sum"><b>${L.length}</b> căn${nb > L.length ? ` · <b>${nb}</b> bản` : ''}<div class="small muted">${[...by].map(([s, n]) => `<span class="hsb-st" style="--c:${stepC(s)}">${esc(stepL(s) || 'chưa rõ bước')} ${n}</span>`).join(' ')}${other.length ? ` · ${other.length} căn dự án khác` : ''}</div></div>
+      <label class="hsb-f">Bước hồ sơ<select id="hbBo"><option value="auto" ${S.bo === 'auto' ? 'selected' : ''}>⚡ Tự động — mỗi căn in bộ của bước đang làm</option>${HSB_STEPS.map(([k, l]) => `<option value="${k}" ${S.bo === k ? 'selected' : ''}>Bộ ${l} cho tất cả căn</option>`).join('')}</select></label>
+      <div class="hsb-f"><div class="hsb-fh">Hồ sơ sẽ in ${keys ? `<span class="muted small">${kOn.length}/${keys.length}</span><button class="lnk" id="hbKAll">${kOn.length === keys.length ? 'Bỏ hết' : 'Chọn hết'}</button>` : ''}</div>
+        <div class="hsb-keys">${!keys ? '<div class="small muted">Đang lấy danh sách…</div>' : !keys.length ? '<div class="small muted">Chưa có mẫu cho bước này.</div>'
+          : keys.map((k, i) => `${S.bo === 'auto' && k.bo !== keys[i - 1]?.bo ? `<div class="hsb-kg" style="--c:${stepC(k.bo)}">${esc(stepL(k.bo))}</div>` : ''}<label class="chk"><input type="checkbox" data-k="${esc(k.key)}" ${S.off.has(k.key) ? '' : 'checked'}> ${esc(k.name)}</label>`).join('')}</div></div>
+      <div class="hsb-f"><div class="hsb-fh">Kiểm tra dữ liệu <span class="small muted">tự chạy</span></div><div id="hbK">${!P ? `<div class="small muted">${ico('fa-spinner fa-spin')} Đang kiểm tra từng căn…</div>`
+        : `<div class="hsb-chk"><span class="hs-ok">${ico('fa-circle-check')} ${ok.length - miss.length} đủ</span>${miss.length ? `<span class="hs-miss">${ico('fa-triangle-exclamation')} ${miss.length} thiếu</span>` : ''}${skip.length ? `<span class="muted" title="${esc(skip.map(u => u.code + (u.error ? ': ' + u.error : ': không có mẫu')).join('\n'))}">${ico('fa-ban')} ${skip.length} bỏ qua</span>` : ''}</div>
+          ${miss.length ? `<div class="hsb-miss">${miss.slice(0, 80).map(u => `<div><b>${esc(u.code)}</b> <span class="muted">${esc((u.customer || '').split(' · ')[0])}</span><div class="small hs-miss">${esc(u.missing.slice(0, 4).join(', '))}${u.missing.length > 4 ? ` +${u.missing.length - 4}` : ''}</div>
+            <div class="hsb-fix">${u.hdmb_id || u.vay_id ? `<button class="lnk" data-fix="contract:${u.hdmb_id || u.vay_id}">${ico('fa-pen')} Sửa HĐ</button>` : ''}${u.cust_id ? `<button class="lnk" data-fix="customer:${u.cust_id}">${ico('fa-user-pen')} Sửa khách</button>` : ''}<button class="lnk" data-one="${esc(u.code)}">${ico('fa-up-right-from-square')} Mở căn</button></div></div>`).join('')}</div>
+            <div class="small muted">Chỗ thiếu in ra «……» để điền tay.</div>` : ''}`}</div></div>
+      <label class="hsb-f hsb-cp">Số bản mỗi căn <input type="number" id="hbCp" min="1" max="50" value="${new Set(L.map(c => S.cp.get(c) || 1)).size === 1 ? (S.cp.get(L[0]) || 1) : ''}" placeholder="…"></label>
+      <div class="hsb-act">${parts <= 1 ? `<button class="btn pri" data-pr="0">${ico('fa-print')} In tất cả (${L.length} căn)</button><button class="btn" data-wd="0">${ico('fa-file-word')} Tải Word</button>`
+        : `<div class="small hs-miss">${ico('fa-circle-info')} ${L.length} căn — tự chia ${parts} phần, mỗi phần ${HSB_PART} căn để máy không treo</div>${Array.from({ length: parts }, (_, i) => `<div class="hsb-part${S.done.has(i) ? ' done' : ''}"><span>Phần ${i + 1} · căn ${i * HSB_PART + 1}–${Math.min(L.length, (i + 1) * HSB_PART)}</span><button class="btn sm pri" data-pr="${i}">${ico(S.done.has(i) ? 'fa-check' : 'fa-print')} In</button><button class="btn sm" data-wd="${i}">${ico('fa-file-word')}</button></div>`).join('')}`}
+        <button class="btn" id="hbSv" title="Lưu bản Word bộ hồ sơ của từng căn vào Kho, gắn vào hợp đồng của khách">${ico('fa-box-archive')} Lưu cả loạt vào kho</button></div>`;
+  };
+  const sel = () => S.sel.size ? list() : [];
+  const kParam = () => keys && S.off.size && keys.some(k => S.off.has(k.key)) ? keys.filter(k => !S.off.has(k.key)).map(k => k.key).join(',') : '';
+  const changed = () => { plan = null; S.done.clear(); drawSug(); drawUnits(); drawSide(); clearTimeout(tk); tk = setTimeout(() => loadKeys().catch(e => toast(e.message, true)), 250); };
+  const loadKeys = async () => { const q0 = ++kq; if (!S.sel.size) { keys = null; return drawSide(); }
+    const r = await api('POST', '/api/hs-batch/keys', { units: [...new Map(list().map(c => [c.replace(/-[^-]+$/, ''), c])).values()], bo: S.bo }); if (q0 !== kq) return;
+    const steps = S.bo === 'auto' && list().every(c => info(c)?.step) ? new Set(list().map(c => info(c).step)) : null;   // có căn chưa rõ bước (dự án khác) → hiện mẫu mọi bước
+    keys = r.keys.filter(k => !steps || !steps.size || steps.has(k.bo)); drawSide(); checkSoon(); };
+  const checkSoon = () => { plan = null; drawSide(); clearTimeout(tp); tp = setTimeout(() => check().catch(e => toast(e.message, true)), 400); };
+  const check = async () => { const q0 = ++pq; const r = await api('POST', '/api/hs-batch/plan', { units: list().slice(0, 200), bo: S.bo, keys: kParam() }); if (q0 !== pq) return; plan = r; drawSide(); };
+  const part = i => list().slice(i * HSB_PART, (i + 1) * HSB_PART).map(c => (S.cp.get(c) || 1) > 1 ? `${c}*${S.cp.get(c)}` : c).join(',');
+  const url = (i, fmt) => `/print/hs-batch?bo=${S.bo}&keys=${encodeURIComponent(kParam())}&units=${encodeURIComponent(part(i))}${fmt ? '&fmt=' + fmt : ''}`;
+  const rescan = () => setTimeout(() => api('GET', '/api/hs-batch/scan?project=' + S.pid).then(r => { units = r.units; for (const u of units) S.info.set(u.code, u); drawSug(); drawUnits(); }).catch(() => { }), 2500);
+  // ---- thêm mã căn / mã KH (gõ hoặc dán)
+  const addCodes = run(async t => {
+    const xs = [...new Set(String(t).split(/[\s,;]+/).map(x => x.trim()).filter(Boolean))]; if (!xs.length) return;
+    const bad = [];
+    for (const y of xs) { const [, x, n] = /^(.+?)(?:\*(\d+))?$/.exec(y), X = x.toUpperCase();
+      let code = units.find(u => u.code.toUpperCase() === X)?.code;
+      if (!code) { const k = units.filter(u => u.kcode && u.kcode.toUpperCase() === X); if (k.length) { k.forEach(u => S.sel.add(u.code)); continue; } }
+      if (!code) { try { const d = await api('GET', '/api/hs?unit=' + encodeURIComponent(x)); code = d.unit.code; } catch { bad.push(x); continue; } }
+      S.sel.add(code); if (n) S.cp.set(code, Math.min(50, +n)); }
+    $('#hbQ', main).value = ''; changed(); if (bad.length) toast(`Không tìm thấy: ${bad.slice(0, 8).join(', ')}${bad.length > 8 ? '…' : ''}`, true);
+  });
+  $('#hbQ', main).onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); addCodes(e.target.value); } };
+  $('#hbQ', main).onpaste = e => { const t = e.clipboardData?.getData('text') || ''; if (/[\s,;]/.test(t.trim())) { e.preventDefault(); addCodes(t); } };
+  $('#hbP', main).onchange = run(async e => { S.pid = +e.target.value; S.tw = ''; keep(); await scan(); drawSide(); });
+  main.onclick = run(async e => { const x = e.target;
+    const g = x.closest('[data-g]'); if (g) { if (g.dataset.g === 'clr') { S.sel.clear(); S.cp.clear(); } else { const gr = groups().find(y => y[0] === g.dataset.g); gr?.[4].forEach(u => S.sel.add(u.code)); toast(`Đã chọn ${gr?.[4].length || 0} căn «${gr?.[2]}»`); } return changed(); }
+    const tw = x.closest('[data-tw]'); if (tw) { S.tw = tw.dataset.tw; return drawUnits(); }
+    const u = x.closest('[data-u]'); if (u) { const c = u.dataset.u; S.sel.has(c) ? S.sel.delete(c) : S.sel.add(c); return changed(); }
+    const fx = x.closest('[data-fix]'); if (fx) { const [ent, id] = fx.dataset.fix.split(':'); return openForm(ent, { id: +id, onSaved: () => { checkSoon(); rescan(); } }); }
+    const one = x.closest('[data-one]'); if (one) return openOne?.(one.dataset.one);
+    if (x.closest('#hbKAll')) { const all = keys.every(k => !S.off.has(k.key)); keys.forEach(k => all ? S.off.add(k.key) : S.off.delete(k.key)); keep(); return checkSoon(); }
+    const pr = x.closest('[data-pr]'); if (pr) { if (keys && !keys.some(k => !S.off.has(k.key))) return toast('Chọn ít nhất 1 hồ sơ', true); window.open(url(+pr.dataset.pr), '_blank'); S.done.add(+pr.dataset.pr); drawSide(); return rescan(); }
+    const wd = x.closest('[data-wd]'); if (wd) { await download(url(+wd.dataset.wd, 'docx')); return rescan(); }
+    if (x.closest('#hbSv')) { const b = x.closest('#hbSv'); b.disabled = true; let ok = 0; const err = [];
+      try { const L = list(); for (let i = 0; i < L.length; i += 10) { b.innerHTML = `${ico('fa-spinner fa-spin')} Đang lưu ${Math.min(L.length, i + 10)}/${L.length}…`;
+          const r = await api('POST', '/api/hs-batch/save', { units: L.slice(i, i + 10).join(','), bo: S.bo, keys: kParam() }); ok += r.ok.length; err.push(...r.err); }
+        toast(`Đã lưu bộ hồ sơ của ${ok} căn vào kho${err.length ? ` · ${err.length} căn lỗi: ${err.slice(0, 3).join('; ')}` : ''}`, !!err.length); window.__ctgHsSaved?.(); }
+      finally { drawSide(); } }
+  });
+  main.onchange = e => { const x = e.target;
+    if (x.dataset.twall) { for (const u of units.filter(u => u.tower === x.dataset.twall && u.cust)) x.checked ? S.sel.add(u.code) : S.sel.delete(u.code); return changed(); }
+    if (x.id === 'hbBo') { S.bo = x.value; keep(); keys = null; return changed(); }
+    if (x.dataset.k) { x.checked ? S.off.delete(x.dataset.k) : S.off.add(x.dataset.k); keep(); return checkSoon(); }
+    if (x.id === 'hbCp' && x.value) { const v = Math.min(50, Math.max(1, Math.round(+x.value) || 1)); for (const c of S.sel) v > 1 ? S.cp.set(c, v) : S.cp.delete(c); drawUnits(); drawSide(); }
+  };
+  await scan();
+  if (!units.length && !saved0.pid && !+filt().project) for (const p of M.projects) { if (p.id === S.pid) continue;   // lần đầu: tự nhảy sang dự án đầu tiên có căn
+    const r = await api('GET', '/api/hs-batch/scan?project=' + p.id); if (r.units.length) { S.pid = p.id; $('#hbP', main).value = p.id; keep(); await scan(); break; } }
+  drawSide(); if (S.sel.size) changed();
 }
 // ---------- Mẫu biểu: cây thư mục theo module (12/11/2026) ----------
 // Module 01…12 › màn hiện nút «In theo mẫu» (ô «Hiện ở module») › dự án / tòa áp dụng › mẫu. Bấm mẫu → khung phải: xem trước, sửa, thay nội dung bằng file,
@@ -2858,8 +3090,8 @@ V.tpltree = async (main, params = {}) => {
   const placeOf = t => t.bo ? 'bo:' + t.bo : t.ent;
   let ts = [], ps = [], bs = [], fids = {};
   const gitBtn = window.__ctgDemoPublish && M.me.role === 'admin' ? `<button class="btn amb" id="ttGit" title="Ghi toàn bộ mẫu biểu trên trình duyệt này vào kho GitHub — bản demo của mọi người cập nhật sau 1–2 phút">${ico('fa-cloud-arrow-up')} Đẩy mẫu biểu lên Git</button>` : '';
-  main.innerHTML = `<div class="page">${head('12', 'Mẫu biểu – thông báo', 'fa-folder-tree', `${gitBtn}<a class="btn" href="#/e/template?view=list">${ico('fa-table-list')} Dạng bảng</a>${canC ? `<button class="btn pri" id="ttNew">${ico('fa-plus')} Tạo mẫu</button>` : ''}`)}
-    <div class="warnbar">${ico('fa-folder-tree')}<span>Mẫu xếp theo <b>module › màn có nút «In theo mẫu» › dự án / tòa áp dụng</b>. Bấm một mẫu để xem trước và sửa, thay, xóa; nút ${ico('fa-plus')} trên dòng thư mục tạo mẫu mới ngay đúng chỗ đó.</span></div>
+  main.innerHTML = `<div class="page">${head('12', 'Mẫu biểu – thông báo', 'fa-folder-tree', `${gitBtn}<a class="btn" href="#/e/template?view=list">${ico('fa-table-list')} Dạng bảng</a>${canC ? `<button class="btn" id="ttUp" title="Tải file Word / Excel / HTML lên làm mẫu mới">${ico('fa-file-arrow-up')} Tải mẫu lên</button><button class="btn pri" id="ttNew">${ico('fa-plus')} Tạo mẫu</button>` : ''}`)}
+    <div class="warnbar">${ico('fa-folder-tree')}<span>Mẫu xếp theo <b>module › màn có nút «In theo mẫu» › dự án / tòa áp dụng</b>. Bấm một mẫu để xem trước và sửa, thay, xóa; nút ${ico('fa-plus')} trên dòng thư mục tạo mẫu mới, nút ${ico('fa-file-arrow-up')} tải file Word / Excel lên làm mẫu ngay đúng chỗ đó. Trong file Word gõ trường trộn dạng <b>{ten_kh}</b>, <b>{ma_can}</b>… để in tự điền.</span></div>
     <div class="tt"><div class="card tt-l"><div class="tt-bar"><input id="ttQ" type="search" placeholder="Tìm mã / tên mẫu…" value="${esc(S.q)}"><label class="chk small"><input type="checkbox" id="ttE" ${S.empty ? 'checked' : ''}> Hiện cả màn chưa có mẫu</label>
       <button class="btn sm ghost" id="ttO" title="Mở hết thư mục">${ico('fa-folder-open')}</button><button class="btn sm ghost" id="ttC" title="Thu gọn hết">${ico('fa-folder-closed')}</button></div>
       <div id="ttBulk"></div><div id="ttTree" class="tt-tree"><div class="empty">Đang tải…</div></div></div>
@@ -2885,7 +3117,7 @@ V.tpltree = async (main, params = {}) => {
   const fRow = (lv, key, icon, label, ids, acts = '') => { fids[key] = ids; const o = isOpen(key), all = ids.length && ids.every(i => S.ck.has(i));
     return `<div class="tt-row tt-f lv${lv}" data-k="${esc(key)}">${ico(o ? 'fa-caret-down' : 'fa-caret-right', 'tt-car')}${canU || canD ? `<input type="checkbox" data-fk="${esc(key)}" ${all ? 'checked' : ''} ${ids.length ? '' : 'disabled'} title="Chọn cả thư mục">` : ''}${ico(icon || (o ? 'fa-folder-open' : 'fa-folder'), 'tt-ic')}<span class="tt-lb">${label}</span><span class="tt-n">${ids.length}</span><span class="tt-acts">${acts}</span></div>`; };
   const tRow = (lv, t) => `<div class="tt-row tt-t lv${lv}${S.sel === t.id ? ' on' : ''}${t.active ? '' : ' off'}" data-id="${t.id}"><span class="tt-car"></span>${canU || canD ? `<input type="checkbox" data-ck="${t.id}" ${S.ck.has(t.id) ? 'checked' : ''}>` : ''}${ico(/^\s*</.test(t.content || '') ? 'fa-file-code' : 'fa-file-lines', 'tt-ic')}<span class="tt-lb"><b>${esc(t.code)}</b> · ${esc(t.name)}</span>${t.bedrooms ? `<span class="tag">${t.bedrooms} PN</span>` : ''}${t.active ? '' : '<span class="tag">Tắt</span>'}</div>`;
-  const plus = (ent, sc) => canC && ent ? `<button class="btn sm ghost" data-new="${esc(ent)}" data-sc="${esc(sc ?? '')}" title="Tạo mẫu mới ở thư mục này">${ico('fa-plus')}</button>` : '';
+  const plus = (ent, sc) => canC && ent ? `<button class="btn sm ghost" data-up="${esc(ent)}" data-sc="${esc(sc ?? '')}" title="Tải file Word / Excel lên làm mẫu ở thư mục này">${ico('fa-file-arrow-up')}</button><button class="btn sm ghost" data-new="${esc(ent)}" data-sc="${esc(sc ?? '')}" title="Tạo mẫu mới ở thư mục này">${ico('fa-plus')}</button>` : '';
   const draw = () => {
     const mods = tree(); fids = {};
     if (!S.init) { S.init = true; for (const m of mods) { S.open.add(m.key); for (const s of m.scr) { S.open.add(s.key); for (const g of s.grp) S.open.add(g.key); } } }
@@ -2901,13 +3133,13 @@ V.tpltree = async (main, params = {}) => {
   const detail = async () => {
     const d = $('#ttD', main), t = ts.find(x => x.id === S.sel);
     if (!t) { d.innerHTML = `<div class="empty">${ico('fa-hand-pointer')} Chọn một mẫu ở cây bên trái để xem trước, sửa, thay hoặc xóa.</div>`; return; }
-    d.innerHTML = `<div class="tt-path small muted">${ico('fa-folder-open')} ${esc(t.ent ? tplPlace(t.ent) : 'Chưa gắn module')} › ${t.scope ? esc(scName(t.scope)) : 'Mẫu chung'}</div><h3 class="tt-h">${esc(t.name)}</h3>
+    d.innerHTML = `<div class="tt-path small muted">${ico('fa-folder-open')} ${esc(places.find(p => p[0] === placeOf(t))?.[1] || (t.ent ? tplPlace(t.ent) : 'Chưa gắn module'))} › ${t.scope ? esc(scName(t.scope)) : 'Mẫu chung'}</div><h3 class="tt-h">${esc(t.name)}</h3>
       <dl class="tt-dl"><dt>Mã mẫu</dt><dd><b>${esc(t.code)}</b></dd><dt>Loại</dt><dd>${esc(kindL[t.kind] || t.kind || '')}</dd><dt>Áp dụng</dt><dd>${t.scope ? esc(scName(t.scope)) : 'Mẫu chung — mọi dự án'}${t.bedrooms ? ` · căn ${t.bedrooms} phòng ngủ` : ''}</dd>
         <dt>Trạng thái</dt><dd>${t.active ? '<span class="tag ok">Đang dùng</span>' : '<span class="tag">Tắt</span>'}</dd><dt>Cập nhật</dt><dd>${esc(dmyhm(t.updated_at || t.created_at))}</dd>
-        ${canU ? `<dt>Hiện ở module</dt><dd><select id="ttMv"><option value="">— Chưa gắn —</option>${places.map(([k, l]) => `<option value="${esc(k)}" ${k === t.ent ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></dd>` : ''}</dl>
+        ${canU ? `<dt>Hiện ở module</dt><dd><select id="ttMv"><option value="">— Chưa gắn —</option>${places.map(([k, l]) => `<option value="${esc(k)}" ${k === placeOf(t) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></dd>` : ''}</dl>
       <div class="tt-btns">${canU ? `<button class="btn pri sm" data-a="edit">${ico('fa-pen')} Sửa</button><button class="btn sm" data-a="file">${ico('fa-file-arrow-up')} Thay bằng file…</button><button class="btn sm" data-a="tog">${ico(t.active ? 'fa-toggle-off' : 'fa-toggle-on')} ${t.active ? 'Tắt' : 'Bật'}</button>` : `<button class="btn sm" data-a="edit">${ico('fa-eye')} Xem</button>`}
         ${canC ? `<button class="btn sm" data-a="dup">${ico('fa-copy')} Nhân bản</button>` : ''}<button class="btn sm" data-a="dl">${ico('fa-download')} Tải về</button><button class="btn sm" data-a="pv">${ico('fa-up-right-from-square')} Xem toàn trang</button>
-        ${canD ? `<button class="btn sm danger" data-a="del">${ico('fa-trash')} Xóa</button>` : ''}<input type="file" id="ttFile" accept=".html,.htm,.txt" hidden></div>
+        ${canD ? `<button class="btn sm danger" data-a="del">${ico('fa-trash')} Xóa</button>` : ''}<input type="file" id="ttFile" accept=".docx,.xlsx,.html,.htm,.txt" hidden></div>
       <div class="tt-pv"><div class="small muted">Xem trước với dữ liệu thật mới nhất của màn</div><iframe id="ttF" title="Xem trước mẫu"></iframe></div>`;
     const f = $('#ttF', d);
     if (!t.ent) { f.srcdoc = `<pre style="white-space:pre-wrap;font:13px/1.5 system-ui">${esc(t.content)}</pre>`; return; }
@@ -2927,6 +3159,8 @@ V.tpltree = async (main, params = {}) => {
     toast(`Đã ${verb} ${ok} mẫu${tail}${errs.length ? ` · lỗi ${errs.length}: ${errs.join('; ')}` : ''}`, !!errs.length); await load(); };
   main.onclick = run(async e => {
     const x = e.target;
+    if (x.closest('#ttUp')) return upModal('', '');
+    const ub = x.closest('[data-up]'); if (ub) return upModal(ub.dataset.up, ub.dataset.sc);
     if (x.closest('#ttNew')) return openForm('template', { preset: { active: true, kind: 'thong_bao' }, onSaved: r => { S.sel = r?.id || S.sel; load(); } });
     if (x.closest('#ttGit')) { const b = x.closest('#ttGit'); if (!confirm('Đẩy toàn bộ mẫu biểu đang có trên trình duyệt này lên Git?\nMọi người mở link demo sẽ nhận đúng bộ mẫu này (sau 1–2 phút).')) return;
       b.disabled = true; try { const r = await window.__ctgDemoPublish({ user: M.me.username }); if (r) toast(`Đã đẩy ${r.n} mẫu lên Git — bản demo của mọi người cập nhật sau 1–2 phút`); } finally { b.disabled = false; } return; }
@@ -2957,13 +3191,37 @@ V.tpltree = async (main, params = {}) => {
   main.onchange = run(async e => {
     const x = e.target;
     if (x.id === 'ttE') { S.empty = x.checked; return draw(); }
-    if (x.id === 'ttMv') { await put(S.sel, { ent: x.value || null }); toast(x.value ? `Đã chuyển sang ${tplPlace(x.value)}` : 'Đã bỏ gắn module'); return load(); }
-    if (x.matches('select[data-b=mv]') && x.value) { const ent = x.value; return many([...S.ck], id => put(id, { ent }), 'chuyển', ` sang ${tplPlace(ent)}`); }
+    if (x.id === 'ttMv') { const v = x.value, bo = v.startsWith('bo:') ? v.slice(3) : null; await put(S.sel, { ent: bo ? 'unit' : v || null, bo }); toast(v ? `Đã chuyển sang ${places.find(p => p[0] === v)?.[1] || tplPlace(v)}` : 'Đã bỏ gắn module'); return load(); }
+    if (x.matches('select[data-b=mv]') && x.value) { const v = x.value, bo = v.startsWith('bo:') ? v.slice(3) : null; return many([...S.ck], id => put(id, { ent: bo ? 'unit' : v, bo }), 'chuyển', ` sang ${places.find(p => p[0] === v)?.[1] || tplPlace(v)}`); }
     if (x.id === 'ttFile' && x.files[0]) { const file = x.files[0], t = ts.find(y => y.id === S.sel); x.value = ''; if (!t) return;
-      const txt = await file.text(); if (!txt.trim()) throw new Error('File rỗng');
-      if (!await ask('Thay nội dung mẫu', `Thay toàn bộ nội dung mẫu «${t.code}» bằng file «${file.name}» (${Math.round(txt.length / 1024)} KB)? Bản cũ vẫn khôi phục được ở Nhật ký thao tác — hoặc bấm «Tải về» trước để giữ một bản.`, { okLabel: 'Thay nội dung' })) return;
-      await put(t.id, { content: txt }); toast('Đã thay nội dung mẫu'); return load(); }
+      if (!file.size) throw new Error('File rỗng');
+      if (!await ask('Thay nội dung mẫu', `Thay toàn bộ nội dung mẫu «${t.code}» bằng file «${file.name}» (${Math.max(1, Math.round(file.size / 1024))} KB)? Bản cũ vẫn khôi phục được ở Nhật ký thao tác — hoặc bấm «Tải về» trước để giữ một bản.`, { okLabel: 'Thay nội dung' })) return;
+      const fd = new FormData(); fd.append('id', t.id); fd.append('file', file, file.name); await api('POST', '/api/template-upload', fd); toast('Đã thay nội dung mẫu'); return load(); }
   });
+  const upModal = (place, sc) => {
+    const m = modal({ title: `${ico('fa-file-arrow-up')} Tải mẫu biểu lên`, body: `<div class="warnbar">${ico('fa-circle-info')}<div>Chọn <b>file Word (.docx)</b> — hoặc Excel .xlsx / .html — mỗi file thành 1 mẫu (chọn được nhiều file). Giữ nguyên căn lề, chữ đậm / nghiêng, bảng, logo, ngắt trang.<br>Chỗ cần tự điền khi in: gõ trong Word dạng <b>{ten_kh}</b>, <b>{cccd}</b>, <b>{ma_can}</b>, <b>{ngay_hdmb}</b>… (xem danh sách trường ở nút «Sửa» của mẫu). File .doc cũ: mở Word → Lưu thành .docx.</div></div>
+      <div class="form"><label>File mẫu<input type="file" id="uF" multiple accept=".docx,.xlsx,.html,.htm,.txt" class="inp"></label>
+      <label>Hiện ở module (nút «In theo mẫu» của màn)<select id="uP"><option value="">— Chưa gắn —</option>${places.map(([k, l]) => `<option value="${esc(k)}" ${k === place ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+      <label>Áp dụng cho dự án / tòa<select id="uS"><option value="">Mẫu chung — mọi dự án</option>${ps.map(p => `<option value="${esc(p.code)}" ${sc === p.code ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>${bs.filter(b => b.project_id === p.id).map(b => { const k = `${p.code}-${b.code}`; return `<option value="${esc(k)}" ${String(sc).toUpperCase() === k.toUpperCase() ? 'selected' : ''}>&nbsp;&nbsp;› ${esc(b.name || 'Tòa ' + b.code)}</option>`; }).join('')}`).join('')}${sc && !ps.some(p => p.code === sc) && !bs.some(b => ps.some(p => p.id === b.project_id && `${p.code}-${b.code}`.toUpperCase() === String(sc).toUpperCase())) ? `<option value="${esc(sc)}" selected>${esc(scName(sc))}</option>` : ''}</select></label>
+      <label>Loại<select id="uK">${TE.fields.find(f => f.k === 'kind').o.map(([k, l]) => `<option value="${esc(k)}">${esc(l)}</option>`).join('')}</select></label>
+      <div id="uOne" hidden><label>Mã mẫu<input id="uC" class="inp" placeholder="tự đặt theo tên file nếu để trống"></label><label>Tên mẫu<input id="uN" class="inp"></label></div></div><div id="uR"></div>`,
+      foot: `<button class="btn" data-x>Đóng</button><button class="btn pri" id="uGo">${ico('fa-file-arrow-up')} Tải lên</button>` });
+    const el = m.el, kindOf = p => p.startsWith('bo:') ? 'hop_dong' : TPL_KIND0[p] || 'thong_bao';
+    $('#uK', el).value = kindOf(place); $('#uP', el).onchange = e => { $('#uK', el).value = kindOf(e.target.value); };
+    $('#uF', el).onchange = e => { const fs = [...e.target.files]; $('#uOne', el).hidden = fs.length !== 1; if (fs.length === 1) $('#uN', el).value = fs[0].name.replace(/\.[^.]+$/, '').replace(/_+/g, ' '); };
+    $('#uGo', el).onclick = run(async () => {
+      const fs = [...$('#uF', el).files]; if (!fs.length) return toast('Chọn file mẫu', true);
+      const p = $('#uP', el).value, fd = new FormData(), bo = p.startsWith('bo:') ? p.slice(3) : '';
+      fd.append('ent', bo ? 'unit' : p); fd.append('bo', bo); fd.append('scope', $('#uS', el).value); fd.append('kind', $('#uK', el).value);
+      if (fs.length === 1) { fd.append('code', $('#uC', el).value); fd.append('name', $('#uN', el).value); }
+      fs.forEach(f => fd.append('file', f, f.name));
+      $('#uGo', el).disabled = true; $('#uR', el).innerHTML = '<div class="empty">Đang chuyển file…</div>';
+      try { const r = await api('POST', '/api/template-upload', fd);
+        $('#uR', el).innerHTML = (r.made.length ? `<div class="okbar">Đã thêm ${r.made.length} mẫu: ${r.made.map(x => `<b>${esc(x.code)}</b>`).join(', ')}</div>` : '') + (r.errors.length ? `<div class="warnbar">${r.errors.map(esc).join('<br>')}</div>` : '');
+        if (r.made.length) { S.sel = r.made[0].id; await load(); if (!r.errors.length) { m.close ? m.close() : el.querySelector('[data-x]')?.click(); toast(`Đã tải lên ${r.made.length} mẫu — kiểm tra bản xem trước bên phải`); } }
+      } finally { $('#uGo', el).disabled = false; }
+    });
+  };
   $('#ttQ', main).oninput = e => { S.q = e.target.value; draw(); };
   await load();
 };

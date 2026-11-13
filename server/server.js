@@ -553,6 +553,8 @@ R('GET', '/api/handover-templates', async (req, res, u, p, qs) => send(res, 200,
 R('GET', '/print/handover/:kind/:id', async (req, res, u, p, qs) => send(res, 200, await M4.printHandover(p.kind, p.id, u, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 // phiếu đề nghị hủy / đổi: tự điền theo hợp đồng / phiếu giữ chỗ
 R('GET', '/api/voucher-prefill', async (req, res, u, p, qs) => { if (!can(u, M.E.receipt, 'c') && !can(u, M.E.payment, 'c')) C.deny(); send(res, 200, await B.voucherPrefill({ q, one }, qs)); });
+R('POST', '/api/handover-notice/set-bg', async (req, res, u) => { if (!can(u, M.E.contract, 'u')) C.deny('Bạn không được sửa hợp đồng'); const b = await readJson(req); send(res, 200, await tx(db => B.bgSet(db, u, b))); });   // chọn đợt bàn giao / số ngày cho 1 HĐMB ngay ở thông báo
+R('GET', '/api/handover-notice/suggest', async (req, res, u, p, qs) => { if (!can(u, M.E.handover_notice, 'c') && !can(u, M.E.handover_notice, 'u') && !can(u, M.E.handover_notice, 'r')) C.deny(); send(res, 200, await B.bgSuggest({ q, one }, qs)); });   // thông báo bàn giao: gợi ý căn có HĐMB đã ký + hạn thu đợt bàn giao
 R('GET', '/api/cancel_prefill', async (req, res, u, p, qs) => { if (!can(u, M.E.cancel_req, 'c') && !can(u, M.E.cancel_req, 'u')) C.deny(); send(res, 200, await B.cancelPrefill({ q, one }, qs)); });
 // bên bán theo tên (Bên A): thông tin mặc định + ô đã ghi ở hợp đồng gần nhất cùng Bên A
 // thông tin bên bán: ghi nhớ theo từng Bên A ngay khi nhập (kd_setting.seller_info_v2), không phụ thuộc hợp đồng có lưu được hay không; chưa nhập thì lấy giá trị gần nhất trên hợp đồng
@@ -580,11 +582,32 @@ R('GET', '/print/sale_notice/:id', async (req, res, u, p, qs) => send(res, 200, 
 R('GET', '/print/cancel_req/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printCancelReq(p.id, u), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 R('GET', '/api/template-scope/:ent/:id', async (req, res, u, p) => send(res, 200, await IO.recScope(p.ent, p.id)));
 R('GET', '/api/template-fields/:ent', async (req, res, u, p) => send(res, 200, IO.tplFields(p.ent)));
+// tải mẫu biểu lên: file Word / Excel / HTML → mẫu mới (mỗi file 1 mẫu) hoặc thay nội dung mẫu có sẵn (id)
+R('POST', '/api/template-upload', async (req, res, u) => {
+  const DH = require('./doc-html'), { files, fields: F } = await readUpload(req); if (!files.length) bad('Chưa chọn file');
+  if (F.id) { const html = DH.fileToHtml(files[0]); await C.update('template', +F.id, { content: html }, u); return send(res, 200, { updated: +F.id, n: 1 }); }
+  const used = new Set((await q('SELECT code FROM kd_template')).map(r => r.code.toUpperCase())), made = [], errors = [];
+  for (const f of files) {
+    try {
+      const html = DH.fileToHtml(f); let code = (F.code && files.length === 1 ? F.code.trim().toUpperCase() : DH.codeOf(f.name)) || 'UP-MAU', c = code;
+      for (let i = 2; used.has(c); i++) c = code + '-' + i; used.add(c);
+      const r = await C.create('template', { code: c, name: (files.length === 1 && F.name?.trim()) || DH.nameOf(f.name), kind: F.kind || (F.bo ? 'hop_dong' : 'thong_bao'), ent: F.ent || null, bo: F.bo || null, scope: F.scope || null, content: html, active: F.active !== '0' }, u);
+      made.push({ id: r.row.id, code: c, file: f.name });
+    } catch (e) { errors.push(`${f.name}: ${e.message}`); }
+  }
+  send(res, 200, { made, errors });
+});
 R('POST', '/api/template-preview', async (req, res, u) => send(res, 200, { html: await IO.previewTemplate(await readJson(req), u) }));
 // Bộ hồ sơ theo căn (12/11/2026): gõ mã căn → bộ hồ sơ theo bước, in cả bộ / tải Word
 const HS = require('./ho-so');
 R('GET', '/api/hs', async (req, res, u, p, qs) => send(res, 200, await HS.hsInfo(qs.unit, u, qs.cust)));
-R('POST', '/api/hs/:id/demo-fill', async (req, res, u, p) => send(res, 200, await HS.demoFill(p.id, u)));   // chỉ bản demo
+R('POST', '/api/hs-batch/keys', async (req, res, u) => { const b = await readJson(req); send(res, 200, await HS.batchKeys(b.units, b.bo, u)); });   // in hàng loạt: loại hồ sơ / mẫu của bước
+R('POST', '/api/hs-batch/plan', async (req, res, u) => { const b = await readJson(req); send(res, 200, await HS.batchPlan(b.units, b.bo, u, b.keys)); });   // in hàng loạt: kiểm tra căn + hồ sơ (bo = 'auto': bước của từng căn)
+R('GET', '/api/hs-batch/scan', async (req, res, u, p, qs) => send(res, 200, await HS.batchScan(qs.project, u)));   // quét dự án: bước / khách / lần in gần nhất của từng căn   // in hàng loạt: kiểm tra căn + hồ sơ
+R('GET', '/print/hs-batch', async (req, res, u, p, qs) => {
+  if (qs.fmt === 'docx') { const x = await HS.wordBatch(qs.units, qs.bo, qs.keys, u); return sendFile(res, x.buf, x.name, MIME['.docx']); }
+  send(res, 200, await HS.printBatch(qs.units, qs.bo, qs.keys, u), { 'Content-Type': 'text/html; charset=utf-8' });
+}, { html: true });
 async function saveHsFile(u, unitId, bo, x, cust) {   // cất bản Word của bộ hồ sơ vào Kho hồ sơ (gắn vào hợp đồng của khách đang xem)
   const t = await HS.saveTarget(unitId, bo, cust);
   const g = await C.get(t.ent, t.id, u); if (!g.perm.files) deny('Bạn không được đính kèm tệp cho hợp đồng này');
@@ -597,6 +620,10 @@ async function saveHsFile(u, unitId, bo, x, cust) {   // cất bản Word của 
   await C.audit({ q }, t.ent, g.row.id, 'tai_tep', null, null, u, `Bộ hồ sơ: ${x.name}${ver > 1 ? ` (phiên bản ${ver})` : ''}`, g.row.is_demo);
   return { file: r, where: `${t.what} ${g.row.number || g.row.code || ''}`.trim() };
 }
+// in hàng loạt → lưu bản Word của từng căn vào Kho (gắn HĐ của khách đang giao dịch), căn lỗi thì bỏ qua và báo lại (13/11/2026)
+R('POST', '/api/hs-batch/save', async (req, res, u) => { const b = await readJson(req), ok = [], err = [];
+  for (const x of await HS.batchPick(b.units, b.bo, b.keys, u)) { try { const cust = x.D.ctx.k?.id; await saveHsFile(u, x.f.id, x.bo, await HS.wordHs(x.f.id, x.ts.map(t => t.code).join(','), u, cust), cust); ok.push(x.D.map.ma_can); } catch (e) { err.push(`${x.D.map.ma_can}: ${e.message}`); } }
+  send(res, 200, { ok, err }); });
 R('POST', '/api/hs/:id/save', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await saveHsFile(u, p.id, b.bo, await HS.wordHs(p.id, b.tpl, u, b.cust), b.cust)); });
 R('POST', '/api/hs/:id/save-html', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await saveHsFile(u, p.id, b.bo, await HS.wordFromHtml(p.id, b.docs, u), b.cust)); });   // bản đã sửa trên trang in
 R('GET', '/print/hs/:id', async (req, res, u, p, qs) => {

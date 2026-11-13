@@ -95,14 +95,15 @@ async function normSchedule(db, rows, value, label = 'Lịch thanh toán', maint
     const pct = m || r.pct === '' || r.pct == null ? null : await C.normField(F.pct, r.pct, db, `${at} — tỷ lệ`);
     if (amount == null && pct != null) amount = Math.round(base * pct / 100) + (i === mi ? maint : 0);
     if (!due_on || !amount) bad(`${at}: cần ngày đến hạn và số tiền (hoặc tỷ lệ)`);
-    out.push({ name: String(r.name || (m ? 'Phí bảo trì' : `Đợt ${i + 1}`)).trim(), due_on, pct, amount, is_maint: !!r.maint });
+    const bgd = r.bg_days === '' || r.bg_days == null ? null : Math.max(0, parseInt(r.bg_days, 10) || 0);
+    out.push({ name: String(r.name || (m ? 'Phí bảo trì' : `Đợt ${i + 1}`)).trim(), due_on, pct, amount, is_maint: !!r.maint, is_bg: !m && !!r.bg && !out.some(x => x.is_bg), bg_days: !m && r.bg ? bgd : null });
   }
   if (own) {   // dòng phí bảo trì: đặt sau các đợt có hạn không muộn hơn hạn của nó
     const mr = out.find(r => r.is_maint), rest = out.filter(r => r !== mr), at = rest.filter(r => r.due_on <= mr.due_on).length;
     out = [...rest.slice(0, at), mr, ...rest.slice(at)];
   }
   out.forEach((r, i) => { r.seq = i + 1; });
-  for (let i = 1; i < out.length; i++) if (out[i].due_on < out[i - 1].due_on) bad(`${label}: ngày đến hạn kỳ ${i + 1} sớm hơn kỳ ${i}`);
+  for (let i = 1; i < out.length; i++) if (out[i].due_on < out[i - 1].due_on && !out[i].is_bg && !out[i - 1].is_bg) bad(`${label}: ngày đến hạn kỳ ${i + 1} sớm hơn kỳ ${i}`);   // đợt bàn giao: hạn theo thông báo bàn giao, có thể lệch thứ tự
   const sum = out.reduce((s, r) => s + r.amount, 0);
   // làm tròn: dồn chênh lệch nhỏ (≤ 1.000đ / kỳ) vào kỳ cuối (không dồn vào dòng phí bảo trì)
   const li = Math.max(out.map(r => r.is_maint).lastIndexOf(false), 0);
@@ -113,8 +114,8 @@ async function normSchedule(db, rows, value, label = 'Lịch thanh toán', maint
 async function writeSchedule(db, contractId, rows, src, user, demo) {
   await db.q('UPDATE kd_installment SET active = false, updated_at = now(), updated_by = $2 WHERE contract_id = $1 AND active', [contractId, user?.id ?? null]);
   for (const r of rows)
-    await db.q('INSERT INTO kd_installment (contract_id, seq, name, due_on, pct, amount, is_maint, src, active, created_by, is_demo) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$10)',
-      [contractId, r.seq, r.name, r.due_on, r.pct, r.amount, !!r.is_maint, src, user?.id ?? null, !!demo]);
+    await db.q('INSERT INTO kd_installment (contract_id, seq, name, due_on, pct, amount, is_maint, src, active, created_by, is_demo, is_bg, bg_days) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$10,$11,$12)',
+      [contractId, r.seq, r.name, r.due_on, r.pct, r.amount, !!r.is_maint, src, user?.id ?? null, !!demo, !!r.is_bg, r.is_bg ? r.bg_days ?? null : null]);
   await C.audit(db, 'contract', contractId, 'lich_thanh_toan', null, { lich: rows }, user, `${rows.length} kỳ · ${src === 'phu_luc' ? 'theo phụ lục' : 'theo hợp đồng'}`, demo);
 }
 
@@ -815,6 +816,135 @@ H.sale_notice = {
   },
 };
 
+// ===== Thông báo bàn giao căn hộ (13/11/2026) =====
+// đợt bàn giao của HĐMB = kỳ thu (không phải phí bảo trì) có chữ «bàn giao» trong tên đợt
+const BG_RE = /b[àa]n\s*giao|nh[ậa]n\s*nh[àa]|giao\s*nh[àa]/i;
+// «… trong vòng 15 (mười lăm) ngày kể từ ngày nhận thông báo bàn giao» → 15
+const bgDaysIn = s => { const m = /(\d+)\s*(?:\([^)]*\)\s*)?ngày[^.;]{0,60}?(?:b[àa]n\s*giao|nh[ậa]n\s*nh[àa]|giao\s*nh[àa])/i.exec(s || ''); return m ? +m[1] : null; };
+// đợt bàn giao của 1 HĐMB: đợt đã đánh dấu «Bàn giao» → không có thì đợt đầu tiên có nội dung nhắc bàn giao / nhận nhà
+const bgPickInst = list => { const m = list.find(x => x.is_bg); if (m) return { i: m, how: 'mark' }; const t = list.find(x => BG_RE.test(x.name || '')); return t ? { i: t, how: 'text' } : { i: null, how: '' }; };
+const bgBase = r => r.pay_from === 'thong_bao' ? r.notice_on : r.handover_on;
+// thông báo bàn giao đã phát hành (mới nhất) có căn này
+async function bgNoticeOf(db, unitId) {
+  const u = await db.one('SELECT code, building_id FROM kd_unit WHERE id = $1', [+unitId]); if (!u) return null;
+  return (await db.q("SELECT * FROM kd_handover_notice WHERE building_id = $1 AND status = 'da_duyet' ORDER BY handover_on DESC, id DESC", [u.building_id])).find(n => bgCodes(n.unit_list).includes(u.code.toUpperCase())) || null;
+}
+const bgCodes = v => String(v || '').split(/[,;\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+const bgDue = r => { const b = r.pay_from === 'thong_bao' ? r.notice_on : r.handover_on; return b ? C.addDays(String(b).slice(0, 10), +r.pay_days || 0) : null; };
+// mọi căn của tòa + HĐMB đã ký + đợt bàn giao + hạn hiện tại / hạn mới + căn đã thuộc thông báo khác
+async function bgRows(db, r) {
+  if (!r.building_id) return [];
+  const us = await db.q('SELECT id, code, floor FROM kd_unit WHERE building_id = $1 ORDER BY floor NULLS LAST, code', [+r.building_id]);
+  if (!us.length) return [];
+  const cts = await db.q(`SELECT DISTINCT ON (c.unit_id) c.id, c.unit_id, c.number, c.contract_on, k.full_name, k.code kcode FROM kd_contract c LEFT JOIN kd_customer k ON k.id = c.customer_id
+    WHERE c.unit_id = ANY($1) AND c.kind = 'hdmb' AND c.status = 'da_ky' ORDER BY c.unit_id, c.id DESC`, [us.map(u => u.id)]);
+  const ins = cts.length ? await db.q('SELECT id, contract_id, seq, name, due_on, amount, is_bg, bg_days FROM kd_installment WHERE contract_id = ANY($1) AND active AND NOT coalesce(is_maint, false) ORDER BY contract_id, seq', [cts.map(c => c.id)]) : [];
+  const other = await db.q("SELECT id, code, doc_no, unit_list, handover_on FROM kd_handover_notice WHERE building_id = $1 AND status IN ('nhap', 'cho_duyet', 'da_duyet') AND id <> $2", [+r.building_id, +r.id || 0]);
+  const ctOf = new Map(cts.map(c => [c.unit_id, c])), base = bgBase(r);
+  return us.map(u => {
+    const c = ctOf.get(u.id), list = c ? ins.filter(x => x.contract_id === c.id) : [], { i, how } = bgPickInst(list), o = other.find(n => bgCodes(n.unit_list).includes(u.code.toUpperCase()));
+    const own = i ? (i.bg_days != null ? +i.bg_days : how === 'text' ? bgDaysIn(i.name) : null) : null, days = own ?? (+r.pay_days || 0);   // số ngày riêng của HĐ → không có thì theo thông báo
+    return { id: u.id, code: u.code, floor: u.floor, contract_id: c?.id || null, number: c?.number || '', contract_on: c?.contract_on || null, customer: c ? `${c.full_name || ''}${c.kcode ? ' · ' + c.kcode : ''}` : '',
+      inst_id: i?.id || null, inst_seq: i?.seq || null, inst_name: i?.name || '', how, days_own: own, days, amount: i ? +i.amount : null, due_old: i?.due_on || null, due_new: i && base ? C.addDays(String(base).slice(0, 10), days) : null,
+      dots: list.map(x => ({ seq: x.seq, name: x.name })), other: o ? (o.doc_no || o.code) : '' };
+  });
+}
+async function bgSuggest(db, qs) {
+  const r = { id: +qs.id || 0, building_id: +qs.building || 0, handover_on: qs.on || null, notice_on: qs.notice || null, pay_from: qs.from || 'ban_giao', pay_days: +qs.days || 0 };
+  const rows = await bgRows(db, r);
+  const first = r.building_id ? await db.one("SELECT min(handover_on) d FROM kd_handover_notice WHERE building_id = $1 AND status = 'da_duyet' AND id <> $2", [r.building_id, r.id]) : null;
+  return { rows, due: bgDue(r), bg_from: first?.d || null };
+}
+// đổi đợt bàn giao / số ngày của 1 HĐMB ngay từ bảng căn của thông báo bàn giao → ghi thẳng vào Lần thanh toán của HĐMB (13/11/2026)
+async function bgSet(db, user, b) {
+  const c = await db.one("SELECT id, kind, status, number FROM kd_contract WHERE id = $1", [+b.contract_id]);
+  if (!c || !['hdmb', 'thue_mua'].includes(c.kind)) bad('Không tìm thấy HĐ mua bán');
+  if (['thanh_ly', 'huy'].includes(c.status)) bad('Hợp đồng đã thanh lý / hủy — không đổi đợt bàn giao');
+  const seq = +b.seq || 0, days = b.days === '' || b.days == null ? null : Math.max(0, parseInt(b.days, 10) || 0);
+  const ins = await db.q('SELECT id, seq, name, is_bg, bg_days FROM kd_installment WHERE contract_id = $1 AND active AND NOT coalesce(is_maint, false) ORDER BY seq', [c.id]);
+  if (seq && !ins.some(x => x.seq === seq)) bad('HĐMB không có đợt này');
+  const was = ins.find(x => x.is_bg);
+  await db.q('UPDATE kd_installment SET is_bg = (seq = $2), bg_days = CASE WHEN seq = $2 THEN $3::int END, updated_at = now(), updated_by = $4 WHERE contract_id = $1 AND active AND NOT coalesce(is_maint, false)', [c.id, seq, days, user?.id ?? null]);
+  const now = ins.find(x => x.seq === seq);
+  await C.audit(db, 'contract', c.id, 'dot_ban_giao', { dot: was?.seq || null, so_ngay: was?.bg_days ?? null }, { dot: seq || null, so_ngay: days }, user,
+    seq ? `Đợt bàn giao: đợt ${seq}${now?.name ? ' «' + String(now.name).slice(0, 60) + '»' : ''}${days != null ? ` · ${days} ngày kể từ bàn giao` : ' · số ngày theo thông báo'}` : 'Bỏ đánh dấu đợt bàn giao');
+  await bgReapply(db, c.id, user);
+  return { ok: true };
+}
+// HĐMB thuộc thông báo bàn giao đã phát hành: đổi đợt / số ngày → hạn đợt bàn giao tự tính lại; đợt cũ (còn đúng hạn do thông báo đặt) trả về hạn trước đó
+async function bgReapply(db, contractId, user) {
+  const c = await db.one('SELECT id, unit_id FROM kd_contract WHERE id = $1', [+contractId]); if (!c) return;
+  const n = await bgNoticeOf(db, c.unit_id); if (!n) return;
+  const x = (await bgRows(db, n)).find(y => y.contract_id === c.id);
+  const applied = Array.isArray(n.applied) ? n.applied : [], k = applied.findIndex(a => a.ct === c.id), a = k >= 0 ? applied[k] : null;
+  if (a && a.seq && a.seq !== x?.inst_seq && a.old) {   // đợt bàn giao cũ: trả hạn cũ nếu chưa ai sửa tay
+    const o = await db.one('SELECT id, due_on FROM kd_installment WHERE contract_id = $1 AND seq = $2 AND active', [c.id, a.seq]);
+    if (o && String(o.due_on).slice(0, 10) === a.new) { await db.q('UPDATE kd_installment SET due_on = $1 WHERE id = $2', [a.old, o.id]);
+      await C.audit(db, 'contract', c.id, 'han_dot_ban_giao', { due_on: a.new }, { due_on: a.old }, user, `Đợt ${a.seq} không còn là đợt bàn giao: trả hạn ${String(a.old).slice(0, 10)}`); }
+  }
+  let entry = null;
+  if (x?.inst_id && x.due_new) {
+    if (String(x.due_old || '').slice(0, 10) !== x.due_new) {
+      await db.q('UPDATE kd_installment SET due_on = $1 WHERE id = $2', [x.due_new, x.inst_id]);
+      await C.audit(db, 'contract', c.id, 'han_dot_ban_giao', { due_on: x.due_old }, { due_on: x.due_new }, user, `${x.inst_name}: hạn thu theo thông báo bàn giao ${n.doc_no || n.code} (${x.days} ngày)`);
+    }
+    const keepOld = a && a.seq === x.inst_seq ? a.old : (x.due_old ? String(x.due_old).slice(0, 10) : null);
+    entry = { inst: x.inst_id, seq: x.inst_seq, ct: c.id, unit: x.code, old: keepOld, new: x.due_new };
+  }
+  const next = applied.filter((_, j) => j !== k); if (entry) next.push(entry);
+  await db.q('UPDATE kd_handover_notice SET applied = $1 WHERE id = $2', [JSON.stringify(next), n.id]);
+}
+H.handover_notice = {
+  noDelete: r => !['nhap', 'tu_choi'].includes(r.status) && 'Chỉ xóa được thông báo đang ở bản nháp / bị từ chối',
+  async beforeSave(r, old, { db }) {
+    const b = r.building_id && await db.one('SELECT project_id FROM kd_building WHERE id = $1', [+r.building_id]);
+    if (b && r.project_id && +b.project_id !== +r.project_id) bad('Tòa không thuộc dự án đã chọn');
+    if (r.pay_days != null && +r.pay_days < 0) bad('Số ngày được nộp tiền không được âm');
+    if (r.unit_list != null) r.unit_list = bgCodes(r.unit_list).join(',');
+    if (!r.unit_list) bad('Tích chọn ít nhất 1 căn hộ bàn giao');
+    const rows = await bgRows(db, r), pick = new Set(bgCodes(r.unit_list)), dup = rows.filter(x => pick.has(x.code.toUpperCase()) && x.other);
+    if (dup.length) bad(`Căn đã có trong thông báo bàn giao khác: ${dup.slice(0, 8).map(x => `${x.code} (${x.other})`).join(', ')}`);
+    const bad1 = [...pick].filter(c => !rows.some(x => x.code.toUpperCase() === c));
+    if (bad1.length) bad(`Căn không thuộc tòa đã chọn: ${bad1.slice(0, 8).join(', ')}`);
+  },
+  async onSubmit(r, { db }) { const rows = await bgRows(db, r), pick = new Set(bgCodes(r.unit_list)); if (!rows.some(x => pick.has(x.code.toUpperCase()) && x.inst_id)) bad('Chưa căn nào trong thông báo có HĐMB đã ký xác định được đợt bàn giao — chọn đợt bàn giao cho từng căn ở bảng căn'); },
+  // phát hành: hạn thu đợt bàn giao của từng HĐMB = hạn mới (ghi lại hạn cũ để hủy thông báo thì trả về)
+  async afterApprove(r, ok, { db, user }) {
+    if (!ok) return;
+    const pick = new Set(bgCodes(r.unit_list)), applied = [];
+    for (const x of (await bgRows(db, r)).filter(x => pick.has(x.code.toUpperCase()) && x.inst_id && x.due_new)) {
+      if (String(x.due_old).slice(0, 10) !== x.due_new) {
+        await db.q('UPDATE kd_installment SET due_on = $1 WHERE id = $2', [x.due_new, x.inst_id]);
+        await C.audit(db, 'contract', x.contract_id, 'han_dot_ban_giao', { due_on: x.due_old }, { due_on: x.due_new }, user, `${x.inst_name}: hạn thu theo thông báo bàn giao ${r.doc_no || r.code} (${x.days} ngày)`);
+      }
+      applied.push({ inst: x.inst_id, seq: x.inst_seq, ct: x.contract_id, unit: x.code, old: x.due_old ? String(x.due_old).slice(0, 10) : null, new: x.due_new });
+    }
+    await db.q('UPDATE kd_handover_notice SET applied = $1 WHERE id = $2', [JSON.stringify(applied), r.id]);
+  },
+  acts: {
+    async revoke(r, d, { db, user }) {
+      let back = 0;
+      for (const a of r.applied || []) {
+        const i = (a.seq ? await db.one('SELECT id, due_on FROM kd_installment WHERE contract_id = $1 AND seq = $2 AND active', [a.ct, a.seq]) : null) || await db.one('SELECT id, due_on FROM kd_installment WHERE id = $1 AND active', [a.inst]);
+        if (!i || !a.old || String(i.due_on).slice(0, 10) !== a.new) continue;   // đã sửa tay sau khi phát hành → giữ
+        await db.q('UPDATE kd_installment SET due_on = $1 WHERE id = $2', [a.old, i.id]); back++;
+        await C.audit(db, 'contract', a.ct, 'han_dot_ban_giao', { due_on: a.new }, { due_on: a.old }, user, `Hủy thông báo bàn giao ${r.doc_no || r.code}: trả hạn thu đợt bàn giao`);
+      }
+      return { patch: { status: 'huy' }, msg: `Đã hủy thông báo — trả lại hạn thu đợt bàn giao của ${back} hợp đồng` };
+    },
+  },
+  async decorate(rows, { db, one }) {
+    if (!rows.length) return;
+    const first = new Map((await db.q("SELECT building_id, min(handover_on) d FROM kd_handover_notice WHERE status = 'da_duyet' AND building_id = ANY($1) GROUP BY 1", [[...new Set(rows.map(r => r.building_id).filter(Boolean))]])).map(x => [x.building_id, x.d]));
+    for (const r of rows) {
+      const pick = new Set(bgCodes(r.unit_list)), bs = (await bgRows(db, r)).filter(x => pick.has(x.code.toUpperCase()));
+      r.n_units = bs.length; r.n_hd = bs.filter(x => x.inst_id).length; r.bg_amount = bs.reduce((s, x) => s + (+x.amount || 0), 0);
+      r.bg_from = first.get(r.building_id) || null;
+      if (one) r._bg = bs.map(x => { const a = (r.applied || []).find(y => y.inst === x.inst_id); return a ? { ...x, due_old: a.old, due_new: a.new } : x; });
+    }
+  },
+};
+
 H.cancel_req = {
   async beforeSave(r, old, { db }) {
     // thông tin khách hàng theo hợp đồng / phiếu giữ chỗ (chọn lại thì lấy lại); số tiền đề nghị để trống = số khách đã nộp
@@ -1074,10 +1204,15 @@ H.contract = {
     if (old && r.kind !== 'hoan_thien' && ['plan_sign', 'sign_place', 'sign_status'].some(k => String(old[k] ?? '') !== String(r[k] ?? '')))
       await db.q(`UPDATE kd_noxh_check SET plan_sign = $1, sign_place = $2, sign_status = coalesce($3, sign_status), updated_at = now() WHERE customer_id = $4 AND (unit_id IS NULL OR unit_id = $5)`,
         [r.plan_sign ?? null, r.sign_place ?? null, r.sign_status ?? null, r.customer_id, r.unit_id]);
-    if (sched?.length && ['du_thao', 'tu_choi', 'cho_duyet', 'cho_ky'].includes(r.status)) {   // ghi lịch thu khi khác lịch đang có
-      const cur = await db.q('SELECT name, due_on, pct, amount, is_maint FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [r.id]);
-      const key = xs => JSON.stringify(xs.map(x => [x.name, String(x.due_on).slice(0, 10), x.pct == null ? null : +x.pct, +x.amount, !!x.is_maint]));
-      if (key(cur) !== key(sched)) await writeSchedule(db, r.id, sched, 'hop_dong', user, demo);
+    if (sched?.length && ['thanh_ly', 'huy'].includes(r.status)) {   // HĐ đã thanh lý / hủy: không đổi lịch thu
+      const cur0 = await db.q('SELECT seq, name, due_on, pct, amount, is_maint FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [r.id]);
+      const k0 = xs => JSON.stringify(xs.map(x => [x.name, String(x.due_on).slice(0, 10), x.pct == null ? null : +x.pct, +x.amount, !!x.is_maint]));   // HĐ đã thanh lý: chỉ so số liệu, không so đánh dấu bàn giao
+      if (k0(cur0) !== k0(sched)) bad('Hợp đồng đã thanh lý / hủy — không sửa Lần thanh toán');
+    }
+    if (sched?.length && ['du_thao', 'tu_choi', 'cho_duyet', 'cho_ky', 'da_ky'].includes(r.status)) {   // ghi lịch thu khi khác lịch đang có (13/11/2026: HĐ đã ký vẫn sửa được)
+      const cur = await db.q('SELECT name, due_on, pct, amount, is_maint, is_bg, bg_days FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [r.id]);
+      const key = xs => JSON.stringify(xs.map(x => [x.name, String(x.due_on).slice(0, 10), x.pct == null ? null : +x.pct, +x.amount, !!x.is_maint, !!x.is_bg, x.is_bg && x.bg_days != null ? +x.bg_days : null]));
+      if (key(cur) !== key(sched)) { await writeSchedule(db, r.id, sched, 'hop_dong', user, demo); if (['hdmb', 'thue_mua'].includes(r.kind) && r.status === 'da_ky') await bgReapply(db, r.id, user); }
     }
     await resFromContract(db, r, user);
     if (!old || old.status !== r.status || old.unit_id !== r.unit_id) { await recomputeUnit(db, r.unit_id, user); if (old && old.unit_id !== r.unit_id) await recomputeUnit(db, old.unit_id, user); }
@@ -1088,8 +1223,9 @@ H.contract = {
     for (const r of rows) { const d = D.get(r.id); r.paid = d.paid; r.left = d.left; r.overdue = d.overdue; if (one) r._debt = d; }
     if (one) for (const r of rows) if (r.kind === 'vay') r._loan = await db.q('SELECT * FROM kd_loan_pay WHERE contract_id = $1 ORDER BY due_on, kind DESC, seq', [r.id]);
     if (!one) await H.contract.listFill(rows, db);
-    if (one && rows[0]) rows[0].new_schedule = (await db.q('SELECT name, due_on, pct, amount, is_maint FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [rows[0].id]))
-      .map(x => ({ name: x.name, due_on: x.due_on, pct: x.pct == null ? null : +x.pct, amount: x.pct == null ? +x.amount : null, ...(x.is_maint ? { maint: true } : {}) }));   // form sửa: lịch thu đang có (dòng phí bảo trì riêng có maint)
+    if (one && rows[0]) rows[0].new_schedule = (await db.q('SELECT name, due_on, pct, amount, is_maint, is_bg, bg_days FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [rows[0].id]))
+      .map(x => ({ name: x.name, due_on: x.due_on, pct: x.pct == null ? null : +x.pct, amount: x.pct == null ? +x.amount : null, ...(x.is_maint ? { maint: true } : {}), ...(x.is_bg ? { bg: true, bg_days: x.bg_days == null ? null : +x.bg_days } : {}) }));
+    if (one && rows[0] && ['hdmb', 'thue_mua'].includes(rows[0].kind)) { const n = await bgNoticeOf(db, rows[0].unit_id); if (n) rows[0]._bg_base = { doc: n.doc_no || n.code, on: String(bgBase(n)).slice(0, 10), days: +n.pay_days || 0 }; }   // form sửa: lịch thu đang có (dòng phí bảo trì riêng có maint)
   },
   acts: {
     async schedule(r, d, { db, user, demo }) {
@@ -1506,4 +1642,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { bgSet, bgSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

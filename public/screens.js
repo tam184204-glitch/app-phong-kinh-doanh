@@ -848,7 +848,7 @@ V.signing = async main => {
 // Kho hồ sơ kiểu Drive: thư mục ảo Loại hồ sơ → Hồ sơ → Tệp, tệp vẫn gắn với hồ sơ gốc
 const VT_ENTS = ['contract', 'contract_change', 'reservation', 'pinkbook', 'handover', 'defect', 'noxh_check', 'refund', 'cancel_req', 'ticket', 'price_policy'];
 const VT_TYPES = { pdf: ['PDF', '#d93025'], doc: ['DOC', '#1a73e8'], docx: ['DOC', '#1a73e8'], xls: ['XLS', '#188038'], xlsx: ['XLS', '#188038'], jpg: ['ẢNH', '#7b5cd6'], jpeg: ['ẢNH', '#7b5cd6'], png: ['ẢNH', '#7b5cd6'], webp: ['ẢNH', '#7b5cd6'], dwg: ['DWG', '#c98210'], zip: ['ZIP', '#64748b'], rar: ['ZIP', '#64748b'] };
-const VT_NAV = [['bo', 'fa-file-signature', 'Bộ hồ sơ theo căn'], ['all', 'fa-box-archive', 'Hồ sơ dự án'], ['recent', 'fa-clock', 'Gần đây'], ['star', 'fa-star', 'Có gắn sao'], ['trash', 'fa-trash-can', 'Thùng rác']];
+const VT_NAV = [['bo', 'fa-file-signature', 'In bộ hồ sơ'], ['all', 'fa-box-archive', 'Hồ sơ dự án'], ['recent', 'fa-clock', 'Gần đây'], ['star', 'fa-star', 'Có gắn sao'], ['trash', 'fa-trash-can', 'Thùng rác']];
 const VT_CSS = `.vt { display: grid; grid-template-columns: 232px minmax(0, 1fr); gap: 22px; align-items: start; } .vt-side { position: sticky; top: 84px; display: flex; flex-direction: column; gap: 4px; } .vt-new { display: inline-flex; align-items: center; gap: 10px; align-self: flex-start; padding: 12px 24px 12px 18px; margin-bottom: 10px; border: 1px solid var(--line2); border-radius: 16px; background: var(--card); box-shadow: var(--soft2); font: inherit; font-size: 14px; font-weight: 700; color: var(--ink); cursor: pointer; } .vt-new:hover { box-shadow: var(--soft); } .vt-new:disabled { opacity: .5; cursor: not-allowed; } .vt-nav button { display: flex; align-items: center; gap: 14px; width: 100%; padding: 9px 16px; border: 0; border-radius: 20px; background: none; font: inherit; font-size: 13.5px; color: var(--muted); text-align: left; cursor: pointer; } .vt-nav button i { width: 16px; text-align: center; } .vt-nav button:hover { background: var(--cobalt-50); } .vt-nav button.on { background: var(--cobalt-100); color: var(--cobalt); font-weight: 700; } .vt-use { padding: 14px 16px 0; font-size: 12px; color: var(--muted); } .vt-main { min-width: 0; min-height: calc(100vh - 210px); padding: 16px 24px 30px; border: 1px solid var(--line2); border-radius: 18px; background: var(--card); transition: background .15s; } .vt-main.drop { outline: 2px dashed var(--cobalt-l); outline-offset: -8px; background: var(--cobalt-50); } .vt-q { position: relative; margin-bottom: 12px; } .vt-q i { position: absolute; left: 20px; top: 50%; transform: translateY(-50%); color: var(--muted); } .vt-q input { width: 100%; padding: 12px 18px 12px 46px; border: 1px solid transparent; border-radius: 24px; outline: none; background: var(--paper); font: inherit; font-size: 14.5px; } .vt-q input:focus { border-color: var(--cobalt-l); background: var(--card); } .vt-top { display: flex; align-items: center; gap: 8px; min-height: 44px; } .vt-crumbs { display: flex; align-items: center; flex: 1 1 0; min-width: 0; overflow: hidden; font-size: 19px; } .vt-crumbs i { font-size: 11px; color: var(--muted2); } .vt-crumbs button { max-width: 300px; padding: 4px 10px; border: 0; border-radius: 10px; background: none; font: inherit; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; } .vt-crumbs button:hover { background: var(--cobalt-50); } .vt-crumbs button:last-child { color: var(--ink); font-weight: 600; } .vt-seg { display: inline-flex; border: 1px solid var(--line2); border-radius: 10px; overflow: hidden; } .vt-seg button { padding: 7px 11px; border: 0; background: var(--card); color: var(--muted); cursor: pointer; } .vt-seg button.on { background: var(--cobalt-100); color: var(--cobalt); } .vt-h { margin: 18px 0 10px; font-size: 13px; font-weight: 600; color: var(--muted); } .vt-fgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; } .vt-dgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; } .vt-f { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 12px 14px; border: 1px solid transparent; border-radius: 12px; background: var(--paper); font: inherit; color: inherit; text-align: left; cursor: pointer; } .vt-f:hover { background: var(--cobalt-50); } .vt-f > i { font-size: 18px; color: var(--amber); } .vt-f > span { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .vt-f small { display: block; font-size: 11px; font-weight: 400; color: var(--muted); overflow: hidden; text-overflow: ellipsis; } .vt-d { min-width: 0; padding: 8px 8px 10px; border: 1px solid transparent; border-radius: 12px; background: var(--paper); cursor: pointer; } .vt-d:hover { background: var(--cobalt-50); } .vt-d:focus-visible, .vt-f:focus-visible { outline: 2px solid var(--cobalt-l); } .vt-th { display: grid; place-items: center; aspect-ratio: 4 / 3; border-radius: 8px; background: var(--card); } .vt-ic { --c: #64748b; display: inline-grid; place-items: center; width: 54px; height: 62px; border: 1px solid color-mix(in srgb, var(--c) 25%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--c) 14%, transparent); font-size: 13px; font-weight: 700; color: var(--c); } .vt-ic.sm { width: 30px; height: 26px; border-radius: 5px; font-size: 9.5px; flex: none; } .vt-nm { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 9px 2px 0; font-size: 13px; font-weight: 600; } .vt-tx { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .vt-mt { padding: 2px 2px 0; font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .vt-st { color: var(--amber); font-size: 12px; flex: none; } .vt-more { flex: none; width: 26px; height: 26px; border: 0; border-radius: 7px; background: none; color: var(--muted); cursor: pointer; opacity: 0; } .vt-more:hover { background: var(--line2); } .vt-more:focus-visible, .vt-d:hover .vt-more, tr:hover .vt-more { opacity: 1; } .vt-rn { display: flex; align-items: center; gap: 10px; min-width: 240px; font-weight: 600; } .vt-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 70px 20px; text-align: center; color: var(--muted); } .vt-empty > i { font-size: 44px; opacity: .45; } .vt-empty b { font-size: 16px; font-weight: 600; color: var(--text); } .vt-ctx { position: fixed; z-index: 250; min-width: 210px; padding: 6px; border: 1px solid var(--line2); border-radius: 12px; background: var(--card); box-shadow: var(--deep); } .vt-ctx button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 12px; border: 0; border-radius: 8px; background: none; font: inherit; font-size: 13.5px; color: var(--text); text-align: left; cursor: pointer; } .vt-ctx button i { width: 16px; text-align: center; color: var(--muted); } .vt-ctx button:hover { background: var(--cobalt-50); } .vt-ctx button.danger, .vt-ctx button.danger i { color: var(--r-c); } .vt-ctx hr { margin: 5px 0; border: 0; border-top: 1px solid var(--line2); } @media (max-width: 900px) { .vt { grid-template-columns: 1fr; gap: 12px; } .vt-side { position: static; flex-direction: row; flex-wrap: wrap; align-items: center; } .vt-new { margin: 0; } .vt-nav { display: flex; flex-wrap: wrap; gap: 2px; } .vt-use { display: none; } } @media (hover: none) { .vt-more { opacity: 1; } } @media (max-width: 640px) { .vt-main { padding: 12px 12px 24px; } .vt-top { flex-wrap: wrap; } .vt-crumbs { flex-basis: 100%; font-size: 16px; } .vt-dgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .vt-fgrid { grid-template-columns: 1fr; } }`;
 const vtSize = n => { n = +n || 0; return n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(0)} KB` : n < 1073741824 ? `${(n / 1048576).toFixed(1)} MB` : `${(n / 1073741824).toFixed(1)} GB`; };
 const vtIcon = (name, sm) => { const ext = String(name).split('.').pop().toLowerCase(), [t, c] = Object.hasOwn(VT_TYPES, ext) ? VT_TYPES[ext] : ['TỆP', '#64748b']; return `<span class="vt-ic ${sm ? 'sm' : ''}" style="--c:${c}">${t}</span>`; };
@@ -896,8 +896,8 @@ V.vault = async (main, params = {}) => {
     $('#vtM', main).classList.toggle('vt-bo', s.tab === 'bo');
     $$('#vtNav button', main).forEach(b => b.classList.toggle('on', b.dataset.tab === s.tab));
     if (s.tab === 'bo') {   // in bộ hồ sơ theo căn → lưu vào kho
-      $('#vtC', main).innerHTML = `<button>Bộ hồ sơ theo căn</button>`;
-      if (!$('#hsHost', main)) { $('#vtB', main).innerHTML = '<div id="hsHost"></div>'; hosoPanel($('#hsHost', main), { unit: params.unit || '' }); }
+      $('#vtC', main).innerHTML = `<button>In bộ hồ sơ</button>`;
+      if (!$('#hsHost', main)) { $('#vtB', main).innerHTML = '<div id="hsHost"></div>'; hsTabs($('#hsHost', main), { unit: params.unit || '', bo: params.bo || '', cust: params.cust }); }
       $('#vtU', main).textContent = `${rows.length} tệp trong kho`;
       return;
     }
@@ -1110,6 +1110,8 @@ V.hoso = (main, params = {}) => V.vault(main, { ...params, tab: 'bo' });
 async function hosoPanel(main, params = {}) {
   const S = ST.hoso ||= { unit: '', bo: '', off: {}, cust: '' };
   if (params.unit) S.unit = params.unit;
+  if (params.unit && params.cust !== undefined) S.cust = +params.cust || '';   // mở từ thẻ gợi ý bước tiếp theo
+  if (params.bo) S.bo = params.bo;
   main.innerHTML = `<div class="hs-emb">
     <div class="card hs-find"><form id="hsF" class="hs-q">${ico('fa-magnifying-glass')}<input id="hsQ" list="hsL" placeholder="Gõ mã căn hộ hoặc mã khách hàng (SĐT, CCCD cũng được) — ví dụ TNS-E-0303, KH000235" value="${esc(S.unit)}" autocomplete="off"><datalist id="hsL"></datalist><button class="btn pri">${ico('fa-arrow-right')} Mở bộ hồ sơ</button></form>
       <div class="small muted">Chọn bước đang làm → app sổ ra các hồ sơ của bước đó, đã điền sẵn số liệu đã khai báo. Tích hồ sơ cần in → <b>In cả bộ</b> hoặc <b>Tải Word</b> để sửa tiếp.</div></div>
@@ -1133,11 +1135,11 @@ async function hosoPanel(main, params = {}) {
       <div class="card hs-list">
         ${bo.tpls.length ? `<div class="hs-lh"><label class="chk"><input type="checkbox" id="hsAll" ${sel.length === bo.tpls.length ? 'checked' : ''}> <b>${esc(bo.l)}</b> — ${sel.length}/${bo.tpls.length} hồ sơ được chọn</label></div>
           ${bo.tpls.map(t => `<div class="hs-row${off.has(t.code) ? ' off' : ''}"><label class="chk"><input type="checkbox" data-ck="${esc(t.code)}" ${off.has(t.code) ? '' : 'checked'}></label>
-            <div class="hs-n">${ico(t.kind === 'hop_dong' ? 'fa-file-signature' : t.kind === 'bien_ban' ? 'fa-file-circle-check' : t.kind === 'phu_luc' ? 'fa-file-lines' : 'fa-file-pen')} <b>${esc(t.name)}</b>
+            <div class="hs-n">${ico(t.kind === 'hop_dong' ? 'fa-file-signature' : t.kind === 'bien_ban' ? 'fa-file-circle-check' : t.kind === 'phu_luc' ? 'fa-file-lines' : 'fa-file-pen')} <b>${esc(t.name)}</b>${t.annex?.length ? `<div class="small muted">${ico('fa-paperclip')} In chung 1 file gồm: Hợp đồng + ${esc(t.annex.join(' + '))}</div>` : ''}${(t.warn || []).map(w => `<div class="small hs-miss">${ico('fa-circle-exclamation')} ${esc(w)}</div>`).join('')}
               <div class="small">${t.missing.length ? `<span class="hs-miss">${ico('fa-triangle-exclamation')} Thiếu: ${esc(t.missing.join(', '))}</span>` : `<span class="hs-ok">${ico('fa-circle-check')} Đủ dữ liệu</span>`}</div></div>
             <div class="hs-a"><button class="btn sm" data-pv="${esc(t.code)}" title="Xem / in riêng hồ sơ này">${ico('fa-print')} In</button><button class="btn sm" data-wd="${esc(t.code)}" title="Tải Word để sửa">${ico('fa-file-word')} Word</button><button class="btn sm" data-sv="${esc(t.code)}" title="Lưu bản Word vào Kho hồ sơ (gắn vào hợp đồng của căn)">${ico('fa-box-archive')} Lưu</button></div></div>`).join('')}
           ${miss.length ? `<div class="warnbar mt">${ico('fa-circle-info')}<span>Hồ sơ đã chọn còn thiếu: <b>${esc(miss.join(', '))}</b>. Chỗ thiếu in ra «…………» để điền tay — hoặc bổ sung ở ${d.customer ? `<a href="#" data-op="customer:${d.customer.id}">khách hàng</a>` : 'khách hàng'}${d.hdmb ? `, <a href="#" data-op="contract:${d.hdmb.id}">HĐ mua bán</a>` : ''}${d.vay ? `, <a href="#" data-op="contract:${d.vay.id}">HĐ vay</a>` : ''} rồi mở lại.</span></div>` : ''}
-          <div class="hs-foot"><button class="btn pri" id="hsP" ${sel.length ? '' : 'disabled'}>${ico('fa-print')} In cả bộ (${sel.length})</button><button class="btn" id="hsW" ${sel.length ? '' : 'disabled'}>${ico('fa-file-word')} Tải Word cả bộ</button><button class="btn" id="hsS" ${sel.length ? '' : 'disabled'} title="Lưu bản Word cả bộ vào Kho hồ sơ, gắn vào hợp đồng của căn">${ico('fa-box-archive')} Lưu cả bộ vào kho</button>${d.demoFill ? `<span class="hs-sp"></span><button class="btn amb" id="hsD" title="Bản demo: điền dữ liệu thử còn thiếu cho căn này — dựa trên khách, HĐ đã lưu">${ico('fa-wand-magic-sparkles')} Điền dữ liệu thử cho căn này</button>` : ''}</div>`
+          <div class="hs-foot"><button class="btn pri" id="hsP" ${sel.length ? '' : 'disabled'}>${ico('fa-print')} In cả bộ (${sel.length})</button><button class="btn" id="hsW" ${sel.length ? '' : 'disabled'}>${ico('fa-file-word')} Tải Word cả bộ</button><button class="btn" id="hsS" ${sel.length ? '' : 'disabled'} title="Lưu bản Word cả bộ vào Kho hồ sơ, gắn vào hợp đồng của căn">${ico('fa-box-archive')} Lưu cả bộ vào kho</button></div>`
         : `<div class="empty">Chưa có mẫu nào cho ${esc(bo.l)} của căn này — thêm ở Quản trị › Mẫu biểu (ô «Thuộc bộ hồ sơ»).</div>`}</div>
       <div class="card hs-saved" id="hsSv"><div class="empty">Đang tải tệp đã lưu…</div></div>`;
     saved();
@@ -1181,12 +1183,147 @@ async function hosoPanel(main, params = {}) {
     if (x.closest('#hsW')) return download(`/print/hs/${d.unit.id}?fmt=docx&cust=${d.cust || ''}&tpl=${encodeURIComponent(codes().join(','))}`);
     const sv = x.closest('[data-sv]') || x.closest('#hsS'); if (sv) { sv.disabled = true;
       try { const r = await api('POST', `/api/hs/${d.unit.id}/save`, { tpl: sv.dataset.sv || codes().join(','), bo: S.bo, cust: d.cust }); toast(`Đã lưu «${r.file.name}» vào kho, gắn với ${r.where}`); await saved(); } finally { sv.disabled = false; } return; }
-    if (x.closest('#hsD')) { const r = await api('POST', `/api/hs/${d.unit.id}/demo-fill`, {}); toast(r.did.length ? 'Đã thêm dữ liệu thử: ' + r.did.join('; ') : 'Căn này đã đủ dữ liệu thử'); return load(); }
     const hd = x.closest('[data-hd]'); if (hd) return download(`/api/file/${hd.dataset.hd}?dl=1`, null, hd.dataset.n);
     const hf = x.closest('[data-hf]'); if (hf) return window.open('/api/file/' + hf.dataset.hf, '_blank');
   });
   window.__ctgHsSaved = () => { if ($('#hsSv', main)?.isConnected) saved(); };   // trang in vừa «Lưu bản đã sửa vào kho»
+  if (!window.__ctgHsCh && window.BroadcastChannel) { window.__ctgHsCh = new BroadcastChannel('ctg-hs'); window.__ctgHsCh.addEventListener('message', e => { if (e.data?.t === 'saved') window.__ctgHsSaved?.(); }); }   // tab in mở tách riêng (noopener) báo về qua kênh
   if (S.unit) await load();
+}
+// ---------- Bộ hồ sơ: 2 chế độ «In hàng loạt» (mặc định — Tâm dùng nhiều nhất, 13/11/2026) / «Một căn» ----------
+const HSB_KEY = 'ctg-hs-batch';
+async function hsTabs(main, params = {}) {
+  let mode = params.unit ? 'one' : (lsGet('ctg-hs-mode') || 'batch');
+  main.innerHTML = `<div class="hsm"><div class="hsm-sw" id="hsmSw"><button data-m="batch">${ico('fa-layer-group')} In hàng loạt</button><button data-m="one">${ico('fa-building')} Một căn</button></div><div id="hsmB"></div></div>`;
+  const show = async () => { $$('#hsmSw button', main).forEach(b => b.classList.toggle('on', b.dataset.m === mode)); const host = $('#hsmB', main);
+    if (mode === 'one') await hosoPanel(host, params); else await batchPanel(host, { openOne: code => { mode = 'one'; params = { unit: code }; show(); } }); };
+  $('#hsmSw', main).onclick = e => { const b = e.target.closest('[data-m]'); if (!b || b.dataset.m === mode) return; mode = b.dataset.m; lsSet('ctg-hs-mode', mode); if (mode === 'batch') params = {}; show(); };
+  await show();
+}
+// ---------- In hàng loạt (13/11/2026): màn chính, tự động hóa tối đa ----------
+// · App quét cả dự án: mỗi căn biết khách đang giao dịch, bước hồ sơ đang làm, đã in bộ của bước đó chưa → nút gợi ý «Cần in», «Mới ký HĐMB», theo bước
+// · Bước «Tự động»: mỗi căn in đúng bộ của bước căn đó đang làm (căn A bộ mua bán, căn B bộ bàn giao… trong cùng 1 lần in)
+// · Kiểm tra thiếu dữ liệu tự chạy khi đổi lựa chọn, có nút «Sửa» mở thẳng HĐ / khách
+// · Trên 30 căn tự chia phần để máy không treo; «Lưu vào kho» cả loạt; nhớ dự án / bước / mẫu bỏ chọn theo máy
+const HSB_STEPS = [['mua_ban', 'Mua bán', '#2563eb'], ['vay', 'HĐ vay', '#7c3aed'], ['ban_giao', 'Bàn giao', '#059669'], ['tl_vay', 'Thanh lý HĐ vay', '#d97706'], ['tl_mua_ban', 'Thanh lý mua bán', '#dc2626']];
+const HSB_PART = 30;
+async function batchPanel(main, { openOne } = {}) {
+  let saved0 = {}; try { saved0 = JSON.parse(lsGet(HSB_KEY) || '{}'); } catch { }
+  const S = ST.hsb ||= { pid: +filt().project || saved0.pid || M.projects[0]?.id || 0, bo: saved0.bo || 'auto', sel: new Set(), cp: new Map(), off: new Set(saved0.off || []), tw: '', info: new Map(), scanned: new Set(), done: new Set() };
+  const keep = () => lsSet(HSB_KEY, JSON.stringify({ pid: S.pid, bo: S.bo, off: [...S.off] }));
+  let units = [], keys = null, plan = null, kq = 0, pq = 0, tk = 0, tp = 0;
+  const stepL = k => HSB_STEPS.find(s => s[0] === k)?.[1] || '', stepC = k => HSB_STEPS.find(s => s[0] === k)?.[2] || '#94a3b8';
+  const dayAgo = n => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
+  main.innerHTML = `<div class="hsb">
+    <div class="card hsb-top">
+      <div class="hsb-r1"><select id="hbP">${M.projects.map(p => `<option value="${p.id}" ${p.id === S.pid ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select>
+        <div class="hsb-q">${ico('fa-magnifying-glass')}<input id="hbQ" placeholder="Gõ hoặc dán mã căn / mã KH — nhiều mã cách nhau dấu phẩy, xuống dòng (CTS-K-0201*3 = in 3 bản) rồi Enter" autocomplete="off"></div></div>
+      <div class="hsb-sug" id="hbSug"></div></div>
+    <div class="hsb-main"><div class="card hsb-units" id="hbU"><div class="empty">Đang quét dự án…</div></div>
+      <aside class="card hsb-side" id="hbS"></aside></div></div>`;
+  const U = $('#hbU', main), SD = $('#hbS', main);
+  const list = () => [...S.sel].sort();
+  const info = c => S.info.get(c);
+  // ---- quét dự án
+  const scan = async () => { U.innerHTML = '<div class="empty">Đang quét dự án…</div>';
+    const r = await api('GET', '/api/hs-batch/scan?project=' + S.pid); units = r.units; for (const u of units) S.info.set(u.code, u); drawSug(); drawUnits(); };
+  // ---- gợi ý nhanh
+  const groups = () => {
+    const live = units.filter(u => u.cust && u.current);
+    return [
+      ['need', 'fa-bolt', 'Cần in', 'Căn có khách đang giao dịch mà chưa in bộ hồ sơ của bước đang làm', live.filter(u => !u.printed)],
+      ['new', 'fa-pen-nib', 'Mới ký HĐMB 7 ngày', 'HĐMB ký trong 7 ngày qua', live.filter(u => u.signed && u.signed >= dayAgo(7))],
+      ...HSB_STEPS.map(([k, l]) => ['st:' + k, 'fa-circle', l, `Căn đang ở bước ${l}`, live.filter(u => u.step === k)]).filter(g => g[4].length) ];
+  };
+  const drawSug = () => { const gs = groups();
+    $('#hbSug', main).innerHTML = `<span class="hsb-lbl">${ico('fa-wand-magic-sparkles')} Chọn nhanh:</span>${gs.map(([k, i, l, t, us]) => `<button class="hsb-chip${k === 'need' ? ' hot' : ''}" data-g="${k}" title="${esc(t)} — bấm để chọn ${us.length} căn" ${us.length ? '' : 'disabled'}>${k.startsWith('st:') ? `<span class="dot" style="background:${stepC(k.slice(3))}"></span>` : ico(i)} ${esc(l)} <b>${us.length}</b></button>`).join('')}
+      ${S.sel.size ? `<button class="hsb-chip ghost" data-g="clr">${ico('fa-xmark')} Bỏ chọn hết (${S.sel.size})</button>` : ''}`; };
+  // ---- lưới căn theo tòa
+  const drawUnits = () => {
+    if (!units.length) { U.innerHTML = '<div class="empty">Dự án chưa có căn hộ.</div>'; return; }
+    const tws = [...new Map(units.map(u => [u.tower, u.tname]))];
+    if (S.tw && !tws.some(t => t[0] === S.tw)) S.tw = '';
+    const show = units.filter(u => !S.tw || u.tower === S.tw), byT = new Map(); for (const u of show) (byT.get(u.tower) || byT.set(u.tower, []).get(u.tower)).push(u);
+    U.innerHTML = `<div class="hsb-tws"><button class="${S.tw ? '' : 'on'}" data-tw="">Tất cả tòa</button>${tws.map(([k, n]) => { const c = units.filter(u => u.tower === k && S.sel.has(u.code)).length; return `<button class="${S.tw === k ? 'on' : ''}" data-tw="${esc(k)}">${esc(n)}${c ? ` <b>${c}</b>` : ''}</button>`; }).join('')}</div>
+      <div class="hsb-leg">${HSB_STEPS.map(([, l, c]) => `<span><i style="background:${c}"></i>${l}</span>`).join('')}<span><i style="background:#cbd5e1"></i>Chưa có khách</span><span>${ico('fa-check')} đã in bộ của bước</span></div>
+      ${[...byT].map(([t, us]) => { const ok = us.filter(u => u.cust), k = ok.filter(u => S.sel.has(u.code)).length;
+        return `<div class="hsb-tg"><div class="hsb-th"><b>${esc(us[0].tname)}</b><span class="muted small">${us.length} căn · ${ok.length} có khách</span><label class="chk small"><input type="checkbox" data-twall="${esc(t)}" ${ok.length && k === ok.length ? 'checked' : ''}> Chọn cả tòa</label>${k ? `<span class="small hs-ok">đã chọn ${k}</span>` : ''}</div>
+          <div class="hsb-grid">${us.map(u => `<button class="hsb-u${S.sel.has(u.code) ? ' on' : ''}${u.cust ? '' : ' off'}" data-u="${esc(u.code)}" style="--c:${stepC(u.step)}" title="${esc(u.code)}${u.cust ? ` · ${u.cust}${u.kcode ? ' (' + u.kcode + ')' : ''} · bước ${stepL(u.step)}${u.printed ? ' · đã in ' + dmy(u.printed) : ' · chưa in'}` : ' · chưa có khách'}"><span class="c">${esc(u.code.split('-').pop())}${u.printed ? ico('fa-check', 'pr') : ''}${(S.cp.get(u.code) || 1) > 1 ? `<em>×${S.cp.get(u.code)}</em>` : ''}</span><span class="n">${esc(u.cust ? u.cust.split(' ').slice(-2).join(' ') : '—')}</span></button>`).join('')}</div></div>`; }).join('')}`;
+  };
+  // ---- khung phải: bước, hồ sơ, kiểm tra, in
+  const drawSide = () => {
+    const L = list(), by = new Map(), pb = new Map((plan?.units || []).map(u => [u.code, u.bo])); for (const c of L) { const s = S.bo !== 'auto' ? S.bo : info(c)?.step || pb.get(c) || '?'; by.set(s, (by.get(s) || 0) + 1); }
+    const nb = L.reduce((s, c) => s + (S.cp.get(c) || 1), 0), parts = Math.ceil(L.length / HSB_PART);
+    const other = L.filter(c => !units.some(u => u.code === c));
+    const P = plan, ok = P ? P.units.filter(u => !u.error && u.n) : [], miss = ok.filter(u => u.missing.length), skip = P ? P.units.filter(u => u.error || !u.n) : [];
+    const kOn = keys ? keys.filter(k => !S.off.has(k.key)) : [];
+    SD.innerHTML = !L.length ? `<div class="hsb-empty">${ico('fa-hand-pointer')}<b>Chưa chọn căn nào</b><span>Bấm một nút <b>Chọn nhanh</b> ở trên (ví dụ «Cần in»), bấm từng căn trong lưới, hoặc dán danh sách mã căn.</span></div>` : `
+      <div class="hsb-sum"><b>${L.length}</b> căn${nb > L.length ? ` · <b>${nb}</b> bản` : ''}<div class="small muted">${[...by].map(([s, n]) => `<span class="hsb-st" style="--c:${stepC(s)}">${esc(stepL(s) || 'chưa rõ bước')} ${n}</span>`).join(' ')}${other.length ? ` · ${other.length} căn dự án khác` : ''}</div></div>
+      <label class="hsb-f">Bước hồ sơ<select id="hbBo"><option value="auto" ${S.bo === 'auto' ? 'selected' : ''}>⚡ Tự động — mỗi căn in bộ của bước đang làm</option>${HSB_STEPS.map(([k, l]) => `<option value="${k}" ${S.bo === k ? 'selected' : ''}>Bộ ${l} cho tất cả căn</option>`).join('')}</select></label>
+      <div class="hsb-f"><div class="hsb-fh">Hồ sơ sẽ in ${keys ? `<span class="muted small">${kOn.length}/${keys.length}</span><button class="lnk" id="hbKAll">${kOn.length === keys.length ? 'Bỏ hết' : 'Chọn hết'}</button>` : ''}</div>
+        <div class="hsb-keys">${!keys ? '<div class="small muted">Đang lấy danh sách…</div>' : !keys.length ? '<div class="small muted">Chưa có mẫu cho bước này.</div>'
+          : keys.map((k, i) => `${S.bo === 'auto' && k.bo !== keys[i - 1]?.bo ? `<div class="hsb-kg" style="--c:${stepC(k.bo)}">${esc(stepL(k.bo))}</div>` : ''}<label class="chk"><input type="checkbox" data-k="${esc(k.key)}" ${S.off.has(k.key) ? '' : 'checked'}> ${esc(k.name)}</label>`).join('')}</div></div>
+      <div class="hsb-f"><div class="hsb-fh">Kiểm tra dữ liệu <span class="small muted">tự chạy</span></div><div id="hbK">${!P ? `<div class="small muted">${ico('fa-spinner fa-spin')} Đang kiểm tra từng căn…</div>`
+        : `<div class="hsb-chk"><span class="hs-ok">${ico('fa-circle-check')} ${ok.length - miss.length} đủ</span>${miss.length ? `<span class="hs-miss">${ico('fa-triangle-exclamation')} ${miss.length} thiếu</span>` : ''}${skip.length ? `<span class="muted" title="${esc(skip.map(u => u.code + (u.error ? ': ' + u.error : ': không có mẫu')).join('\n'))}">${ico('fa-ban')} ${skip.length} bỏ qua</span>` : ''}</div>
+          ${miss.length ? `<div class="hsb-miss">${miss.slice(0, 80).map(u => `<div><b>${esc(u.code)}</b> <span class="muted">${esc((u.customer || '').split(' · ')[0])}</span><div class="small hs-miss">${esc(u.missing.slice(0, 4).join(', '))}${u.missing.length > 4 ? ` +${u.missing.length - 4}` : ''}</div>
+            <div class="hsb-fix">${u.hdmb_id || u.vay_id ? `<button class="lnk" data-fix="contract:${u.hdmb_id || u.vay_id}">${ico('fa-pen')} Sửa HĐ</button>` : ''}${u.cust_id ? `<button class="lnk" data-fix="customer:${u.cust_id}">${ico('fa-user-pen')} Sửa khách</button>` : ''}<button class="lnk" data-one="${esc(u.code)}">${ico('fa-up-right-from-square')} Mở căn</button></div></div>`).join('')}</div>
+            <div class="small muted">Chỗ thiếu in ra «……» để điền tay.</div>` : ''}`}</div></div>
+      <label class="hsb-f hsb-cp">Số bản mỗi căn <input type="number" id="hbCp" min="1" max="50" value="${new Set(L.map(c => S.cp.get(c) || 1)).size === 1 ? (S.cp.get(L[0]) || 1) : ''}" placeholder="…"></label>
+      <div class="hsb-act">${parts <= 1 ? `<button class="btn pri" data-pr="0">${ico('fa-print')} In tất cả (${L.length} căn)</button><button class="btn" data-wd="0">${ico('fa-file-word')} Tải Word</button>`
+        : `<div class="small hs-miss">${ico('fa-circle-info')} ${L.length} căn — tự chia ${parts} phần, mỗi phần ${HSB_PART} căn để máy không treo</div>${Array.from({ length: parts }, (_, i) => `<div class="hsb-part${S.done.has(i) ? ' done' : ''}"><span>Phần ${i + 1} · căn ${i * HSB_PART + 1}–${Math.min(L.length, (i + 1) * HSB_PART)}</span><button class="btn sm pri" data-pr="${i}">${ico(S.done.has(i) ? 'fa-check' : 'fa-print')} In</button><button class="btn sm" data-wd="${i}">${ico('fa-file-word')}</button></div>`).join('')}`}
+        <button class="btn" id="hbSv" title="Lưu bản Word bộ hồ sơ của từng căn vào Kho, gắn vào hợp đồng của khách">${ico('fa-box-archive')} Lưu cả loạt vào kho</button></div>`;
+  };
+  const sel = () => S.sel.size ? list() : [];
+  const kParam = () => keys && S.off.size && keys.some(k => S.off.has(k.key)) ? keys.filter(k => !S.off.has(k.key)).map(k => k.key).join(',') : '';
+  const changed = () => { plan = null; S.done.clear(); drawSug(); drawUnits(); drawSide(); clearTimeout(tk); tk = setTimeout(() => loadKeys().catch(e => toast(e.message, true)), 250); };
+  const loadKeys = async () => { const q0 = ++kq; if (!S.sel.size) { keys = null; return drawSide(); }
+    const r = await api('POST', '/api/hs-batch/keys', { units: [...new Map(list().map(c => [c.replace(/-[^-]+$/, ''), c])).values()], bo: S.bo }); if (q0 !== kq) return;
+    const steps = S.bo === 'auto' && list().every(c => info(c)?.step) ? new Set(list().map(c => info(c).step)) : null;   // có căn chưa rõ bước (dự án khác) → hiện mẫu mọi bước
+    keys = r.keys.filter(k => !steps || !steps.size || steps.has(k.bo)); drawSide(); checkSoon(); };
+  const checkSoon = () => { plan = null; drawSide(); clearTimeout(tp); tp = setTimeout(() => check().catch(e => toast(e.message, true)), 400); };
+  const check = async () => { const q0 = ++pq; const r = await api('POST', '/api/hs-batch/plan', { units: list().slice(0, 200), bo: S.bo, keys: kParam() }); if (q0 !== pq) return; plan = r; drawSide(); };
+  const part = i => list().slice(i * HSB_PART, (i + 1) * HSB_PART).map(c => (S.cp.get(c) || 1) > 1 ? `${c}*${S.cp.get(c)}` : c).join(',');
+  const url = (i, fmt) => `/print/hs-batch?bo=${S.bo}&keys=${encodeURIComponent(kParam())}&units=${encodeURIComponent(part(i))}${fmt ? '&fmt=' + fmt : ''}`;
+  const rescan = () => setTimeout(() => api('GET', '/api/hs-batch/scan?project=' + S.pid).then(r => { units = r.units; for (const u of units) S.info.set(u.code, u); drawSug(); drawUnits(); }).catch(() => { }), 2500);
+  // ---- thêm mã căn / mã KH (gõ hoặc dán)
+  const addCodes = run(async t => {
+    const xs = [...new Set(String(t).split(/[\s,;]+/).map(x => x.trim()).filter(Boolean))]; if (!xs.length) return;
+    const bad = [];
+    for (const y of xs) { const [, x, n] = /^(.+?)(?:\*(\d+))?$/.exec(y), X = x.toUpperCase();
+      let code = units.find(u => u.code.toUpperCase() === X)?.code;
+      if (!code) { const k = units.filter(u => u.kcode && u.kcode.toUpperCase() === X); if (k.length) { k.forEach(u => S.sel.add(u.code)); continue; } }
+      if (!code) { try { const d = await api('GET', '/api/hs?unit=' + encodeURIComponent(x)); code = d.unit.code; } catch { bad.push(x); continue; } }
+      S.sel.add(code); if (n) S.cp.set(code, Math.min(50, +n)); }
+    $('#hbQ', main).value = ''; changed(); if (bad.length) toast(`Không tìm thấy: ${bad.slice(0, 8).join(', ')}${bad.length > 8 ? '…' : ''}`, true);
+  });
+  $('#hbQ', main).onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); addCodes(e.target.value); } };
+  $('#hbQ', main).onpaste = e => { const t = e.clipboardData?.getData('text') || ''; if (/[\s,;]/.test(t.trim())) { e.preventDefault(); addCodes(t); } };
+  $('#hbP', main).onchange = run(async e => { S.pid = +e.target.value; S.tw = ''; keep(); await scan(); drawSide(); });
+  main.onclick = run(async e => { const x = e.target;
+    const g = x.closest('[data-g]'); if (g) { if (g.dataset.g === 'clr') { S.sel.clear(); S.cp.clear(); } else { const gr = groups().find(y => y[0] === g.dataset.g); gr?.[4].forEach(u => S.sel.add(u.code)); toast(`Đã chọn ${gr?.[4].length || 0} căn «${gr?.[2]}»`); } return changed(); }
+    const tw = x.closest('[data-tw]'); if (tw) { S.tw = tw.dataset.tw; return drawUnits(); }
+    const u = x.closest('[data-u]'); if (u) { const c = u.dataset.u; S.sel.has(c) ? S.sel.delete(c) : S.sel.add(c); return changed(); }
+    const fx = x.closest('[data-fix]'); if (fx) { const [ent, id] = fx.dataset.fix.split(':'); return openForm(ent, { id: +id, onSaved: () => { checkSoon(); rescan(); } }); }
+    const one = x.closest('[data-one]'); if (one) return openOne?.(one.dataset.one);
+    if (x.closest('#hbKAll')) { const all = keys.every(k => !S.off.has(k.key)); keys.forEach(k => all ? S.off.add(k.key) : S.off.delete(k.key)); keep(); return checkSoon(); }
+    const pr = x.closest('[data-pr]'); if (pr) { if (keys && !keys.some(k => !S.off.has(k.key))) return toast('Chọn ít nhất 1 hồ sơ', true); window.open(url(+pr.dataset.pr), '_blank'); S.done.add(+pr.dataset.pr); drawSide(); return rescan(); }
+    const wd = x.closest('[data-wd]'); if (wd) { await download(url(+wd.dataset.wd, 'docx')); return rescan(); }
+    if (x.closest('#hbSv')) { const b = x.closest('#hbSv'); b.disabled = true; let ok = 0; const err = [];
+      try { const L = list(); for (let i = 0; i < L.length; i += 10) { b.innerHTML = `${ico('fa-spinner fa-spin')} Đang lưu ${Math.min(L.length, i + 10)}/${L.length}…`;
+          const r = await api('POST', '/api/hs-batch/save', { units: L.slice(i, i + 10).join(','), bo: S.bo, keys: kParam() }); ok += r.ok.length; err.push(...r.err); }
+        toast(`Đã lưu bộ hồ sơ của ${ok} căn vào kho${err.length ? ` · ${err.length} căn lỗi: ${err.slice(0, 3).join('; ')}` : ''}`, !!err.length); window.__ctgHsSaved?.(); }
+      finally { drawSide(); } }
+  });
+  main.onchange = e => { const x = e.target;
+    if (x.dataset.twall) { for (const u of units.filter(u => u.tower === x.dataset.twall && u.cust)) x.checked ? S.sel.add(u.code) : S.sel.delete(u.code); return changed(); }
+    if (x.id === 'hbBo') { S.bo = x.value; keep(); keys = null; return changed(); }
+    if (x.dataset.k) { x.checked ? S.off.delete(x.dataset.k) : S.off.add(x.dataset.k); keep(); return checkSoon(); }
+    if (x.id === 'hbCp' && x.value) { const v = Math.min(50, Math.max(1, Math.round(+x.value) || 1)); for (const c of S.sel) v > 1 ? S.cp.set(c, v) : S.cp.delete(c); drawUnits(); drawSide(); }
+  };
+  await scan();
+  if (!units.length && !saved0.pid && !+filt().project) for (const p of M.projects) { if (p.id === S.pid) continue;   // lần đầu: tự nhảy sang dự án đầu tiên có căn
+    const r = await api('GET', '/api/hs-batch/scan?project=' + p.id); if (r.units.length) { S.pid = p.id; $('#hbP', main).value = p.id; keep(); await scan(); break; } }
+  drawSide(); if (S.sel.size) changed();
 }
 // ---------- Mẫu biểu: cây thư mục theo module (12/11/2026) ----------
 // Module 01…12 › màn hiện nút «In theo mẫu» (ô «Hiện ở module») › dự án / tòa áp dụng › mẫu. Bấm mẫu → khung phải: xem trước, sửa, thay nội dung bằng file,
@@ -1200,8 +1337,8 @@ V.tpltree = async (main, params = {}) => {
   const placeOf = t => t.bo ? 'bo:' + t.bo : t.ent;
   let ts = [], ps = [], bs = [], fids = {};
   const gitBtn = window.__ctgDemoPublish && M.me.role === 'admin' ? `<button class="btn amb" id="ttGit" title="Ghi toàn bộ mẫu biểu trên trình duyệt này vào kho GitHub — bản demo của mọi người cập nhật sau 1–2 phút">${ico('fa-cloud-arrow-up')} Đẩy mẫu biểu lên Git</button>` : '';
-  main.innerHTML = `<div class="page">${head('12', 'Mẫu biểu – thông báo', 'fa-folder-tree', `${gitBtn}<a class="btn" href="#/e/template?view=list">${ico('fa-table-list')} Dạng bảng</a>${canC ? `<button class="btn pri" id="ttNew">${ico('fa-plus')} Tạo mẫu</button>` : ''}`)}
-    <div class="warnbar">${ico('fa-folder-tree')}<span>Mẫu xếp theo <b>module › màn có nút «In theo mẫu» › dự án / tòa áp dụng</b>. Bấm một mẫu để xem trước và sửa, thay, xóa; nút ${ico('fa-plus')} trên dòng thư mục tạo mẫu mới ngay đúng chỗ đó.</span></div>
+  main.innerHTML = `<div class="page">${head('12', 'Mẫu biểu – thông báo', 'fa-folder-tree', `${gitBtn}<a class="btn" href="#/e/template?view=list">${ico('fa-table-list')} Dạng bảng</a>${canC ? `<button class="btn" id="ttUp" title="Tải file Word / Excel / HTML lên làm mẫu mới">${ico('fa-file-arrow-up')} Tải mẫu lên</button><button class="btn pri" id="ttNew">${ico('fa-plus')} Tạo mẫu</button>` : ''}`)}
+    <div class="warnbar">${ico('fa-folder-tree')}<span>Mẫu xếp theo <b>module › màn có nút «In theo mẫu» › dự án / tòa áp dụng</b>. Bấm một mẫu để xem trước và sửa, thay, xóa; nút ${ico('fa-plus')} trên dòng thư mục tạo mẫu mới, nút ${ico('fa-file-arrow-up')} tải file Word / Excel lên làm mẫu ngay đúng chỗ đó. Trong file Word gõ trường trộn dạng <b>{ten_kh}</b>, <b>{ma_can}</b>… để in tự điền.</span></div>
     <div class="tt"><div class="card tt-l"><div class="tt-bar"><input id="ttQ" type="search" placeholder="Tìm mã / tên mẫu…" value="${esc(S.q)}"><label class="chk small"><input type="checkbox" id="ttE" ${S.empty ? 'checked' : ''}> Hiện cả màn chưa có mẫu</label>
       <button class="btn sm ghost" id="ttO" title="Mở hết thư mục">${ico('fa-folder-open')}</button><button class="btn sm ghost" id="ttC" title="Thu gọn hết">${ico('fa-folder-closed')}</button></div>
       <div id="ttBulk"></div><div id="ttTree" class="tt-tree"><div class="empty">Đang tải…</div></div></div>
@@ -1227,7 +1364,7 @@ V.tpltree = async (main, params = {}) => {
   const fRow = (lv, key, icon, label, ids, acts = '') => { fids[key] = ids; const o = isOpen(key), all = ids.length && ids.every(i => S.ck.has(i));
     return `<div class="tt-row tt-f lv${lv}" data-k="${esc(key)}">${ico(o ? 'fa-caret-down' : 'fa-caret-right', 'tt-car')}${canU || canD ? `<input type="checkbox" data-fk="${esc(key)}" ${all ? 'checked' : ''} ${ids.length ? '' : 'disabled'} title="Chọn cả thư mục">` : ''}${ico(icon || (o ? 'fa-folder-open' : 'fa-folder'), 'tt-ic')}<span class="tt-lb">${label}</span><span class="tt-n">${ids.length}</span><span class="tt-acts">${acts}</span></div>`; };
   const tRow = (lv, t) => `<div class="tt-row tt-t lv${lv}${S.sel === t.id ? ' on' : ''}${t.active ? '' : ' off'}" data-id="${t.id}"><span class="tt-car"></span>${canU || canD ? `<input type="checkbox" data-ck="${t.id}" ${S.ck.has(t.id) ? 'checked' : ''}>` : ''}${ico(/^\s*</.test(t.content || '') ? 'fa-file-code' : 'fa-file-lines', 'tt-ic')}<span class="tt-lb"><b>${esc(t.code)}</b> · ${esc(t.name)}</span>${t.bedrooms ? `<span class="tag">${t.bedrooms} PN</span>` : ''}${t.active ? '' : '<span class="tag">Tắt</span>'}</div>`;
-  const plus = (ent, sc) => canC && ent ? `<button class="btn sm ghost" data-new="${esc(ent)}" data-sc="${esc(sc ?? '')}" title="Tạo mẫu mới ở thư mục này">${ico('fa-plus')}</button>` : '';
+  const plus = (ent, sc) => canC && ent ? `<button class="btn sm ghost" data-up="${esc(ent)}" data-sc="${esc(sc ?? '')}" title="Tải file Word / Excel lên làm mẫu ở thư mục này">${ico('fa-file-arrow-up')}</button><button class="btn sm ghost" data-new="${esc(ent)}" data-sc="${esc(sc ?? '')}" title="Tạo mẫu mới ở thư mục này">${ico('fa-plus')}</button>` : '';
   const draw = () => {
     const mods = tree(); fids = {};
     if (!S.init) { S.init = true; for (const m of mods) { S.open.add(m.key); for (const s of m.scr) { S.open.add(s.key); for (const g of s.grp) S.open.add(g.key); } } }
@@ -1243,13 +1380,13 @@ V.tpltree = async (main, params = {}) => {
   const detail = async () => {
     const d = $('#ttD', main), t = ts.find(x => x.id === S.sel);
     if (!t) { d.innerHTML = `<div class="empty">${ico('fa-hand-pointer')} Chọn một mẫu ở cây bên trái để xem trước, sửa, thay hoặc xóa.</div>`; return; }
-    d.innerHTML = `<div class="tt-path small muted">${ico('fa-folder-open')} ${esc(t.ent ? tplPlace(t.ent) : 'Chưa gắn module')} › ${t.scope ? esc(scName(t.scope)) : 'Mẫu chung'}</div><h3 class="tt-h">${esc(t.name)}</h3>
+    d.innerHTML = `<div class="tt-path small muted">${ico('fa-folder-open')} ${esc(places.find(p => p[0] === placeOf(t))?.[1] || (t.ent ? tplPlace(t.ent) : 'Chưa gắn module'))} › ${t.scope ? esc(scName(t.scope)) : 'Mẫu chung'}</div><h3 class="tt-h">${esc(t.name)}</h3>
       <dl class="tt-dl"><dt>Mã mẫu</dt><dd><b>${esc(t.code)}</b></dd><dt>Loại</dt><dd>${esc(kindL[t.kind] || t.kind || '')}</dd><dt>Áp dụng</dt><dd>${t.scope ? esc(scName(t.scope)) : 'Mẫu chung — mọi dự án'}${t.bedrooms ? ` · căn ${t.bedrooms} phòng ngủ` : ''}</dd>
         <dt>Trạng thái</dt><dd>${t.active ? '<span class="tag ok">Đang dùng</span>' : '<span class="tag">Tắt</span>'}</dd><dt>Cập nhật</dt><dd>${esc(dmyhm(t.updated_at || t.created_at))}</dd>
-        ${canU ? `<dt>Hiện ở module</dt><dd><select id="ttMv"><option value="">— Chưa gắn —</option>${places.map(([k, l]) => `<option value="${esc(k)}" ${k === t.ent ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></dd>` : ''}</dl>
+        ${canU ? `<dt>Hiện ở module</dt><dd><select id="ttMv"><option value="">— Chưa gắn —</option>${places.map(([k, l]) => `<option value="${esc(k)}" ${k === placeOf(t) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></dd>` : ''}</dl>
       <div class="tt-btns">${canU ? `<button class="btn pri sm" data-a="edit">${ico('fa-pen')} Sửa</button><button class="btn sm" data-a="file">${ico('fa-file-arrow-up')} Thay bằng file…</button><button class="btn sm" data-a="tog">${ico(t.active ? 'fa-toggle-off' : 'fa-toggle-on')} ${t.active ? 'Tắt' : 'Bật'}</button>` : `<button class="btn sm" data-a="edit">${ico('fa-eye')} Xem</button>`}
         ${canC ? `<button class="btn sm" data-a="dup">${ico('fa-copy')} Nhân bản</button>` : ''}<button class="btn sm" data-a="dl">${ico('fa-download')} Tải về</button><button class="btn sm" data-a="pv">${ico('fa-up-right-from-square')} Xem toàn trang</button>
-        ${canD ? `<button class="btn sm danger" data-a="del">${ico('fa-trash')} Xóa</button>` : ''}<input type="file" id="ttFile" accept=".html,.htm,.txt" hidden></div>
+        ${canD ? `<button class="btn sm danger" data-a="del">${ico('fa-trash')} Xóa</button>` : ''}<input type="file" id="ttFile" accept=".docx,.xlsx,.html,.htm,.txt" hidden></div>
       <div class="tt-pv"><div class="small muted">Xem trước với dữ liệu thật mới nhất của màn</div><iframe id="ttF" title="Xem trước mẫu"></iframe></div>`;
     const f = $('#ttF', d);
     if (!t.ent) { f.srcdoc = `<pre style="white-space:pre-wrap;font:13px/1.5 system-ui">${esc(t.content)}</pre>`; return; }
@@ -1269,6 +1406,8 @@ V.tpltree = async (main, params = {}) => {
     toast(`Đã ${verb} ${ok} mẫu${tail}${errs.length ? ` · lỗi ${errs.length}: ${errs.join('; ')}` : ''}`, !!errs.length); await load(); };
   main.onclick = run(async e => {
     const x = e.target;
+    if (x.closest('#ttUp')) return upModal('', '');
+    const ub = x.closest('[data-up]'); if (ub) return upModal(ub.dataset.up, ub.dataset.sc);
     if (x.closest('#ttNew')) return openForm('template', { preset: { active: true, kind: 'thong_bao' }, onSaved: r => { S.sel = r?.id || S.sel; load(); } });
     if (x.closest('#ttGit')) { const b = x.closest('#ttGit'); if (!confirm('Đẩy toàn bộ mẫu biểu đang có trên trình duyệt này lên Git?\nMọi người mở link demo sẽ nhận đúng bộ mẫu này (sau 1–2 phút).')) return;
       b.disabled = true; try { const r = await window.__ctgDemoPublish({ user: M.me.username }); if (r) toast(`Đã đẩy ${r.n} mẫu lên Git — bản demo của mọi người cập nhật sau 1–2 phút`); } finally { b.disabled = false; } return; }
@@ -1299,13 +1438,37 @@ V.tpltree = async (main, params = {}) => {
   main.onchange = run(async e => {
     const x = e.target;
     if (x.id === 'ttE') { S.empty = x.checked; return draw(); }
-    if (x.id === 'ttMv') { await put(S.sel, { ent: x.value || null }); toast(x.value ? `Đã chuyển sang ${tplPlace(x.value)}` : 'Đã bỏ gắn module'); return load(); }
-    if (x.matches('select[data-b=mv]') && x.value) { const ent = x.value; return many([...S.ck], id => put(id, { ent }), 'chuyển', ` sang ${tplPlace(ent)}`); }
+    if (x.id === 'ttMv') { const v = x.value, bo = v.startsWith('bo:') ? v.slice(3) : null; await put(S.sel, { ent: bo ? 'unit' : v || null, bo }); toast(v ? `Đã chuyển sang ${places.find(p => p[0] === v)?.[1] || tplPlace(v)}` : 'Đã bỏ gắn module'); return load(); }
+    if (x.matches('select[data-b=mv]') && x.value) { const v = x.value, bo = v.startsWith('bo:') ? v.slice(3) : null; return many([...S.ck], id => put(id, { ent: bo ? 'unit' : v, bo }), 'chuyển', ` sang ${places.find(p => p[0] === v)?.[1] || tplPlace(v)}`); }
     if (x.id === 'ttFile' && x.files[0]) { const file = x.files[0], t = ts.find(y => y.id === S.sel); x.value = ''; if (!t) return;
-      const txt = await file.text(); if (!txt.trim()) throw new Error('File rỗng');
-      if (!await ask('Thay nội dung mẫu', `Thay toàn bộ nội dung mẫu «${t.code}» bằng file «${file.name}» (${Math.round(txt.length / 1024)} KB)? Bản cũ vẫn khôi phục được ở Nhật ký thao tác — hoặc bấm «Tải về» trước để giữ một bản.`, { okLabel: 'Thay nội dung' })) return;
-      await put(t.id, { content: txt }); toast('Đã thay nội dung mẫu'); return load(); }
+      if (!file.size) throw new Error('File rỗng');
+      if (!await ask('Thay nội dung mẫu', `Thay toàn bộ nội dung mẫu «${t.code}» bằng file «${file.name}» (${Math.max(1, Math.round(file.size / 1024))} KB)? Bản cũ vẫn khôi phục được ở Nhật ký thao tác — hoặc bấm «Tải về» trước để giữ một bản.`, { okLabel: 'Thay nội dung' })) return;
+      const fd = new FormData(); fd.append('id', t.id); fd.append('file', file, file.name); await api('POST', '/api/template-upload', fd); toast('Đã thay nội dung mẫu'); return load(); }
   });
+  const upModal = (place, sc) => {
+    const m = modal({ title: `${ico('fa-file-arrow-up')} Tải mẫu biểu lên`, body: `<div class="warnbar">${ico('fa-circle-info')}<div>Chọn <b>file Word (.docx)</b> — hoặc Excel .xlsx / .html — mỗi file thành 1 mẫu (chọn được nhiều file). Giữ nguyên căn lề, chữ đậm / nghiêng, bảng, logo, ngắt trang.<br>Chỗ cần tự điền khi in: gõ trong Word dạng <b>{ten_kh}</b>, <b>{cccd}</b>, <b>{ma_can}</b>, <b>{ngay_hdmb}</b>… (xem danh sách trường ở nút «Sửa» của mẫu). File .doc cũ: mở Word → Lưu thành .docx.</div></div>
+      <div class="form"><label>File mẫu<input type="file" id="uF" multiple accept=".docx,.xlsx,.html,.htm,.txt" class="inp"></label>
+      <label>Hiện ở module (nút «In theo mẫu» của màn)<select id="uP"><option value="">— Chưa gắn —</option>${places.map(([k, l]) => `<option value="${esc(k)}" ${k === place ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+      <label>Áp dụng cho dự án / tòa<select id="uS"><option value="">Mẫu chung — mọi dự án</option>${ps.map(p => `<option value="${esc(p.code)}" ${sc === p.code ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>${bs.filter(b => b.project_id === p.id).map(b => { const k = `${p.code}-${b.code}`; return `<option value="${esc(k)}" ${String(sc).toUpperCase() === k.toUpperCase() ? 'selected' : ''}>&nbsp;&nbsp;› ${esc(b.name || 'Tòa ' + b.code)}</option>`; }).join('')}`).join('')}${sc && !ps.some(p => p.code === sc) && !bs.some(b => ps.some(p => p.id === b.project_id && `${p.code}-${b.code}`.toUpperCase() === String(sc).toUpperCase())) ? `<option value="${esc(sc)}" selected>${esc(scName(sc))}</option>` : ''}</select></label>
+      <label>Loại<select id="uK">${TE.fields.find(f => f.k === 'kind').o.map(([k, l]) => `<option value="${esc(k)}">${esc(l)}</option>`).join('')}</select></label>
+      <div id="uOne" hidden><label>Mã mẫu<input id="uC" class="inp" placeholder="tự đặt theo tên file nếu để trống"></label><label>Tên mẫu<input id="uN" class="inp"></label></div></div><div id="uR"></div>`,
+      foot: `<button class="btn" data-x>Đóng</button><button class="btn pri" id="uGo">${ico('fa-file-arrow-up')} Tải lên</button>` });
+    const el = m.el, kindOf = p => p.startsWith('bo:') ? 'hop_dong' : TPL_KIND0[p] || 'thong_bao';
+    $('#uK', el).value = kindOf(place); $('#uP', el).onchange = e => { $('#uK', el).value = kindOf(e.target.value); };
+    $('#uF', el).onchange = e => { const fs = [...e.target.files]; $('#uOne', el).hidden = fs.length !== 1; if (fs.length === 1) $('#uN', el).value = fs[0].name.replace(/\.[^.]+$/, '').replace(/_+/g, ' '); };
+    $('#uGo', el).onclick = run(async () => {
+      const fs = [...$('#uF', el).files]; if (!fs.length) return toast('Chọn file mẫu', true);
+      const p = $('#uP', el).value, fd = new FormData(), bo = p.startsWith('bo:') ? p.slice(3) : '';
+      fd.append('ent', bo ? 'unit' : p); fd.append('bo', bo); fd.append('scope', $('#uS', el).value); fd.append('kind', $('#uK', el).value);
+      if (fs.length === 1) { fd.append('code', $('#uC', el).value); fd.append('name', $('#uN', el).value); }
+      fs.forEach(f => fd.append('file', f, f.name));
+      $('#uGo', el).disabled = true; $('#uR', el).innerHTML = '<div class="empty">Đang chuyển file…</div>';
+      try { const r = await api('POST', '/api/template-upload', fd);
+        $('#uR', el).innerHTML = (r.made.length ? `<div class="okbar">Đã thêm ${r.made.length} mẫu: ${r.made.map(x => `<b>${esc(x.code)}</b>`).join(', ')}</div>` : '') + (r.errors.length ? `<div class="warnbar">${r.errors.map(esc).join('<br>')}</div>` : '');
+        if (r.made.length) { S.sel = r.made[0].id; await load(); if (!r.errors.length) { m.close ? m.close() : el.querySelector('[data-x]')?.click(); toast(`Đã tải lên ${r.made.length} mẫu — kiểm tra bản xem trước bên phải`); } }
+      } finally { $('#uGo', el).disabled = false; }
+    });
+  };
   $('#ttQ', main).oninput = e => { S.q = e.target.value; draw(); };
   await load();
 };
