@@ -843,8 +843,8 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish, kind, debt, rec0 }) {
     // nhớ tiến độ của chính sách (nút «Lấy tiến độ nội thất theo chính sách»); bảng đang trống / do chính sách điền thì điền luôn
     finSched(rows, lab) {
       if (locked || !rows?.length) return false;
-      polRows = rows; const bx = $('.ht-pol', hp); bx.hidden = false; $('.ht-pol-l', hp).textContent = lab ? `Chính sách ${lab}: ${rows.length} đợt` : '';
-      if (ht?.id || (el._get().length && !el._pol)) return false;
+      polRows = rows;   // 14/11/2026 Tâm: «tự động chạy từ chính sách, không phải ấn nút» — HĐ hoàn thiện chưa trình duyệt luôn theo tiến độ nội thất của chính sách
+      if (ht?.id && !['du_thao', 'tu_choi'].includes(ht.status)) return false;
       el._set(rows); el._pol = 1; if (!mk().checked) { mk().checked = true; nav.classList.add('ht-has'); } calc(); return true;
     },
     changed: () => !locked && (ht?.id ? JSON.stringify(snap()) !== first : mk().checked),
@@ -961,12 +961,12 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     let sp = null, auto = false;
     const ssRows = d => { const has = x => x.days != null && x.days !== '', ns = d.pay_sched.filter(x => !x.maint), m = d.pay_sched.find(x => x.maint);
       return [...ns.map(x => ({ name: x.name, pct: x.pct, amount: null, due_on: '', ...(has(x) && +x.days ? { _days: +x.days } : {}), ...(x.bg ? { bg: true, bg_days: x.bg_days ?? null } : {}) })), ...(m ? [{ name: m.name, maint: true }] : [])]; };
-    const ssFill = (force) => { if (!sp || (id && !['du_thao', 'tu_choi'].includes(rec.status))) return; if (!force && ssch._get().some(x => !x.maint) && !auto) return; ssch._set(ssRows(sp)); auto = true; toast(`Tiến độ thu tiền HĐMB sổ theo chính sách ${sp.sched_policy}`); };
+    const ssFill = (force) => { if (!sp || (id && !['du_thao', 'tu_choi'].includes(rec.status))) return; ssch._set(ssRows(sp)); auto = true; toast(`Tiến độ thu tiền HĐMB sổ theo chính sách ${sp.sched_policy}`); };
     const ssLoad = async () => {
       const u = form.elements.unit_id?.value || rec.unit_id, k = form.elements.kind?.value ?? rec.kind; sp = null; bar.hidden = true;
       if (!u || !['thue', 'vay'].includes(k)) return;
       const d = await api('GET', `/api/contract-prefill/${u}`); if (!d.pay_sched?.length) return;
-      sp = d; bar.hidden = false; $('span', bar).textContent = `Chính sách ${d.sched_policy}: ${d.pay_sched.filter(x => !x.maint).length} đợt`;
+      sp = d; $('span', bar).textContent = `Chính sách ${d.sched_policy}: ${d.pay_sched.filter(x => !x.maint).length} đợt`;
       const on = form.elements.sale_on ? form.elements.sale_on.checked : rec.sale_on; if (on) ssFill(false);
     };
     $('button', bar).onclick = () => { if (ssch._get().some(x => !x.maint) && !auto && !confirm('Thay các đợt đang nhập bằng tiến độ của chính sách?')) return; ssFill(true); };
