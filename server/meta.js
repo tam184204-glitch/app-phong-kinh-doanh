@@ -102,7 +102,7 @@ def('unit', {
 // đối tượng áp dụng chính sách = người bán nhà cho CĐT (14/11/2026) — khớp với «Nguồn bán» của phiếu đăng ký
 const SELLER_T = [['khach_gt', 'Khách hàng cũ giới thiệu khách hàng mới'], ['ctv', 'Cộng tác viên'], ['cbnv', 'Cán bộ nhân viên'], ['san', 'Đơn vị sàn phân phối']];
 def('price_policy', {
-  title: 'Bảng giá – chính sách bán hàng', one: 'chính sách', code: 'DA-02', mod: '02', icon: 'fa-tags', disp: "t.code||' v'||t.version",
+  title: 'Chính sách bán hàng', one: 'chính sách', code: 'DA-02', mod: '02', icon: 'fa-tags', disp: "t.code||' v'||t.version",
   purpose: 'Quản lý phiên bản giá và ưu đãi', users: 'Trưởng phòng / nhân sự được phân quyền',
   how: 'Tạo nháp → trình duyệt → phát hành → tự áp dụng cho giao dịch mới',
   rules: 'Không sửa phiên bản đã phát hành; chính sách hết hạn không tự áp dụng',
@@ -510,7 +510,7 @@ def('contract', {
     { k: 'all_signed', l: 'Các bên đã ký', t: 'bool' },
     // thông tin chi tiết — chung cư: giá nền × thông thủy / giá sàn; liền kề: đất + xây dựng
     { k: 'building_id', l: 'Số bảng giá', t: 'ref', ref: 'building', show: SALE_ONLY, sec: 'Thông tin chi tiết', help: 'Bảng giá theo tòa trong Danh mục sản phẩm — chọn căn tự ra, chọn tòa trước thì lọc căn' },
-    { k: 'price_policy_id', l: 'Chính sách giá', t: 'ref', ref: 'price_policy', hide: 1 },   // máy chủ tự lấy theo phiếu giữ chỗ / chính sách đang phát hành
+    { k: 'price_policy_id', l: 'Chính sách bán hàng', t: 'ref', ref: 'price_policy', hide: 1 },   // máy chủ tự lấy theo phiếu giữ chỗ / chính sách đang phát hành
     money('base_price', 'Giá nền (chưa VAT) đ/m²', { show: CT_SALE }),
     money('base_orig', 'Giá nền gốc trước giảm giá (đ/m²)', { noForm: 1 }),   // có giảm giá: giá nền trên form = giá chia ngược từ tổng sau giảm; giữ giá gốc để sửa tiền giảm vẫn tính đúng
     { k: 'area_tt', l: 'Diện tích nền (thông thủy) m²', t: 'num', show: CT_ONLY },
