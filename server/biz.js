@@ -806,7 +806,11 @@ async function resPolicy(db, qs) {
   const on = /^\d{4}-\d{2}-\d{2}$/.test(qs.date || '') ? qs.date : today();
   const p = (await pricing(db, u, on, { source: qs.source || 'truc_tiep', agent_id: +qs.agent || null })).policy;
   const pf = polFin(p, u.code), uv = u.price_net != null ? +u.price_net + (+u.maint_fee || 0) : u.total_price != null ? +u.total_price - (+u.finish_value || 0) : null;
-  return { policy: p ? { id: p.id, label: `${p.code} v${p.version}` } : null, unit_value: uv, finish_value: pf ?? (u.finish_value != null ? +u.finish_value : null), fin_src: pf != null ? 'policy' : 'unit' };
+  // chính sách đã trình nhưng chưa duyệt áp cho căn + người bán này → nhắc trên form (chưa có hiệu lực tới khi được duyệt)
+  const b = await db.one('SELECT code FROM kd_building WHERE id = $1', [u.building_id]), seller = { source: qs.source || 'truc_tiep', agent_id: +qs.agent || null };
+  const wait = (await db.q("SELECT id, code, version, unit_group, seller_types, seller_ids FROM kd_price_policy WHERE status = 'cho_duyet' AND $1 = ANY(project_ids) AND end_on >= $2 ORDER BY id", [u.project_id, on]))
+    .filter(x => polHas(x, u.code, b?.code) && polFor(x, seller)).map(x => `${x.code} v${x.version}`);
+  return { policy: p ? { id: p.id, label: `${p.code} v${p.version}` } : null, unit_value: uv, finish_value: pf ?? (u.finish_value != null ? +u.finish_value : null), fin_src: pf != null ? 'policy' : 'unit', wait };
 }
 H.reservation = {
   where(qs) { if (qs.group === 'thue') return { sql: "t.deal = 'thue'" }; if (qs.group === 'mua') return { sql: "coalesce(t.deal, 'mua') <> 'thue'" }; },   // 2 tab Đăng ký mua / Đăng ký thuê

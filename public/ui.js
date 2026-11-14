@@ -1256,10 +1256,14 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     const d = await api('GET', '/api/res-policy?' + new URLSearchParams({ unit: uid, source: form.elements.source?.value || '', agent: form.elements.agent_id?.value || '' }));
     if (d.unit_value != null) form.elements.unit_value.value = moneyStr(d.unit_value);
     if (form.elements.finish_value) form.elements.finish_value.value = d.finish_value != null ? moneyStr(d.finish_value) : '';
-    const h = form.elements.policy_id; if (h) { h.value = d.policy?.id ?? ''; const t = h.parentElement.querySelector('input[type=text]'); if (t) t.value = d.policy?.label || 'Không có chính sách được duyệt cho căn này'; }
+    const h = form.elements.policy_id; if (h) { h.value = d.policy?.id ?? ''; const t = h.parentElement.querySelector('input[type=text]'); if (t) t.value = d.policy?.label || 'Không có chính sách được duyệt cho căn này';
+      let w = h.parentElement.querySelector('.pol-wait'); if (!w) { w = document.createElement('div'); w.className = 'small pol-wait'; w.style.cssText = 'color:var(--amber-d, #a15c00);margin-top:4px'; h.parentElement.append(w); }
+      w.innerHTML = d.wait?.length ? `${ico('fa-hourglass-half')} ${esc(d.wait.join(', '))} đang chờ duyệt — duyệt xong phiếu tự đổi sang chính sách này` : ''; }
     sumRes();
   };
   if (ent === 'reservation') form.addEventListener('change', e => { if (['source', 'agent_id', 'deal'].includes(e.target.name)) resPol().catch(er => toast(er.message, true)); });
+  // mở form đã có căn (tạo từ Bảng hàng / sửa phiếu còn hiệu lực) → lấy ngay chính sách được duyệt gần nhất (máy chủ cũng tự cập nhật khi lưu)
+  if (ent === 'reservation' && form.elements.unit_id?.value && (!id || ['nhap', 'cho_duyet', 'giu_cho', 'qua_han', 'da_coc'].includes(rec.status))) resPol().catch(er => toast(er.message, true));
   // căn hộ: sửa đơn giá nền / diện tích / % thuế / giá trị hoàn thiện → tự tính lại giá theo công thức Danh mục sản phẩm (máy chủ tính lại khi lưu)
   if (ent === 'unit') form.addEventListener('input', e => {
     if (!['base_price', 'area_tt', 'vat_pct', 'finish_value'].includes(e.target.name)) return;
