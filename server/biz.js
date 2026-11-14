@@ -95,7 +95,7 @@ async function saleTrack(db, c, asOf) {
 // chính sách áp cho căn: Căn hộ áp dụng có «*», mã tòa hoặc mã căn
 const polHas = (p, code, bcode) => { const g = String(p.unit_group || '*').split(/[,;\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean); return g.includes('*') || g.includes(String(bcode).toUpperCase()) || g.includes(String(code).toUpperCase()); };
 // đối tượng áp dụng: seller_types (khach_gt/ctv/cbnv/san) khớp «Nguồn bán» của phiếu; seller_ids = chỉ sàn / CTV cụ thể. Trống cả hai = mọi người bán. s undefined = không lọc
-const SRC_T = { dai_ly: 'san', ctv: 'ctv', khach_gt: 'khach_gt', cbnv: 'cbnv' };
+const SRC_T = { truc_tiep: 'truc_tiep', dai_ly: 'san', ctv: 'ctv', khach_gt: 'khach_gt', cbnv: 'cbnv' };   // nguồn bán của phiếu → nhóm «Đối tượng áp dụng»
 const polFor = (p, s) => {
   if (!s) return true;
   const ty = String(p.seller_types || '').split(',').filter(Boolean), t = SRC_T[s.source];

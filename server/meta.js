@@ -100,7 +100,8 @@ def('unit', {
   flow: { field: 'status', submit: ['chua_mo_ban'], approve: { ok: 'con_ban' }, submitLabel: 'Trình duyệt kích hoạt' },
 });
 // đối tượng áp dụng chính sách = người bán nhà cho CĐT (14/11/2026) — khớp với «Nguồn bán» của phiếu đăng ký
-const SELLER_T = [['khach_gt', 'Khách hàng cũ giới thiệu khách hàng mới'], ['ctv', 'Cộng tác viên'], ['cbnv', 'Cán bộ nhân viên'], ['san', 'Đơn vị sàn phân phối']];
+// 14/11/2026: thêm «CĐT bán trực tiếp» — trước chỉ 4 nhóm nên chính sách tích sẵn 4 nhóm không áp cho phiếu nguồn bán Trực tiếp
+const SELLER_T = [['truc_tiep', 'CĐT bán trực tiếp'], ['khach_gt', 'Khách hàng cũ giới thiệu khách hàng mới'], ['ctv', 'Cộng tác viên'], ['cbnv', 'Cán bộ nhân viên'], ['san', 'Đơn vị sàn phân phối']];
 def('price_policy', {
   title: 'Chính sách bán hàng', one: 'chính sách', code: 'DA-02', mod: '02', icon: 'fa-tags', disp: "t.code||' v'||t.version",
   purpose: 'Quản lý phiên bản giá và ưu đãi', users: 'Trưởng phòng / nhân sự được phân quyền',
@@ -121,7 +122,7 @@ def('price_policy', {
     { k: 'pay_method', l: 'Phương thức thanh toán', t: 'long', hide: 1 },
     { k: 'bank_policy', l: 'Chính sách ngân hàng', t: 'long', hide: 1 },
     // 14/11/2026: đối tượng áp dụng = người bán nhà cho CĐT (đại lý / sàn / CTV) — chọn từ danh mục đối tác; ô chữ cũ giữ dữ liệu
-    { k: 'seller_types', l: 'Đối tượng áp dụng', t: 'tags', o: SELLER_T, uiDef: 'khach_gt,ctv,cbnv,san', help: 'Tích những người bán nhà cho CĐT được hưởng chính sách. Không tích = áp dụng cho mọi người bán (kể cả CĐT bán trực tiếp)' },
+    { k: 'seller_types', l: 'Đối tượng áp dụng', t: 'tags', o: SELLER_T, uiDef: 'truc_tiep,khach_gt,ctv,cbnv,san', help: 'Tích những nhóm người bán được hưởng chính sách — mặc định tích cả 5 nhóm = áp dụng cho mọi người bán, kể cả CĐT bán trực tiếp. Bỏ tích nhóm nào thì phiếu của nhóm đó không nhận chính sách này' },
     { k: 'seller_ids', l: 'Chỉ áp dụng cho sàn / CTV cụ thể', t: 'refs', ref: 'agent', help: 'Không bắt buộc. Để trống = mọi sàn / CTV thuộc đối tượng đã tích' },
     { k: 'target', l: 'Đối tượng áp dụng (ghi chú cũ)', t: 'text', hide: 1 },
     { k: 'start_on', l: 'Ngày bắt đầu', t: 'date', req: 1 },
