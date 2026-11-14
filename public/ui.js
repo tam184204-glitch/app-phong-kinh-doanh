@@ -461,7 +461,7 @@ function combo(c, root, onChange) {
 const paySchedTable = (v, row = {}) => {
   const ns = v.filter(x => !x.maint), m = v.find(x => x.maint), md = +(row.pay_mdot || 3);
   const hn = x => x.days == null || x.days === '' ? '<span class="muted">Chưa có ngày cố định — nhập ở HĐ</span>' : !+x.days ? 'Ngày ký HĐMB' : `${x.days} ngày sau ngày ký HĐMB`;
-  return `<div class="tbl-wrap"><table class="t compact noclick sched"><thead><tr><th>Đợt</th><th>Nội dung</th><th>Hạn</th><th class="num">Tỷ lệ %</th></tr></thead><tbody>
+  return `<div class="tbl-wrap"><table class="t compact noclick sched-v"><thead><tr><th>Đợt</th><th>Nội dung</th><th>Hạn</th><th class="num">Tỷ lệ %</th></tr></thead><tbody>
   ${ns.map((x, i) => `<tr><td>${i + 1}</td><td>${esc(x.name || '')}${!m && i + 1 === md ? '<div class="small muted">+ thu phí bảo trì cùng hạn đợt này</div>' : ''}</td><td class="nowrap">${hn(x)}</td><td class="num">${fnum(x.pct)}%</td></tr>`).join('')}
   ${m ? `<tr class="sched-m"><td><b>Phí bảo trì</b></td><td>${esc(m.name || '')}</td><td class="nowrap">${hn(m)}</td><td class="num muted">—</td></tr>` : ''}
   </tbody><tfoot><tr><td colspan="3"><b>Tổng</b></td><td class="num"><b>${fnum(ns.reduce((s, x) => s + (+x.pct || 0), 0))}%</b></td></tr></tfoot></table></div>`;

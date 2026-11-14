@@ -1882,3 +1882,8 @@ label.tplr { display: flex; gap: 8px; align-items: center; padding: 7px 0; }
 
 /* tab công nợ HĐ thuê / vay bán căn: tiêu đề phần */
 .sec-title.st-big { font-size: 14px; color: #1e4e8c; border-top: 1px solid var(--line2); padding-top: 10px; margin-top: 14px; }
+/* xem tiến độ thu tiền ở chi tiết chính sách (14/11/2026): nội dung xuống dòng, không tràn đè cột Hạn / Tỷ lệ */
+.sched-v { width: 100%; }
+.sched-v th:nth-child(1) { width: 52px; } .sched-v th:nth-child(3) { width: 230px; } .sched-v th:nth-child(4) { width: 90px; }
+.sched-v td:nth-child(2) { white-space: normal; line-height: 1.4; }
+.sched-v td.nowrap { white-space: normal; }
