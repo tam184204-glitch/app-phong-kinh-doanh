@@ -166,7 +166,7 @@ def('customer', {
     { k: 'phone', l: 'Điện thoại', t: 'text', req: 1, help: '09xxxxxxxx' },
     { k: 'phone2', l: 'Điện thoại khác', t: 'text' },
     // reqForm: bắt buộc khi tạo khách trên phiếu khách hàng (07/11/2026) — khách tự tạo từ phiếu đăng ký / nhập Excel / lead không bị chặn
-    { k: 'email', l: 'Email', t: 'text', reqForm: 1 },
+    { k: 'email', l: 'Email', t: 'text' },   // 14/11/2026: Email không bắt buộc
     { k: 'tax_code', l: 'Mã số thuế', t: 'text', pii: 1, reqForm: 1, help: 'MST cá nhân (thường trùng số CCCD)' },
     { k: 'bank_account', l: 'Tài khoản ngân hàng', t: 'text', pii: 1, reqForm: 1, help: 'Số tài khoản - Ngân hàng (VD 0070101168008 - Ngân hàng MB)' },
     { k: 'kind', l: 'Phân loại', t: 'sel', def: 'tiem_nang', o: [['tiem_nang', 'Tiềm năng', 'a'], ['giao_dich', 'Đã giao dịch', 'g']] },
