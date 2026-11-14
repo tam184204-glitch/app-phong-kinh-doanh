@@ -246,56 +246,124 @@ async function boot(pgliteUrl) {
       localStorage.setItem('ctg-kd-demo-xoa-m4', '1');
     }
   } catch (e) { console.warn('xóa hồ sơ NOXH mẫu', e); }
-  // 07/11/2026: bỏ hẳn các bộ dữ liệu thử (5 bộ công nợ HĐMB + HĐ vay lãi 1%/năm) — không dựng nữa; trình duyệt đã có thì xóa 1 lần
+  // 5 bộ dữ liệu thử (04/11/2026): khách + HĐMB đã ký + lịch thanh toán + phiếu thu (nguồn MISA) — mỗi bộ 1 tình huống công nợ, để thử «Nhập phiếu thu MISA»
+  // (nút «Tải file MISA thử» trong hộp nhập tạo file theo đúng số các căn này đang nợ). Tạo 1 lần / trình duyệt; ngày tính theo ngày mở lần đầu
   try {
-    if (!localStorage.getItem('ctg-kd-demo-xoa-thu-0711')) {
-      say('Đang xóa dữ liệu thử…');
-      console.log('đã xóa dữ liệu thử', await require('../server/seed').clearDemo());
-      localStorage.setItem('ctg-kd-demo-xoa-thu-0711', '1');
-    }
-  } catch (e) { console.warn('xóa dữ liệu thử', e); }
-  // 07/11/2026: xóa hết dữ liệu các phân hệ (khách hàng, giữ chỗ, hợp đồng, thu chi, công nợ, bàn giao, CSKH, đại lý…) để test lại quy trình từ đầu —
-  // chỉ giữ danh mục sản phẩm (dự án, tòa, căn hộ, bảng giá, gói hoàn thiện), mẫu in và tài khoản. Chạy 1 lần / trình duyệt; mã chứng từ đếm lại từ 1
-  try {
-    if (!localStorage.getItem('ctg-kd-demo-chi-dmsp-0711')) {
-      say('Đang xóa dữ liệu các phân hệ (giữ danh mục sản phẩm)…');
-      const M = require('../server/meta'), B = require('../server/biz'), C = require('../server/core');
-      const KEEP = new Set(['project', 'building', 'unit', 'price_policy', 'package', 'template']);
-      const dels = Object.values(M.E).filter(e => !KEEP.has(e.key));
-      await tx(async db => {
-        await db.q('SET LOCAL session_replication_role = replica');   // tắt kiểm tra khóa ngoại trong lúc xóa (các bảng tham chiếu vòng nhau)
-        const fks = await db.q(`SELECT c.relname child, a.attname col, p.relname parent FROM pg_constraint k JOIN pg_class c ON c.oid = k.conrelid JOIN pg_class p ON p.oid = k.confrelid
-          JOIN pg_attribute a ON a.attrelid = k.conrelid AND a.attnum = k.conkey[1] WHERE k.contype = 'f'`);
-        const delT = new Set(dels.map(e => e.table));
-        for (const x of fks) if (!delT.has(x.child) && delT.has(x.parent) && x.child.startsWith('kd_') && !['kd_audit', 'kd_note', 'kd_file', 'kd_approval'].includes(x.child))
-          await db.q(`UPDATE ${x.child} SET ${x.col} = NULL WHERE ${x.col} IS NOT NULL`);   // danh mục đang trỏ tới bản ghi bị xóa → bỏ liên kết
-        for (const e of dels) await db.q(`DELETE FROM ${e.table}`);
-        const ks = dels.map(e => e.key);
-        for (const t of ['kd_audit', 'kd_note', 'kd_file', 'kd_approval']) await db.q(`DELETE FROM ${t} WHERE ent = ANY($1)`, [ks]);
-        await db.q("DELETE FROM kd_audit WHERE ent = 'unit' AND action = 'cap_nhat_trang_thai'");
-        await db.q('DELETE FROM kd_file_star WHERE file_id NOT IN (SELECT id FROM kd_file)');
-        await db.q("DELETE FROM kd_import WHERE kind <> 'units'");
-        for (const e of dels) for (const fd of e.fields.filter(fd => fd.t === 'code' && fd.prefix))
-          await db.q('DELETE FROM kd_counter WHERE prefix LIKE $1', [fd.prefix.replace('{Y}', '%')]);
-        await db.q('SET LOCAL session_replication_role = origin');
-        for (const u of await db.q('SELECT id FROM kd_unit')) await B.recomputeUnit(db, u.id, C.SYS);   // căn về «còn bán» theo bảng hàng
-      });
-      localStorage.setItem('ctg-kd-demo-chi-dmsp-0711', '1');
-    }
-  } catch (e) { console.warn('xóa dữ liệu các phân hệ', e); }
-  // 07/11/2026: danh mục khách hàng theo căn tòa K (CTS-K-101, 102, 103) — mã khách = mã căn; tên / SĐT / CCCD để người dùng tự điền. Tạo 1 lần / trình duyệt
-  try {
-    if (!localStorage.getItem('ctg-kd-demo-kh-k101')) {
-      const pj = await one("SELECT id FROM kd_project WHERE code = 'CTS'"), u = await one("SELECT id FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1");
-      for (const code of ['CTS-K-101', 'CTS-K-102', 'CTS-K-103']) {
-        if (await one('SELECT 1 FROM kd_customer WHERE upper(code) = $1', [code])) continue;
-        const k = await one(`INSERT INTO kd_customer (code, full_name, stage, source, interest_project, owner_id, note, created_by)
-          VALUES ($1, $2, 'da_nop_hsmn', 'truc_tiep', $3, $4, $5, $4) RETURNING id`, [code, 'Khách hàng căn ' + code, pj?.id || null, u?.id || null, 'Khách hàng của căn ' + code + ' — cập nhật họ tên, điện thoại, CCCD']);
-        await q("INSERT INTO kd_audit (ent, rec_id, action, user_id, note) VALUES ('customer', $1, 'tao', $2, 'Tạo danh mục khách hàng theo căn')", [k.id, u?.id || null]);
+    if (!localStorage.getItem('ctg-kd-demo-5bo')) {
+      say('Đang dựng 5 bộ dữ liệu thử…');
+      const C = require('../server/core'), B = require('../server/biz'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1");
+      const day = n => C.addDays(C.today(), n);
+      const units = await q(`SELECT u.id, u.code, u.area_tt FROM kd_unit u JOIN kd_building b ON b.id = u.building_id JOIN kd_project p ON p.id = u.project_id
+        WHERE p.code = 'CTS' AND b.code = 'O' AND u.status = 'con_ban' AND u.base_price > 0 ORDER BY u.code DESC LIMIT 5`);
+      const KB = [
+        // [đợt, tỷ lệ đã trả của đợt đó, ngày thu (số ngày so với hôm nay)]
+        ['Nguyễn Văn An', 'quá hạn đợt 2 (đã trả đủ đợt 1)', [[1, 1, -118]]],
+        ['Trần Thị Bình', 'đúng tiến độ (đã trả đợt 1 + 2)', [[1, 1, -118], [2, 1, -32]]],
+        ['Lê Hoàng Cường', 'trả thiếu đợt 1 (mới trả một nửa)', [[1, 0.5, -118]]],
+        ['Phạm Thu Dung', 'chưa trả đồng nào — quá hạn đợt 1 + 2', []],
+        ['Hoàng Minh Đức', 'trả trước (đã trả đợt 1 + 2 và 40% đợt 3)', [[1, 1, -118], [2, 1, -32], [3, 0.4, -5]]],
+      ];
+      for (const [i, un] of units.entries()) {
+        const [name, note, pays] = KB[i];
+        const k = (await C.create('customer', { full_name: `${name} (khách thử)`, phone: `09880000${i + 1}${i + 1}`, source: 'truc_tiep', note: `Dữ liệu thử: ${note}` }, u, { demo: true })).row;
+        const on = day(-120);
+        const c = (await C.create('contract', { kind: 'hdmb', ptype: 'can_ho', unit_id: un.id, customer_id: k.id, contract_on: on, area_tt: un.area_tt, note: `Dữ liệu thử: ${note}`,
+          new_schedule: [{ name: 'Đợt 1: ký hợp đồng mua bán', due_on: on, pct: 30 }, { name: 'Đợt 2', due_on: day(-30), pct: 30 }, { name: 'Đợt 3', due_on: day(60), pct: 35 },
+            { name: 'Đợt 4: nhận bàn giao', due_on: day(180), pct: 5 }, { name: 'Thu phí bảo trì (2% tiền trước thuế)', due_on: day(60), maint: true }] }, u, { demo: true })).row;
+        await tx(async db => { await C.sys(db, 'contract', c.id, { status: 'da_ky', sign_status: 'da_ky', signed_on: on }, u, 'nhap_lich_su', 'Dữ liệu thử'); await B.recomputeUnit(db, un.id, u); });
+        const inst = await q('SELECT id, seq, amount FROM kd_installment WHERE contract_id = $1 AND active AND NOT is_maint ORDER BY seq', [c.id]);
+        let v = 0;
+        for (const [dot, part, at] of pays) {   // đợt thứ «dot» trong các đợt thường (không tính dòng phí bảo trì)
+          const it = inst[dot - 1], amt = part < 1 ? Math.round(+it.amount * part / 1000) * 1000 : +it.amount; v++;   // trả đủ = đúng số tiền đợt (làm tròn nghìn chỉ cho phần trả một phần)
+          await C.create('receipt', { voucher_no: `PT-THU-${un.code.slice(-4)}-${v}`, voucher_date: day(at), contract_id: c.id, amount: amt, installment_id: it.id,
+            content: `Thu tiền đợt ${dot} căn ${un.code}${part < 1 ? ` (một phần, ${Math.round(part * 100)}%)` : ''}`, src: 'misa', synced_at: new Date().toISOString() }, u, { system: true, demo: true });
+        }
       }
-      localStorage.setItem('ctg-kd-demo-kh-k101', '1');
+      localStorage.setItem('ctg-kd-demo-5bo', '1');
     }
-  } catch (e) { console.warn('khách hàng căn tòa K', e); }
+  } catch (e) { console.warn('5 bộ dữ liệu thử', e); }
+  // bộ thử HĐ vay lãi suất 1%/năm (05/11/2026): 1 tỷ, 12 tháng, trả lãi hàng tháng, gốc trả khi đáo hạn; khách đã chuyển gốc đợt 1 (50%),
+  // tất cả các kỳ lãi / gốc để «chưa trả» (05/11/2026). Tạo 1 lần / trình duyệt (cả trình duyệt đã có dữ liệu); ngày tính theo ngày mở lần đầu
+  try {
+    if (!localStorage.getItem('ctg-kd-demo-vay1pt')) {
+      const C = require('../server/core'), B = require('../server/biz'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1");
+      const day = n => C.addDays(C.today(), n);
+      const un = await one(`SELECT u.id, u.code FROM kd_unit u JOIN kd_building b ON b.id = u.building_id JOIN kd_project p ON p.id = u.project_id
+        WHERE p.code = 'CTS' AND u.status = 'con_ban' AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.status <> 'huy') ORDER BY b.code = 'K' DESC, u.code LIMIT 1`);
+      if (un && u) {
+        say('Đang dựng HĐ vay thử (lãi 1%/năm)…');
+        const k = (await C.create('customer', { full_name: 'Đặng Thu Hà (khách thử)', phone: '0988000077', source: 'truc_tiep', note: 'Dữ liệu thử: HĐ vay lãi suất 1%/năm' }, u, { demo: true })).row;
+        const on = day(-90);
+        const c = (await C.create('contract', { kind: 'vay', ptype: 'can_ho', unit_id: un.id, customer_id: k.id, contract_on: on, loan_recv_on: on, eff_on: on, term_months: 12, value: 1000000000,
+          int_mode: 'lai_suat', loan_rate: 1, int_period: '1', principal_method: 'dao_han', loan_tranches: 2, note: 'Dữ liệu thử: HĐ vay lãi suất 1%/năm, trả lãi hàng tháng, trả gốc khi đáo hạn',
+          new_schedule: [{ name: 'Giải ngân gốc đợt 1', due_on: on, pct: 50 }, { name: 'Giải ngân gốc đợt 2', due_on: day(-30), pct: 50 }] }, u, { demo: true })).row;
+        await tx(async db => { await C.sys(db, 'contract', c.id, { status: 'da_ky', sign_status: 'da_ky', signed_on: on }, u, 'nhap_lich_su', 'Dữ liệu thử'); await B.recomputeUnit(db, un.id, u); });
+        const it = await one('SELECT id, amount FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq LIMIT 1', [c.id]);
+        if (it) await C.create('receipt', { voucher_no: `PT-VAY-${un.code.slice(-4)}-1`, voucher_date: on, contract_id: c.id, amount: +it.amount, installment_id: it.id,
+          content: `Khách chuyển gốc vay đợt 1 căn ${un.code}`, src: 'misa', synced_at: new Date().toISOString() }, u, { system: true, demo: true });
+      }
+      localStorage.setItem('ctg-kd-demo-vay1pt', '1'); localStorage.setItem('ctg-kd-demo-vay1pt-v3', '1');
+    }
+    // 05/11/2026: bộ thử đã tạo trước đó (2 kỳ ghi nhận đã trả, lãi theo 1 tỷ): bỏ ghi nhận đã trả → tất cả «chưa trả», tính lại lãi theo gốc đã nhận (1 lần)
+    if (!localStorage.getItem('ctg-kd-demo-vay1pt-v3')) {
+      const B = require('../server/biz');
+      const c = await one("SELECT c.id FROM kd_contract c JOIN kd_customer k ON k.id = c.customer_id WHERE c.kind = 'vay' AND c.is_demo AND k.full_name = 'Đặng Thu Hà (khách thử)' ORDER BY c.id LIMIT 1");
+      if (c) {
+        const note = 'Chuyển khoản (dữ liệu thử)', paid = await q("SELECT id FROM kd_loan_pay WHERE contract_id = $1 AND kind = 'lai' AND note = $2", [c.id, note]);
+        await q('UPDATE kd_loan_pay SET paid_amt = NULL, paid_on = NULL, note = NULL WHERE id = ANY($1)', [paid.map(x => x.id)]);
+        await tx(db => B.loanRebase(db, [c.id]));
+      }
+      localStorage.setItem('ctg-kd-demo-vay1pt-v3', '1');
+    }
+  } catch (e) { console.warn('HĐ vay thử 1%', e); }
+  // bộ thử căn có cả HĐ thuê + HĐ vay (16/11/2026): thêm HĐ thuê có tiến độ HĐMB cho căn của HĐ vay thử «Đặng Thu Hà» — Bảng tổng hợp công nợ hiện 1 dòng:
+  // phải thu theo tiến độ HĐMB của HĐ thuê, đã thu = gốc vay khách đã chuyển
+  try {
+    if (!localStorage.getItem('ctg-kd-demo-thuevay')) {
+      const C = require('../server/core'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1");
+      const v = await one("SELECT c.* FROM kd_contract c JOIN kd_customer k ON k.id = c.customer_id WHERE c.kind = 'vay' AND c.is_demo AND k.full_name = 'Đặng Thu Hà (khách thử)' AND c.status <> 'huy' ORDER BY c.id LIMIT 1");
+      if (u && v && !(await one("SELECT 1 FROM kd_contract WHERE kind = 'thue' AND unit_id = $1 AND status NOT IN ('huy','thanh_ly')", [v.unit_id]))) {
+        say('Đang dựng HĐ thuê + HĐ vay cùng căn…');
+        const on = String(v.contract_on instanceof Date ? v.contract_on.toISOString() : v.contract_on).slice(0, 10);
+        const t = (await C.create('contract', { kind: 'thue', ptype: 'can_ho', unit_id: v.unit_id, customer_id: v.customer_id, contract_on: on, eff_on: on, exp_on: C.addDays(on, 364), rent_house: 6000000, pay_times: 12, sale_on: true,
+          note: 'Dữ liệu thử: HĐ thuê + HĐ vay cùng căn — Bảng tổng hợp công nợ: phải thu theo tiến độ HĐMB của HĐ thuê, đã thu theo gốc vay',
+          sale_sched: [{ name: 'Đợt 1 – ký HĐ', due_on: on, pct: 30 }, { name: 'Đợt 2 – sau 60 ngày', due_on: C.addDays(on, 60), pct: 40 }, { name: 'Đợt 3 – nhận bàn giao', due_on: C.addDays(on, 300), pct: 25 }, { name: 'Đợt 4 – nhận GCN', due_on: C.addDays(on, 600), pct: 5 }] }, u, { demo: true })).row;
+        await tx(async db => C.sys(db, 'contract', t.id, { status: 'da_ky', sign_status: 'da_ky', signed_on: on }, u, 'nhap_lich_su', 'Dữ liệu thử'));
+      }
+      localStorage.setItem('ctg-kd-demo-thuevay', '1');
+    }
+  } catch (e) { console.warn('HĐ thuê + vay thử', e); }
+  // bộ thử «chính sách bán hàng có khai tiến độ thu tiền» (16/11/2026): chính sách CSBH-TDTT-CTS tích 3 căn tòa O — 2 căn đã có HĐMB dự thảo (Lần thanh toán
+  // tự cập nhật theo chính sách khi được duyệt phát hành), căn thứ 3 còn trống để thử lập HĐMB mới: chọn mã căn → Lần thanh toán tự điền theo chính sách
+  try {
+    if (!localStorage.getItem('ctg-kd-demo-cstd')) {
+      const C = require('../server/core'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1"), ld = await one("SELECT * FROM kd_user WHERE role = 'lanh_dao' AND active ORDER BY id LIMIT 1");
+      const day = n => C.addDays(C.today(), n), pj = await one("SELECT id FROM kd_project WHERE code = 'CTS'");
+      const units = await q(`SELECT u.id, u.code, u.area_tt FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = $1 AND b.code = 'O' AND u.status = 'con_ban' AND u.base_price > 0
+        AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.status <> 'huy') ORDER BY u.code LIMIT 3`, [pj?.id || 0]);
+      if (u && ld && units.length === 3) {
+        say('Đang dựng chính sách có tiến độ thu tiền…');
+        for (const [i, un] of units.slice(0, 2).entries()) {
+          const k = (await C.create('customer', { full_name: `${['Vũ Thị Hạnh', 'Đỗ Quang Huy'][i]} (khách thử)`, phone: `09880001${i + 1}${i + 1}`, source: 'truc_tiep', note: 'Dữ liệu thử: HĐMB dự thảo — Lần thanh toán theo chính sách CSBH-TDTT-CTS' }, u, { demo: true })).row;
+          const on = day(3 + i * 2);
+          await C.create('contract', { kind: 'hdmb', ptype: 'can_ho', unit_id: un.id, customer_id: k.id, contract_on: on, area_tt: un.area_tt, note: 'Dữ liệu thử: lịch cũ 2 đợt — duyệt chính sách thì đổi theo tiến độ chính sách',
+            new_schedule: [{ name: 'Đợt 1: ký hợp đồng mua bán', due_on: on, pct: 50 }, { name: 'Đợt 2', due_on: C.addDays(on, 90), pct: 50 }, { name: 'Thu phí bảo trì (2% tiền trước thuế)', due_on: C.addDays(on, 90), maint: true }] }, u, { demo: true });
+        }
+        const p = (await C.create('price_policy', { code: 'CSBH-TDTT-CTS', version: 1, project_ids: [pj.id], unit_group: units.map(x => x.code).join(','), mode: 'bang_hang', start_on: day(-1), end_on: '2026-12-31',
+          target: 'Khách mua căn tòa O theo tiến độ giãn (thử)', pay_mdot: 4, content: 'Dữ liệu thử: thanh toán giãn 5 đợt theo tiến độ khai ở chính sách',
+          pay_sched: [
+            { name: 'Đợt 1 – Ký HĐMB: thanh toán 10% giá trị căn hộ', days: 0, pct: 10 },
+            { name: 'Đợt 2 – Sau 45 ngày kể từ ngày ký HĐMB: thanh toán 15% giá trị căn hộ', days: 45, pct: 15 },
+            { name: 'Đợt 3 – Sau 120 ngày kể từ ngày ký HĐMB: thanh toán 20% giá trị căn hộ', days: 120, pct: 20 },
+            { name: 'Đợt 4 – Sau 480 ngày kể từ ngày ký HĐMB: thanh toán 50% giá trị căn hộ và 2% phí bảo trì', days: 480, pct: 50 },
+            { name: 'Đợt 5 – Sau 720 ngày kể từ ngày ký HĐMB: thanh toán 5% giá trị căn hộ', days: 720, pct: 5 },
+          ] }, u, { demo: true })).row;
+        await C.submit('price_policy', p.id, u, { demo: true });
+        await C.approve('price_policy', p.id, ld, { ok: true });
+      }
+      localStorage.setItem('ctg-kd-demo-cstd', '1');
+    }
+  } catch (e) { console.warn('chính sách có tiến độ thử', e); }
   const job = async () => { try { await tx(db => biz.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.warn('job', e.message); } };
   await job(); setInterval(job, 2 * 60e3);
 

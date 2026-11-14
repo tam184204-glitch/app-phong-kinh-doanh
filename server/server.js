@@ -372,7 +372,12 @@ R('GET', '/api/contract-pair/:unit', async (req, res, u, p) => {   // hợp đ�
   const rows = await q("SELECT id, kind FROM kd_contract WHERE unit_id = $1 AND status NOT IN ('huy','thanh_ly') ORDER BY id DESC", [+p.unit]);
   send(res, 200, { main: rows.find(r => ['hdmb', 'thue_mua', 'vay', 'thue'].includes(r.kind))?.id || null, finish: rows.find(r => r.kind === 'hoan_thien')?.id || null });
 });
+R('GET', '/api/sale-track/:id', async (req, res, u, p, qs) => {   // HĐ thuê / vay bán căn: tiến độ HĐMB + thu tiền HĐ vay (14/11/2026)
+  const g = await C.get('contract', +p.id, u); if (!['thue', 'vay'].includes(g.row.kind)) C.bad('Chỉ áp dụng cho HĐ thuê / HĐ vay');
+  send(res, 200, await B.saleTrack({ q, one }, g.row, qs.to));
+});
 R('GET', '/api/contract-prefill/:unit', async (req, res, u, p, qs) => { if (!can(u, M.E.contract, 'c') && !can(u, M.E.contract, 'u')) C.deny(); send(res, 200, await B.contractPrefill({ q, one }, p.unit, qs.on)); });
+R('GET', '/api/policy-units', async (req, res, u, p, qs) => { if (!can(u, M.E.price_policy, 'c') && !can(u, M.E.price_policy, 'u')) C.deny(); send(res, 200, await B.policyUnits({ q, one }, qs)); });
 R('GET', '/api/sale-check/:id', async (req, res, u, p) => send(res, 200, await B.saleCheck({ q, one }, p.id) || {}));
 R('GET', '/api/unit360/:id', async (req, res, u, p) => send(res, 200, await V.unit360({ q, one }, u, p.id)));
 R('GET', '/api/customer360/:id', async (req, res, u, p) => send(res, 200, await V.customer360({ q, one }, u, p.id)));

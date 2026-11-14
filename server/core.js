@@ -49,7 +49,7 @@ const isoMonth = v => {
 // số kiểu Việt Nam: «1.234.567», «61,6», «1 234 567 đ»
 const parseNum = (v, isMoney) => {
   if (typeof v === 'number') return isFinite(v) ? v : NaN;
-  let s = String(v).replace(/[\s₫đ]|VNĐ|vnđ|VND/g, '');
+  let s = String(v).replace(/[\s₫đ%]|VNĐ|vnđ|VND/g, '');   // «5.4%» = 5.4 (14/11/2026)
   if (s.includes(',') && s.includes('.')) s = s.lastIndexOf(',') > s.lastIndexOf('.') ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
   else if (s.includes(',')) s = /,\d{3}(,|$)/.test(s) && isMoney ? s.replace(/,/g, '') : s.replace(',', '.');
   else if (isMoney || /\.\d{3}\./.test(s) || /^\d{1,3}(\.\d{3})+$/.test(s) && isMoney) s = s.replace(/\./g, '');
@@ -102,6 +102,11 @@ async function normField(f, v, db, label = f.l) {
       const hit = o.find(x => x[0] === s) || o.find(x => String(x[1]).toLowerCase() === s.toLowerCase());
       if (!hit) bad(`${label}: «${s}» không có trong danh sách (${o.map(x => x[1]).join(', ')})`);
       return hit[0];
+    }
+    case 'tags': {   // chọn nhiều trong danh sách cố định → 'a,b'
+      const o = await optsOf(f), xs = (Array.isArray(v) ? v : String(v).split(/[,;]+/)).map(x => String(x).trim()).filter(Boolean);
+      const ks = xs.map(s => (o.find(x => x[0] === s) || o.find(x => String(x[1]).toLowerCase() === s.toLowerCase()) || bad(`${label}: «${s}» không có trong danh sách`))[0]);
+      return ks.length ? o.map(x => x[0]).filter(k => ks.includes(k)).join(',') : null;
     }
     case 'ref': {
       const id = +v; if (!Number.isInteger(id)) bad(`${label}: mã liên kết không hợp lệ`);
@@ -514,7 +519,7 @@ async function approve(entKey, id, user, { ok, comment, db: outer } = {}) {
     await sys(db, entKey, rec.id, { [fl.field]: to, ...extra }, user, ok ? 'phe_duyet' : 'tu_choi', comment);
     const row = await raw(db, entKey, rec.id);
     if (H[entKey]?.afterApprove) await H[entKey].afterApprove(row, ok, ctx);
-    return { row: await raw(db, entKey, rec.id) };
+    return { row: await raw(db, entKey, rec.id), warnings: ctx.warn };
   };
   return guard(e, () => outer ? run(outer) : tx(run));
 }

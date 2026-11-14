@@ -99,8 +99,10 @@ def('unit', {
   ], list: ['code', 'building_id', 'floor', 'kind', 'area_tt', 'direction', 'total_price', 'status'], uniq: [['project_id', 'code']],
   flow: { field: 'status', submit: ['chua_mo_ban'], approve: { ok: 'con_ban' }, submitLabel: 'Trình duyệt kích hoạt' },
 });
+// đối tượng áp dụng chính sách = người bán nhà cho CĐT (14/11/2026) — khớp với «Nguồn bán» của phiếu đăng ký
+const SELLER_T = [['khach_gt', 'Khách hàng cũ giới thiệu khách hàng mới'], ['ctv', 'Cộng tác viên'], ['cbnv', 'Cán bộ nhân viên'], ['san', 'Đơn vị sàn phân phối']];
 def('price_policy', {
-  title: 'Bảng giá – chính sách bán hàng', one: 'chính sách', code: 'DA-02', mod: '02', icon: 'fa-tags', disp: "t.code||' v'||t.version",
+  title: 'Chính sách bán hàng', one: 'chính sách', code: 'DA-02', mod: '02', icon: 'fa-tags', disp: "t.code||' v'||t.version",
   purpose: 'Quản lý phiên bản giá và ưu đãi', users: 'Trưởng phòng / nhân sự được phân quyền',
   how: 'Tạo nháp → trình duyệt → phát hành → tự áp dụng cho giao dịch mới',
   rules: 'Không sửa phiên bản đã phát hành; chính sách hết hạn không tự áp dụng',
@@ -113,20 +115,32 @@ def('price_policy', {
     money('unit_price', 'Đơn giá (đ/m² thông thủy)', { show: { mode: ['don_gia'] } }),
     { k: 'maint_pct', l: 'Phí bảo trì (%)', t: 'num', def: 2, show: { mode: ['don_gia'] } },
     { k: 'vat_pct', l: 'Thuế GTGT (%)', t: 'num', hide: 1, def: 5 },   // bỏ khỏi form 31/10/2026 — vẫn mặc định 5% để tách giá trong chi tiết bảng giá
-    { k: 'src_file', l: 'Tệp nguồn (PDF)', t: 'text', upload: '.pdf', help: 'Chọn tệp PDF chính sách / bảng giá — lưu vào mục Tệp của chính sách' },
+    { k: 'src_file', l: 'Tệp nguồn', t: 'text', upload: '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.webp,.txt,.csv,.zip,.rar,.7z', multi: 1, help: 'Chọn được nhiều tệp, nhiều loại (PDF, Word, Excel, ảnh, nén…) — giữ Ctrl để chọn nhiều; lưu vào mục Tệp của chính sách' },   // 14/11/2026: nhiều loại + nhiều tệp
     { k: 'content', l: 'Nội dung chính sách bán hàng', t: 'long' },   // gộp 3 ô cũ Ưu đãi, Phương thức thanh toán, Chính sách ngân hàng 31/10/2026 (schema.js PRE chuyển dữ liệu)
     { k: 'discount', l: 'Ưu đãi / chiết khấu', t: 'long', hide: 1 },
     { k: 'pay_method', l: 'Phương thức thanh toán', t: 'long', hide: 1 },
     { k: 'bank_policy', l: 'Chính sách ngân hàng', t: 'long', hide: 1 },
-    { k: 'target', l: 'Đối tượng áp dụng', t: 'text' },
+    // 14/11/2026: đối tượng áp dụng = người bán nhà cho CĐT (đại lý / sàn / CTV) — chọn từ danh mục đối tác; ô chữ cũ giữ dữ liệu
+    { k: 'seller_types', l: 'Đối tượng áp dụng', t: 'tags', o: SELLER_T, uiDef: 'khach_gt,ctv,cbnv,san', help: 'Tích những người bán nhà cho CĐT được hưởng chính sách. Không tích = áp dụng cho mọi người bán (kể cả CĐT bán trực tiếp)' },
+    { k: 'seller_ids', l: 'Chỉ áp dụng cho sàn / CTV cụ thể', t: 'refs', ref: 'agent', help: 'Không bắt buộc. Để trống = mọi sàn / CTV thuộc đối tượng đã tích' },
+    { k: 'target', l: 'Đối tượng áp dụng (ghi chú cũ)', t: 'text', hide: 1 },
     { k: 'start_on', l: 'Ngày bắt đầu', t: 'date', req: 1 },
     { k: 'end_on', l: 'Ngày kết thúc', t: 'date', req: 1 },
-    { k: 'unit_group', l: 'Căn hộ áp dụng', t: 'text', req: 1, def: '*', pick: 'units', help: 'Tích chọn tòa / từng căn trong bảng — * = cả dự án' },
+    { k: 'unit_group', l: 'Căn hộ áp dụng', t: 'text', req: 1, def: '', pick: 'units', help: 'Chỉ hiện căn còn trong bảng hàng (chưa ký HĐMB / vay / thuê). Bấm Tòa để lọc, tích từng căn hoặc cả tòa; «Chọn tất cả» = cả dự án.' },
+    // 14/11/2026: giá trị hoàn thiện từng căn khai ở bảng chọn căn { 'CTS-O-0103': 120000000 } — chính sách có hiệu lực thì cập nhật căn chưa bán / phiếu / HĐMB dự thảo
+    { k: 'finish_vals', l: 'Căn hộ có hoàn thiện', t: 'json', pick: 'finish', help: 'Tích căn có hoàn thiện (nội thất) trong các căn đã chọn ở tab 1, nhập giá trị từng căn hoặc nhập 1 lần cho các căn đã tích. Căn không tích = không khai hoàn thiện ở chính sách này' },
+    // tiến độ thu tiền (16/11/2026): HĐMB của các căn đã tích tự lấy «Lần thanh toán» theo đây — hạn = ngày ký HĐMB + số ngày; đợt bàn giao theo thông báo bàn giao
+    { k: 'pay_sched', l: 'Tiến độ thu tiền (Lần thanh toán HĐMB)', t: 'json' },
+    // 14/11/2026: tiến độ thu GIÁ TRỊ HOÀN THIỆN (nội thất) riêng — chỉ sinh đợt cho căn có giá trị hoàn thiện > 0; căn không có hoàn thiện bỏ qua
+    { k: 'fin_sched', l: 'Tiến độ thu giá trị hoàn thiện căn hộ', t: 'json', help: 'Chỉ áp cho căn có giá trị hoàn thiện (nội thất). Tỷ lệ % tính trên giá trị hoàn thiện của từng căn; căn không có hoàn thiện thì HĐMB không có các đợt này' },
+    { k: 'pay_mdot', l: 'Phí bảo trì thu cùng hạn đợt', t: 'int', def: 3, hide: 1, help: 'Phí bảo trì (2% tiền trước thuế) thu ở dòng riêng, cùng hạn với đợt này' },
     { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'nhap', o: [['nhap', 'Nháp', 's'], ['cho_duyet', 'Chờ duyệt', 'a'], ['phat_hanh', 'Đã phát hành', 'g'], ['tu_choi', 'Từ chối', 'r'], ['thay_the', 'Đã thay thế', 's']] },
     { k: 'parent_id', l: 'Phiên bản trước', t: 'ref', ref: 'price_policy', ro: 1 },
-  ], list: ['code', 'version', 'project_ids', 'unit_group', 'start_on', 'end_on', 'status'],
+    { k: 'rolled_at', l: 'Đã áp cho căn chưa bán lúc', t: 'dt', ro: 1, hide: 1, addFill: 'now()' },   // 14/11/2026: chính sách có hiệu lực → tự áp cho căn chưa bán (chính sách có sẵn khi thêm cột coi như đã áp)
+  ], list: ['code', 'version', 'project_ids', 'seller_types', 'unit_group', 'start_on', 'end_on', 'status'],
   lock: ['phat_hanh', 'thay_the', 'cho_duyet'], flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'phat_hanh' }, submitLabel: 'Trình duyệt' },
-  acts: [{ k: 'new_version', l: 'Tạo phiên bản mới', icon: 'fa-code-branch', from: ['phat_hanh'], roles: ['truong_phong'] }],
+  acts: [{ k: 'new_version', l: 'Tạo phiên bản mới', icon: 'fa-code-branch', from: ['phat_hanh'], roles: ['truong_phong'] },
+    { k: 'apply_sched', l: 'Áp lại cho căn chưa bán', icon: 'fa-arrows-rotate', from: ['phat_hanh'], roles: ['truong_phong'] }],
 });
 def('package', {
   title: 'Gói hoàn thiện – sản phẩm', one: 'gói', mod: '02', icon: 'fa-couch', disp: "t.code||' · '||t.name",
@@ -260,8 +274,10 @@ def('reservation', {
     money('deposit', 'Số tiền đặt cọc', { hide: 1 }),   // không dùng đặt cọc — giữ cột cho dữ liệu cũ
     { k: 'deposit_on', l: 'Ngày đặt cọc', t: 'date', hide: 1 },   // không dùng đặt cọc — giữ cột cho dữ liệu cũ
     { k: 'docs_deadline', l: 'Hạn hoàn thiện hồ sơ', t: 'date' },
-    { k: 'source', l: 'Nguồn bán', t: 'sel', req: 1, def: 'truc_tiep', o: [['truc_tiep', 'Trực tiếp'], ['dai_ly', 'Đại lý / sàn'], ['ctv', 'Cộng tác viên']] },
-    { k: 'agent_id', l: 'Đại lý bán hàng', t: 'ref', ref: 'agent', show: { source: ['dai_ly', 'ctv'] } },
+    { k: 'source', l: 'Nguồn bán', t: 'sel', req: 1, def: 'truc_tiep', o: [['truc_tiep', 'Trực tiếp'], ['khach_gt', 'Khách hàng cũ giới thiệu'], ['ctv', 'Cộng tác viên'], ['cbnv', 'Cán bộ nhân viên'], ['dai_ly', 'Đơn vị sàn phân phối']], help: 'Chính sách bán hàng tự lấy theo nguồn bán (Đối tượng áp dụng của chính sách)' },
+    { k: 'agent_id', l: 'Đơn vị sàn / CTV', t: 'ref', ref: 'agent', show: { source: ['dai_ly', 'ctv'] } },
+    { k: 'ref_customer_id', l: 'Khách hàng cũ giới thiệu', t: 'ref', ref: 'customer', show: { source: ['khach_gt'] } },
+    { k: 'ref_staff', l: 'Cán bộ nhân viên giới thiệu', t: 'text', show: { source: ['cbnv'] }, help: 'Họ tên / mã nhân viên' },
     owner('Người thực hiện', { hide: 1 }),   // tự lấy người lập phiếu
     { k: 'status', l: 'Tình trạng phiếu', t: 'sel', o: RES_ST, ro: 1, def: 'nhap' },
     // phiếu đã hủy: theo dõi trả lại hồ sơ cho khách — sửa ngay trên dòng ở tab «Đã hủy»
@@ -496,7 +512,7 @@ def('contract', {
     { k: 'all_signed', l: 'Các bên đã ký', t: 'bool' },
     // thông tin chi tiết — chung cư: giá nền × thông thủy / giá sàn; liền kề: đất + xây dựng
     { k: 'building_id', l: 'Số bảng giá', t: 'ref', ref: 'building', show: SALE_ONLY, sec: 'Thông tin chi tiết', help: 'Bảng giá theo tòa trong Danh mục sản phẩm — chọn căn tự ra, chọn tòa trước thì lọc căn' },
-    { k: 'price_policy_id', l: 'Chính sách giá', t: 'ref', ref: 'price_policy', hide: 1 },   // máy chủ tự lấy theo phiếu giữ chỗ / chính sách đang phát hành
+    { k: 'price_policy_id', l: 'Chính sách bán hàng', t: 'ref', ref: 'price_policy', hide: 1 },   // máy chủ tự lấy theo phiếu giữ chỗ / chính sách đang phát hành
     money('base_price', 'Giá nền (chưa VAT) đ/m²', { show: CT_SALE }),
     money('base_orig', 'Giá nền gốc trước giảm giá (đ/m²)', { noForm: 1 }),   // có giảm giá: giá nền trên form = giá chia ngược từ tổng sau giảm; giữ giá gốc để sửa tiền giảm vẫn tính đúng
     { k: 'area_tt', l: 'Diện tích nền (thông thủy) m²', t: 'num', show: CT_ONLY },
@@ -535,10 +551,10 @@ def('contract', {
     { k: 'loan_recv_on', l: 'Ngày nhận tiền vay', t: 'date', show: VAY_ONLY },
     { k: 'loan_tranches', l: 'Số đợt giải ngân gốc', t: 'int', show: VAY_ONLY, help: 'Các đợt khách chuyển tiền gốc nhập ở bảng «Các đợt giải ngân gốc» bên dưới' },
     { k: 'int_mode', l: 'Lãi trả bằng', t: 'sel', o: [['tien_thue', 'Tiền thuê căn hộ (mỗi tháng = 1 tháng tiền thuê)'], ['lai_suat', 'Theo lãi suất %/năm']], show: VAY_ONLY },
-    { k: 'loan_rate', l: 'Lãi suất (%/năm)', t: 'num', show: { kind: ['vay'], int_mode: ['lai_suat'] } },
+    { k: 'loan_rate', l: 'Cách tính lãi theo hợp đồng (%/năm)', t: 'num', show: VAY_ONLY, help: 'Lãi suất %/năm — nhập % thì lãi tính theo lãi suất; để trống: lãi trả bằng tiền thuê căn của HĐ thuê đi kèm' },   // 05/11/2026: ô «Cách tính lãi» nhập % (thay ô chữ int_note)
     { k: 'int_period', l: 'Kỳ trả lãi', t: 'sel', o: [['1', 'Hàng tháng'], ['3', 'Hàng quý (3 tháng)'], ['6', '6 tháng'], ['12', 'Hàng năm'], ['0', 'Một lần khi đáo hạn']], show: VAY_ONLY },
     { k: 'principal_method', l: 'Phương thức trả gốc', t: 'sel', o: [['dao_han', 'Trả một lần khi đáo hạn'], ['theo_ky', 'Trả dần theo kỳ trả lãi'], ['thoa_thuan', 'Theo thỏa thuận (không lập lịch)']], show: VAY_ONLY },
-    { k: 'int_note', l: 'Cách tính lãi theo hợp đồng', t: 'text', show: VAY_ONLY, help: 'Cơ sở tính lãi, số ngày tính lãi, các điều chỉnh theo phụ lục…' },
+    { k: 'int_note', l: 'Ghi chú cách tính lãi', t: 'text', show: VAY_ONLY, noForm: 1, help: 'Cơ sở tính lãi, số ngày tính lãi, các điều chỉnh theo phụ lục…' },
     { k: 'link_ids', l: 'Hợp đồng thuê / vay đi kèm', t: 'refs', ref: 'contract', show: RENT_VAY, help: 'HĐ vay tick chọn HĐ thuê đi kèm và ngược lại — chọn ở bên nào bên kia tự cập nhật' },
     money('value', 'Tổng tiền (giá trị hợp đồng)', { req: 1, help: 'Chung cư có giá nền: tự tính = tiền sau thuế + phí bảo trì + giá trị hoàn thiện' }),
     { k: 'closed', l: 'Hợp đồng đóng', t: 'bool', show: RENT_VAY, noForm: 1 },   // HĐMB bỏ ô này (03/11/2026); HĐ thuê / vay bỏ khỏi form 04/11/2026 (giữ cột dữ liệu cũ)
@@ -600,6 +616,7 @@ def('installment', {
     { k: 'is_maint', l: 'Dòng phí bảo trì', t: 'bool', ro: 1, hide: 1, def: false },
     // đợt bàn giao (13/11/2026): mỗi HĐMB tự chọn đợt nào là đợt thu khi bàn giao (đợt 2, 3, 4… tùy HĐ) + số ngày được nộp kể từ ngày bàn giao (trống = theo thông báo bàn giao)
     { k: 'is_bg', l: 'Đợt bàn giao', t: 'bool', ro: 1, hide: 1, def: false },
+    { k: 'is_fin', l: 'Đợt thu giá trị hoàn thiện', t: 'bool', ro: 1, hide: 1, def: false },   // 14/11/2026: % tính trên giá trị hoàn thiện của HĐ
     { k: 'bg_days', l: 'Số ngày nộp kể từ bàn giao', t: 'int', ro: 1, hide: 1 },   // HĐMB: phí bảo trì thu ở dòng riêng cố định (không cộng vào đợt nào)
     { k: 'src', l: 'Căn cứ', t: 'sel', ro: 1, def: 'hop_dong', o: [['hop_dong', 'Hợp đồng', 'b'], ['phu_luc', 'Phụ lục', 'v']] },
     { k: 'active', l: 'Hiệu lực', t: 'bool', ro: 1, def: true },

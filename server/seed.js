@@ -392,6 +392,27 @@ async function loadDemo() {
       if (p.stopAt === 'giu_cho') await C.sys(db, 'reservation', r.res.id, { hold_until: at(D(k === 7 ? 0 : 2), k === 7 ? 23 : 17) }, tp, 'tt:extend', 'Dữ liệu thử');
       inc('Giao dịch đang xử lý');
     }
+    // ===== chính sách bán hàng có khai tiến độ thu tiền (16/11/2026): tích 4 căn tòa O — 3 HĐMB dự thảo tự cập nhật Lần thanh toán khi chính sách
+    // được duyệt; căn thứ 4 đang giữ chỗ để thử lập HĐMB mới (chọn mã căn → Lần thanh toán tự điền theo chính sách) =====
+    {
+      for (const u of [O[27], O[28]]) { await sale({ unit: u, by: bh1, regDate: D(-3), signDate: D(5), schedule: ctsSched(D(5)), number: `HĐMB-${u.code}/2026`, stopAt: 'du_thao' }); inc('Giao dịch đang xử lý'); }
+      const p = (await C.create('price_policy', { code: 'CSBH-TDTT-CTS', version: 1, project_ids: [pj.CTS], unit_group: [O[19], O[27], O[28], O[29]].map(u => u.code).join(','), mode: 'bang_hang',
+        start_on: D(-1), end_on: '2026-12-31', target: 'Khách mua căn tòa O theo tiến độ giãn (thử)', pay_mdot: 4,
+        content: 'Ưu đãi / chiết khấu: Thanh toán giãn 5 đợt (dữ liệu thử)\nPhương thức thanh toán: Theo tiến độ thu tiền khai ở chính sách',
+        pay_sched: [
+          { name: 'Đợt 1 – Ký HĐMB: thanh toán 10% giá trị căn hộ', days: 0, pct: 10 },
+          { name: 'Đợt 2 – Sau 45 ngày kể từ ngày ký HĐMB: thanh toán 15% giá trị căn hộ', days: 45, pct: 15 },
+          { name: 'Đợt 3 – Sau 120 ngày kể từ ngày ký HĐMB: thanh toán 20% giá trị căn hộ', days: 120, pct: 20 },
+          { name: 'Đợt 4 – Sau 480 ngày kể từ ngày ký HĐMB: thanh toán 50% giá trị căn hộ và 2% phí bảo trì', days: 480, pct: 50 },
+          { name: 'Đợt 5 – Nhận Giấy chứng nhận: thanh toán 5% giá trị căn hộ', days: 720, pct: 5 },
+        ] }, tp, o())).row;
+      await C.submit('price_policy', p.id, tp, { db, demo: true });
+      await C.approve('price_policy', p.id, U['thu.lanhdao'], { ok: true, db });
+      const c = await mkCustomer(bh2, { stage: 'quan_tam_cao' });
+      const r = (await C.create('reservation', { customer_id: c.id, unit_id: O[29].id, reg_date: T, hold_until: at(D(3), 17), source: 'truc_tiep', owner_id: bh2.id }, bh2, o({ system: true }))).row;
+      await C.submit('reservation', r.id, bh2, { db, demo: true }); await C.approve('reservation', r.id, tp, { ok: true, db });
+      inc('Chính sách có tiến độ thu tiền');
+    }
     // phiếu giữ chỗ quá hạn (cần xử lý) + phiếu chờ duyệt + phiếu nháp
     { const c = await mkCustomer(bh1, { stage: 'quan_tam_cao' }); const r = (await C.create('reservation', { customer_id: c.id, unit_id: O[24].id, reg_date: D(-5), hold_until: at(D(-1), 17), source: 'truc_tiep', owner_id: bh1.id }, bh1, o({ system: true }))).row;
       await C.submit('reservation', r.id, bh1, { db, demo: true }); await C.approve('reservation', r.id, tp, { ok: true, db }); await C.sys(db, 'reservation', r.id, { status: 'qua_han' }, null, 'qua_han_giu_cho');
