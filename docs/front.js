@@ -1272,7 +1272,7 @@ function finishPicker(el, root, { self } = {}) {
       <div class="upick-fall row">${ico('fa-couch')} <span>Giá trị hoàn thiện cho ${nOn} căn đã tích${bf ? ` của tòa ${esc(bf)}` : ''}</span><input class="inp fin-all" inputmode="numeric" placeholder="VD 120.000.000" value="${esc(bulk)}" style="width:160px;text-align:right"><button type="button" class="btn sm" data-fall>Áp cho căn đã tích</button></div>
       <div class="tbl-wrap upick-t"><table class="t compact noclick"><thead><tr><th style="width:30px"><input type="checkbox" data-fv-all ${nOn && nOn === view.length ? 'checked' : ''} title="Tích / bỏ tích các căn đang xem"></th><th>Mã căn</th><th>Tòa</th><th class="num">Tầng</th><th>Loại</th><th class="num">DT thông thủy</th><th class="num">Tổng giá căn hộ</th><th class="num">Giá trị hoàn thiện</th><th class="num">Tổng cộng</th></tr></thead><tbody>
       ${view.map(u => { const k = K(u), t = on.has(k); return `<tr data-row="${esc(k)}" class="${t ? 'sel' : ''}"${hit(u) ? '' : ' hidden'}><td><input type="checkbox" data-fv-t="${esc(k)}" ${t ? 'checked' : ''}></td><td>${esc(u.code)}</td><td>${esc(u.b)}</td><td class="num">${u.floor ?? ''}</td><td>${esc(KIND[u.kind] || u.kind || '')}</td><td class="num">${fnum(u.area_tt)}</td><td class="num">${fm(gv(u))}</td>
-        <td class="num"><input class="inp fin-v" data-fv="${esc(k)}" inputmode="numeric" value="${t && val[k] != null ? fm(val[k]) : ''}" placeholder="${t ? 'nhập giá trị' : '—'}" ${t ? '' : 'disabled'} style="width:140px;height:30px;text-align:right"></td><td class="num fin-tc"><b>${fm(gv(u) + fvOf(u))}</b></td></tr>`; }).join('')}
+        <td class="num"><input class="inp fin-v" data-fv="${esc(k)}" inputmode="numeric" value="${val[k] != null ? fm(val[k]) : ''}" placeholder="${t ? 'nhập giá trị' : '—'}" title="${t ? '' : 'Căn chưa tích — số này không lưu vào chính sách; gõ số hoặc tích để áp'}" style="width:140px;height:30px;text-align:right${t ? '' : ';opacity:.55'}"></td><td class="num fin-tc"><b>${fm(gv(u) + fvOf(u))}</b></td></tr>`; }).join('')}
       </tbody></table></div>`;
   };
   const load = async () => {
@@ -1288,6 +1288,7 @@ function finishPicker(el, root, { self } = {}) {
     if (t.dataset.fvT) { const u = units.find(x => K(x) === t.dataset.fvT); if (u) tick([u], t.checked); }
     else if (t.dataset.fvAll !== undefined) tick(viewList(), t.checked);
     else if (t.matches('.fin-v')) t.value = val[t.dataset.fv] != null ? fm(val[t.dataset.fv]) : '';
+    else if (t.matches('.fin-all') && bulk) { bulk = fm(Math.max(0, Math.round(num(bulk, true)) || 0)); t.value = bulk; }
   }, true);
   box.addEventListener('input', e => {
     e.stopPropagation(); const t = e.target;
@@ -1295,6 +1296,7 @@ function finishPicker(el, root, { self } = {}) {
     if (t.matches('.fin-q')) { q = t.value.trim().toLowerCase(); $$('tbody tr[data-row]', box).forEach(tr => { const u = units.find(x => K(x) === tr.dataset.row); tr.hidden = !(u && hit(u)); }); return; }
     if (!t.matches('.fin-v')) return;
     const k = t.dataset.fv, s = t.value.trim(); if (s) val[k] = Math.max(0, Math.round(num(s, true)) || 0); else delete val[k];
+    if (s && !on.has(k)) { on.add(k); const tr = t.closest('tr'), cb = $('[data-fv-t]', tr); tr.classList.add('sel'); if (cb) cb.checked = true; t.style.opacity = ''; t.title = ''; }   // gõ số vào căn chưa tích → tự tích
     const u = units.find(x => K(x) === k), tc = $('.fin-tc', t.closest('tr')); if (u && tc) tc.innerHTML = `<b>${fm(gv(u) + fvOf(u))}</b>`;
     const sm = $('.fin-sum', box); if (sm) sm.innerHTML = sumTxt(inPol());
   }, true);
