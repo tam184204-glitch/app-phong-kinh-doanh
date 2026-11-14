@@ -266,7 +266,8 @@ def('reservation', {
     { k: 'term_months', l: 'Thời hạn thuê dự kiến (tháng)', t: 'int', show: { deal: ['thue'] } },
     { k: 'reg_state', l: 'Trạng thái căn hộ', t: 'sel', req: 1, def: 'giu_cho', o: REG_ST },
     { k: 'progress', l: 'Tiến trình giao dịch', t: 'sel', req: 1, def: 'tiep_nhan', o: REG_PROG },
-    { k: 'policy_id', l: 'Chính sách áp dụng', t: 'ref', ref: 'price_policy', filter: 'phat_hanh', show: { deal: ['mua'] }, help: 'Để trống → tự lấy chính sách bán hàng đang phát hành cho căn' },
+    { k: 'policy_id', l: 'Chính sách áp dụng', t: 'ref', ref: 'price_policy', filter: 'phat_hanh', show: { deal: ['mua'] }, auto: 1, autoPh: 'Tự lấy khi chọn căn',   // 14/11/2026: tự lấy, không chọn tay
+      help: 'Tự lấy chính sách được duyệt gần nhất áp cho căn và nguồn bán; khi có chính sách mới được duyệt, phiếu còn hiệu lực tự đổi theo. Giá trị hoàn thiện lấy theo danh sách căn có hoàn thiện của chính sách' },
     { k: 'note', l: 'Ghi chú', t: 'long' },
     { k: 'reg_at', l: 'Ngày giờ đăng ký', t: 'dt', req: 1, def: 'now', help: 'Tự lấy giờ hiện tại khi mở phiếu — sửa được' },
     { k: 'reg_date', l: 'Ngày đăng ký', t: 'date', hide: 1 },   // = ngày của reg_at (giờ VN), giữ cho giá / hoa hồng / kiểm tra hạn

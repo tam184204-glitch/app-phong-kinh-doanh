@@ -108,9 +108,12 @@ async function polWho(db, p) {   // «Khách hàng cũ giới thiệu, Đơn v�
   const ty = String(p.seller_types || '').split(',').filter(Boolean).map(k => C.F.price_policy.seller_types.o.find(o => o[0] === k)?.[1] || k);
   return [...ty, ...(ag ? [`${ty.length ? 'riêng ' : ''}sàn / CTV: ${ag}`] : [])].join(', ');
 }
+const polFin = (pol, code) => { const v = pol?.finish_vals?.[String(code || '').toUpperCase()]; return v == null || v === '' ? null : +v; };   // giá trị hoàn thiện căn khai ở chính sách
 async function pricing(db, unit, on = today(), seller) {
   const b = await db.one('SELECT code FROM kd_building WHERE id = $1', [unit.building_id]);
-  const pols = await db.q("SELECT * FROM kd_price_policy WHERE status = 'phat_hanh' AND $1 = ANY(project_ids) AND start_on <= $2 AND end_on >= $2 ORDER BY start_on DESC, version DESC, id DESC", [unit.project_id, on]);
+  // 14/11/2026: chính sách áp dụng = chính sách được DUYỆT GẦN NHẤT (theo ngày duyệt) còn hiệu lực cho căn + người bán — chính sách duyệt trước đó không còn áp cho căn
+  const pols = await db.q(`SELECT p.*, (SELECT max(a.decided_at) FROM kd_approval a WHERE a.ent = 'price_policy' AND a.rec_id = p.id AND a.status = 'da_duyet') appr_at FROM kd_price_policy p WHERE p.status = 'phat_hanh' AND $1 = ANY(p.project_ids) AND p.start_on <= $2 AND p.end_on >= $2
+    ORDER BY appr_at DESC NULLS LAST, p.start_on DESC, p.version DESC, p.id DESC`, [unit.project_id, on]);
   const pol = pols.find(p => polHas(p, unit.code, b?.code) && polFor(p, seller));
   if (!pol) return { policy: null, price: unit.total_price || null };
   if (pol.mode === 'don_gia') { const after = Math.round(pol.unit_price * unit.area_tt), before = after / (1 + (pol.vat_pct ?? 5) / 100); return { policy: pol, price: after + Math.round(before * (pol.maint_pct ?? 2) / 100 / 1000) * 1000 }; }   // đơn giá đã gồm thuế; bảo trì = 2% × tiền trước thuế
@@ -283,7 +286,8 @@ async function policyUnits(db, qs) {
       EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.kind IN ('hdmb','thue_mua','vay','thue') AND c.status = 'da_ky') signed,
       (SELECT c.number FROM kd_contract c WHERE c.unit_id = u.id AND c.kind IN ('hdmb','thue_mua') AND c.status IN ('du_thao','tu_choi') ORDER BY c.id DESC LIMIT 1) draft
     FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = ANY($1)`, [pids]);
-  const pols = await db.q("SELECT id, code, version, unit_group, project_ids, (pay_sched IS NOT NULL) td FROM kd_price_policy WHERE status = 'phat_hanh' AND id <> $1 AND project_ids && $2::int[] AND end_on >= $3 ORDER BY start_on DESC, version DESC, id DESC", [self, pids, today()]);
+  const pols = await db.q(`SELECT p.id, p.code, p.version, p.unit_group, p.project_ids, (p.pay_sched IS NOT NULL) td, (SELECT max(a.decided_at) FROM kd_approval a WHERE a.ent = 'price_policy' AND a.rec_id = p.id AND a.status = 'da_duyet') appr_at FROM kd_price_policy p WHERE p.status = 'phat_hanh' AND p.id <> $1 AND p.project_ids && $2::int[] AND p.end_on >= $3
+    ORDER BY appr_at DESC NULLS LAST, p.start_on DESC, p.version DESC, p.id DESC`, [self, pids, today()]);   // như pricing: chính sách duyệt gần nhất
   const rows = all.filter(u => !u.signed && u.lock !== 'ngung_kd' && u.status !== 'giu_cho').map(u => {
     const p = pols.find(p => p.project_ids.includes(u.project_id) && polHas(p, u.code, u.b));
     return { ...u, pol: p ? `${p.code} v${p.version}` : null, pol_td: !!p?.td };
@@ -796,6 +800,14 @@ async function saleCheck(db, unitId, cache = new Map()) {   // cache: theo dự 
 const saleWarn = async (db, r, warn) => { const sc = await saleCheck(db, r.unit_id); r.sale_check = sc?.text ?? null; if (sc && !sc.ok) warn.push(sc.text.slice(2)); };
 const saleLive = async (db, rows) => { const c = new Map(); for (const r of rows) if (r.unit_id) r.sale_check = (await saleCheck(db, r.unit_id, c))?.text ?? r.sale_check; };   // danh sách / chi tiết: theo thông báo hiện tại
 
+// form phiếu đăng ký (14/11/2026): chọn căn / đổi nguồn bán → chính sách được duyệt gần nhất + giá trị hoàn thiện theo chính sách
+async function resPolicy(db, qs) {
+  const u = +qs.unit ? await raw(db, 'unit', +qs.unit) : null; if (!u) return { policy: null };
+  const on = /^\d{4}-\d{2}-\d{2}$/.test(qs.date || '') ? qs.date : today();
+  const p = (await pricing(db, u, on, { source: qs.source || 'truc_tiep', agent_id: +qs.agent || null })).policy;
+  const pf = polFin(p, u.code), uv = u.price_net != null ? +u.price_net + (+u.maint_fee || 0) : u.total_price != null ? +u.total_price - (+u.finish_value || 0) : null;
+  return { policy: p ? { id: p.id, label: `${p.code} v${p.version}` } : null, unit_value: uv, finish_value: pf ?? (u.finish_value != null ? +u.finish_value : null), fin_src: pf != null ? 'policy' : 'unit' };
+}
 H.reservation = {
   where(qs) { if (qs.group === 'thue') return { sql: "t.deal = 'thue'" }; if (qs.group === 'mua') return { sql: "coalesce(t.deal, 'mua') <> 'thue'" }; },   // 2 tab Đăng ký mua / Đăng ký thuê
   async beforeSave(r, old, { db, warn, opts, user, demo }) {
@@ -852,12 +864,16 @@ H.reservation = {
       const p0 = await raw(db, 'price_policy', r.policy_id);
       if (p0 && !polFor(p0, seller)) { r.policy_id = null; warn.push(`Chính sách ${p0.code} v${p0.version} không dành cho người bán mới — đã bỏ và tự lấy chính sách phù hợp`); }
     }
-    if (changedUnit || r.price == null || !r.policy_id) {
+    // 14/11/2026: phiếu còn hiệu lực (chưa lập HĐ / hủy) luôn theo chính sách được duyệt gần nhất cho căn + người bán; giá trị hoàn thiện theo danh sách
+    // «Căn hộ có hoàn thiện» của chính sách đó (căn không có trong danh sách → giữ theo bảng hàng như cũ)
+    const live = !old || RES_OPEN.includes(r.status ?? old?.status);
+    if (live || changedUnit || r.price == null || !r.policy_id) {
       const p = await pricing(db, u, r.reg_date, seller);
       // giá theo mã căn ở Danh mục sản phẩm: giá trị căn hộ = sau thuế + bảo trì; hoàn thiện = giá trị hoàn thiện căn
       if (r.unit_value == null || (old && changedUnit)) r.unit_value = u.price_net != null ? +u.price_net + (+u.maint_fee || 0) : u.total_price != null ? +u.total_price - (+u.finish_value || 0) : p.price;
       if (old ? changedUnit : r.finish_value == null) r.finish_value = u.finish_value;
-      if (!r.policy_id) r.policy_id = p.policy?.id ?? null;   // nhân viên chọn chính sách thì giữ, để trống thì tự lấy
+      if (live || !r.policy_id) r.policy_id = p.policy?.id ?? null;
+      const pf = polFin(p.policy, u.code); if (live && pf != null && r.policy_id === p.policy?.id) r.finish_value = pf;
       if (!p.policy && !r.policy_id) warn.push('Không có chính sách bán hàng đang phát hành cho căn này — giá lấy theo bảng hàng');
     }
     if (r.policy_id) {   // chính sách chỉ dành cho một số đại lý / sàn
@@ -1952,4 +1968,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { saleTrack, policyUnits, bgSet, bgSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { saleTrack, policyUnits, resPolicy, bgSet, bgSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

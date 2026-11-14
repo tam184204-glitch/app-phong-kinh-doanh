@@ -377,6 +377,7 @@ R('GET', '/api/sale-track/:id', async (req, res, u, p, qs) => {   // HĐ thuê /
   send(res, 200, await B.saleTrack({ q, one }, g.row, qs.to));
 });
 R('GET', '/api/contract-prefill/:unit', async (req, res, u, p, qs) => { if (!can(u, M.E.contract, 'c') && !can(u, M.E.contract, 'u')) C.deny(); send(res, 200, await B.contractPrefill({ q, one }, p.unit, qs.on)); });
+R('GET', '/api/res-policy', async (req, res, u, p, qs) => { if (!can(u, M.E.reservation, 'c') && !can(u, M.E.reservation, 'u')) C.deny(); send(res, 200, await B.resPolicy({ q, one }, qs)); });   // phiếu đăng ký: chính sách duyệt gần nhất + hoàn thiện theo chính sách (14/11/2026)
 R('GET', '/api/policy-units', async (req, res, u, p, qs) => { if (!can(u, M.E.price_policy, 'c') && !can(u, M.E.price_policy, 'u')) C.deny(); send(res, 200, await B.policyUnits({ q, one }, qs)); });
 R('GET', '/api/sale-check/:id', async (req, res, u, p) => send(res, 200, await B.saleCheck({ q, one }, p.id) || {}));
 R('GET', '/api/unit360/:id', async (req, res, u, p) => send(res, 200, await V.unit360({ q, one }, u, p.id)));
