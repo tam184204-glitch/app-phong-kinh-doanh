@@ -276,7 +276,7 @@ function input(f, v, rec = {}, { ro, id } = {}) {
     case 'refs': { const ids = v || [], ls = String(rec[f.k + '__l'] ?? '').split(', '), lab = (id, i) => { const p = f.ref === 'project' && M.projects.find(x => x.id === id); return p ? `${p.code} · ${p.name}` : ids.length === ls.length ? ls[i] : '#' + id; };
       return `<div class="combo multi" data-ref="${f.ref}" data-multi><div class="chips">${ids.map((id, i) => `<span class="chip" data-id="${id}">${esc(lab(id, i))}<button type="button" tabindex="-1" title="Bỏ">${ico('fa-xmark')}</button></span>`).join('')}<input type="text" placeholder="${ids.length ? 'Thêm' : 'Gõ để tìm'} ${esc(M.ents[f.ref].one)}…" autocomplete="off" data-combo></div><input type="hidden" ${nm} value="${esc(ids.join(','))}"></div>`; }
     case 'check': return `<div class="cklist${f.qty ? ' qty' : ''}" ${nm} ${f.qty ? 'data-qty' : ''}>${checkRows(v || [], f.qty)}</div>`;
-    case 'json': if (f.pick === 'finish') return `<input type="hidden" ${nm} value="${esc(JSON.stringify(v || {}))}">`;
+    case 'json': if (f.pick === 'finish') return `<div class="upick" data-pick-fin><input type="hidden" ${nm} value="${esc(JSON.stringify(v || {}))}"><div class="upick-bd"></div></div>`;
       return f.k === 'pay_sched' ? `<div data-psched ${nm}></div>` : f.k === 'fin_sched' ? `<div data-fsched ${nm}></div>` : f.k === 'new_schedule' ? `<div data-sched ${nm}></div>` : f.k === 'sale_sched' ? `<div data-ssched ${nm}></div>` : f.grid ? `<div class="gridin" ${nm}>${gridRows(f, v || [])}</div>` : `<div class="ro">${show(f, rec)}</div>`;
     default: if (f.choose) return `<select ${nm}>${[...new Set([...f.choose, ...(v ? [v] : [])])].map(o => `<option ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;   // ô chữ nhưng chọn trong danh sách (giữ giá trị cũ ngoài danh sách)
       return `<input ${nm} value="${esc(v ?? '')}" autocomplete="off"${f.sug ? ` list="dl_${f.k}"` : ''}>${f.sug ? sugList('dl_' + f.k, f.sug) : ''}`;
@@ -1190,6 +1190,8 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     for (const [k, v] of Object.entries(out)) if (form.elements[k]) form.elements[k].value = moneyStr(v);
   });
   $$('[data-pick-units]', form).forEach(el => unitPicker(el, form, ent === 'price_policy' ? { policy: true, self: id || 0 } : {}).catch(e => toast(e.message, true)));
+  $$('[data-pick-fin]', form).forEach(el => finishPicker(el, form, { self: id || 0 }));
+  if (ent === 'price_policy') policyTabs(form);
   $$('[data-pick-bg]', form).forEach(el => bgPicker(el, form).catch(e => toast(e.message, true)));
   if (ckF && !id) { fillCheck(); form.addEventListener('change', e => { if (e.target.name === ckF.srcBy || e.target.name === 'reg_kind') fillCheck(); }); }
   vis();
@@ -1239,15 +1241,87 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
 // ---------- bảng chọn căn áp dụng (chính sách giá): giá trị = '*' | mã tòa (cả tòa) | mã căn, cách nhau dấu phẩy ----------
 // policy (chính sách bán hàng, 16/11/2026): chỉ căn còn trong bảng hàng, chưa giữ chỗ / ký HĐMB / vay / thuê; lọc nhanh theo tòa (14/11/2026 bỏ lọc loại căn, HĐMB dự thảo);
 // mỗi căn ghi chính sách đang áp + HĐMB dự thảo sẽ đổi Lần thanh toán khi chính sách phát hành
+// tab «2. Hoàn thiện căn hộ» của chính sách (14/11/2026): trong các căn đã chọn ở tab 1, TÍCH căn có hoàn thiện (nội thất), nhập giá trị từng căn
+// hoặc 1 lần cho các căn đã tích. Căn không tích = không khai (giữ hoàn thiện đang có trong bảng hàng). Ghi vào ô ẩn finish_vals { MÃ CĂN: số tiền }
+function finishPicker(el, root, { self } = {}) {
+  const hid = $('input[type=hidden]', el), box = $('.upick-bd', el), projEl = $('[name="project_ids"]', root), ugEl = $('[name="unit_group"]', root);
+  let val = {}; try { val = JSON.parse(hid.value || '{}') || {}; } catch { val = {}; }
+  const on = new Set(Object.keys(val)); let units = [], loadedFor = null, bf = '', q = '', bulk = '';
+  hid._get = () => { const o = {}; for (const k of on) if (val[k] != null) o[k] = val[k]; return Object.keys(o).length ? o : null; };
+  const KIND = Object.fromEntries(M.ents.unit.fields.find(f => f.k === 'kind').o), K = u => u.code.toUpperCase();
+  const gv = u => u.price_net != null ? +u.price_net + (+u.maint_fee || 0) : (+u.total_price || 0) - (+u.finish_value || 0);   // giá căn hộ chưa gồm hoàn thiện
+  const fvOf = u => on.has(K(u)) ? +(val[K(u)] || 0) : 0;
+  const inPol = () => { const s = new Set(String(ugEl?.value || '').toUpperCase().split(/[,;\s]+/).filter(Boolean)); return units.filter(u => s.has('*') || s.has(u.b) || s.has(K(u))); };
+  const hit = u => !q || `${u.code} tòa ${u.b} tầng ${u.floor ?? ''} ${KIND[u.kind] || u.kind || ''}`.toLowerCase().includes(q);
+  const sumTxt = list => { const t = list.filter(u => on.has(K(u))); const miss = t.filter(u => val[K(u)] == null).length; return `<b>Có hoàn thiện ${t.length}/${list.length} căn</b> · tổng hoàn thiện ${fm(t.reduce((s, u) => s + fvOf(u), 0))} đ${miss ? ` · <span class="neg">${miss} căn đã tích chưa nhập giá trị (không lưu)</span>` : ''}`; };
+  const draw = () => {
+    if (!projEl?.value) { box.innerHTML = '<div class="muted small">Chọn dự án trước.</div>'; return; }
+    const list = inPol();
+    if (!list.length) { box.innerHTML = '<div class="muted small">Chưa chọn căn hộ áp dụng — tích căn ở tab «1. Căn hộ áp dụng & tiến độ thu tiền HĐMB» trước.</div>'; return; }
+    const blds = [...new Set(list.map(u => u.b))]; if (bf && !blds.includes(bf)) bf = '';
+    const view = list.filter(u => !bf || u.b === bf), nOn = view.filter(u => on.has(K(u))).length;
+    const chip = (v, l, n, sub) => `<button type="button" class="upick-c${bf === v ? ' on' : ''}" data-fb="${esc(v)}">${l} <b>${n}</b>${sub ? ` <span class="muted">· tích ${sub}</span>` : ''}</button>`;
+    box.innerHTML = `<div class="upick-f"><span class="upick-l">${ico('fa-building')} Tòa</span>${chip('', 'Tất cả', list.length)}${blds.map(b => chip(b, 'Tòa ' + esc(b), list.filter(u => u.b === b).length, list.filter(u => u.b === b && on.has(K(u))).length)).join('')}</div>
+      <div class="upick-sum"><span class="fin-sum">${sumTxt(list)}</span> <span class="grow"></span><div class="search upick-s"><i class="fa-solid fa-magnifying-glass"></i><input type="text" class="fin-q" placeholder="Tìm mã căn, tầng, loại…" value="${esc(q)}"></div>
+        <button type="button" class="btn sm" data-ft="1">${bf ? `Tích tất cả tòa ${esc(bf)}` : 'Tích tất cả'}</button><button type="button" class="btn sm ghost" data-ft="0">${bf ? `Bỏ tích tòa ${esc(bf)}` : 'Bỏ tích hết'}</button></div>
+      <div class="upick-fall row">${ico('fa-couch')} <span>Giá trị hoàn thiện cho ${nOn} căn đã tích${bf ? ` của tòa ${esc(bf)}` : ''}</span><input class="inp fin-all" inputmode="numeric" placeholder="VD 120.000.000" value="${esc(bulk)}" style="width:160px;text-align:right"><button type="button" class="btn sm" data-fall>Áp cho căn đã tích</button></div>
+      <div class="tbl-wrap upick-t"><table class="t compact noclick"><thead><tr><th style="width:30px"><input type="checkbox" data-fv-all ${nOn && nOn === view.length ? 'checked' : ''} title="Tích / bỏ tích các căn đang xem"></th><th>Mã căn</th><th>Tòa</th><th class="num">Tầng</th><th>Loại</th><th class="num">DT thông thủy</th><th class="num">Tổng giá căn hộ</th><th class="num">Giá trị hoàn thiện</th><th class="num">Tổng cộng</th></tr></thead><tbody>
+      ${view.map(u => { const k = K(u), t = on.has(k); return `<tr data-row="${esc(k)}" class="${t ? 'sel' : ''}"${hit(u) ? '' : ' hidden'}><td><input type="checkbox" data-fv-t="${esc(k)}" ${t ? 'checked' : ''}></td><td>${esc(u.code)}</td><td>${esc(u.b)}</td><td class="num">${u.floor ?? ''}</td><td>${esc(KIND[u.kind] || u.kind || '')}</td><td class="num">${fnum(u.area_tt)}</td><td class="num">${fm(gv(u))}</td>
+        <td class="num"><input class="inp fin-v" data-fv="${esc(k)}" inputmode="numeric" value="${t && val[k] != null ? fm(val[k]) : ''}" placeholder="${t ? 'nhập giá trị' : '—'}" ${t ? '' : 'disabled'} style="width:140px;height:30px;text-align:right"></td><td class="num fin-tc"><b>${fm(gv(u) + fvOf(u))}</b></td></tr>`; }).join('')}
+      </tbody></table></div>`;
+  };
+  const load = async () => {
+    const pid = projEl?.value || '';
+    if (pid && pid !== loadedFor) { loadedFor = pid; box.innerHTML = '<div class="muted small">Đang tải căn hộ…</div>'; units = (await api('GET', `/api/policy-units?project=${pid}&self=${self || 0}`)).rows; }
+    if (!pid) { loadedFor = null; units = []; }
+    draw();
+  };
+  const tick = (list, yes) => { for (const u of list) { const k = K(u); if (yes) { on.add(k); if (val[k] == null) { if (bulk) val[k] = Math.max(0, Math.round(num(bulk, true)) || 0); else if (+u.finish_value > 0) val[k] = +u.finish_value; } } else on.delete(k); } draw(); };
+  const viewList = () => inPol().filter(u => (!bf || u.b === bf) && hit(u));
+  box.addEventListener('change', e => {
+    e.stopPropagation(); const t = e.target;
+    if (t.dataset.fvT) { const u = units.find(x => K(x) === t.dataset.fvT); if (u) tick([u], t.checked); }
+    else if (t.dataset.fvAll !== undefined) tick(viewList(), t.checked);
+    else if (t.matches('.fin-v')) t.value = val[t.dataset.fv] != null ? fm(val[t.dataset.fv]) : '';
+  }, true);
+  box.addEventListener('input', e => {
+    e.stopPropagation(); const t = e.target;
+    if (t.matches('.fin-all')) { bulk = t.value.trim(); return; }   // giữ số khi bảng vẽ lại; tích căn mới tự nhận số này
+    if (t.matches('.fin-q')) { q = t.value.trim().toLowerCase(); $$('tbody tr[data-row]', box).forEach(tr => { const u = units.find(x => K(x) === tr.dataset.row); tr.hidden = !(u && hit(u)); }); return; }
+    if (!t.matches('.fin-v')) return;
+    const k = t.dataset.fv, s = t.value.trim(); if (s) val[k] = Math.max(0, Math.round(num(s, true)) || 0); else delete val[k];
+    const u = units.find(x => K(x) === k), tc = $('.fin-tc', t.closest('tr')); if (u && tc) tc.innerHTML = `<b>${fm(gv(u) + fvOf(u))}</b>`;
+    const sm = $('.fin-sum', box); if (sm) sm.innerHTML = sumTxt(inPol());
+  }, true);
+  box.addEventListener('keydown', e => { if (e.target.matches('.fin-v, .fin-all, .fin-q') && e.key === 'Enter') { e.preventDefault(); if (e.target.matches('.fin-all')) $('[data-fall]', box)?.click(); } });
+  box.addEventListener('click', e => {
+    const c = e.target.closest('[data-fb]'); if (c) { bf = c.dataset.fb; return draw(); }
+    const ft = e.target.closest('[data-ft]'); if (ft) return tick(inPol().filter(u => !bf || u.b === bf), ft.dataset.ft === '1');
+    if (e.target.closest('[data-fall]')) {
+      const s = bulk; if (!s) return toast('Nhập giá trị hoàn thiện', true);
+      const list = inPol().filter(u => (!bf || u.b === bf) && on.has(K(u))); if (!list.length) return toast('Chưa tích căn nào có hoàn thiện', true);
+      const n = Math.max(0, Math.round(num(s, true)) || 0); for (const u of list) val[K(u)] = n; draw();
+    }
+  });
+  projEl?.addEventListener('change', () => { if (el.offsetParent) load().catch(e => toast(e.message, true)); });
+  el._refresh = () => load().catch(e => toast(e.message, true));
+  draw();
+}
+// form chính sách: 2 tab — «1. Căn hộ áp dụng & tiến độ thu tiền HĐMB» và «2. Hoàn thiện căn hộ» (14/11/2026)
+function policyTabs(form) {
+  const bx = k => $(`[data-f="${k}"]`, form), A = ['unit_group', 'pay_sched'].map(bx).filter(Boolean), B = ['finish_vals', 'fin_sched'].map(bx).filter(Boolean);
+  if (!A.length || !B.length) return;
+  const bar = document.createElement('div'); bar.className = 'ptabs';
+  bar.innerHTML = `<button type="button" data-pt="a">${ico('fa-file-invoice-dollar')} 1. Căn hộ áp dụng &amp; tiến độ thu tiền HĐMB</button><button type="button" data-pt="b">${ico('fa-couch')} 2. Hoàn thiện căn hộ</button>`;
+  A[0].before(bar);
+  const show = t => { A.forEach(x => { x.style.display = t === 'a' ? '' : 'none'; }); B.forEach(x => { x.style.display = t === 'b' ? '' : 'none'; }); $$('[data-pt]', bar).forEach(b => b.classList.toggle('on', b.dataset.pt === t)); if (t === 'b') $('[data-pick-fin]', form)?._refresh?.(); };
+  bar.addEventListener('click', e => { const b = e.target.closest('[data-pt]'); if (b) show(b.dataset.pt); });
+  form._ptab = show; show('a');
+}
 async function unitPicker(el, root, { policy, self } = {}) {
   const projEl = $('[name="project_ids"]', root) || $('[name="project_id"]', root), hid = $('input[type=hidden]', el), box = $('.upick-bd', el);
   let units = [], sel = new Set(String(hid.value).toUpperCase().split(/[,;\s]+/).filter(Boolean)), loadedFor = null, q = '', bf = '', kf = '', df = false, hidden = 0;
   const KIND = Object.fromEntries(M.ents.unit.fields.find(f => f.k === 'kind').o);
-  // giá trị hoàn thiện khai ở chính sách (14/11/2026): ghi vào ô ẩn finish_vals; Tổng cộng = giá căn hộ (sau thuế + bảo trì) + hoàn thiện
-  const finEl = policy ? $('[name="finish_vals"]', root) : null; let fin = {}; try { fin = JSON.parse(finEl?.value || '{}') || {}; } catch { fin = {}; }
-  if (finEl) finEl._get = () => Object.keys(fin).length ? fin : null;
-  const gv = u => u.price_net != null ? +u.price_net + (+u.maint_fee || 0) : (+u.total_price || 0) - (+u.finish_value || 0);
-  const fvOf = u => fin[u.code.toUpperCase()] ?? (+u.finish_value || 0), tcOf = u => gv(u) + fvOf(u);
   const blds = () => [...new Set(units.map(u => u.b))];
   const isOn = u => sel.has('*') || sel.has(u.b) || sel.has(u.code.toUpperCase());
   // tìm căn: mã căn, tòa, tầng, loại, trạng thái — chỉ ẩn/hiện dòng, không vẽ lại để ô tìm giữ con trỏ
@@ -1270,14 +1344,14 @@ async function unitPicker(el, root, { policy, self } = {}) {
   const draw = () => {
     if (!projEl?.value) { box.innerHTML = '<div class="muted small">Chọn dự án trước — danh sách căn hộ của dự án hiện ở đây.</div>'; return; }
     if (!units.length) { box.innerHTML = '<div class="muted small">Dự án đã chọn chưa có căn hộ trong danh mục sản phẩm.</div>'; return; }
-    const on = units.filter(isOn), tot = on.reduce((s, u) => s + (policy ? tcOf(u) : +u.total_price || 0), 0), cnt = f => units.filter(f).length;
+    const on = units.filter(isOn), tot = on.reduce((s, u) => s + (+u.total_price || 0), 0), cnt = f => units.filter(f).length;
     const chip = (k, v, cur, l, n, sub) => `<button type="button" class="upick-c${cur === v ? ' on' : ''}" data-${k}="${esc(v)}">${l} <b>${n}</b>${sub ? ` <span class="muted">· chọn ${sub}</span>` : ''}</button>`;
         const fl = policy ? `<div class="upick-f"><span class="upick-l">${ico('fa-building')} Tòa</span>${chip('bf', '', bf, 'Tất cả', units.length)}${blds().map(b => chip('bf', b, bf, 'Tòa ' + esc(b), cnt(u => u.b === b), cnt(u => u.b === b && isOn(u)))).join('')}</div>` : '';   // 14/11/2026: chỉ lọc theo tòa (bỏ lọc loại căn / HĐMB dự thảo); bỏ dòng «Đã ẩn N căn…» (căn đã bán / giữ chỗ vẫn ẩn)
-    box.innerHTML = `${fl}<div class="upick-sum"><b>Đã chọn ${on.length}/${units.length} căn</b> · tổng giá ${fm(tot)} đ <span class="grow"></span><div class="search upick-s"><i class="fa-solid fa-magnifying-glass"></i><input type="text" class="upick-q" placeholder="Tìm mã căn, tầng, loại, trạng thái…" value="${esc(q)}"></div><span class="small muted upick-n"></span><button type="button" class="btn sm" data-all="q" hidden></button><button type="button" class="btn sm" data-all="1">${bf ? `Chọn tất cả tòa ${esc(bf)}` : 'Chọn tất cả'}</button><button type="button" class="btn sm ghost" data-all="0">${bf ? `Bỏ chọn tòa ${esc(bf)}` : 'Bỏ chọn hết'}</button></div>${finEl ? `<div class="upick-fall row">${ico('fa-couch')} <span>Giá trị hoàn thiện cho ${on.length} căn đã chọn</span><input class="inp upick-fallv" inputmode="numeric" placeholder="VD 120.000.000" style="width:160px;text-align:right"><button type="button" class="btn sm" data-fall>Áp cho căn đã chọn</button><button type="button" class="btn sm ghost" data-fclr title="Bỏ giá trị đã khai — giữ hoàn thiện đang có của căn">Xóa giá trị đã khai</button></div>` : ''}
-      <div class="tbl-wrap upick-t"><table class="t compact noclick"><thead><tr><th style="width:30px"></th><th>Mã căn</th><th>Tòa</th><th class="num">Tầng</th><th>Loại</th><th class="num">DT thông thủy</th><th class="num">Giá sau thuế</th><th class="num">Phí bảo trì</th><th class="num">Tổng giá căn hộ</th>${finEl ? '<th class="num">Giá trị hoàn thiện</th><th class="num">Tổng cộng</th>' : ''}<th>Trạng thái</th>${policy ? '<th>Chính sách đang áp</th>' : ''}</tr></thead><tbody>
+    box.innerHTML = `${fl}<div class="upick-sum"><b>Đã chọn ${on.length}/${units.length} căn</b> · tổng giá ${fm(tot)} đ <span class="grow"></span><div class="search upick-s"><i class="fa-solid fa-magnifying-glass"></i><input type="text" class="upick-q" placeholder="Tìm mã căn, tầng, loại, trạng thái…" value="${esc(q)}"></div><span class="small muted upick-n"></span><button type="button" class="btn sm" data-all="q" hidden></button><button type="button" class="btn sm" data-all="1">${bf ? `Chọn tất cả tòa ${esc(bf)}` : 'Chọn tất cả'}</button><button type="button" class="btn sm ghost" data-all="0">${bf ? `Bỏ chọn tòa ${esc(bf)}` : 'Bỏ chọn hết'}</button></div>
+      <div class="tbl-wrap upick-t"><table class="t compact noclick"><thead><tr><th style="width:30px"></th><th>Mã căn</th><th>Tòa</th><th class="num">Tầng</th><th>Loại</th><th class="num">DT thông thủy</th><th class="num">Giá sau thuế</th><th class="num">Phí bảo trì</th><th class="num">Tổng giá căn hộ</th><th>Trạng thái</th>${policy ? '<th>Chính sách đang áp</th>' : ''}</tr></thead><tbody>
       ${blds().map(b => { const all = units.filter(u => u.b === b), n = all.filter(isOn).length;
-        return `<tr class="pg" data-g="${esc(b)}"><td><input type="checkbox" data-b="${esc(b)}" ${n === all.length ? 'checked' : ''}></td><td colspan="${policy ? (finEl ? 12 : 10) : 9}"><b>Tòa ${esc(b)}</b> <span class="muted">— chọn ${n}/${all.length} căn</span></td></tr>` +
-          all.map(u => `<tr data-row="${u.id}"><td><input type="checkbox" data-u="${u.id}" ${isOn(u) ? 'checked' : ''}></td><td>${esc(u.code)}</td><td>${esc(b)}</td><td class="num">${u.floor ?? ''}</td><td>${esc(KIND[u.kind] || u.kind || '')}</td><td class="num">${fnum(u.area_tt)}</td><td class="num">${fm(u.price_net)}</td><td class="num">${fm(u.maint_fee)}</td><td class="num">${fm(finEl ? gv(u) : u.total_price)}</td>${finEl ? `<td class="num"><input class="inp upick-fin" data-fin="${esc(u.code.toUpperCase())}" inputmode="numeric" value="${fin[u.code.toUpperCase()] != null ? fm(fin[u.code.toUpperCase()]) : ''}" placeholder="${fm(+u.finish_value || 0) || '0'}" title="Để trống = giữ giá trị hoàn thiện đang có của căn" style="width:130px;height:30px;text-align:right"></td><td class="num upick-tc"><b>${fm(tcOf(u))}</b></td>` : ''}<td>${esc(USTAT[u.status] || u.status || '')}${u.draft ? `<div class="small" title="HĐMB dự thảo — chính sách phát hành thì Lần thanh toán tự đổi theo tiến độ">${ico('fa-file-pen')} ${esc(u.draft)}</div>` : ''}</td>${policy ? `<td class="small">${u.pol ? `${esc(u.pol)}${isOn(u) ? '<div class="muted">→ chính sách này áp thay</div>' : ''}` : '<span class="muted">—</span>'}</td>` : ''}</tr>`).join(''); }).join('')}
+        return `<tr class="pg" data-g="${esc(b)}"><td><input type="checkbox" data-b="${esc(b)}" ${n === all.length ? 'checked' : ''}></td><td colspan="${policy ? 10 : 9}"><b>Tòa ${esc(b)}</b> <span class="muted">— chọn ${n}/${all.length} căn</span></td></tr>` +
+          all.map(u => `<tr data-row="${u.id}"><td><input type="checkbox" data-u="${u.id}" ${isOn(u) ? 'checked' : ''}></td><td>${esc(u.code)}</td><td>${esc(b)}</td><td class="num">${u.floor ?? ''}</td><td>${esc(KIND[u.kind] || u.kind || '')}</td><td class="num">${fnum(u.area_tt)}</td><td class="num">${fm(u.price_net)}</td><td class="num">${fm(u.maint_fee)}</td><td class="num">${fm(u.total_price)}</td><td>${esc(USTAT[u.status] || u.status || '')}${u.draft ? `<div class="small" title="HĐMB dự thảo — chính sách phát hành thì Lần thanh toán tự đổi theo tiến độ">${ico('fa-file-pen')} ${esc(u.draft)}</div>` : ''}</td>${policy ? `<td class="small">${u.pol ? `${esc(u.pol)}${isOn(u) ? '<div class="muted">→ chính sách này áp thay</div>' : ''}` : '<span class="muted">—</span>'}</td>` : ''}</tr>`).join(''); }).join('')}
       </tbody></table></div>`;
     $$('.upick-t tbody tr', box).forEach(tr => { const c = $('input', tr); if (c?.dataset.u) tr.classList.toggle('sel', c.checked); });
     applyQ();
@@ -1288,21 +1362,6 @@ async function unitPicker(el, root, { policy, self } = {}) {
     else if (pid) { box.innerHTML = '<div class="muted small">Đang tải danh sách căn…</div>'; units = (await Promise.all(pid.split(',').map(p => api('GET', `/api/e/unit?project=${p}&limit=20000`)))).flatMap(r => r.rows).map(u => ({ ...u, b: String(u.building_id__l || '').split(' · ')[0].toUpperCase() })).sort((a, c) => a.code.localeCompare(c.code, 'vi', { numeric: true })); }
     draw();
   };
-  box.addEventListener('input', e => {
-    if (!e.target.matches('.upick-fin')) return; e.stopPropagation();
-    const k = e.target.dataset.fin, s = e.target.value.trim(); if (s) fin[k] = Math.max(0, Math.round(num(s, true)) || 0); else delete fin[k];
-    const u = units.find(x => x.code.toUpperCase() === k), tc = $('.upick-tc', e.target.closest('tr')); if (u && tc) tc.innerHTML = `<b>${fm(tcOf(u))}</b>`;
-    const sm = $('.upick-sum', box); if (sm) sm.firstElementChild.nextSibling.textContent = ` · tổng giá ${fm(units.filter(isOn).reduce((x, v) => x + tcOf(v), 0))} đ `;
-  });
-  box.addEventListener('change', e => { if (e.target.matches('.upick-fin, .upick-fallv')) { e.stopPropagation(); if (e.target.matches('.upick-fin')) e.target.value = fin[e.target.dataset.fin] != null ? fm(fin[e.target.dataset.fin]) : ''; } }, true);
-  box.addEventListener('keydown', e => { if (e.target.matches('.upick-fin, .upick-fallv') && e.key === 'Enter') { e.preventDefault(); if (e.target.matches('.upick-fallv')) $('[data-fall]', box)?.click(); } });
-  box.addEventListener('click', e => {
-    const b = e.target.closest('[data-fall], [data-fclr]'); if (!b) return;
-    if (b.dataset.fclr !== undefined) { fin = {}; return draw(); }
-    const s = $('.upick-fallv', box)?.value.trim(); if (!s) return toast('Nhập giá trị hoàn thiện', true);
-    const on = units.filter(isOn); if (!on.length) return toast('Chưa chọn căn nào', true);
-    const n = Math.max(0, Math.round(num(s, true)) || 0); for (const u of on) fin[u.code.toUpperCase()] = n; draw();
-  });
   box.addEventListener('input', e => { if (!e.target.matches('.upick-q')) return; e.stopPropagation(); q = e.target.value.trim().toLowerCase(); applyQ(); });
   box.addEventListener('keydown', e => { if (e.target.matches('.upick-q') && e.key === 'Enter') e.preventDefault(); });   // Enter không gửi form
   box.addEventListener('change', e => {

@@ -1869,9 +1869,13 @@ label.tplr { display: flex; gap: 8px; align-items: center; padding: 7px 0; }
 .tagpick .chk { margin: 0; white-space: nowrap; }
 
 /* giá trị hoàn thiện ở bảng chọn căn của chính sách */
-.fld[data-f=finish_vals] { display: none; }
 .upick-fall { gap: 8px; align-items: center; margin: 6px 0 8px; font-size: 13px; flex-wrap: wrap; }
 .upick-fall .inp { height: 30px; }
 
 /* đợt thu giá trị hoàn thiện trong Lần thanh toán */
 .sched .fin-tag { color: var(--amber-d); font-weight: 600; margin-top: 2px; }
+
+/* form chính sách: 2 tab (căn áp dụng + tiến độ HĐMB / hoàn thiện căn hộ) */
+.ptabs { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; border-bottom: 2px solid var(--line2); margin-top: 6px; }
+.ptabs button { border: 1px solid var(--line2); border-bottom: none; background: var(--card); padding: 8px 14px; border-radius: 10px 10px 0 0; font-weight: 600; cursor: pointer; color: inherit; margin-bottom: -2px; }
+.ptabs button.on { background: #e8f3fb; color: #1e4e8c; border-color: #1e4e8c; border-bottom: 2px solid #e8f3fb; }
