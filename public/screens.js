@@ -408,7 +408,7 @@ V.board = async (main, params) => {
     const d = await api('GET', `/api/board?${qsOf({ project: s.project, building: s.building })}`);
     s.project = d.project; s.building = d.building;
     const cnt = {}; d.units.forEach(u => cnt[bgOf(u)] = (cnt[bgOf(u)] || 0) + 1);
-    const floors = [...new Set(d.units.map(u => u.floor))].sort((a, b) => b - a);
+    const floors = [...new Set(d.units.map(u => u.floor))].sort((a, b) => a - b);   // 14/11/2026: trình bày từ tầng 1 lên tầng trên cùng
     const kinds = [...new Set(d.units.map(u => u.kind))];
     main.innerHTML = `<div class="page">${head('02', 'Bảng hàng', 'fa-table-cells', M.ents.reservation.perm.c ? `<span class="small muted">Bấm căn còn trống để lập phiếu đăng ký</span>` : '')}
       <div class="card mb"><div class="toolbar" style="border:0"><select id="bp">${d.projects.filter(p => p.n).map(p => `<option value="${p.id}" ${p.id === d.project ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)} (${p.n} căn)</option>`).join('')}</select>
