@@ -1726,13 +1726,14 @@ V.debtsum = async main => {
     if (!rs.length) { $('#dsT', main).innerHTML = '<div class="empty">Không có hợp đồng phù hợp</div>'; return; }
     const sumTds = (label, xs, cls, key) => `<tr class="${cls}" ${key ? `data-g="${esc(key)}"` : ''}><td></td><td colspan="7">${key ? `<i class="fa-solid fa-chevron-right tw-chev ${s.shut.has(key) ? '' : 'on'}"></i> ` : ''}<b>${esc(label)}</b></td>${cols.slice(8).map(c => `<td class="${isN(c) ? 'num' : ''}">${d.sum.includes(c[0]) ? (c[2] === 'num' ? fnum(xs.reduce((a, r) => a + (+r[c[0]] || 0), 0)) : fm(xs.reduce((a, r) => a + (+r[c[0]] || 0), 0))) : ''}</td>`).join('')}</tr>`;
     let body = '';
-    const pjs = [...new Set(rs.map(r => r.project))];
-    pjs.forEach((pj, pi) => {
-      const prs = rs.filter(r => r.project === pj);
-      body += sumTds(`${pi + 1}. HỢP ĐỒNG CĂN HỘ/NHÀ LIỀN KỀ — ${prs[0].project_name || pj} (${prs.length})`, prs, 'ds-sec');
-      for (const b of [...new Set(prs.map(r => r.building))]) {
-        const brs = prs.filter(r => r.building === b), key = pj + '|' + b;
-        body += sumTds('Tòa ' + b, brs, 'ds-bld', key);
+    // mục theo loại hợp đồng (14/11/2026): 1. HĐ mua bán · 2. HĐ vay · 3. HĐ thuê (thuê / vay có bản chất giao dịch = Bán căn hộ), trong mục chia theo tòa
+    const many = new Set(rs.map(r => r.project)).size > 1;
+    (d.grps || [['mb', 'HỢP ĐỒNG MUA BÁN']]).filter(([g]) => rs.some(r => (r.grp || 'mb') === g)).forEach(([g, gl], gi) => {
+      const grs = rs.filter(r => (r.grp || 'mb') === g);
+      body += sumTds(`${gi + 1}. ${gl} (${grs.length})`, grs, 'ds-sec');
+      for (const pj of [...new Set(grs.map(r => r.project))]) for (const b of [...new Set(grs.filter(r => r.project === pj).map(r => r.building))]) {
+        const brs = grs.filter(r => r.project === pj && r.building === b), key = g + '|' + pj + '|' + b;
+        body += sumTds('Tòa ' + b + (many ? ' — ' + (brs[0].project_name || pj) : ''), brs, 'ds-bld', key);
         if (!s.shut.has(key)) body += brs.map((r, i) => `<tr data-c="${r.contract_id}">${cols.map(c => `<td class="${isN(c) ? 'num' : ''} ${c[0] === 'address' ? 'ds-addr' : ''}">${c[0] === 'stt' ? i + 1 : c[0] === 'sign_l' ? (r.signed ? pill(r.sign_l, 'g') : pill(r.sign_l, 's')) : cell(r, c)}</td>`).join('')}</tr>`).join('');
       }
     });

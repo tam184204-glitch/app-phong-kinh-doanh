@@ -1005,6 +1005,8 @@ const DS_HEAD = [
   ['', [['common_amt', 'Tiền diện tích sử dụng chung đã chi', 'money'], ['sign_l', 'Ký hợp đồng'], ['tax_code', 'Mã số thuế'], ['id_no', 'CCCD'], ['id_date', 'Ngày cấp', 'date'], ['id_place', 'Nơi cấp'], ['hdv_left', 'Số dư còn lại HĐV', 'money']]],
 ];
 const DS_COLS = DS_HEAD.flatMap(([, cs]) => cs);
+// mục của bảng tổng hợp theo loại hợp đồng (14/11/2026): HĐ thuê / vay có bản chất giao dịch = Bán căn hộ
+const DS_GRP = [['mb', 'HỢP ĐỒNG MUA BÁN'], ['vay', 'HỢP ĐỒNG VAY'], ['thue', 'HỢP ĐỒNG THUÊ']];
 const DS_FIXED = 8;   // 8 cột đầu (Stt … SĐT) luôn hiện — dòng cộng tòa / dự án ghép ô qua các cột này
 const DS_COND = { con_no: ['Còn nợ theo tiến độ (đến hạn chưa thu)', r => r.t_left_due > 0], qua_han: ['Có nợ quá hạn', r => r.overdue > 0], du_tien_do: ['Đã thu đủ theo tiến độ', r => r.t_left_due <= 0],
   con_hd: ['Còn nợ theo hợp đồng', r => r.t_left > 0], du_hd: ['Đã thu đủ hợp đồng', r => r.t_left <= 0], thu_ps: ['Có thu phát sinh trong kỳ', r => r.k_new > 0] };
@@ -1021,7 +1023,7 @@ async function debtSummary(db, user, f = {}) {
   const cs = await db.q(`SELECT c.*, u.code unit, u.project_id, u.building_id, pr.code project, pr.name project_name, b.code building, k.code cust_code, k.full_name customer, k.address k_addr, k.phone k_phone, k.tax_code k_tax, k.id_no k_id_no, k.id_date k_id_date, k.id_place k_id_place,
       (SELECT r.reg_date FROM kd_reservation r WHERE r.id = c.reservation_id) vbtt_on
     FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id JOIN kd_project pr ON pr.id = u.project_id JOIN kd_building b ON b.id = u.building_id
-    WHERE (c.kind IN ('hdmb','thue_mua','hoan_thien') OR (c.kind IN ('thue','vay') AND c.sale_on AND jsonb_array_length(coalesce(c.sale_sched, '[]'::jsonb)) > 0)) AND c.status NOT IN ('huy','thanh_ly') ${f.sign === 'da_ky' ? "AND c.status = 'da_ky'" : f.sign === 'chua' ? "AND c.status <> 'da_ky'" : ''} ${uf(f, p)}${mine(user, 'c')}
+    WHERE (c.kind IN ('hdmb','thue_mua','hoan_thien') OR (c.kind IN ('thue','vay') AND ((c.sale_on AND jsonb_array_length(coalesce(c.sale_sched, '[]'::jsonb)) > 0) OR coalesce(c.nature, CASE WHEN c.kind = 'thue' THEN 'thue' ELSE 'ban' END) = 'ban'))) AND c.status NOT IN ('huy','thanh_ly') ${f.sign === 'da_ky' ? "AND c.status = 'da_ky'" : f.sign === 'chua' ? "AND c.status <> 'da_ky'" : ''} ${uf(f, p)}${mine(user, 'c')}
     ORDER BY pr.code, b.code, u.floor, u.code, c.id`, p);
   const ids = cs.map(c => c.id), D = await B.debtOf(db, ids, to);
   // căn có cả HĐ thuê và HĐ vay (cùng 1 khách mua — 16/11/2026): 1 dòng; phải thu theo tiến độ HĐMB của HĐ thuê, đã thu = gốc khách đã chuyển của HĐ vay
@@ -1050,6 +1052,7 @@ async function debtSummary(db, user, f = {}) {
         const k = i.maint ? 'b' : 'n', a = +i.amount || 0, take = Math.min(a, left); left -= take;
         o[k].total += a; if (i.due_on <= to) o[k].due += a; o[k].paid += take;
       }
+      if (!(c.sale_sched || []).length) o.n.total = Math.max(0, (+c.unit_total || 0) - (+c.maint_fee || 0)), o.b.total = +c.maint_fee || 0;   // chưa khai tiến độ HĐMB: phải thu theo Giá trị HĐMB
       o.n.paid += left; return o;
     }
     if (c.kind === 'hoan_thien') { o.p.total = value; o.p.due = d.inst.filter(i => i.due_on <= to).reduce((s, i) => s + +i.amount, 0); o.p.paid = d.paid; return o; }
@@ -1085,7 +1088,7 @@ async function debtSummary(db, user, f = {}) {
       area_floor: c.area_floor ?? c.area_build ?? null, area_tt: c.area_tt ?? c.area_land ?? null, base_price: c.base_price ?? c.land_price ?? null, build_price: c.build_price ?? null,
       common_amt: all.reduce((s, x) => s + (+x.common_area_amt || 0), 0) || null, sign_l: c.status === 'da_ky' ? 'Đã ký hợp đồng' : ST_L[c.status] || c.status, signed: c.status === 'da_ky',
       tax_code: mask(c.k_tax), id_no: mask(c.b_id_no || c.k_id_no), id_date: pii ? (c.b_id_date || c.k_id_date) : null, id_place: pii ? (c.b_id_place || c.k_id_place || '') : '',
-      hdv_left: HDV.has(uid) ? HDV.get(uid) : null };
+      hdv_left: HDV.has(uid) ? HDV.get(uid) : null, grp: ['thue', 'vay'].includes(c.kind) ? c.kind : 'mb' };
     for (const k of ['n', 'g', 'p', 'b']) { r[k + '_total'] = o[k].total; r[k + '_due'] = o[k].due; r[k + '_paid'] = o[k].paid; r[k + '_left'] = o[k].total - o[k].paid; r[k + '_left_due'] = pos(o[k].due - o[k].paid); }
     r.value = all.reduce((s, x) => s + (['thue', 'vay'].includes(x.kind) ? +x.unit_total || 0 : +x.value || 0), 0);   // HĐ thuê / vay bán căn: giá trị = Giá trị HĐMB
     const pv = c.kind === 'thue' ? pairU.get(uid) : null;
@@ -1100,7 +1103,7 @@ async function debtSummary(db, user, f = {}) {
   }
   // điều kiện lọc theo tình trạng công nợ (07/11/2026)
   if (f.cond) { const F = DS_COND[f.cond]; if (!F) bad('Điều kiện lọc không hợp lệ'); rows.splice(0, rows.length, ...rows.filter(F[1])); }
-  return { head: DS_HEAD.map(([g, cs]) => [g, cs.map(c => c.slice(0, 3))]), conds: Object.entries(DS_COND).map(([k, v]) => [k, v[0]]), sum: DS_SUM, rows, from, to, pii, bravo_sync: await bravoSync(db) };
+  return { grps: DS_GRP, head: DS_HEAD.map(([g, cs]) => [g, cs.map(c => c.slice(0, 3))]), conds: Object.entries(DS_COND).map(([k, v]) => [k, v[0]]), sum: DS_SUM, rows, from, to, pii, bravo_sync: await bravoSync(db) };
 }
 // xuất Excel đúng bố cục bảng: 2 tầng tiêu đề, dòng mục (1. HỢP ĐỒNG …), dòng cộng từng tòa, dòng Tổng cộng
 function debtSummaryXlsx(d, q = '', hide = new Set()) {
@@ -1118,12 +1121,12 @@ function debtSummaryXlsx(d, q = '', hide = new Set()) {
   }
   out.push(h1, h2); for (let i = 0; i < n; i++) { st(3, i, 4); st(4, i, 4); }
   const sumRow = (label, rs) => { const ri = out.length, row = cols.map(c => d.sum.includes(c[0]) ? rs.reduce((s, r) => s + (+r[c[0]] || 0), 0) : ''); row[1] = label; out.push(row); merges.push(`B${ri + 1}:H${ri + 1}`); for (let i = 0; i < n; i++) st(ri, i, i === 1 ? 9 : 8); };
-  const pjs = [...new Set(d.rows.map(r => r.project))];
-  pjs.forEach((pj, pi) => {
-    const prs = d.rows.filter(r => r.project === pj);
-    sumRow(`${pi + 1}. HỢP ĐỒNG CĂN HỘ/NHÀ LIỀN KỀ — ${prs[0].project_name || pj} (${prs.length})`, prs);
-    for (const b of [...new Set(prs.map(r => r.building))]) {
-      const brs = prs.filter(r => r.building === b); sumRow('Tòa ' + b, brs);
+  const many = new Set(d.rows.map(r => r.project)).size > 1;
+  DS_GRP.filter(([g]) => d.rows.some(r => r.grp === g)).forEach(([g, gl], gi) => {
+    const grs = d.rows.filter(r => r.grp === g);
+    sumRow(`${gi + 1}. ${gl} (${grs.length})`, grs);
+    for (const pj of [...new Set(grs.map(r => r.project))]) for (const b of [...new Set(grs.filter(r => r.project === pj).map(r => r.building))]) {
+      const brs = grs.filter(r => r.project === pj && r.building === b); sumRow('Tòa ' + b + (many ? ' — ' + (brs[0].project_name || pj) : ''), brs);
       brs.forEach((r, i) => { const ri = out.length; out.push(cols.map(c => c[0] === 'stt' ? i + 1 : cell(r, c))); cols.forEach((c, j) => st(ri, j, c[2] === 'num' ? 10 : ['money', 'int'].includes(c[2]) ? 7 : 6)); });
     }
   });
