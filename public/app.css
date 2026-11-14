@@ -1853,3 +1853,6 @@ label.tplr { display: flex; gap: 8px; align-items: center; padding: 7px 0; }
 .bg-it{display:grid;grid-template-columns:minmax(160px,1fr) 118px 110px 170px;gap:8px;align-items:center;font-size:12.5px}
 .bg-it .bg-n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .bg-it .bg-a{text-align:right} .bg-it .bg-d input{width:48px;height:26px;text-align:right}
 .bg-its select{max-width:300px;height:28px;font-size:12.5px} .bg-its select.bg-none{border-color:#dc2626;color:#dc2626}
+
+/* tiến độ thu tiền ở chính sách bán hàng: cột Số tiền chỉ ghi «theo giá từng căn» → thu hẹp, nhường chỗ cho Nội dung */
+.sched.pol th:nth-child(5) { width: 150px; } .sched.pol td textarea { min-height: 70px; }
