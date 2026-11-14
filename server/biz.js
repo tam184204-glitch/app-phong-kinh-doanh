@@ -68,6 +68,29 @@ async function recomputeUnit(db, unitId, user) {
   if (st !== u.status) await sys(db, 'unit', u.id, { status: st }, user, 'cap_nhat_trang_thai');
 }
 
+// HĐ thuê / HĐ vay bán căn (14/11/2026): tra cứu ở tab công nợ của HĐ — tiến độ thu tiền HĐMB (sale_sched) đã thu tới đâu + tình hình thu tiền HĐ vay cùng căn.
+// Đã thu HĐMB: HĐ thuê có HĐ vay cùng căn → gốc khách đã chuyển theo HĐ vay; còn lại → phiếu thu của chính hợp đồng (giống Bảng tổng hợp công nợ). Chia theo thứ tự hạn
+async function saleTrack(db, c, asOf) {
+  const t = asOf || today(), t7 = addDays(t, 7);
+  const vays = c.kind === 'vay' ? [c] : await db.q("SELECT * FROM kd_contract WHERE kind = 'vay' AND status NOT IN ('huy','thanh_ly') AND unit_id = $1 ORDER BY id", [c.unit_id]);
+  const D = await debtOf(db, [c.id, ...vays.map(v => v.id)], t);
+  const pair = c.kind === 'thue' && vays.length, vPaid = vays.reduce((s, v) => s + (+D.get(v.id)?.paid || 0), 0);
+  let left = pair ? vPaid : +D.get(c.id)?.paid || 0;
+  const st = (i, rem) => rem <= 0 ? 'da_thu' : i.due_on < t ? 'qua_han' : i.due_on === t ? 'den_han' : i.due_on <= t7 ? 'sap_den_han' : i.paid > 0 ? 'mot_phan' : 'chua_den_han';
+  const rows = (Array.isArray(c.sale_sched) ? c.sale_sched : []).map((x, k) => ({ seq: k + 1, name: x.name, due_on: String(x.due_on || '').slice(0, 10), pct: x.pct ?? null, amount: +x.amount || 0, maint: !!x.maint }))
+    .sort((a, b) => a.due_on.localeCompare(b.due_on) || a.seq - b.seq);
+  for (const i of rows) { i.paid = Math.min(i.amount, left); left -= i.paid; i.rem = i.amount - i.paid; i.st = st(i, i.rem); }
+  const sum = (xs, k) => xs.reduce((s, x) => s + x[k], 0), total = sum(rows, 'amount'), paid = sum(rows, 'paid'), od = rows.filter(i => i.st === 'qua_han'), nx = rows.find(i => i.rem > 0 && i.due_on >= t);
+  const sale = { rows, total, paid, extra: left, left: total - paid, paid_pct: total ? Math.round(paid / total * 1000) / 10 : 0, overdue: sum(od, 'rem'),
+    overdue_days: od.length ? Math.round((Date.parse(t) - Date.parse(od[0].due_on)) / 864e5) : 0, next: nx ? { name: nx.name, rem: nx.rem, due_on: nx.due_on } : null, value: +c.unit_total || 0,
+    src: pair ? `Đã thu = gốc khách đã chuyển theo HĐ vay ${vays.map(v => v.number).filter(Boolean).join(', ')}` : `Đã thu = phiếu thu của hợp đồng ${c.number || ''}` };
+  const ids = vays.map(v => v.id);
+  const RC = ids.length ? await db.q("SELECT contract_id, voucher_date, voucher_no, content, amount FROM kd_receipt WHERE status = 'hop_le' AND contract_id = ANY($1) AND voucher_date <= $2 ORDER BY voucher_date, id", [ids, t]) : [];
+  const GT = ids.length ? await db.q("SELECT contract_id, sum(coalesce(paid_amt, 0)) s FROM kd_loan_pay WHERE kind = 'goc' AND contract_id = ANY($1) AND (paid_on IS NULL OR paid_on <= $2) GROUP BY 1", [ids, t]) : [];
+  const vay = vays.map(v => { const d = D.get(v.id); return { id: v.id, number: v.number, status: v.status, value: +v.value || 0, debt: { ...d, inst: d.inst.map(i => ({ seq: i.seq, name: i.name, due_on: i.due_on, pct: i.pct, amount: +i.amount, paid: i.paid, st: i.st })) },
+    receipts: RC.filter(r => r.contract_id === v.id), goc_tra: +(GT.find(g => g.contract_id === v.id)?.s || 0) }; });
+  return { as_of: t, kind: c.kind, sale, vay };
+}
 // ======================= GIÁ =======================
 // chính sách áp cho căn: Căn hộ áp dụng có «*», mã tòa hoặc mã căn
 const polHas = (p, code, bcode) => { const g = String(p.unit_group || '*').split(/[,;\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean); return g.includes('*') || g.includes(String(bcode).toUpperCase()) || g.includes(String(code).toUpperCase()); };
@@ -1893,4 +1916,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { policyUnits, bgSet, bgSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { saleTrack, policyUnits, bgSet, bgSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

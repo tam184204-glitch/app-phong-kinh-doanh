@@ -1617,7 +1617,10 @@ async function openDetail(ent, id, tab, plain) {   // plain: chỉ xem (mở t�
       if (ent === 'contract') h += `<div class="sec-title">Công nợ</div>${debtTiles(r._debt)}`;
       body.innerHTML = h;
     },
-    debt: () => { const d = r._debt; body.innerHTML = `${debtTiles(d)}<div class="sec-title">Lịch thanh toán hiệu lực</div>${d.inst.length ? schedTable(d.inst, true) : '<div class="empty">Chưa lập lịch thanh toán</div>'}<div class="sec-title">Chứng từ thu (Bravo)</div><div id="rcpt">Đang tải…</div>`;
+    debt: () => { const d = r._debt, sale = ['thue', 'vay'].includes(r.kind) && r.sale_on && r.sale_sched?.length;   // HĐ thuê / vay bán căn: tiến độ HĐMB + thu tiền HĐ vay ở đầu tab
+      if (sale && r.kind === 'vay') { body.innerHTML = '<div id="saleTrk">Đang tải…</div>'; saleTrackInto($('#saleTrk', body), r); return; }
+      body.innerHTML = `${sale ? '<div id="saleTrk">Đang tải tiến độ HĐMB…</div><div class="sec-title st-big">' + ico('fa-key') + ' Tiền thuê — HĐ thuê ' + esc(r.number || '') + '</div>' : ''}${debtTiles(d)}<div class="sec-title">Lịch thanh toán hiệu lực</div>${d.inst.length ? schedTable(d.inst, true) : '<div class="empty">Chưa lập lịch thanh toán</div>'}<div class="sec-title">Chứng từ thu (Bravo)</div><div id="rcpt">Đang tải…</div>`;
+      if (sale) saleTrackInto($('#saleTrk', body), r);
       api('GET', `/api/e/receipt?f_contract_id=${r.id}`).then(x => { $('#rcpt', body).innerHTML = x.rows.length ? `<table class="t compact noclick"><thead><tr><th>Ngày</th><th>Chứng từ</th><th>Nội dung</th><th class="num">Số tiền</th><th>Trạng thái</th></tr></thead><tbody>${x.rows.map(z => `<tr><td>${dmy(z.voucher_date)}</td><td>${esc(z.voucher_no)}</td><td>${esc(z.content)}</td><td class="num">${fm(z.amount)}</td><td>${show(M.ents.receipt.fields.find(f => f.k === 'status'), z)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Chưa có chứng từ thu</div>'; }).catch(() => { $('#rcpt', body).innerHTML = '<span class="muted">Không có quyền xem chứng từ</span>'; }); },
     rcp: () => { body.innerHTML = `<table class="t compact noclick"><thead><tr><th>#</th><th>Khách hàng</th><th>Điện thoại</th><th>Căn</th><th>Nội dung gửi</th></tr></thead><tbody>${r.recipient_list.map((x, i) => `<tr><td>${i + 1}</td><td>${esc(x.name)}</td><td>${esc(x.phone)}</td><td>${esc(x.unit)}</td><td>${esc(x.text)}</td></tr>`).join('')}</tbody></table>`; },
     rep: () => { body.innerHTML = reportSnapshot(r.data); },
@@ -1658,6 +1661,19 @@ async function openDetail(ent, id, tab, plain) {   // plain: chỉ xem (mở t�
     if (d === 'chg') return openForm('contract_change', { preset: { contract_id: r.id, contract_id__l: r.number }, onSaved: row => openDetail('contract_change', row.id) });
     if (d === 'pii') { const x = await api('GET', `/api/pii/${ent}/${id}`); for (const [k, v] of Object.entries(x)) { const f = E.fields.find(f => f.k === k), dd = $$('.kv dt', body).find(t => t.textContent === f.l)?.nextElementSibling; if (dd) dd.innerHTML = show(f, { [k]: v }); } toast('Đã ghi nhật ký xem dữ liệu định danh'); }
   }));
+}
+// HĐ thuê / vay bán căn: tiến độ thu tiền HĐMB + thu tiền HĐ vay (14/11/2026)
+async function saleTrackInto(el, r) {
+  try {
+    const x = await api('GET', `/api/sale-track/${r.id}`), s = x.sale;
+    const rcp = rs => rs.length ? `<table class="t compact noclick"><thead><tr><th>Ngày</th><th>Chứng từ</th><th>Nội dung</th><th class="num">Số tiền</th></tr></thead><tbody>${rs.map(z => `<tr><td>${dmy(z.voucher_date)}</td><td>${esc(z.voucher_no || '')}</td><td>${esc(z.content || '')}</td><td class="num">${fm(z.amount)}</td></tr>`).join('')}</tbody><tfoot><tr><td colspan="3"><b>Cộng</b></td><td class="num"><b>${fm(rs.reduce((a, z) => a + +z.amount, 0))}</b></td></tr></tfoot></table>` : '<div class="empty">Chưa có phiếu thu</div>';
+    el.innerHTML = `<div class="sec-title st-big">${ico('fa-file-signature')} Tiến độ thu tiền HĐMB${s.value ? ` — giá trị HĐMB ${fm(s.value)}` : ''}</div>${debtTiles(s)}
+      <div class="small muted mt">${ico('fa-circle-info')} ${esc(s.src)}; chia vào các đợt theo thứ tự hạn.${s.extra > 0 ? ` Thu vượt tiến độ ${fm(s.extra)}.` : ''}</div>
+      ${schedTable(s.rows.map(i => ({ ...i, name: i.maint && !/bảo trì/i.test(i.name || '') ? `${i.name} (phí bảo trì)` : i.name })), true)}
+      ${x.vay.map(v => `<div class="sec-title st-big">${ico('fa-building-columns')} Thu tiền HĐ vay ${esc(v.number || '')}${v.value ? ` — số tiền vay ${fm(v.value)}` : ''}</div>${debtTiles(v.debt)}
+        ${v.debt.inst.length ? `<div class="sec-title">Các đợt khách chuyển tiền gốc</div>${schedTable(v.debt.inst, true)}` : ''}
+        <div class="sec-title">Phiếu thu HĐ vay (gốc khách đã chuyển)</div>${rcp(v.receipts)}${v.goc_tra ? `<div class="small muted mt">Công ty đã trả lại gốc: <b>${fm(v.goc_tra)}</b> → số dư gốc khách đã chuyển ${fm(v.debt.paid - v.goc_tra)}</div>` : ''}`).join('')}`;
+  } catch (e) { el.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
 }
 function debtTiles(d) {
   if (!d) return '';

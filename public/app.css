@@ -1879,3 +1879,6 @@ label.tplr { display: flex; gap: 8px; align-items: center; padding: 7px 0; }
 .ptabs { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; border-bottom: 2px solid var(--line2); margin-top: 6px; }
 .ptabs button { border: 1px solid var(--line2); border-bottom: none; background: var(--card); padding: 8px 14px; border-radius: 10px 10px 0 0; font-weight: 600; cursor: pointer; color: inherit; margin-bottom: -2px; }
 .ptabs button.on { background: #e8f3fb; color: #1e4e8c; border-color: #1e4e8c; border-bottom: 2px solid #e8f3fb; }
+
+/* tab công nợ HĐ thuê / vay bán căn: tiêu đề phần */
+.sec-title.st-big { font-size: 14px; color: #1e4e8c; border-top: 1px solid var(--line2); padding-top: 10px; margin-top: 14px; }
