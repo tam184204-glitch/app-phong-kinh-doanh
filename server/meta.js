@@ -99,6 +99,8 @@ def('unit', {
   ], list: ['code', 'building_id', 'floor', 'kind', 'area_tt', 'direction', 'total_price', 'status'], uniq: [['project_id', 'code']],
   flow: { field: 'status', submit: ['chua_mo_ban'], approve: { ok: 'con_ban' }, submitLabel: 'Trình duyệt kích hoạt' },
 });
+// đối tượng áp dụng chính sách = người bán nhà cho CĐT (14/11/2026) — khớp với «Nguồn bán» của phiếu đăng ký
+const SELLER_T = [['khach_gt', 'Khách hàng cũ giới thiệu khách hàng mới'], ['ctv', 'Cộng tác viên'], ['cbnv', 'Cán bộ nhân viên'], ['san', 'Đơn vị sàn phân phối']];
 def('price_policy', {
   title: 'Bảng giá – chính sách bán hàng', one: 'chính sách', code: 'DA-02', mod: '02', icon: 'fa-tags', disp: "t.code||' v'||t.version",
   purpose: 'Quản lý phiên bản giá và ưu đãi', users: 'Trưởng phòng / nhân sự được phân quyền',
@@ -119,7 +121,8 @@ def('price_policy', {
     { k: 'pay_method', l: 'Phương thức thanh toán', t: 'long', hide: 1 },
     { k: 'bank_policy', l: 'Chính sách ngân hàng', t: 'long', hide: 1 },
     // 14/11/2026: đối tượng áp dụng = người bán nhà cho CĐT (đại lý / sàn / CTV) — chọn từ danh mục đối tác; ô chữ cũ giữ dữ liệu
-    { k: 'seller_ids', l: 'Đối tượng áp dụng (đại lý / sàn bán hàng)', t: 'refs', ref: 'agent', help: 'Người bán nhà cho CĐT được dùng chính sách này. Để trống = áp dụng cho mọi người bán (kể cả CĐT bán trực tiếp). Đã chọn thì phiếu đăng ký của đại lý khác / bán trực tiếp không dùng được chính sách này' },
+    { k: 'seller_types', l: 'Đối tượng áp dụng', t: 'tags', o: SELLER_T, help: 'Tích những người bán nhà cho CĐT được hưởng chính sách. Không tích = áp dụng cho mọi người bán (kể cả CĐT bán trực tiếp)' },
+    { k: 'seller_ids', l: 'Chỉ áp dụng cho sàn / CTV cụ thể', t: 'refs', ref: 'agent', help: 'Không bắt buộc. Để trống = mọi sàn / CTV thuộc đối tượng đã tích' },
     { k: 'target', l: 'Đối tượng áp dụng (ghi chú cũ)', t: 'text', hide: 1 },
     { k: 'start_on', l: 'Ngày bắt đầu', t: 'date', req: 1 },
     { k: 'end_on', l: 'Ngày kết thúc', t: 'date', req: 1 },
@@ -129,7 +132,7 @@ def('price_policy', {
     { k: 'pay_mdot', l: 'Phí bảo trì thu cùng hạn đợt', t: 'int', def: 3, hide: 1, help: 'Phí bảo trì (2% tiền trước thuế) thu ở dòng riêng, cùng hạn với đợt này' },
     { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'nhap', o: [['nhap', 'Nháp', 's'], ['cho_duyet', 'Chờ duyệt', 'a'], ['phat_hanh', 'Đã phát hành', 'g'], ['tu_choi', 'Từ chối', 'r'], ['thay_the', 'Đã thay thế', 's']] },
     { k: 'parent_id', l: 'Phiên bản trước', t: 'ref', ref: 'price_policy', ro: 1 },
-  ], list: ['code', 'version', 'project_ids', 'seller_ids', 'unit_group', 'start_on', 'end_on', 'status'],
+  ], list: ['code', 'version', 'project_ids', 'seller_types', 'unit_group', 'start_on', 'end_on', 'status'],
   lock: ['phat_hanh', 'thay_the', 'cho_duyet'], flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'phat_hanh' }, submitLabel: 'Trình duyệt' },
   acts: [{ k: 'new_version', l: 'Tạo phiên bản mới', icon: 'fa-code-branch', from: ['phat_hanh'], roles: ['truong_phong'] },
     { k: 'apply_sched', l: 'Áp tiến độ cho HĐMB chưa trình', icon: 'fa-arrows-rotate', from: ['phat_hanh'], roles: ['truong_phong'] }],
@@ -264,8 +267,10 @@ def('reservation', {
     money('deposit', 'Số tiền đặt cọc', { hide: 1 }),   // không dùng đặt cọc — giữ cột cho dữ liệu cũ
     { k: 'deposit_on', l: 'Ngày đặt cọc', t: 'date', hide: 1 },   // không dùng đặt cọc — giữ cột cho dữ liệu cũ
     { k: 'docs_deadline', l: 'Hạn hoàn thiện hồ sơ', t: 'date' },
-    { k: 'source', l: 'Nguồn bán', t: 'sel', req: 1, def: 'truc_tiep', o: [['truc_tiep', 'Trực tiếp'], ['dai_ly', 'Đại lý / sàn'], ['ctv', 'Cộng tác viên']] },
-    { k: 'agent_id', l: 'Đại lý bán hàng', t: 'ref', ref: 'agent', show: { source: ['dai_ly', 'ctv'] } },
+    { k: 'source', l: 'Nguồn bán', t: 'sel', req: 1, def: 'truc_tiep', o: [['truc_tiep', 'Trực tiếp'], ['khach_gt', 'Khách hàng cũ giới thiệu'], ['ctv', 'Cộng tác viên'], ['cbnv', 'Cán bộ nhân viên'], ['dai_ly', 'Đơn vị sàn phân phối']], help: 'Chính sách bán hàng tự lấy theo nguồn bán (Đối tượng áp dụng của chính sách)' },
+    { k: 'agent_id', l: 'Đơn vị sàn / CTV', t: 'ref', ref: 'agent', show: { source: ['dai_ly', 'ctv'] } },
+    { k: 'ref_customer_id', l: 'Khách hàng cũ giới thiệu', t: 'ref', ref: 'customer', show: { source: ['khach_gt'] } },
+    { k: 'ref_staff', l: 'Cán bộ nhân viên giới thiệu', t: 'text', show: { source: ['cbnv'] }, help: 'Họ tên / mã nhân viên' },
     owner('Người thực hiện', { hide: 1 }),   // tự lấy người lập phiếu
     { k: 'status', l: 'Tình trạng phiếu', t: 'sel', o: RES_ST, ro: 1, def: 'nhap' },
     // phiếu đã hủy: theo dõi trả lại hồ sơ cho khách — sửa ngay trên dòng ở tab «Đã hủy»

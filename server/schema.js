@@ -3,7 +3,7 @@
 // Không bao giờ xóa cột hay bảng đang có dữ liệu.
 const { E, ROLES, LOOKUPS, SETTINGS } = require('./meta');
 
-const SQLT = { text: 'text', long: 'text', sel: 'text', month: 'text', code: 'text', int: 'integer', num: 'numeric', money: 'numeric(18,0)',
+const SQLT = { text: 'text', long: 'text', sel: 'text', tags: 'text', month: 'text', code: 'text', int: 'integer', num: 'numeric', money: 'numeric(18,0)',
   date: 'date', dt: 'timestamptz', ref: 'integer', refs: 'integer[]', user: 'integer', bool: 'boolean', check: 'jsonb', json: 'jsonb' };
 const lit = v => `'${String(v).replace(/'/g, "''")}'`;
 const ACTIVE_RES = "('cho_duyet','giu_cho','qua_han','da_coc','chuyen_hd')";

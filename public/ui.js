@@ -155,6 +155,7 @@ function show(f, row, { plain } = {}) {
     case 'month': return mmy(v);
     case 'bool': return v ? (plain ? 'Có' : `<span style="color:var(--g)">${ico('fa-circle-check')}</span>`) : (plain ? '' : `<span class="muted">${ico('fa-circle-minus')}</span>`);
     case 'sel': { const o = optOf(f, v); return plain ? (o?.[1] ?? v) : o?.[2] ? pill(o[1], o[2]) : esc(o?.[1] ?? v); }
+    case 'tags': { const ls = String(v).split(',').filter(Boolean).map(k => optOf(f, k)?.[1] ?? k); return plain ? ls.join(', ') : ls.map(l => `<span class="tag">${esc(l)}</span>`).join(' '); }
     case 'ref': case 'refs': case 'user': return esc(row[f.k + '__l'] ?? '#' + v);
     case 'check': { const n = v.filter(x => x.st === 'da_nhan').length, bad = v.filter(x => ['thieu', 'can_sua'].includes(x.st)).length; return plain ? `${n}/${v.length}` : `<span class="${bad ? 'neg' : ''}">${n}/${v.length}${bad ? ` · thiếu ${bad}` : ''}</span>`; }
     case 'json': if (f.k === 'pay_sched' && Array.isArray(v)) return plain ? v.map((x, i) => x.maint ? `Phí bảo trì: ${x.days ?? '—'} ngày` : `Đợt ${i + 1}: ${fnum(x.pct)}% sau ${x.days ?? '—'} ngày`).join('; ') : paySchedTable(v, row);
@@ -265,6 +266,7 @@ function input(f, v, rec = {}, { ro, id } = {}) {
     case 'dt': return `<div class="dwrap"><input ${nm} value="${esc(dmyhm(v))}" placeholder="dd/mm/yyyy hh:mm" autocomplete="off"><button type="button" tabindex="-1" data-pick="datetime-local" title="Chọn ngày giờ">${ico('fa-calendar-days')}</button><input type="datetime-local" tabindex="-1" aria-hidden="true"></div>`;
     case 'month': return `<div class="dwrap"><input ${nm} value="${esc(mmy(v))}" placeholder="mm/yyyy" autocomplete="off"><button type="button" tabindex="-1" data-pick="month" title="Chọn tháng">${ico('fa-calendar')}</button><input type="month" tabindex="-1" aria-hidden="true"></div>`;
     case 'sel': return `<select ${nm}><option value="">— chọn —</option>${(f.o || []).map(o => `<option value="${esc(o[0])}" ${o[0] === v ? 'selected' : ''}>${esc(o[1])}</option>`).join('')}</select>`;
+    case 'tags': { const on = String(v ?? '').split(','); return `<div class="tagpick" ${nm}>${(f.o || []).map(o => `<label class="chk"><input type="checkbox" value="${esc(o[0])}" ${on.includes(o[0]) ? 'checked' : ''}> ${esc(o[1])}</label>`).join('')}</div>`; }
     case 'bool': return `<label class="chk" style="height:38px"><input type="checkbox" ${nm} ${v ? 'checked' : ''}> Có</label>`;
     case 'user': { const us = M.users.filter(u => (u.active || u.id === v) && (!f.roles || f.roles.includes(u.role) || u.role === 'admin')); return `<select ${nm}><option value="">— chọn —</option>${us.map(u => `<option value="${u.id}" ${u.id === v ? 'selected' : ''}>${esc(u.full_name)} · ${esc(roleName(u.role))}</option>`).join('')}</select>`; }
     case 'ref': return `<div class="combo" data-ref="${f.ref}" ${f.filter ? `data-filter="${f.filter}"` : ''} ${f.dep ? `data-dep="${f.dep}"` : ''}><input type="text" placeholder="Gõ để tìm ${esc(M.ents[f.ref].one)}…" value="${esc(rec[f.k + '__l'] ?? '')}" autocomplete="off" data-combo><input type="hidden" ${nm} value="${esc(v ?? '')}"><button type="button" class="x" tabindex="-1" title="Bỏ chọn">${ico('fa-xmark')}</button></div>`;
@@ -401,6 +403,7 @@ function readField(root, f) {
     case 'ref': case 'user': return el.value ? +el.value : null;
     case 'refs': return el.value ? el.value.split(',').map(Number) : null;
     case 'check': return readCheck(el);
+    case 'tags': return [...el.querySelectorAll('input:checked')].map(i => i.value).join(',') || null;
     case 'json': return el._get ? el._get() : undefined;
     default: return el.value.trim() || null;
   }

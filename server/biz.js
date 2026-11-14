@@ -71,12 +71,24 @@ async function recomputeUnit(db, unitId, user) {
 // ======================= GIÁ =======================
 // chính sách áp cho căn: Căn hộ áp dụng có «*», mã tòa hoặc mã căn
 const polHas = (p, code, bcode) => { const g = String(p.unit_group || '*').split(/[,;\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean); return g.includes('*') || g.includes(String(bcode).toUpperCase()) || g.includes(String(code).toUpperCase()); };
-// đối tượng áp dụng (seller_ids): trống = mọi người bán; có danh sách = chỉ đại lý trong đó (agent undefined = không lọc)
-const polFor = (p, agent) => agent === undefined || !p.seller_ids?.length || p.seller_ids.includes(+agent);
-async function pricing(db, unit, on = today(), agent) {
+// đối tượng áp dụng: seller_types (khach_gt/ctv/cbnv/san) khớp «Nguồn bán» của phiếu; seller_ids = chỉ sàn / CTV cụ thể. Trống cả hai = mọi người bán. s undefined = không lọc
+const SRC_T = { dai_ly: 'san', ctv: 'ctv', khach_gt: 'khach_gt', cbnv: 'cbnv' };
+const polFor = (p, s) => {
+  if (!s) return true;
+  const ty = String(p.seller_types || '').split(',').filter(Boolean), t = SRC_T[s.source];
+  if (ty.length && !ty.includes(t)) return false;
+  if (p.seller_ids?.length && (t === 'san' || t === 'ctv')) return p.seller_ids.includes(+s.agent_id);
+  return ty.length > 0 || !p.seller_ids?.length;
+};
+async function polWho(db, p) {   // «Khách hàng cũ giới thiệu, Đơn vị sàn phân phối (SAN-01 · …)»
+  const ag = p.seller_ids?.length ? (await db.q('SELECT code FROM kd_agent WHERE id = ANY($1::int[]) ORDER BY code', [p.seller_ids])).map(a => a.code).join(', ') : '';
+  const ty = String(p.seller_types || '').split(',').filter(Boolean).map(k => C.F.price_policy.seller_types.o.find(o => o[0] === k)?.[1] || k);
+  return [...ty, ...(ag ? [`${ty.length ? 'riêng ' : ''}sàn / CTV: ${ag}`] : [])].join(', ');
+}
+async function pricing(db, unit, on = today(), seller) {
   const b = await db.one('SELECT code FROM kd_building WHERE id = $1', [unit.building_id]);
   const pols = await db.q("SELECT * FROM kd_price_policy WHERE status = 'phat_hanh' AND $1 = ANY(project_ids) AND start_on <= $2 AND end_on >= $2 ORDER BY start_on DESC, version DESC", [unit.project_id, on]);
-  const pol = pols.find(p => polHas(p, unit.code, b?.code) && polFor(p, agent));
+  const pol = pols.find(p => polHas(p, unit.code, b?.code) && polFor(p, seller));
   if (!pol) return { policy: null, price: unit.total_price || null };
   if (pol.mode === 'don_gia') { const after = Math.round(pol.unit_price * unit.area_tt), before = after / (1 + (pol.vat_pct ?? 5) / 100); return { policy: pol, price: after + Math.round(before * (pol.maint_pct ?? 2) / 100 / 1000) * 1000 }; }   // đơn giá đã gồm thuế; bảo trì = 2% × tiền trước thuế
   return { policy: pol, price: unit.total_price || unit.list_price || null };
@@ -537,7 +549,7 @@ H.price_policy = {
       return { msg: (ok.length ? `Đã cập nhật Lần thanh toán cho ${ok.length} HĐMB: ${ok.join(', ')}` : 'Không có HĐMB dự thảo / bị từ chối nào của các căn đã tích') + (err.length ? ` · Không áp được: ${err.join('; ')}` : '') };
     },
     async new_version(r, d, { db, user, demo }) {
-      const keep = ['code', 'project_ids', 'unit_group', 'mode', 'unit_price', 'maint_pct', 'vat_pct', 'content', 'target', 'seller_ids', 'start_on', 'end_on', 'src_file', 'pay_sched', 'pay_mdot'];
+      const keep = ['code', 'project_ids', 'unit_group', 'mode', 'unit_price', 'maint_pct', 'vat_pct', 'content', 'target', 'seller_types', 'seller_ids', 'start_on', 'end_on', 'src_file', 'pay_sched', 'pay_mdot'];
       const n = (await create('price_policy', { ...Object.fromEntries(keep.map(k => [k, r[k]])), version: r.version + 1, parent_id: r.id, status: 'nhap' }, user, { db, system: true, demo })).row;
       return { open: ['price_policy', n.id], msg: `Đã tạo phiên bản ${n.version} (nháp). Phiên bản đang phát hành giữ nguyên tới khi bản mới được duyệt.` };
     },
@@ -689,19 +701,24 @@ H.reservation = {
     if (['dai_ly', 'ctv'].includes(r.source) && !r.agent_id) {
       const c = await raw(db, 'customer', r.customer_id); if (c?.agent_id) r.agent_id = c.agent_id; else bad('Nguồn bán đại lý / CTV cần chọn đối tác');
     }
-    if (r.source === 'truc_tiep') r.agent_id = null;
+    if (!['dai_ly', 'ctv'].includes(r.source)) r.agent_id = null;
+    if (r.source !== 'khach_gt') r.ref_customer_id = null;
+    if (r.source !== 'cbnv') r.ref_staff = null;
+    if (r.source === 'khach_gt' && !r.ref_customer_id) warn.push('Nguồn bán «Khách hàng cũ giới thiệu» — chưa chọn khách hàng giới thiệu');
+    if (r.source === 'cbnv' && !r.ref_staff) warn.push('Nguồn bán «Cán bộ nhân viên» — chưa nhập cán bộ nhân viên giới thiệu');
     if (changedUnit && old && ['huy', 'het_han'].includes(r.status)) bad('Phiếu đã hủy — không đổi căn được');
     if (r.deal === 'thue') {   // đăng ký thuê: không có giá bán — tiền thuê/tháng dự kiến sang hợp đồng thuê
       r.unit_value = r.finish_value = r.price = null;
       if (!(+r.rent > 0)) bad('Nhập tiền thuê/tháng dự kiến', { fields: ['rent'] });
       return;
     }
-    if (r.policy_id && old && (r.agent_id ?? null) !== (old.agent_id ?? null) && r.policy_id === old.policy_id) {   // đổi người bán: chính sách cũ không dành cho người bán mới → lấy lại
+    const seller = { source: r.source, agent_id: r.agent_id };
+    if (r.policy_id && old && (r.source !== old.source || (r.agent_id ?? null) !== (old.agent_id ?? null)) && r.policy_id === old.policy_id) {   // đổi người bán: chính sách cũ không dành cho người bán mới → lấy lại
       const p0 = await raw(db, 'price_policy', r.policy_id);
-      if (p0 && !polFor(p0, r.agent_id ?? 0)) { r.policy_id = null; warn.push(`Chính sách ${p0.code} v${p0.version} không dành cho người bán mới — đã bỏ và tự lấy chính sách phù hợp`); }
+      if (p0 && !polFor(p0, seller)) { r.policy_id = null; warn.push(`Chính sách ${p0.code} v${p0.version} không dành cho người bán mới — đã bỏ và tự lấy chính sách phù hợp`); }
     }
     if (changedUnit || r.price == null || !r.policy_id) {
-      const p = await pricing(db, u, r.reg_date, r.agent_id ?? 0);
+      const p = await pricing(db, u, r.reg_date, seller);
       // giá theo mã căn ở Danh mục sản phẩm: giá trị căn hộ = sau thuế + bảo trì; hoàn thiện = giá trị hoàn thiện căn
       if (r.unit_value == null || (old && changedUnit)) r.unit_value = u.price_net != null ? +u.price_net + (+u.maint_fee || 0) : u.total_price != null ? +u.total_price - (+u.finish_value || 0) : p.price;
       if (old ? changedUnit : r.finish_value == null) r.finish_value = u.finish_value;
@@ -710,9 +727,8 @@ H.reservation = {
     }
     if (r.policy_id) {   // chính sách chỉ dành cho một số đại lý / sàn
       const p0 = await raw(db, 'price_policy', r.policy_id);
-      if (p0 && !polFor(p0, r.agent_id ?? 0)) {
-        const ag = await db.q('SELECT code, name FROM kd_agent WHERE id = ANY($1::int[]) ORDER BY code', [p0.seller_ids]);
-        bad(`Chính sách ${p0.code} v${p0.version} chỉ áp dụng cho: ${ag.map(a => a.code + ' · ' + a.name).join(', ')} — ${r.agent_id ? 'đại lý của phiếu không nằm trong danh sách' : 'phiếu bán trực tiếp không dùng được'}`, { fields: ['policy_id'] });
+      if (p0 && !polFor(p0, seller)) {
+        bad(`Chính sách ${p0.code} v${p0.version} chỉ áp dụng cho: ${await polWho(db, p0)} — nguồn bán của phiếu («${await C.optLabel(C.F.reservation.source, r.source)}») không dùng được`, { fields: ['policy_id', 'source'] });
       }
     }
     if (r.unit_value != null) r.price = +r.unit_value + (+r.finish_value || 0);   // Tổng giá bán = giá trị căn hộ + hoàn thiện nội thất
@@ -785,7 +801,7 @@ async function linkCustomer(db, r, old, user, opts, demo) {
     || await db.one("SELECT id FROM kd_customer WHERE regexp_replace($1,'\\D','','g') IN (regexp_replace(phone,'\\D','','g'), regexp_replace(coalesce(phone2,''),'\\D','','g')) ORDER BY id LIMIT 1", [r.phone]);
   if (c) { r.customer_id = c.id; const k = await raw(db, 'customer', c.id); for (const f of K) if (r[f] == null || r[f] === '') r[f] = k[CK[f] || f]; r.cust_code = k.code; return; }
   const nk = (await create('customer', { code: r.cust_code || undefined, full_name: r.cust_name, phone: r.phone, id_no: r.id_no, id_date: r.id_date, id_place: r.id_place, address: r.address, tax_code: r.tax_code, bank_account: r.bank_account,
-    kind: 'giao_dich', source: r.source === 'dai_ly' ? 'dai_ly' : r.source === 'ctv' ? 'ctv' : 'truc_tiep', agent_id: r.agent_id, owner_id: r.owner_id || user?.id },
+    kind: 'giao_dich', source: r.source === 'dai_ly' ? 'dai_ly' : r.source === 'ctv' ? 'ctv' : r.source === 'khach_gt' ? 'gioi_thieu' : 'truc_tiep', agent_id: r.agent_id, owner_id: r.owner_id || user?.id },
     user, { db, system: true, demo, note: 'Tự tạo từ phiếu đăng ký căn hộ' })).row;
   r.customer_id = nk.id; r.cust_code = nk.code;
 }

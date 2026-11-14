@@ -103,6 +103,11 @@ async function normField(f, v, db, label = f.l) {
       if (!hit) bad(`${label}: «${s}» không có trong danh sách (${o.map(x => x[1]).join(', ')})`);
       return hit[0];
     }
+    case 'tags': {   // chọn nhiều trong danh sách cố định → 'a,b'
+      const o = await optsOf(f), xs = (Array.isArray(v) ? v : String(v).split(/[,;]+/)).map(x => String(x).trim()).filter(Boolean);
+      const ks = xs.map(s => (o.find(x => x[0] === s) || o.find(x => String(x[1]).toLowerCase() === s.toLowerCase()) || bad(`${label}: «${s}» không có trong danh sách`))[0]);
+      return ks.length ? o.map(x => x[0]).filter(k => ks.includes(k)).join(',') : null;
+    }
     case 'ref': {
       const id = +v; if (!Number.isInteger(id)) bad(`${label}: mã liên kết không hợp lệ`);
       if (!await db.one(`SELECT 1 FROM ${E[f.ref].table} WHERE id = $1`, [id])) bad(`${label}: không tìm thấy ${E[f.ref].one} #${id}`);
