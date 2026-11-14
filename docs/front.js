@@ -635,13 +635,15 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish, kind, debt, rec0 }) {
   // chỉ lập HĐ hoàn thiện khi người dùng điền tab này (giá trị tự chép từ căn không tính) — ô đánh dấu tự bật khi gõ vào tab
   hp.innerHTML = `<section class="bv-sec"><div class="fsec">Hợp đồng hoàn thiện căn hộ</div><label class="chk ht-on"><input type="checkbox" name="ht_make" ${ht?.id || draft ? 'checked' : ''} ${ht?.id ? 'disabled' : ''}> Lập hợp đồng hoàn thiện căn hộ <span class="small muted">(số hợp đồng riêng, cùng khách hàng và mã căn)</span></label><div class="bv-row" style="--n:2">${fld('ht_number', 'Số hợp đồng', 'text', v.number)}${fld('ht_on', 'Ngày ký hợp đồng', 'date', v.on)}</div>
     <div class="bv-row" style="--n:3">${fld('ht_finish', 'Giá trị hoàn thiện căn hộ', 'money', v.finish)}${fld('ht_disc', 'Giảm giá', 'money', v.disc)}${fld('ht_value', 'Giá trị sau giảm giá', 'money', null)}</div></section>
-    <section class="bv-sec"><div class="fsec">Lần thanh toán</div><div class="fld wide"><div data-sched2></div></div></section>`;
+    <section class="bv-sec"><div class="fsec">Lần thanh toán</div><div class="row ht-pol" hidden style="margin:6px 0"><button type="button" class="btn sm" data-htpol>${ico('fa-wand-magic-sparkles')} Lấy tiến độ nội thất theo chính sách</button><span class="small muted ht-pol-l"></span></div><div class="fld wide"><div data-sched2></div></div></section>`;
   form.append(nav, mb, hp);
   $('[name=ht_number]', hp).placeholder = 'Để trống → tự cấp số'; $('[name=ht_value]', hp).readOnly = true;
   const rd = (k, t) => readField(form, { k, t }), val = () => Math.max(0, (rd('ht_finish', 'money') || 0) - (rd('ht_disc', 'money') || 0));
   const el = $('[data-sched2]', hp);
   schedEditor(el, v.sched, { total: val, first: () => rd('ht_on', 'date'), nt: true });
   const calc = () => { $('[name=ht_value]', hp).value = val() ? moneyStr(val()) : ''; el._redraw(); };
+  let polRows = null;
+  hp.addEventListener('click', e => { if (!e.target.closest('[data-htpol]') || !polRows) return; if (el._get().length && !el._pol && !confirm('Thay các đợt đang nhập bằng tiến độ nội thất của chính sách?')) return; el._set(polRows); el._pol = 1; if (!mk().checked) { mk().checked = true; nav.classList.add('ht-has'); } calc(); });
   const mk = () => $('[name=ht_make]', hp);
   const touch = e => { if (e.isTrusted && e.target.name !== 'ht_make' && !mk().checked) { mk().checked = true; nav.classList.add('ht-has'); } };
   hp.addEventListener('input', e => { touch(e); if (['ht_finish', 'ht_disc'].includes(e.target.name)) calc(); });
@@ -838,7 +840,13 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish, kind, debt, rec0 }) {
     sync(on) { nav.classList.toggle('hidden', !on); if (!on) view('mb'); $('[data-f=finish_value]', form)?.classList.toggle('hidden', on && !oldFinish); },
     finish(n) { if (!rd('ht_finish', 'money')) { $('[name=ht_finish]', hp).value = moneyStr(n); calc(); } },
     // 14/11/2026: tiến độ thu giá trị hoàn thiện (nội thất) của chính sách → Lần thanh toán của HĐ hoàn thiện (không vào HĐMB); đã tự nhập đợt thì giữ
-    finSched(rows) { if (locked || ht?.id || (el._get().length && !el._pol)) return false; el._set(rows); el._pol = 1; if (!mk().checked) { mk().checked = true; nav.classList.add('ht-has'); } calc(); return true; },
+    // nhớ tiến độ của chính sách (nút «Lấy tiến độ nội thất theo chính sách»); bảng đang trống / do chính sách điền thì điền luôn
+    finSched(rows, lab) {
+      if (locked || !rows?.length) return false;
+      polRows = rows; const bx = $('.ht-pol', hp); bx.hidden = false; $('.ht-pol-l', hp).textContent = lab ? `Chính sách ${lab}: ${rows.length} đợt` : '';
+      if (ht?.id || (el._get().length && !el._pol)) return false;
+      el._set(rows); el._pol = 1; if (!mk().checked) { mk().checked = true; nav.classList.add('ht-has'); } calc(); return true;
+    },
     changed: () => !locked && (ht?.id ? JSON.stringify(snap()) !== first : mk().checked),
     filled: () => (ht?.id || mk().checked) && val() > 0,
   };
@@ -946,6 +954,24 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     getM().catch(() => {});
     form.addEventListener('change', e => { if (e.target.name === 'unit_id') getM().catch(() => {}); else if (['contract_on', 'unit_total', 'discount'].includes(e.target.name)) ssch._redraw?.(); });
     form.addEventListener('input', e => { if (e.target.name === 'contract_on') ssch._redraw?.(); });
+    // 14/11/2026: HĐ thuê / vay bán căn — tiến độ thu tiền HĐMB sổ theo tiến độ của chính sách bán hàng áp cho căn (bảng trống thì tự điền; nút để lấy lại)
+    const bar = document.createElement('div'); bar.className = 'row ss-pol'; bar.hidden = true; bar.style.margin = '0 0 6px';
+    bar.innerHTML = `<button type="button" class="btn sm">${ico('fa-wand-magic-sparkles')} Lấy tiến độ theo chính sách</button><span class="small muted"></span>`;
+    ssch.before(bar);
+    let sp = null, auto = false;
+    const ssRows = d => { const has = x => x.days != null && x.days !== '', ns = d.pay_sched.filter(x => !x.maint), m = d.pay_sched.find(x => x.maint);
+      return [...ns.map(x => ({ name: x.name, pct: x.pct, amount: null, due_on: '', ...(has(x) && +x.days ? { _days: +x.days } : {}), ...(x.bg ? { bg: true, bg_days: x.bg_days ?? null } : {}) })), ...(m ? [{ name: m.name, maint: true }] : [])]; };
+    const ssFill = (force) => { if (!sp || (id && !['du_thao', 'tu_choi'].includes(rec.status))) return; if (!force && ssch._get().some(x => !x.maint) && !auto) return; ssch._set(ssRows(sp)); auto = true; toast(`Tiến độ thu tiền HĐMB sổ theo chính sách ${sp.sched_policy}`); };
+    const ssLoad = async () => {
+      const u = form.elements.unit_id?.value || rec.unit_id, k = form.elements.kind?.value ?? rec.kind; sp = null; bar.hidden = true;
+      if (!u || !['thue', 'vay'].includes(k)) return;
+      const d = await api('GET', `/api/contract-prefill/${u}`); if (!d.pay_sched?.length) return;
+      sp = d; bar.hidden = false; $('span', bar).textContent = `Chính sách ${d.sched_policy}: ${d.pay_sched.filter(x => !x.maint).length} đợt`;
+      const on = form.elements.sale_on ? form.elements.sale_on.checked : rec.sale_on; if (on) ssFill(false);
+    };
+    $('button', bar).onclick = () => { if (ssch._get().some(x => !x.maint) && !auto && !confirm('Thay các đợt đang nhập bằng tiến độ của chính sách?')) return; ssFill(true); };
+    form.addEventListener('change', e => { if (['unit_id', 'kind'].includes(e.target.name)) ssLoad().catch(() => {}); else if (e.target.name === 'sale_on' && e.target.checked) ssFill(false); });
+    ssLoad().catch(() => {});
   }
   htp?.rentDraw(); htp?.loanDraw?.();
   if (ent === 'template') tplHelper(form, m);
@@ -1093,6 +1119,13 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   // ô chọn (combo): đặt giá trị + nhãn rồi báo thay đổi để chạy tự điền theo ô đó
   const pickRef = (k, val, label) => { const h = form.elements[k]; if (!h || h.value || !val) return; h.value = val; const t = h.closest('.combo')?.querySelector('[data-combo]'); if (t) t.value = label; h.dispatchEvent(new Event('change', { bubbles: true })); };
   // chọn căn → theo phiếu giữ chỗ đang hiệu lực: khách (điền cả bên mua), ngày đề nghị mua, số bảng giá, giá trị hoàn thiện, nhân viên KD
+  // tiến độ nội thất của chính sách → tab Hoàn thiện căn hộ (chung cư; liền kề gộp hoàn thiện vào HĐMB) — 14/11/2026
+  const htFin = d => {
+    if (!htp || form.elements.ptype?.value === 'lien_ke' || !d?.fin_sched?.length) return;
+    const has = x => x.days != null && x.days !== '';
+    if (htp.finSched(d.fin_sched.map(x => ({ name: x.name, pct: x.pct, amount: null, due_on: '', ...(has(x) && +x.days ? { _days: +x.days } : { _d0: true }) })), d.fin_policy)) toast(`Tiến độ nội thất điền ở tab Hoàn thiện căn hộ theo chính sách ${d.fin_policy}`);
+  };
+  if (ent === 'contract' && htp && id && rec.unit_id && !htLocked) api('GET', `/api/contract-prefill/${rec.unit_id}`).then(htFin).catch(() => {});   // HĐ đã lưu: nút lấy tiến độ nội thất / điền nếu tab trống
   const contractPrefill = async unit => {
     const d = await api('GET', `/api/contract-prefill/${unit}`);
     pickRef('customer_id', d.customer_id, d.customer_label);
@@ -1108,9 +1141,9 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
       const fr = (d.fin_sched || []).map(x => ({ name: x.name, pct: x.pct, amount: null, due_on: '', fin: true, ...(has(x) && +x.days ? { _days: +x.days } : { _d0: true }) }));   // đợt thu hoàn thiện — căn không có hoàn thiện thì máy chủ bỏ
       const htOn = htp && form.elements.ptype?.value !== 'lien_ke';   // chung cư: hoàn thiện (nội thất) là HĐ hoàn thiện riêng → đợt hoàn thiện sang tab Hoàn thiện căn hộ
       sc._set([...ns.map(x => ({ name: x.name, pct: x.pct, amount: null, due_on: '', ...(has(x) && +x.days ? { _days: +x.days } : {}), ...(x.bg ? { bg: true, bg_days: x.bg_days ?? null } : {}) })), ...(!htOn && (d.finish_value > 0 || +readField(form, E.fields.find(f => f.k === 'finish_value')) > 0) ? fr : []), ...(m ? [{ name: m.name, maint: true }] : [])]);
-      const toHt = htOn && fr.length && d.finish_value > 0 && htp.finSched(fr.map(({ fin, ...x }) => x));
-      toast(`Lần thanh toán điền theo tiến độ của chính sách ${d.sched_policy}${toHt ? ' — tiến độ nội thất điền ở tab Hoàn thiện căn hộ' : ''}`);
+      toast(`Lần thanh toán điền theo tiến độ của chính sách ${d.sched_policy}`);
     }
+    htFin(d);
   };
   // số hợp đồng để trống → máy chủ cấp khi lưu; hiện sẵn số sẽ cấp ở ô (như BRAVO)
   const contractNo = () => { const el = form.elements.number; if (!el || id) return; api('GET', `/api/contract-number?ptype=${form.elements.ptype?.value || 'can_ho'}&on=${readField(form, fields.find(f => f.k === 'contract_on')) || ''}`).then(d => { el.placeholder = d.number; }).catch(() => {}); };
