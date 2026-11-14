@@ -122,11 +122,15 @@ def('price_policy', {
     { k: 'start_on', l: 'Ngày bắt đầu', t: 'date', req: 1 },
     { k: 'end_on', l: 'Ngày kết thúc', t: 'date', req: 1 },
     { k: 'unit_group', l: 'Căn hộ áp dụng', t: 'text', req: 1, def: '*', pick: 'units', help: 'Tích chọn tòa / từng căn trong bảng — * = cả dự án' },
+    // tiến độ thu tiền (16/11/2026): HĐMB của các căn đã tích tự lấy «Lần thanh toán» theo đây — hạn = ngày ký HĐMB + số ngày; đợt bàn giao theo thông báo bàn giao
+    { k: 'pay_sched', l: 'Tiến độ thu tiền (Lần thanh toán HĐMB)', t: 'json' },
+    { k: 'pay_mdot', l: 'Phí bảo trì thu cùng hạn đợt', t: 'int', def: 3, help: 'Phí bảo trì (2% tiền trước thuế) thu ở dòng riêng, cùng hạn với đợt này' },
     { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'nhap', o: [['nhap', 'Nháp', 's'], ['cho_duyet', 'Chờ duyệt', 'a'], ['phat_hanh', 'Đã phát hành', 'g'], ['tu_choi', 'Từ chối', 'r'], ['thay_the', 'Đã thay thế', 's']] },
     { k: 'parent_id', l: 'Phiên bản trước', t: 'ref', ref: 'price_policy', ro: 1 },
   ], list: ['code', 'version', 'project_ids', 'unit_group', 'start_on', 'end_on', 'status'],
   lock: ['phat_hanh', 'thay_the', 'cho_duyet'], flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'phat_hanh' }, submitLabel: 'Trình duyệt' },
-  acts: [{ k: 'new_version', l: 'Tạo phiên bản mới', icon: 'fa-code-branch', from: ['phat_hanh'], roles: ['truong_phong'] }],
+  acts: [{ k: 'new_version', l: 'Tạo phiên bản mới', icon: 'fa-code-branch', from: ['phat_hanh'], roles: ['truong_phong'] },
+    { k: 'apply_sched', l: 'Áp tiến độ cho HĐMB chưa trình', icon: 'fa-arrows-rotate', from: ['phat_hanh'], roles: ['truong_phong'] }],
 });
 def('package', {
   title: 'Gói hoàn thiện – sản phẩm', one: 'gói', mod: '02', icon: 'fa-couch', disp: "t.code||' · '||t.name",

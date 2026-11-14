@@ -316,6 +316,37 @@ async function boot(pgliteUrl) {
       localStorage.setItem('ctg-kd-demo-vay1pt-v3', '1');
     }
   } catch (e) { console.warn('HĐ vay thử 1%', e); }
+  // bộ thử «chính sách bán hàng có khai tiến độ thu tiền» (16/11/2026): chính sách CSBH-TDTT-CTS tích 3 căn tòa O — 2 căn đã có HĐMB dự thảo (Lần thanh toán
+  // tự cập nhật theo chính sách khi được duyệt phát hành), căn thứ 3 còn trống để thử lập HĐMB mới: chọn mã căn → Lần thanh toán tự điền theo chính sách
+  try {
+    if (!localStorage.getItem('ctg-kd-demo-cstd')) {
+      const C = require('../server/core'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1"), ld = await one("SELECT * FROM kd_user WHERE role = 'lanh_dao' AND active ORDER BY id LIMIT 1");
+      const day = n => C.addDays(C.today(), n), pj = await one("SELECT id FROM kd_project WHERE code = 'CTS'");
+      const units = await q(`SELECT u.id, u.code, u.area_tt FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = $1 AND b.code = 'O' AND u.status = 'con_ban' AND u.base_price > 0
+        AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.status <> 'huy') ORDER BY u.code LIMIT 3`, [pj?.id || 0]);
+      if (u && ld && units.length === 3) {
+        say('Đang dựng chính sách có tiến độ thu tiền…');
+        for (const [i, un] of units.slice(0, 2).entries()) {
+          const k = (await C.create('customer', { full_name: `${['Vũ Thị Hạnh', 'Đỗ Quang Huy'][i]} (khách thử)`, phone: `09880001${i + 1}${i + 1}`, source: 'truc_tiep', note: 'Dữ liệu thử: HĐMB dự thảo — Lần thanh toán theo chính sách CSBH-TDTT-CTS' }, u, { demo: true })).row;
+          const on = day(3 + i * 2);
+          await C.create('contract', { kind: 'hdmb', ptype: 'can_ho', unit_id: un.id, customer_id: k.id, contract_on: on, area_tt: un.area_tt, note: 'Dữ liệu thử: lịch cũ 2 đợt — duyệt chính sách thì đổi theo tiến độ chính sách',
+            new_schedule: [{ name: 'Đợt 1: ký hợp đồng mua bán', due_on: on, pct: 50 }, { name: 'Đợt 2', due_on: C.addDays(on, 90), pct: 50 }, { name: 'Thu phí bảo trì (2% tiền trước thuế)', due_on: C.addDays(on, 90), maint: true }] }, u, { demo: true });
+        }
+        const p = (await C.create('price_policy', { code: 'CSBH-TDTT-CTS', version: 1, project_ids: [pj.id], unit_group: units.map(x => x.code).join(','), mode: 'bang_hang', start_on: day(-1), end_on: '2026-12-31',
+          target: 'Khách mua căn tòa O theo tiến độ giãn (thử)', pay_mdot: 4, content: 'Dữ liệu thử: thanh toán giãn 5 đợt theo tiến độ khai ở chính sách',
+          pay_sched: [
+            { name: 'Đợt 1 – Ký HĐMB: thanh toán 10% giá trị căn hộ', days: 0, pct: 10 },
+            { name: 'Đợt 2 – Sau 45 ngày kể từ ngày ký HĐMB: thanh toán 15% giá trị căn hộ', days: 45, pct: 15 },
+            { name: 'Đợt 3 – Sau 120 ngày kể từ ngày ký HĐMB: thanh toán 20% giá trị căn hộ', days: 120, pct: 20 },
+            { name: 'Đợt 4 – Sau 480 ngày kể từ ngày ký HĐMB: thanh toán 50% giá trị căn hộ và 2% phí bảo trì', days: 480, pct: 50 },
+            { name: 'Đợt 5 – Sau 720 ngày kể từ ngày ký HĐMB: thanh toán 5% giá trị căn hộ', days: 720, pct: 5 },
+          ] }, u, { demo: true })).row;
+        await C.submit('price_policy', p.id, u, { demo: true });
+        await C.approve('price_policy', p.id, ld, { ok: true });
+      }
+      localStorage.setItem('ctg-kd-demo-cstd', '1');
+    }
+  } catch (e) { console.warn('chính sách có tiến độ thử', e); }
   const job = async () => { try { await tx(db => biz.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.warn('job', e.message); } };
   await job(); setInterval(job, 2 * 60e3);
 
