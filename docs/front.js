@@ -394,7 +394,7 @@ function wireInputs(root, onChange) {
   root.addEventListener('change', () => onChange && onChange());
 }
 function num(s, money) {
-  if (typeof s === 'number') return s; s = String(s ?? '').replace(/\s|đ|₫/g, ''); if (!s) return NaN;
+  if (typeof s === 'number') return s; s = String(s ?? '').replace(/\s|đ|₫|%/g, ''); if (!s) return NaN;
   if (s.includes(',') && s.includes('.')) s = s.lastIndexOf(',') > s.lastIndexOf('.') ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
   else if (s.includes(',')) s = s.replace(',', '.');
   else if (money || /^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');

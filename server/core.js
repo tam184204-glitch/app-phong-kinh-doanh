@@ -49,7 +49,7 @@ const isoMonth = v => {
 // số kiểu Việt Nam: «1.234.567», «61,6», «1 234 567 đ»
 const parseNum = (v, isMoney) => {
   if (typeof v === 'number') return isFinite(v) ? v : NaN;
-  let s = String(v).replace(/[\s₫đ]|VNĐ|vnđ|VND/g, '');
+  let s = String(v).replace(/[\s₫đ%]|VNĐ|vnđ|VND/g, '');   // «5.4%» = 5.4 (14/11/2026)
   if (s.includes(',') && s.includes('.')) s = s.lastIndexOf(',') > s.lastIndexOf('.') ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
   else if (s.includes(',')) s = /,\d{3}(,|$)/.test(s) && isMoney ? s.replace(/,/g, '') : s.replace(',', '.');
   else if (isMoney || /\.\d{3}\./.test(s) || /^\d{1,3}(\.\d{3})+$/.test(s) && isMoney) s = s.replace(/\./g, '');
