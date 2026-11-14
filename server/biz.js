@@ -156,6 +156,22 @@ async function policyApply(db, pol, user) {
   if (ok.length || err.length) await C.audit(db, 'price_policy', pol.id, 'ap_tien_do', null, { hd: ok, loi: err }, user, `Áp tiến độ thu tiền cho ${ok.length} HĐMB${ok.length ? ': ' + ok.join(', ') : ''}${err.length ? ` · ${err.length} HĐ không áp được` : ''}`);
   return { ok, err };
 }
+// căn chọn được khi tạo chính sách bán hàng (16/11/2026): còn trong bảng hàng (không ngừng kinh doanh), chưa ký HĐMB / thuê mua / vay / thuê.
+// Kèm chính sách đang phát hành áp cho căn (trừ chính sách đang sửa) và HĐMB dự thảo của căn — để biết căn nào sẽ đổi Lần thanh toán
+async function policyUnits(db, qs) {
+  const pids = String(qs.project || '').split(',').map(Number).filter(Boolean), self = +qs.self || 0;
+  if (!pids.length) return { rows: [], hidden: 0 };
+  const all = await db.q(`SELECT u.id, u.code, u.floor, u.kind, u.area_tt, u.price_net, u.maint_fee, u.total_price, u.status, u.lock, u.project_id, upper(b.code) b,
+      EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.kind IN ('hdmb','thue_mua','vay','thue') AND c.status = 'da_ky') signed,
+      (SELECT c.number FROM kd_contract c WHERE c.unit_id = u.id AND c.kind IN ('hdmb','thue_mua') AND c.status IN ('du_thao','tu_choi') ORDER BY c.id DESC LIMIT 1) draft
+    FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = ANY($1)`, [pids]);
+  const pols = await db.q("SELECT id, code, version, unit_group, project_ids, (pay_sched IS NOT NULL) td FROM kd_price_policy WHERE status = 'phat_hanh' AND id <> $1 AND project_ids && $2::int[] AND end_on >= $3 ORDER BY start_on DESC, version DESC", [self, pids, today()]);
+  const rows = all.filter(u => !u.signed && u.lock !== 'ngung_kd').map(u => {
+    const p = pols.find(p => p.project_ids.includes(u.project_id) && polHas(p, u.code, u.b));
+    return { ...u, pol: p ? `${p.code} v${p.version}` : null, pol_td: !!p?.td };
+  }).sort((a, c) => a.code.localeCompare(c.code, 'vi', { numeric: true }));
+  return { rows, hidden: all.length - rows.length };
+}
 // tiến độ thu tiền HĐMB của HĐ thuê / vay (jsonb): { name, due_on, pct, amount, maint?, bg?, bg_days? } — cùng dạng bảng soạn đợt ở form
 const saleOut = rows => rows.map(x => ({ name: x.name, due_on: x.due_on, pct: x.pct, amount: x.amount, ...(x.is_maint ? { maint: true } : {}), ...(x.is_bg ? { bg: true, bg_days: x.bg_days ?? null } : {}) }));
 async function writeSchedule(db, contractId, rows, src, user, demo) {
@@ -1768,4 +1784,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { bgSet, bgSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { policyUnits, bgSet, bgSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

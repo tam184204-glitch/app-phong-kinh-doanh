@@ -1856,3 +1856,10 @@ label.tplr { display: flex; gap: 8px; align-items: center; padding: 7px 0; }
 
 /* tiến độ thu tiền ở chính sách bán hàng: cột Số tiền chỉ ghi «theo giá từng căn» → thu hẹp, nhường chỗ cho Nội dung */
 .sched.pol th:nth-child(5) { width: 150px; } .sched.pol td textarea { min-height: 70px; }
+
+/* chọn căn cho chính sách bán hàng: chip lọc tòa / loại căn / HĐMB dự thảo */
+.upick-f { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
+.upick-l { font-size: 12px; font-weight: 600; color: var(--muted, #64748b); min-width: 52px; }
+.upick-c { border: 1px solid var(--line2, #d6e0ea); background: #fff; border-radius: 999px; padding: 4px 11px; font: inherit; font-size: 12.5px; cursor: pointer; }
+.upick-c b { font-weight: 700; } .upick-c:hover { border-color: var(--cobalt, #2563eb); }
+.upick-c.on { background: var(--cobalt-50, #eef4ff); border-color: var(--cobalt, #2563eb); color: var(--cobalt, #2563eb); }
