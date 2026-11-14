@@ -1024,8 +1024,13 @@ async function debtSummary(db, user, f = {}) {
     WHERE (c.kind IN ('hdmb','thue_mua','hoan_thien') OR (c.kind IN ('thue','vay') AND c.sale_on AND jsonb_array_length(coalesce(c.sale_sched, '[]'::jsonb)) > 0)) AND c.status NOT IN ('huy','thanh_ly') ${f.sign === 'da_ky' ? "AND c.status = 'da_ky'" : f.sign === 'chua' ? "AND c.status <> 'da_ky'" : ''} ${uf(f, p)}${mine(user, 'c')}
     ORDER BY pr.code, b.code, u.floor, u.code, c.id`, p);
   const ids = cs.map(c => c.id), D = await B.debtOf(db, ids, to);
+  // căn có cả HĐ thuê và HĐ vay (cùng 1 khách mua — 16/11/2026): 1 dòng; phải thu theo tiến độ HĐMB của HĐ thuê, đã thu = gốc khách đã chuyển của HĐ vay
+  const hasMain = new Set(cs.filter(c => ['hdmb', 'thue_mua'].includes(c.kind)).map(c => c.unit_id));
+  const VY = await db.q("SELECT id, unit_id, number FROM kd_contract WHERE kind = 'vay' AND status NOT IN ('huy','thanh_ly') AND unit_id = ANY($1) ORDER BY id", [[...new Set(cs.filter(c => c.kind === 'thue').map(c => c.unit_id))]]);
+  const pairU = new Map(); for (const v of VY) if (!hasMain.has(v.unit_id)) (pairU.get(v.unit_id) || pairU.set(v.unit_id, []).get(v.unit_id)).push(v);
+  const DVY = await B.debtOf(db, VY.map(v => v.id), to), vPaid = uid => (pairU.get(uid) || []).reduce((s, v) => s + (+DVY.get(v.id)?.paid || 0), 0);
   const RC = new Map((await db.q(`SELECT contract_id, sum(amount) FILTER (WHERE voucher_date < $2) old, sum(amount) FILTER (WHERE voucher_date >= $2 AND voucher_date <= $3) new
-    FROM kd_receipt WHERE status = 'hop_le' AND contract_id = ANY($1) GROUP BY 1`, [ids, from, to])).map(r => [r.contract_id, r]));
+    FROM kd_receipt WHERE status = 'hop_le' AND contract_id = ANY($1) GROUP BY 1`, [[...ids, ...VY.map(v => v.id)], from, to])).map(r => [r.contract_id, r]));
   // HĐ vay cùng căn (bản chất bán): số dư = gốc khách đã chuyển − gốc công ty đã trả lại
   const unitIds = [...new Set(cs.map(c => c.unit_id))];
   const vays = await db.q("SELECT c.id, c.unit_id FROM kd_contract c WHERE c.kind = 'vay' AND c.status <> 'huy' AND coalesce(c.nature, 'ban') = 'ban' AND c.unit_id = ANY($1)", [unitIds]);
@@ -1040,7 +1045,7 @@ async function debtSummary(db, user, f = {}) {
     const value = +c.value || 0;
     // HĐ thuê / vay bán căn: tiến độ thu tiền HĐMB nhập trên hợp đồng → tiền nhà; đã thu = phiếu thu của hợp đồng đến ngày xem (HĐ vay: gốc khách đã chuyển)
     if (['thue', 'vay'].includes(c.kind)) {   // tiến độ HĐMB của HĐ thuê / vay: dòng phí bảo trì → Bảo trì (16/11/2026), còn lại → Tiền nhà; đã thu chia theo thứ tự hạn
-      let left = +d.paid || 0;
+      let left = c.kind === 'thue' && pairU.has(c.unit_id) ? vPaid(c.unit_id) : +d.paid || 0;   // căn có cả HĐ vay: đã thu = gốc vay khách đã chuyển
       for (const i of [...(c.sale_sched || [])].sort((a, b) => String(a.due_on).localeCompare(String(b.due_on)))) {
         const k = i.maint ? 'b' : 'n', a = +i.amount || 0, take = Math.min(a, left); left -= take;
         o[k].total += a; if (i.due_on <= to) o[k].due += a; o[k].paid += take;
@@ -1068,8 +1073,7 @@ async function debtSummary(db, user, f = {}) {
   // gom theo căn: HĐMB / thuê mua là dòng chính, HĐ hoàn thiện riêng cộng vào «Phát sinh»
   const byU = new Map();
   // HĐ thuê / vay bán căn chỉ lên bảng khi căn chưa có HĐMB / thuê mua còn hiệu lực (ký HĐMB thật thì thanh lý HĐ thuê / vay)
-  const hasMain = new Set(cs.filter(c => ['hdmb', 'thue_mua'].includes(c.kind)).map(c => c.unit_id));
-  for (const c of cs) { if (['thue', 'vay'].includes(c.kind) && hasMain.has(c.unit_id)) continue; const g = byU.get(c.unit_id) || byU.set(c.unit_id, { main: null, fin: [] }).get(c.unit_id); if (c.kind === 'hoan_thien') g.fin.push(c); else if (!g.main) g.main = c; else g.fin.push(c); }
+  for (const c of cs) { if (['thue', 'vay'].includes(c.kind) && hasMain.has(c.unit_id)) continue; if (c.kind === 'vay' && pairU.has(c.unit_id)) continue; /* HĐ vay của căn đã có HĐ thuê: gộp vào dòng HĐ thuê */ const g = byU.get(c.unit_id) || byU.set(c.unit_id, { main: null, fin: [] }).get(c.unit_id); if (c.kind === 'hoan_thien') g.fin.push(c); else if (!g.main) g.main = c; else g.fin.push(c); }
   const rows = [];
   for (const [uid, g] of byU) {
     const c = g.main || g.fin[0], all = [...(g.main ? [g.main] : []), ...g.fin];
@@ -1084,11 +1088,14 @@ async function debtSummary(db, user, f = {}) {
       hdv_left: HDV.has(uid) ? HDV.get(uid) : null };
     for (const k of ['n', 'g', 'p', 'b']) { r[k + '_total'] = o[k].total; r[k + '_due'] = o[k].due; r[k + '_paid'] = o[k].paid; r[k + '_left'] = o[k].total - o[k].paid; r[k + '_left_due'] = pos(o[k].due - o[k].paid); }
     r.value = all.reduce((s, x) => s + (['thue', 'vay'].includes(x.kind) ? +x.unit_total || 0 : +x.value || 0), 0);   // HĐ thuê / vay bán căn: giá trị = Giá trị HĐMB
-    if (['thue', 'vay'].includes(c.kind)) r.sign_l = `${c.kind === 'vay' ? 'HĐ vay' : 'HĐ thuê'} (bán căn) — ${r.sign_l}`;
+    const pv = c.kind === 'thue' ? pairU.get(uid) : null;
+    if (['thue', 'vay'].includes(c.kind)) r.sign_l = `${pv ? 'HĐ thuê + HĐ vay' : c.kind === 'vay' ? 'HĐ vay' : 'HĐ thuê'} (bán căn) — ${r.sign_l}`;
+    if (pv) r.number = [c.number, ...pv.map(v => v.number)].filter(Boolean).join(' + ');
     r.t_total = r.n_total + r.g_total + r.p_total + r.b_total; r.t_due = r.n_due + r.g_due + r.p_due + r.b_due; r.t_paid = r.n_paid + r.g_paid + r.p_paid + r.b_paid;
     r.t_left_due = pos(r.t_due - r.t_paid); r.t_left = r.t_total - r.t_paid; r.pct5 = Math.round(r.n_total * 0.05);
-    r.k_old = all.reduce((s, x) => s + (+RC.get(x.id)?.old || 0), 0); r.k_new = all.reduce((s, x) => s + (+RC.get(x.id)?.new || 0), 0); r.k_paid = r.k_old + r.k_new; r.k_debt = pos(r.t_due - r.k_paid);
-    r.overdue = all.reduce((s, x) => s + (['thue', 'vay'].includes(x.kind) ? Math.max(0, (x.sale_sched || []).filter(i => i.due_on < to).reduce((a, i) => a + +i.amount, 0) - (D.get(x.id)?.paid || 0)) : D.get(x.id)?.overdue || 0), 0);
+    const kIds = pv ? [...all.filter(x => x.kind !== 'thue').map(x => x.id), ...pv.map(v => v.id)] : all.map(x => x.id);   // căn thuê + vay: tiền thu theo phiếu của HĐ vay (không tính tiền thuê)
+    r.k_old = kIds.reduce((s, id) => s + (+RC.get(id)?.old || 0), 0); r.k_new = kIds.reduce((s, id) => s + (+RC.get(id)?.new || 0), 0); r.k_paid = r.k_old + r.k_new; r.k_debt = pos(r.t_due - r.k_paid);
+    r.overdue = all.reduce((s, x) => s + (['thue', 'vay'].includes(x.kind) ? Math.max(0, (x.sale_sched || []).filter(i => i.due_on < to).reduce((a, i) => a + +i.amount, 0) - (x.kind === 'thue' && pv ? vPaid(uid) : D.get(x.id)?.paid || 0)) : D.get(x.id)?.overdue || 0), 0);
     rows.push(r);
   }
   // điều kiện lọc theo tình trạng công nợ (07/11/2026)

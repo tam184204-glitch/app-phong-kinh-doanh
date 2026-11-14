@@ -316,6 +316,23 @@ async function boot(pgliteUrl) {
       localStorage.setItem('ctg-kd-demo-vay1pt-v3', '1');
     }
   } catch (e) { console.warn('HĐ vay thử 1%', e); }
+  // bộ thử căn có cả HĐ thuê + HĐ vay (16/11/2026): thêm HĐ thuê có tiến độ HĐMB cho căn của HĐ vay thử «Đặng Thu Hà» — Bảng tổng hợp công nợ hiện 1 dòng:
+  // phải thu theo tiến độ HĐMB của HĐ thuê, đã thu = gốc vay khách đã chuyển
+  try {
+    if (!localStorage.getItem('ctg-kd-demo-thuevay')) {
+      const C = require('../server/core'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1");
+      const v = await one("SELECT c.* FROM kd_contract c JOIN kd_customer k ON k.id = c.customer_id WHERE c.kind = 'vay' AND c.is_demo AND k.full_name = 'Đặng Thu Hà (khách thử)' AND c.status <> 'huy' ORDER BY c.id LIMIT 1");
+      if (u && v && !(await one("SELECT 1 FROM kd_contract WHERE kind = 'thue' AND unit_id = $1 AND status NOT IN ('huy','thanh_ly')", [v.unit_id]))) {
+        say('Đang dựng HĐ thuê + HĐ vay cùng căn…');
+        const on = String(v.contract_on instanceof Date ? v.contract_on.toISOString() : v.contract_on).slice(0, 10);
+        const t = (await C.create('contract', { kind: 'thue', ptype: 'can_ho', unit_id: v.unit_id, customer_id: v.customer_id, contract_on: on, eff_on: on, exp_on: C.addDays(on, 364), rent_house: 6000000, pay_times: 12, sale_on: true,
+          note: 'Dữ liệu thử: HĐ thuê + HĐ vay cùng căn — Bảng tổng hợp công nợ: phải thu theo tiến độ HĐMB của HĐ thuê, đã thu theo gốc vay',
+          sale_sched: [{ name: 'Đợt 1 – ký HĐ', due_on: on, pct: 30 }, { name: 'Đợt 2 – sau 60 ngày', due_on: C.addDays(on, 60), pct: 40 }, { name: 'Đợt 3 – nhận bàn giao', due_on: C.addDays(on, 300), pct: 25 }, { name: 'Đợt 4 – nhận GCN', due_on: C.addDays(on, 600), pct: 5 }] }, u, { demo: true })).row;
+        await tx(async db => C.sys(db, 'contract', t.id, { status: 'da_ky', sign_status: 'da_ky', signed_on: on }, u, 'nhap_lich_su', 'Dữ liệu thử'));
+      }
+      localStorage.setItem('ctg-kd-demo-thuevay', '1');
+    }
+  } catch (e) { console.warn('HĐ thuê + vay thử', e); }
   // bộ thử «chính sách bán hàng có khai tiến độ thu tiền» (16/11/2026): chính sách CSBH-TDTT-CTS tích 3 căn tòa O — 2 căn đã có HĐMB dự thảo (Lần thanh toán
   // tự cập nhật theo chính sách khi được duyệt phát hành), căn thứ 3 còn trống để thử lập HĐMB mới: chọn mã căn → Lần thanh toán tự điền theo chính sách
   try {
