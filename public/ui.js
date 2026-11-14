@@ -83,8 +83,8 @@ const unitsTable = us => { if (us.length && 'b' in us[0]) return polUnitsTable(u
 
 // chính sách bán hàng (14/11/2026): căn hộ áp dụng dạng cột, gom theo tòa
 const polUnitsTable = us => { const KIND = Object.fromEntries(M.ents.unit.fields.find(f => f.k === 'kind').o), fin = us.some(u => u.fin != null), bs = [...new Set(us.map(u => u.b))];
-  return `<div class="small muted mb">${us.length} căn${bs.length > 1 ? ' · ' + bs.map(b => `Tòa ${esc(b)}: ${us.filter(u => u.b === b).length}`).join(' · ') : ''}</div><div class="tbl-wrap ds-can"><table class="t compact noclick"><thead><tr><th class="center">STT</th><th>Mã căn</th><th>Tòa</th><th class="num">Tầng</th><th>Loại</th><th class="num">DT thông thủy</th><th class="num">Tổng giá căn hộ</th>${fin ? '<th class="num">Giá trị hoàn thiện</th>' : ''}</tr></thead>
-    <tbody>${us.map((u, i) => `<tr><td class="center">${i + 1}</td><td>${esc(u.code)}</td><td>${esc(u.b)}</td><td class="num">${u.floor ?? ''}</td><td>${esc(KIND[u.kind] || u.kind || '')}</td><td class="num">${fnum(u.area_tt)}</td><td class="num">${fm(u.total_price)}</td>${fin ? `<td class="num">${u.fin != null ? fm(u.fin) : ''}</td>` : ''}</tr>`).join('')}</tbody></table></div>`; };
+  return `<div class="small muted mb">${us.length} căn${bs.length > 1 ? ' · ' + bs.map(b => `Tòa ${esc(b)}: ${us.filter(u => u.b === b).length}`).join(' · ') : ''}</div><div class="tbl-wrap ds-can"><table class="t compact noclick"><thead><tr><th class="center">STT</th><th>Mã căn</th><th>Tòa</th><th class="num">Tầng</th><th>Loại</th><th class="num">DT thông thủy</th><th class="num">Tổng giá căn hộ</th>${fin ? '<th class="num">Giá trị hoàn thiện</th>' : ''}<th class="num">Tổng giá trị căn hộ</th></tr></thead>
+    <tbody>${us.map((u, i) => { const g = u.base ?? +u.total_price ?? 0; return `<tr><td class="center">${i + 1}</td><td>${esc(u.code)}</td><td>${esc(u.b)}</td><td class="num">${u.floor ?? ''}</td><td>${esc(KIND[u.kind] || u.kind || '')}</td><td class="num">${fnum(u.area_tt)}</td><td class="num">${fm(g)}</td>${fin ? `<td class="num">${u.fin != null ? fm(u.fin) : ''}</td>` : ''}<td class="num"><b>${fm(g + (+u.fin || 0))}</b></td></tr>`; }).join('')}</tbody></table></div>`; };   // 14/11/2026: Tổng giá trị căn hộ = tổng giá căn hộ + giá trị hoàn thiện
 
 // ---------- Thông báo bàn giao (13/11/2026): bảng căn của tòa + HĐMB đã ký + đợt bàn giao, hạn hiện tại → hạn mới ----------
 const bgTable = (rs, { pick, sel } = {}) => {
@@ -1309,36 +1309,36 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
 // ---------- bảng chọn căn áp dụng (chính sách giá): giá trị = '*' | mã tòa (cả tòa) | mã căn, cách nhau dấu phẩy ----------
 // policy (chính sách bán hàng, 16/11/2026): chỉ căn còn trong bảng hàng, chưa giữ chỗ / ký HĐMB / vay / thuê; lọc nhanh theo tòa (14/11/2026 bỏ lọc loại căn, HĐMB dự thảo);
 // mỗi căn ghi chính sách đang áp + HĐMB dự thảo sẽ đổi Lần thanh toán khi chính sách phát hành
-// tab «2. Hoàn thiện căn hộ» của chính sách (14/11/2026): trong các căn đã chọn ở tab 1, TÍCH căn có hoàn thiện (nội thất), nhập giá trị từng căn
-// hoặc 1 lần cho các căn đã tích. Căn không tích = không khai (giữ hoàn thiện đang có trong bảng hàng). Ghi vào ô ẩn finish_vals { MÃ CĂN: số tiền }
+// tab «2. Hoàn thiện căn hộ» của chính sách (14/11/2026): trong các căn đã chọn ở tab 1, nhập giá trị hoàn thiện (nội thất) từng căn, hoặc TÍCH chọn nhiều căn
+// rồi nhập 1 lần → «Áp cho căn đã tích». Căn CÓ SỐ = có hoàn thiện (lưu); ô trống = không khai (giữ hoàn thiện đang có trong bảng hàng). Ghi vào ô ẩn finish_vals { MÃ CĂN: số tiền }
+// 14/11/2026 (sửa lỗi mất giá trị): ô tích chỉ để CHỌN căn áp giá — bỏ tích không xóa giá trị đã nhập; áp xong tự bỏ tích để lần tích sau không đè căn vừa áp;
+// bỏ hoàn thiện của căn = xóa số ở ô của căn, hoặc tích rồi bấm «Bỏ hoàn thiện căn đã tích»
 function finishPicker(el, root, { self } = {}) {
   const hid = $('input[type=hidden]', el), box = $('.upick-bd', el), projEl = $('[name="project_ids"]', root), ugEl = $('[name="unit_group"]', root);
   let val = {}; try { val = JSON.parse(hid.value || '{}') || {}; } catch { val = {}; }
-  const on = new Set(Object.keys(val)); let units = [], loadedFor = null, bf = '', q = '', bulk = '';
-  // 14/11/2026: «Áp» chỉ cho căn VỪA TÍCH lần sửa này (fresh) — căn đã có giá trị giữ nguyên; trước đây áp đè mọi căn đã tích nên người dùng phải bỏ tích căn cũ → lưu mất hoàn thiện căn cũ
-  const saved0 = new Set(Object.keys(val)), fresh = new Set();
-  hid._get = () => { const o = {}; for (const k of on) if (val[k] != null) o[k] = val[k]; return Object.keys(o).length ? o : null; };
+  const sel = new Set(), auto = new Set();   // sel: căn đang tích để áp giá (không lưu); auto: giá trị tự điền lúc tích (bỏ tích thì gỡ lại)
+  let units = [], loadedFor = null, bf = '', q = '', bulk = '';
+  hid._get = () => { const o = {}; for (const [k, v] of Object.entries(val)) if (v != null && v !== '') o[k] = v; return Object.keys(o).length ? o : null; };
   const KIND = Object.fromEntries(M.ents.unit.fields.find(f => f.k === 'kind').o), K = u => u.code.toUpperCase();
   const gv = u => u.price_net != null ? +u.price_net + (+u.maint_fee || 0) : (+u.total_price || 0) - (+u.finish_value || 0);   // giá căn hộ chưa gồm hoàn thiện
-  const fvOf = u => on.has(K(u)) ? +(val[K(u)] || 0) : 0;
+  const has = u => val[K(u)] != null, fvOf = u => +(val[K(u)] || 0), numOf = s => Math.max(0, Math.round(num(s, true)) || 0);
   const inPol = () => { const s = new Set(String(ugEl?.value || '').toUpperCase().split(/[,;\s]+/).filter(Boolean)); return units.filter(u => s.has('*') || s.has(u.b) || s.has(K(u))); };
   const hit = u => !q || `${u.code} tòa ${u.b} tầng ${u.floor ?? ''} ${KIND[u.kind] || u.kind || ''}`.toLowerCase().includes(q);
-  const sumTxt = list => { const t = list.filter(u => on.has(K(u))); const miss = t.filter(u => val[K(u)] == null).length, drop = list.filter(u => saved0.has(K(u)) && !on.has(K(u))).length;
-    return `<b>Có hoàn thiện ${t.length}/${list.length} căn</b> · tổng hoàn thiện ${fm(t.reduce((s, u) => s + fvOf(u), 0))} đ${miss ? ` · <span class="neg">${miss} căn đã tích chưa nhập giá trị (không lưu)</span>` : ''}${drop ? ` · <span class="neg">${drop} căn đã có hoàn thiện bị bỏ tích — lưu sẽ xóa giá trị hoàn thiện của các căn này</span>` : ''}`; };
+  const sumTxt = list => { const t = list.filter(has); return `<b>Có hoàn thiện ${t.length}/${list.length} căn</b> · tổng hoàn thiện ${fm(t.reduce((s, u) => s + fvOf(u), 0))} đ`; };
   const draw = () => {
     if (!projEl?.value) { box.innerHTML = '<div class="muted small">Chọn dự án trước.</div>'; return; }
     const list = inPol();
     if (!list.length) { box.innerHTML = '<div class="muted small">Chưa chọn căn hộ áp dụng — tích căn ở tab «1. Căn hộ áp dụng & tiến độ thu tiền HĐMB» trước.</div>'; return; }
     const blds = [...new Set(list.map(u => u.b))]; if (bf && !blds.includes(bf)) bf = '';
-    const view = list.filter(u => !bf || u.b === bf), nOn = view.filter(u => on.has(K(u))).length, nNew = view.filter(u => on.has(K(u)) && fresh.has(K(u))).length;
-    const chip = (v, l, n, sub) => `<button type="button" class="upick-c${bf === v ? ' on' : ''}" data-fb="${esc(v)}">${l} <b>${n}</b>${sub ? ` <span class="muted">· tích ${sub}</span>` : ''}</button>`;
-    box.innerHTML = `<div class="upick-f"><span class="upick-l">${ico('fa-building')} Tòa</span>${chip('', 'Tất cả', list.length)}${blds.map(b => chip(b, 'Tòa ' + esc(b), list.filter(u => u.b === b).length, list.filter(u => u.b === b && on.has(K(u))).length)).join('')}</div>
+    const view = list.filter(u => !bf || u.b === bf), nSel = view.filter(u => sel.has(K(u))).length;
+    const chip = (v, l, n, sub) => `<button type="button" class="upick-c${bf === v ? ' on' : ''}" data-fb="${esc(v)}">${l} <b>${n}</b>${sub ? ` <span class="muted">· có HT ${sub}</span>` : ''}</button>`;
+    box.innerHTML = `<div class="upick-f"><span class="upick-l">${ico('fa-building')} Tòa</span>${chip('', 'Tất cả', list.length)}${blds.map(b => chip(b, 'Tòa ' + esc(b), list.filter(u => u.b === b).length, list.filter(u => u.b === b && has(u)).length)).join('')}</div>
       <div class="upick-sum"><span class="fin-sum">${sumTxt(list)}</span> <span class="grow"></span><div class="search upick-s"><i class="fa-solid fa-magnifying-glass"></i><input type="text" class="fin-q" placeholder="Tìm mã căn, tầng, loại…" value="${esc(q)}"></div>
         <button type="button" class="btn sm" data-ft="1">${bf ? `Tích tất cả tòa ${esc(bf)}` : 'Tích tất cả'}</button><button type="button" class="btn sm ghost" data-ft="0">${bf ? `Bỏ tích tòa ${esc(bf)}` : 'Bỏ tích hết'}</button></div>
-      <div class="upick-fall row">${ico('fa-couch')} <span>Giá trị hoàn thiện cho ${nNew ? `${nNew} căn vừa tích` : `${nOn} căn đã tích`}${bf ? ` của tòa ${esc(bf)}` : ''}</span><input class="inp fin-all" inputmode="numeric" placeholder="VD 120.000.000" value="${esc(bulk)}" style="width:160px;text-align:right"><button type="button" class="btn sm" data-fall>${nNew ? 'Áp cho căn vừa tích' : 'Áp cho căn đã tích'}</button>${nNew && nOn > nNew ? `<span class="small muted">${nOn - nNew} căn đã có giá trị giữ nguyên</span>` : ''}</div>
-      <div class="tbl-wrap upick-t"><table class="t compact noclick"><thead><tr><th style="width:30px"><input type="checkbox" data-fv-all ${nOn && nOn === view.length ? 'checked' : ''} title="Tích / bỏ tích các căn đang xem"></th><th>Mã căn</th><th>Tòa</th><th class="num">Tầng</th><th>Loại</th><th class="num">DT thông thủy</th><th class="num">Tổng giá căn hộ</th><th class="num">Giá trị hoàn thiện</th><th class="num">Tổng cộng</th></tr></thead><tbody>
-      ${view.map(u => { const k = K(u), t = on.has(k); return `<tr data-row="${esc(k)}" class="${t ? 'sel' : ''}"${hit(u) ? '' : ' hidden'}><td><input type="checkbox" data-fv-t="${esc(k)}" ${t ? 'checked' : ''}></td><td>${esc(u.code)}</td><td>${esc(u.b)}</td><td class="num">${u.floor ?? ''}</td><td>${esc(KIND[u.kind] || u.kind || '')}</td><td class="num">${fnum(u.area_tt)}</td><td class="num">${fm(gv(u))}</td>
-        <td class="num"><input class="inp fin-v" data-fv="${esc(k)}" inputmode="numeric" value="${val[k] != null ? fm(val[k]) : ''}" placeholder="${t ? 'nhập giá trị' : '—'}" title="${t ? '' : 'Căn chưa tích — số này không lưu vào chính sách; gõ số hoặc tích để áp'}" style="width:140px;height:30px;text-align:right${t ? '' : ';opacity:.55'}"></td><td class="num fin-tc"><b>${fm(gv(u) + fvOf(u))}</b></td></tr>`; }).join('')}
+      <div class="upick-fall row">${ico('fa-couch')} <span>Giá trị hoàn thiện cho ${nSel} căn đã tích${bf ? ` của tòa ${esc(bf)}` : ''}</span><input class="inp fin-all" inputmode="numeric" placeholder="VD 120.000.000" value="${esc(bulk)}" style="width:160px;text-align:right"><button type="button" class="btn sm" data-fall>Áp cho căn đã tích</button>${nSel ? `<button type="button" class="btn sm ghost" data-fclr>Bỏ hoàn thiện căn đã tích</button>` : ''}<span class="small muted">Bỏ tích không xóa giá trị đã nhập — muốn bỏ hoàn thiện của căn thì xóa số ở ô của căn</span></div>
+      <div class="tbl-wrap upick-t"><table class="t compact noclick"><thead><tr><th style="width:30px"><input type="checkbox" data-fv-all ${nSel && nSel === view.length ? 'checked' : ''} title="Tích / bỏ tích các căn đang xem"></th><th>Mã căn</th><th>Tòa</th><th class="num">Tầng</th><th>Loại</th><th class="num">DT thông thủy</th><th class="num">Tổng giá căn hộ</th><th class="num">Giá trị hoàn thiện</th><th class="num">Tổng cộng</th></tr></thead><tbody>
+      ${view.map(u => { const k = K(u), t = sel.has(k); return `<tr data-row="${esc(k)}" class="${has(u) ? 'sel' : ''}"${hit(u) ? '' : ' hidden'}><td><input type="checkbox" data-fv-t="${esc(k)}" ${t ? 'checked' : ''}></td><td>${esc(u.code)}</td><td>${esc(u.b)}</td><td class="num">${u.floor ?? ''}</td><td>${esc(KIND[u.kind] || u.kind || '')}</td><td class="num">${fnum(u.area_tt)}</td><td class="num">${fm(gv(u))}</td>
+        <td class="num"><input class="inp fin-v" data-fv="${esc(k)}" inputmode="numeric" value="${val[k] != null ? fm(val[k]) : ''}" placeholder="—" title="Gõ số = căn có hoàn thiện; xóa số = bỏ hoàn thiện của căn" style="width:140px;height:30px;text-align:right"></td><td class="num fin-tc"><b>${fm(gv(u) + fvOf(u))}</b></td></tr>`; }).join('')}
       </tbody></table></div>`;
   };
   const load = async () => {
@@ -1347,40 +1347,45 @@ function finishPicker(el, root, { self } = {}) {
     if (!pid) { loadedFor = null; units = []; }
     draw();
   };
-  const tick = (list, yes) => { for (const u of list) { const k = K(u); if (!yes) fresh.delete(k); else if (!on.has(k)) fresh.add(k); if (yes) { on.add(k); if (val[k] == null) { if (bulk) val[k] = Math.max(0, Math.round(num(bulk, true)) || 0); else if (+u.finish_value > 0) val[k] = +u.finish_value; } } else on.delete(k); } draw(); };
+  // tích: chọn căn để áp giá; căn chưa có giá trị thì tự điền số đang nhập ở ô «Giá trị hoàn thiện cho … căn» (hoặc hoàn thiện của bảng hàng) — bỏ tích thì gỡ số tự điền đó
+  const tick = (list, yes) => { for (const u of list) { const k = K(u);
+    if (yes) { sel.add(k); if (val[k] == null) { const v = bulk ? numOf(bulk) : +u.finish_value > 0 ? +u.finish_value : null; if (v != null) { val[k] = v; auto.add(k); } } }
+    else { sel.delete(k); if (auto.has(k)) { delete val[k]; auto.delete(k); } } } draw(); };
   const viewList = () => inPol().filter(u => (!bf || u.b === bf) && hit(u));
   box.addEventListener('change', e => {
     e.stopPropagation(); const t = e.target;
     if (t.dataset.fvT) { const u = units.find(x => K(x) === t.dataset.fvT); if (u) tick([u], t.checked); }
     else if (t.dataset.fvAll !== undefined) tick(viewList(), t.checked);
     else if (t.matches('.fin-v')) t.value = val[t.dataset.fv] != null ? fm(val[t.dataset.fv]) : '';
-    else if (t.matches('.fin-all') && bulk) { bulk = fm(Math.max(0, Math.round(num(bulk, true)) || 0)); t.value = bulk; }
+    else if (t.matches('.fin-all') && bulk) { bulk = fm(numOf(bulk)); t.value = bulk; }
   }, true);
   box.addEventListener('input', e => {
     e.stopPropagation(); const t = e.target;
     if (t.matches('.fin-all')) { bulk = t.value.trim(); return; }   // giữ số khi bảng vẽ lại; tích căn mới tự nhận số này
     if (t.matches('.fin-q')) { q = t.value.trim().toLowerCase(); $$('tbody tr[data-row]', box).forEach(tr => { const u = units.find(x => K(x) === tr.dataset.row); tr.hidden = !(u && hit(u)); }); return; }
     if (!t.matches('.fin-v')) return;
-    const k = t.dataset.fv, s = t.value.trim(); if (s) val[k] = Math.max(0, Math.round(num(s, true)) || 0); else delete val[k];
-    fresh.delete(k);   // đã gõ giá trị riêng cho căn này → «Áp» không đè
-    if (s && !on.has(k)) { on.add(k); const tr = t.closest('tr'), cb = $('[data-fv-t]', tr); tr.classList.add('sel'); if (cb) cb.checked = true; t.style.opacity = ''; t.title = ''; }   // gõ số vào căn chưa tích → tự tích
-    const u = units.find(x => K(x) === k), tc = $('.fin-tc', t.closest('tr')); if (u && tc) tc.innerHTML = `<b>${fm(gv(u) + fvOf(u))}</b>`;
+    const k = t.dataset.fv, s = t.value.trim(); if (s) val[k] = numOf(s); else delete val[k];
+    auto.delete(k);   // số gõ tay → bỏ tích không gỡ
+    const tr = t.closest('tr'); tr.classList.toggle('sel', !!s);
+    const u = units.find(x => K(x) === k), tc = $('.fin-tc', tr); if (u && tc) tc.innerHTML = `<b>${fm(gv(u) + fvOf(u))}</b>`;
     const sm = $('.fin-sum', box); if (sm) sm.innerHTML = sumTxt(inPol());
   }, true);
   box.addEventListener('keydown', e => { if (e.target.matches('.fin-v, .fin-all, .fin-q') && e.key === 'Enter') { e.preventDefault(); if (e.target.matches('.fin-all')) $('[data-fall]', box)?.click(); } });
   box.addEventListener('click', e => {
     const c = e.target.closest('[data-fb]'); if (c) { bf = c.dataset.fb; return draw(); }
     const ft = e.target.closest('[data-ft]'); if (ft) return tick(inPol().filter(u => !bf || u.b === bf), ft.dataset.ft === '1');
-    if (e.target.closest('[data-fall]')) {
-      const s = bulk; if (!s) return toast('Nhập giá trị hoàn thiện', true);
-      const list = inPol().filter(u => (!bf || u.b === bf) && on.has(K(u))); if (!list.length) return toast('Chưa tích căn nào có hoàn thiện', true);
-      const n = Math.max(0, Math.round(num(s, true)) || 0), nw = list.filter(u => fresh.has(K(u)));
-      if (nw.length) {   // có căn vừa tích → chỉ áp cho các căn này, căn đã có giá trị giữ nguyên
-        for (const u of nw) { val[K(u)] = n; fresh.delete(K(u)); }
-        draw(); return toast(`Đã áp ${fm(n)} đ cho ${nw.length} căn vừa tích${list.length > nw.length ? ` — ${list.length - nw.length} căn đã có giá trị giữ nguyên` : ''}`);
-      }
-      if (list.some(u => val[K(u)] != null && val[K(u)] !== n) && !confirm(`Áp ${fm(n)} đ cho cả ${list.length} căn đã tích? Giá trị hoàn thiện đang có của các căn này sẽ bị thay.`)) return;
-      for (const u of list) val[K(u)] = n; draw();
+    const picked = () => inPol().filter(u => (!bf || u.b === bf) && sel.has(K(u)));
+    if (e.target.closest('[data-fall]')) {   // áp cho đúng các căn đang tích, xong bỏ tích — căn không tích giữ nguyên giá trị
+      if (!bulk) return toast('Nhập giá trị hoàn thiện', true);
+      const list = picked(); if (!list.length) return toast('Tích chọn các căn cần áp giá trị hoàn thiện', true);
+      const n = numOf(bulk); for (const u of list) { val[K(u)] = n; auto.delete(K(u)); sel.delete(K(u)); }
+      draw(); return toast(`Đã áp ${fm(n)} đ cho ${list.length} căn — các căn khác giữ nguyên giá trị`);
+    }
+    if (e.target.closest('[data-fclr]')) {
+      const list = picked(); if (!list.length) return;
+      if (list.some(has) && !confirm(`Bỏ hoàn thiện (xóa giá trị) của ${list.length} căn đã tích?`)) return;
+      for (const u of list) { delete val[K(u)]; auto.delete(K(u)); sel.delete(K(u)); }
+      draw(); return toast(`Đã bỏ hoàn thiện ${list.length} căn`);
     }
   });
   projEl?.addEventListener('change', () => { if (el.offsetParent) load().catch(e => toast(e.message, true)); });

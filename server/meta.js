@@ -128,7 +128,7 @@ def('price_policy', {
     { k: 'end_on', l: 'Ngày kết thúc', t: 'date', req: 1 },
     { k: 'unit_group', l: 'Căn hộ áp dụng', t: 'text', req: 1, def: '', pick: 'units', help: 'Chỉ hiện căn còn trong bảng hàng (chưa ký HĐMB / vay / thuê). Bấm Tòa để lọc, tích từng căn hoặc cả tòa; «Chọn tất cả» = cả dự án.' },
     // 14/11/2026: giá trị hoàn thiện từng căn khai ở bảng chọn căn { 'CTS-O-0103': 120000000 } — chính sách có hiệu lực thì cập nhật căn chưa bán / phiếu / HĐMB dự thảo
-    { k: 'finish_vals', l: 'Căn hộ có hoàn thiện', t: 'json', pick: 'finish', help: 'Tích căn có hoàn thiện (nội thất) trong các căn đã chọn ở tab 1, nhập giá trị từng căn hoặc nhập 1 lần cho các căn đã tích. Căn không tích = không khai hoàn thiện ở chính sách này' },
+    { k: 'finish_vals', l: 'Căn hộ có hoàn thiện', t: 'json', pick: 'finish', help: 'Nhập giá trị hoàn thiện (nội thất) từng căn, hoặc tích chọn nhiều căn rồi nhập 1 lần và bấm «Áp cho căn đã tích». Căn có số = có hoàn thiện; bỏ tích không xóa số đã nhập — muốn bỏ hoàn thiện của căn thì xóa số ở ô của căn' },
     // tiến độ thu tiền (16/11/2026): HĐMB của các căn đã tích tự lấy «Lần thanh toán» theo đây — hạn = ngày ký HĐMB + số ngày; đợt bàn giao theo thông báo bàn giao
     { k: 'pay_sched', l: 'Tiến độ thu tiền (Lần thanh toán HĐMB)', t: 'json' },
     // 14/11/2026: tiến độ thu GIÁ TRỊ HOÀN THIỆN (nội thất) riêng — chỉ sinh đợt cho căn có giá trị hoàn thiện > 0; căn không có hoàn thiện bỏ qua

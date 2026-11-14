@@ -682,9 +682,11 @@ H.price_policy = {
   async decorate(rows, { db, one }) {
     if (!one) return;
     for (const r of rows) {
-      const us = await db.q('SELECT u.code, u.floor, u.kind, u.area_tt, u.area_xd, u.total_price, upper(b.code) b FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = ANY($1) ORDER BY b.code, u.floor, u.code', [r.project_ids || []]);
+      const us = await db.q('SELECT u.code, u.floor, u.kind, u.area_tt, u.area_xd, u.total_price, u.price_net, u.maint_fee, u.finish_value, upper(b.code) b FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = ANY($1) ORDER BY b.code, u.floor, u.code', [r.project_ids || []]);
       const fv = r.finish_vals || {};
-      r._units = us.filter(u => polHas(r, u.code, u.b)).map(u => ({ code: u.code, b: u.b, floor: u.floor, kind: u.kind, area_tt: u.area_tt, area_xd: u.area_xd, total_price: u.total_price, fin: fv[u.code.toUpperCase()] ?? null })).sort((x, y) => x.code.localeCompare(y.code, 'vi', { numeric: true }));
+      // base = giá căn hộ chưa gồm hoàn thiện (như cột «Tổng giá căn hộ» ở form chính sách) → bảng chi tiết cộng thêm «Tổng giá trị căn hộ» = base + hoàn thiện (14/11/2026)
+      const base = u => u.price_net != null ? +u.price_net + (+u.maint_fee || 0) : (+u.total_price || 0) - (+u.finish_value || 0);
+      r._units = us.filter(u => polHas(r, u.code, u.b)).map(u => ({ code: u.code, b: u.b, floor: u.floor, kind: u.kind, area_tt: u.area_tt, area_xd: u.area_xd, total_price: u.total_price, base: base(u), fin: fv[u.code.toUpperCase()] ?? null })).sort((x, y) => x.code.localeCompare(y.code, 'vi', { numeric: true }));
     }
   },
   noDelete: r => !['nhap', 'tu_choi'].includes(r.status) && 'Chỉ xóa được bản nháp',
