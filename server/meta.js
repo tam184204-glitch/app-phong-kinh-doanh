@@ -544,10 +544,10 @@ def('contract', {
     { k: 'loan_recv_on', l: 'Ngày nhận tiền vay', t: 'date', show: VAY_ONLY },
     { k: 'loan_tranches', l: 'Số đợt giải ngân gốc', t: 'int', show: VAY_ONLY, help: 'Các đợt khách chuyển tiền gốc nhập ở bảng «Các đợt giải ngân gốc» bên dưới' },
     { k: 'int_mode', l: 'Lãi trả bằng', t: 'sel', o: [['tien_thue', 'Tiền thuê căn hộ (mỗi tháng = 1 tháng tiền thuê)'], ['lai_suat', 'Theo lãi suất %/năm']], show: VAY_ONLY },
-    { k: 'loan_rate', l: 'Lãi suất (%/năm)', t: 'num', show: { kind: ['vay'], int_mode: ['lai_suat'] } },
+    { k: 'loan_rate', l: 'Cách tính lãi theo hợp đồng (%/năm)', t: 'num', show: VAY_ONLY, help: 'Lãi suất %/năm — nhập % thì lãi tính theo lãi suất; để trống: lãi trả bằng tiền thuê căn của HĐ thuê đi kèm' },   // 05/11/2026: ô «Cách tính lãi» nhập % (thay ô chữ int_note)
     { k: 'int_period', l: 'Kỳ trả lãi', t: 'sel', o: [['1', 'Hàng tháng'], ['3', 'Hàng quý (3 tháng)'], ['6', '6 tháng'], ['12', 'Hàng năm'], ['0', 'Một lần khi đáo hạn']], show: VAY_ONLY },
     { k: 'principal_method', l: 'Phương thức trả gốc', t: 'sel', o: [['dao_han', 'Trả một lần khi đáo hạn'], ['theo_ky', 'Trả dần theo kỳ trả lãi'], ['thoa_thuan', 'Theo thỏa thuận (không lập lịch)']], show: VAY_ONLY },
-    { k: 'int_note', l: 'Cách tính lãi theo hợp đồng', t: 'text', show: VAY_ONLY, help: 'Cơ sở tính lãi, số ngày tính lãi, các điều chỉnh theo phụ lục…' },
+    { k: 'int_note', l: 'Ghi chú cách tính lãi', t: 'text', show: VAY_ONLY, noForm: 1, help: 'Cơ sở tính lãi, số ngày tính lãi, các điều chỉnh theo phụ lục…' },
     { k: 'link_ids', l: 'Hợp đồng thuê / vay đi kèm', t: 'refs', ref: 'contract', show: RENT_VAY, help: 'HĐ vay tick chọn HĐ thuê đi kèm và ngược lại — chọn ở bên nào bên kia tự cập nhật' },
     money('value', 'Tổng tiền (giá trị hợp đồng)', { req: 1, help: 'Chung cư có giá nền: tự tính = tiền sau thuế + phí bảo trì + giá trị hoàn thiện' }),
     { k: 'closed', l: 'Hợp đồng đóng', t: 'bool', show: RENT_VAY, noForm: 1 },   // HĐMB bỏ ô này (03/11/2026); HĐ thuê / vay bỏ khỏi form 04/11/2026 (giữ cột dữ liệu cũ)
