@@ -126,7 +126,9 @@ def('price_policy', {
     { k: 'target', l: 'Đối tượng áp dụng (ghi chú cũ)', t: 'text', hide: 1 },
     { k: 'start_on', l: 'Ngày bắt đầu', t: 'date', req: 1 },
     { k: 'end_on', l: 'Ngày kết thúc', t: 'date', req: 1 },
-    { k: 'unit_group', l: 'Căn hộ áp dụng', t: 'text', req: 1, def: '', pick: 'units', help: 'Chỉ hiện căn còn trong bảng hàng (chưa ký HĐMB / vay / thuê). Bấm Tòa / loại căn để lọc, tích từng căn hoặc cả tòa; «Chọn N căn đang hiện» chọn nhanh theo bộ lọc; «Chọn tất cả» = cả dự án' },
+    { k: 'unit_group', l: 'Căn hộ áp dụng', t: 'text', req: 1, def: '', pick: 'units', help: 'Chỉ hiện căn còn trong bảng hàng (chưa ký HĐMB / vay / thuê). Bấm Tòa để lọc, tích từng căn hoặc cả tòa; «Chọn tất cả» = cả dự án. Nhập Giá trị hoàn thiện từng căn (hoặc nhập 1 lần cho các căn đã chọn) — Tổng cộng = giá căn hộ + hoàn thiện' },
+    // 14/11/2026: giá trị hoàn thiện từng căn khai ở bảng chọn căn { 'CTS-O-0103': 120000000 } — chính sách có hiệu lực thì cập nhật căn chưa bán / phiếu / HĐMB dự thảo
+    { k: 'finish_vals', l: 'Giá trị hoàn thiện căn hộ', t: 'json', pick: 'finish' },
     // tiến độ thu tiền (16/11/2026): HĐMB của các căn đã tích tự lấy «Lần thanh toán» theo đây — hạn = ngày ký HĐMB + số ngày; đợt bàn giao theo thông báo bàn giao
     { k: 'pay_sched', l: 'Tiến độ thu tiền (Lần thanh toán HĐMB)', t: 'json' },
     { k: 'pay_mdot', l: 'Phí bảo trì thu cùng hạn đợt', t: 'int', def: 3, hide: 1, help: 'Phí bảo trì (2% tiền trước thuế) thu ở dòng riêng, cùng hạn với đợt này' },

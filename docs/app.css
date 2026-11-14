@@ -1867,3 +1867,8 @@ label.tplr { display: flex; gap: 8px; align-items: center; padding: 7px 0; }
 /* chọn nhiều trong danh sách cố định (Đối tượng áp dụng chính sách) */
 .tagpick { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 8px 12px; border: 1px solid var(--line2); border-radius: 10px; min-height: 38px; align-items: center; }
 .tagpick .chk { margin: 0; white-space: nowrap; }
+
+/* giá trị hoàn thiện ở bảng chọn căn của chính sách */
+.fld[data-f=finish_vals] { display: none; }
+.upick-fall { gap: 8px; align-items: center; margin: 6px 0 8px; font-size: 13px; flex-wrap: wrap; }
+.upick-fall .inp { height: 30px; }

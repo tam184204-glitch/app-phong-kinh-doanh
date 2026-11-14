@@ -181,11 +181,19 @@ async function policyRoll(db, pol, user) {
   const units = (await db.q(`SELECT u.*, b.code bcode FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = ANY($1)
       AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.kind IN ('hdmb','thue_mua','vay','thue') AND c.status IN ('cho_duyet','cho_ky','da_ky'))`, [pol.project_ids || []]))
     .filter(u => polHas(pol, u.code, u.bcode));
+  const FV = pol.finish_vals || {}, fin = { can: [] };
   for (const u of units) {
+    const fv = FV[String(u.code).toUpperCase()];   // giá trị hoàn thiện khai ở chính sách (undefined = giữ nguyên)
+    if (fv != null && +(u.finish_value || 0) !== fv && (await pricing(db, u, on)).policy?.id === pol.id) {
+      await sys(db, 'unit', u.id, { finish_value: fv, ...(u.price_net != null ? { total_price: +u.price_net + (+u.maint_fee || 0) + fv } : {}) }, user, 'hoan_thien_chinh_sach', `Giá trị hoàn thiện theo chính sách ${lab}`);
+      fin.can.push(u.code);
+    }
     const rs = await db.q("SELECT * FROM kd_reservation WHERE unit_id = $1 AND status = ANY($2) AND coalesce(deal, 'mua') <> 'thue' ORDER BY id", [u.id, RES_OPEN]);
     for (const r of rs) {
-      if (r.policy_id === pol.id || (await pricing(db, u, on, { source: r.source, agent_id: r.agent_id })).policy?.id !== pol.id) continue;
-      try { await sys(db, 'reservation', r.id, { policy_id: pol.id }, user, 'chinh_sach_moi', `Áp chính sách bán hàng mới ${lab}`); out.res.push(u.code); }
+      if ((await pricing(db, u, on, { source: r.source, agent_id: r.agent_id })).policy?.id !== pol.id) continue;
+      const pt = { ...(r.policy_id !== pol.id ? { policy_id: pol.id } : {}), ...(fv != null && +(r.finish_value || 0) !== fv ? { finish_value: fv } : {}) };
+      if (!Object.keys(pt).length) continue;
+      try { await sys(db, 'reservation', r.id, pt, user, 'chinh_sach_moi', `Áp chính sách bán hàng mới ${lab}`); out.res.push(u.code); }
       catch (e) { if (e.status !== 400) throw e; out.err.push(`Phiếu căn ${u.code}: ${e.message}`); }
     }
     const cs = await db.q("SELECT * FROM kd_contract WHERE unit_id = $1 AND kind IN ('hdmb','thue_mua') AND status IN ('du_thao','tu_choi') ORDER BY id", [u.id]);
@@ -194,6 +202,7 @@ async function policyRoll(db, pol, user) {
       if ((await pricing(db, u, on, r ? { source: r.source, agent_id: r.agent_id } : undefined)).policy?.id !== pol.id) continue;
       const nm = c.number || c.code || '#' + c.id;
       try {
+        if (fv != null && +(c.finish_value || 0) !== fv) { await sys(db, 'contract', c.id, { finish_value: fv }, user, 'hoan_thien_chinh_sach', `Giá trị hoàn thiện theo chính sách ${lab}`); await syncContractValue(db, c.id, user, `Giá trị hoàn thiện theo chính sách ${lab}`); if (!pol.pay_sched?.length && c.price_policy_id === pol.id) out.hd.push(nm); }
         if (pol.pay_sched?.length && await policyApplyOne(db, pol, c, user)) out.hd.push(nm);
         else if (c.price_policy_id !== pol.id) {
           await db.q('UPDATE kd_contract SET price_policy_id = $2, updated_at = now() WHERE id = $1', [c.id, pol.id]);
@@ -203,17 +212,18 @@ async function policyRoll(db, pol, user) {
     }
   }
   await db.q('UPDATE kd_price_policy SET rolled_at = now() WHERE id = $1', [pol.id]);
-  if (out.res.length || out.hd.length || out.err.length) await C.audit(db, 'price_policy', pol.id, 'ap_can_chua_ban', null, out, user,
-    `Tự áp cho căn chưa bán: ${out.res.length} phiếu đăng ký${out.res.length ? ' (' + [...new Set(out.res)].join(', ') + ')' : ''}, ${out.hd.length} HĐMB dự thảo${out.hd.length ? ' (' + out.hd.join(', ') + ')' : ''}${out.err.length ? ` · ${out.err.length} chỗ không áp được` : ''}`);
+  out.can = fin.can;
+  if (out.res.length || out.hd.length || out.err.length || out.can.length) await C.audit(db, 'price_policy', pol.id, 'ap_can_chua_ban', null, out, user,
+    `Tự áp cho căn chưa bán: ${out.can.length ? `hoàn thiện ${out.can.length} căn, ` : ''}${out.res.length} phiếu đăng ký${out.res.length ? ' (' + [...new Set(out.res)].join(', ') + ')' : ''}, ${out.hd.length} HĐMB dự thảo${out.hd.length ? ' (' + out.hd.join(', ') + ')' : ''}${out.err.length ? ` · ${out.err.length} chỗ không áp được` : ''}`);
   return out;
 }
-const rollMsg = o => (o.res.length || o.hd.length ? `Đã áp chính sách cho căn chưa bán: ${o.res.length} phiếu đăng ký, ${o.hd.length} HĐMB dự thảo${o.hd.length ? ' (' + o.hd.join(', ') + ')' : ''}` : 'Không có phiếu đăng ký / HĐMB dự thảo nào cần đổi sang chính sách này') + (o.err.length ? ` · Không áp được: ${o.err.join('; ')}` : '');
+const rollMsg = o => (o.res.length || o.hd.length || o.can?.length ? `Đã áp chính sách cho căn chưa bán: ${o.can?.length ? `giá trị hoàn thiện ${o.can.length} căn, ` : ''}${o.res.length} phiếu đăng ký, ${o.hd.length} HĐMB dự thảo${o.hd.length ? ' (' + o.hd.join(', ') + ')' : ''}` : 'Không có phiếu đăng ký / HĐMB dự thảo nào cần đổi sang chính sách này') + (o.err.length ? ` · Không áp được: ${o.err.join('; ')}` : '');
 // căn chọn được khi tạo chính sách bán hàng (16/11/2026): còn trong bảng hàng (không ngừng kinh doanh), chưa ký HĐMB / thuê mua / vay / thuê.
 // Kèm chính sách đang phát hành áp cho căn (trừ chính sách đang sửa) và HĐMB dự thảo của căn — để biết căn nào sẽ đổi Lần thanh toán
 async function policyUnits(db, qs) {
   const pids = String(qs.project || '').split(',').map(Number).filter(Boolean), self = +qs.self || 0;
   if (!pids.length) return { rows: [], hidden: 0 };
-  const all = await db.q(`SELECT u.id, u.code, u.floor, u.kind, u.area_tt, u.price_net, u.maint_fee, u.total_price, u.status, u.lock, u.project_id, upper(b.code) b,
+  const all = await db.q(`SELECT u.id, u.code, u.floor, u.kind, u.area_tt, u.price_net, u.maint_fee, u.total_price, u.finish_value, u.status, u.lock, u.project_id, upper(b.code) b,
       EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.kind IN ('hdmb','thue_mua','vay','thue') AND c.status = 'da_ky') signed,
       (SELECT c.number FROM kd_contract c WHERE c.unit_id = u.id AND c.kind IN ('hdmb','thue_mua') AND c.status IN ('du_thao','tu_choi') ORDER BY c.id DESC LIMIT 1) draft
     FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = ANY($1)`, [pids]);
@@ -555,6 +565,11 @@ H.price_policy = {
     if (r.mode === 'don_gia' && !(r.unit_price > 0)) bad('Cần đơn giá (đ/m²) khi tính theo đơn giá');
     r.unit_group = r.unit_group ? String(r.unit_group).toUpperCase().replace(/\s+/g, '') : '*';
     r.project_id = r.project_ids?.[0] ?? null;   // dự án chính = dự án chọn đầu tiên
+    if (r.finish_vals != null) {   // giá trị hoàn thiện từng căn: { MÃ CĂN: số tiền ≥ 0 }
+      if (typeof r.finish_vals !== 'object' || Array.isArray(r.finish_vals)) bad('Giá trị hoàn thiện căn hộ không hợp lệ');
+      const o = {}; for (const [k, v] of Object.entries(r.finish_vals)) { if (v === '' || v == null) continue; const n = Math.round(+v); if (!(n >= 0)) bad(`Giá trị hoàn thiện căn ${k} không hợp lệ`); o[String(k).toUpperCase().trim()] = n; }
+      r.finish_vals = Object.keys(o).length ? o : null;
+    }
     // tiến độ thu tiền (bảng như Lần thanh toán HĐMB): tỷ lệ các đợt đủ 100%; hạn = số ngày sau ngày ký HĐMB (trống = chưa có ngày cố định, nhập ở HĐ), không lùi;
     // dòng phí bảo trì riêng { maint: true, name, days }
     const ps = (Array.isArray(r.pay_sched) ? r.pay_sched : []).filter(x => x.maint || String(x.name || '').trim() || (x.pct != null && x.pct !== ''));
@@ -579,7 +594,7 @@ H.price_policy = {
   async afterApprove(r, ok, ctx) {
     const { db, user } = ctx;
     if (ok && r.parent_id) await sys(db, 'price_policy', r.parent_id, { status: 'thay_the' }, user, 'thay_the', `Thay bằng phiên bản ${r.version}`);
-    if (ok) { const o = await policyRoll(db, { ...r, status: 'phat_hanh' }, user); if (o.res.length || o.hd.length) ctx.warn?.push?.(rollMsg(o)); }   // có hiệu lực ngay → áp cho căn chưa bán; ngày bắt đầu sau hôm nay → việc nền áp khi tới ngày
+    if (ok) { const o = await policyRoll(db, { ...r, status: 'phat_hanh' }, user); if (o.res.length || o.hd.length || o.can.length) ctx.warn?.push?.(rollMsg(o)); }   // có hiệu lực ngay → áp cho căn chưa bán; ngày bắt đầu sau hôm nay → việc nền áp khi tới ngày
   },
   acts: {
     async apply_sched(r, d, { db, user }) {   // áp lại tay: phiếu đăng ký + HĐMB dự thảo của căn chưa bán
@@ -588,7 +603,7 @@ H.price_policy = {
       return { msg: rollMsg(await policyRoll(db, r, user)) };
     },
     async new_version(r, d, { db, user, demo }) {
-      const keep = ['code', 'project_ids', 'unit_group', 'mode', 'unit_price', 'maint_pct', 'vat_pct', 'content', 'target', 'seller_types', 'seller_ids', 'start_on', 'end_on', 'src_file', 'pay_sched', 'pay_mdot'];
+      const keep = ['code', 'project_ids', 'unit_group', 'mode', 'unit_price', 'maint_pct', 'vat_pct', 'content', 'target', 'seller_types', 'seller_ids', 'finish_vals', 'start_on', 'end_on', 'src_file', 'pay_sched', 'pay_mdot'];
       const n = (await create('price_policy', { ...Object.fromEntries(keep.map(k => [k, r[k]])), version: r.version + 1, parent_id: r.id, status: 'nhap' }, user, { db, system: true, demo })).row;
       return { open: ['price_policy', n.id], msg: `Đã tạo phiên bản ${n.version} (nháp). Phiên bản đang phát hành giữ nguyên tới khi bản mới được duyệt.` };
     },
