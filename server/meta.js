@@ -115,13 +115,13 @@ def('price_policy', {
     money('unit_price', 'Đơn giá (đ/m² thông thủy)', { show: { mode: ['don_gia'] } }),
     { k: 'maint_pct', l: 'Phí bảo trì (%)', t: 'num', def: 2, show: { mode: ['don_gia'] } },
     { k: 'vat_pct', l: 'Thuế GTGT (%)', t: 'num', hide: 1, def: 5 },   // bỏ khỏi form 31/10/2026 — vẫn mặc định 5% để tách giá trong chi tiết bảng giá
-    { k: 'src_file', l: 'Tệp nguồn (PDF)', t: 'text', upload: '.pdf', help: 'Chọn tệp PDF chính sách / bảng giá — lưu vào mục Tệp của chính sách' },
+    { k: 'src_file', l: 'Tệp nguồn', t: 'text', upload: '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.webp,.txt,.csv,.zip,.rar,.7z', multi: 1, help: 'Chọn được nhiều tệp, nhiều loại (PDF, Word, Excel, ảnh, nén…) — giữ Ctrl để chọn nhiều; lưu vào mục Tệp của chính sách' },   // 14/11/2026: nhiều loại + nhiều tệp
     { k: 'content', l: 'Nội dung chính sách bán hàng', t: 'long' },   // gộp 3 ô cũ Ưu đãi, Phương thức thanh toán, Chính sách ngân hàng 31/10/2026 (schema.js PRE chuyển dữ liệu)
     { k: 'discount', l: 'Ưu đãi / chiết khấu', t: 'long', hide: 1 },
     { k: 'pay_method', l: 'Phương thức thanh toán', t: 'long', hide: 1 },
     { k: 'bank_policy', l: 'Chính sách ngân hàng', t: 'long', hide: 1 },
     // 14/11/2026: đối tượng áp dụng = người bán nhà cho CĐT (đại lý / sàn / CTV) — chọn từ danh mục đối tác; ô chữ cũ giữ dữ liệu
-    { k: 'seller_types', l: 'Đối tượng áp dụng', t: 'tags', o: SELLER_T, help: 'Tích những người bán nhà cho CĐT được hưởng chính sách. Không tích = áp dụng cho mọi người bán (kể cả CĐT bán trực tiếp)' },
+    { k: 'seller_types', l: 'Đối tượng áp dụng', t: 'tags', o: SELLER_T, uiDef: 'khach_gt,ctv,cbnv,san', help: 'Tích những người bán nhà cho CĐT được hưởng chính sách. Không tích = áp dụng cho mọi người bán (kể cả CĐT bán trực tiếp)' },
     { k: 'seller_ids', l: 'Chỉ áp dụng cho sàn / CTV cụ thể', t: 'refs', ref: 'agent', help: 'Không bắt buộc. Để trống = mọi sàn / CTV thuộc đối tượng đã tích' },
     { k: 'target', l: 'Đối tượng áp dụng (ghi chú cũ)', t: 'text', hide: 1 },
     { k: 'start_on', l: 'Ngày bắt đầu', t: 'date', req: 1 },
@@ -132,10 +132,11 @@ def('price_policy', {
     { k: 'pay_mdot', l: 'Phí bảo trì thu cùng hạn đợt', t: 'int', def: 3, hide: 1, help: 'Phí bảo trì (2% tiền trước thuế) thu ở dòng riêng, cùng hạn với đợt này' },
     { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'nhap', o: [['nhap', 'Nháp', 's'], ['cho_duyet', 'Chờ duyệt', 'a'], ['phat_hanh', 'Đã phát hành', 'g'], ['tu_choi', 'Từ chối', 'r'], ['thay_the', 'Đã thay thế', 's']] },
     { k: 'parent_id', l: 'Phiên bản trước', t: 'ref', ref: 'price_policy', ro: 1 },
+    { k: 'rolled_at', l: 'Đã áp cho căn chưa bán lúc', t: 'dt', ro: 1, hide: 1, addFill: 'now()' },   // 14/11/2026: chính sách có hiệu lực → tự áp cho căn chưa bán (chính sách có sẵn khi thêm cột coi như đã áp)
   ], list: ['code', 'version', 'project_ids', 'seller_types', 'unit_group', 'start_on', 'end_on', 'status'],
   lock: ['phat_hanh', 'thay_the', 'cho_duyet'], flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'phat_hanh' }, submitLabel: 'Trình duyệt' },
   acts: [{ k: 'new_version', l: 'Tạo phiên bản mới', icon: 'fa-code-branch', from: ['phat_hanh'], roles: ['truong_phong'] },
-    { k: 'apply_sched', l: 'Áp tiến độ cho HĐMB chưa trình', icon: 'fa-arrows-rotate', from: ['phat_hanh'], roles: ['truong_phong'] }],
+    { k: 'apply_sched', l: 'Áp lại cho căn chưa bán', icon: 'fa-arrows-rotate', from: ['phat_hanh'], roles: ['truong_phong'] }],
 });
 def('package', {
   title: 'Gói hoàn thiện – sản phẩm', one: 'gói', mod: '02', icon: 'fa-couch', disp: "t.code||' · '||t.name",

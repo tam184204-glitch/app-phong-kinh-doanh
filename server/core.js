@@ -519,7 +519,7 @@ async function approve(entKey, id, user, { ok, comment, db: outer } = {}) {
     await sys(db, entKey, rec.id, { [fl.field]: to, ...extra }, user, ok ? 'phe_duyet' : 'tu_choi', comment);
     const row = await raw(db, entKey, rec.id);
     if (H[entKey]?.afterApprove) await H[entKey].afterApprove(row, ok, ctx);
-    return { row: await raw(db, entKey, rec.id) };
+    return { row: await raw(db, entKey, rec.id), warnings: ctx.warn };
   };
   return guard(e, () => outer ? run(outer) : tx(run));
 }

@@ -87,7 +87,7 @@ async function polWho(db, p) {   // «Khách hàng cũ giới thiệu, Đơn v�
 }
 async function pricing(db, unit, on = today(), seller) {
   const b = await db.one('SELECT code FROM kd_building WHERE id = $1', [unit.building_id]);
-  const pols = await db.q("SELECT * FROM kd_price_policy WHERE status = 'phat_hanh' AND $1 = ANY(project_ids) AND start_on <= $2 AND end_on >= $2 ORDER BY start_on DESC, version DESC", [unit.project_id, on]);
+  const pols = await db.q("SELECT * FROM kd_price_policy WHERE status = 'phat_hanh' AND $1 = ANY(project_ids) AND start_on <= $2 AND end_on >= $2 ORDER BY start_on DESC, version DESC, id DESC", [unit.project_id, on]);
   const pol = pols.find(p => polHas(p, unit.code, b?.code) && polFor(p, seller));
   if (!pol) return { policy: null, price: unit.total_price || null };
   if (pol.mode === 'don_gia') { const after = Math.round(pol.unit_price * unit.area_tt), before = after / (1 + (pol.vat_pct ?? 5) / 100); return { policy: pol, price: after + Math.round(before * (pol.maint_pct ?? 2) / 100 / 1000) * 1000 }; }   // đơn giá đã gồm thuế; bảo trì = 2% × tiền trước thuế
@@ -170,6 +170,44 @@ async function policyApply(db, pol, user) {
   if (ok.length || err.length) await C.audit(db, 'price_policy', pol.id, 'ap_tien_do', null, { hd: ok, loi: err }, user, `Áp tiến độ thu tiền cho ${ok.length} HĐMB${ok.length ? ': ' + ok.join(', ') : ''}${err.length ? ` · ${err.length} HĐ không áp được` : ''}`);
   return { ok, err };
 }
+// 14/11/2026: chính sách mới có hiệu lực (duyệt phát hành, hoặc tới ngày bắt đầu) → căn CHƯA BÁN (chưa có HĐ đã trình / đã ký) mà chính sách này
+// là chính sách đang áp (pricing: đúng căn, đúng người bán, mới nhất) tự cập nhật: phiếu đăng ký còn hiệu lực đổi sang chính sách mới;
+// HĐMB dự thảo / bị từ chối ghi chính sách mới + Lần thanh toán theo tiến độ mới (nếu chính sách có khai tiến độ)
+const RES_OPEN = ['nhap', 'cho_duyet', 'giu_cho', 'qua_han', 'da_coc'];
+async function policyRoll(db, pol, user) {
+  const out = { res: [], hd: [], err: [] }, on = today();
+  if (pol?.status !== 'phat_hanh' || d10(pol.start_on) > on || d10(pol.end_on) < on) return out;
+  const lab = `${pol.code} v${pol.version}`;
+  const units = (await db.q(`SELECT u.*, b.code bcode FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = ANY($1)
+      AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.kind IN ('hdmb','thue_mua','vay','thue') AND c.status IN ('cho_duyet','cho_ky','da_ky'))`, [pol.project_ids || []]))
+    .filter(u => polHas(pol, u.code, u.bcode));
+  for (const u of units) {
+    const rs = await db.q("SELECT * FROM kd_reservation WHERE unit_id = $1 AND status = ANY($2) AND coalesce(deal, 'mua') <> 'thue' ORDER BY id", [u.id, RES_OPEN]);
+    for (const r of rs) {
+      if (r.policy_id === pol.id || (await pricing(db, u, on, { source: r.source, agent_id: r.agent_id })).policy?.id !== pol.id) continue;
+      try { await sys(db, 'reservation', r.id, { policy_id: pol.id }, user, 'chinh_sach_moi', `Áp chính sách bán hàng mới ${lab}`); out.res.push(u.code); }
+      catch (e) { if (e.status !== 400) throw e; out.err.push(`Phiếu căn ${u.code}: ${e.message}`); }
+    }
+    const cs = await db.q("SELECT * FROM kd_contract WHERE unit_id = $1 AND kind IN ('hdmb','thue_mua') AND status IN ('du_thao','tu_choi') ORDER BY id", [u.id]);
+    for (const c of cs) {
+      const r = (c.reservation_id && await raw(db, 'reservation', c.reservation_id)) || rs[rs.length - 1];   // người bán theo phiếu đăng ký của HĐ
+      if ((await pricing(db, u, on, r ? { source: r.source, agent_id: r.agent_id } : undefined)).policy?.id !== pol.id) continue;
+      const nm = c.number || c.code || '#' + c.id;
+      try {
+        if (pol.pay_sched?.length && await policyApplyOne(db, pol, c, user)) out.hd.push(nm);
+        else if (c.price_policy_id !== pol.id) {
+          await db.q('UPDATE kd_contract SET price_policy_id = $2, updated_at = now() WHERE id = $1', [c.id, pol.id]);
+          await C.audit(db, 'contract', c.id, 'chinh_sach_moi', null, { policy: lab }, user, `Áp chính sách bán hàng mới ${lab}`, c.is_demo); out.hd.push(nm);
+        }
+      } catch (e) { if (e.status !== 400) throw e; out.err.push(`${nm}: ${e.message}`); }
+    }
+  }
+  await db.q('UPDATE kd_price_policy SET rolled_at = now() WHERE id = $1', [pol.id]);
+  if (out.res.length || out.hd.length || out.err.length) await C.audit(db, 'price_policy', pol.id, 'ap_can_chua_ban', null, out, user,
+    `Tự áp cho căn chưa bán: ${out.res.length} phiếu đăng ký${out.res.length ? ' (' + [...new Set(out.res)].join(', ') + ')' : ''}, ${out.hd.length} HĐMB dự thảo${out.hd.length ? ' (' + out.hd.join(', ') + ')' : ''}${out.err.length ? ` · ${out.err.length} chỗ không áp được` : ''}`);
+  return out;
+}
+const rollMsg = o => (o.res.length || o.hd.length ? `Đã áp chính sách cho căn chưa bán: ${o.res.length} phiếu đăng ký, ${o.hd.length} HĐMB dự thảo${o.hd.length ? ' (' + o.hd.join(', ') + ')' : ''}` : 'Không có phiếu đăng ký / HĐMB dự thảo nào cần đổi sang chính sách này') + (o.err.length ? ` · Không áp được: ${o.err.join('; ')}` : '');
 // căn chọn được khi tạo chính sách bán hàng (16/11/2026): còn trong bảng hàng (không ngừng kinh doanh), chưa ký HĐMB / thuê mua / vay / thuê.
 // Kèm chính sách đang phát hành áp cho căn (trừ chính sách đang sửa) và HĐMB dự thảo của căn — để biết căn nào sẽ đổi Lần thanh toán
 async function policyUnits(db, qs) {
@@ -179,7 +217,7 @@ async function policyUnits(db, qs) {
       EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.kind IN ('hdmb','thue_mua','vay','thue') AND c.status = 'da_ky') signed,
       (SELECT c.number FROM kd_contract c WHERE c.unit_id = u.id AND c.kind IN ('hdmb','thue_mua') AND c.status IN ('du_thao','tu_choi') ORDER BY c.id DESC LIMIT 1) draft
     FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = ANY($1)`, [pids]);
-  const pols = await db.q("SELECT id, code, version, unit_group, project_ids, (pay_sched IS NOT NULL) td FROM kd_price_policy WHERE status = 'phat_hanh' AND id <> $1 AND project_ids && $2::int[] AND end_on >= $3 ORDER BY start_on DESC, version DESC", [self, pids, today()]);
+  const pols = await db.q("SELECT id, code, version, unit_group, project_ids, (pay_sched IS NOT NULL) td FROM kd_price_policy WHERE status = 'phat_hanh' AND id <> $1 AND project_ids && $2::int[] AND end_on >= $3 ORDER BY start_on DESC, version DESC, id DESC", [self, pids, today()]);
   const rows = all.filter(u => !u.signed && u.lock !== 'ngung_kd' && u.status !== 'giu_cho').map(u => {
     const p = pols.find(p => p.project_ids.includes(u.project_id) && polHas(p, u.code, u.b));
     return { ...u, pol: p ? `${p.code} v${p.version}` : null, pol_td: !!p?.td };
@@ -538,15 +576,16 @@ H.price_policy = {
     const mr = out.find(x => x.maint), mk = mr && mr.days != null ? out.filter(x => !x.maint).findIndex(x => x.days === mr.days) : -1;
     r.pay_mdot = k ? (mk >= 0 ? mk + 1 : Math.min(Math.max(1, parseInt(r.pay_mdot, 10) || 3), k)) : r.pay_mdot ?? 3;
   },
-  async afterApprove(r, ok, { db, user }) {
+  async afterApprove(r, ok, ctx) {
+    const { db, user } = ctx;
     if (ok && r.parent_id) await sys(db, 'price_policy', r.parent_id, { status: 'thay_the' }, user, 'thay_the', `Thay bằng phiên bản ${r.version}`);
-    if (ok) await policyApply(db, r, user);   // HĐMB chưa trình của các căn đã tích lấy Lần thanh toán theo tiến độ
+    if (ok) { const o = await policyRoll(db, { ...r, status: 'phat_hanh' }, user); if (o.res.length || o.hd.length) ctx.warn?.push?.(rollMsg(o)); }   // có hiệu lực ngay → áp cho căn chưa bán; ngày bắt đầu sau hôm nay → việc nền áp khi tới ngày
   },
   acts: {
-    async apply_sched(r, d, { db, user }) {
-      if (!r.pay_sched?.length) bad('Chính sách chưa khai tiến độ thu tiền');
-      const { ok, err } = await policyApply(db, r, user);
-      return { msg: (ok.length ? `Đã cập nhật Lần thanh toán cho ${ok.length} HĐMB: ${ok.join(', ')}` : 'Không có HĐMB dự thảo / bị từ chối nào của các căn đã tích') + (err.length ? ` · Không áp được: ${err.join('; ')}` : '') };
+    async apply_sched(r, d, { db, user }) {   // áp lại tay: phiếu đăng ký + HĐMB dự thảo của căn chưa bán
+      if (d10(r.start_on) > today()) bad(`Chính sách bắt đầu từ ${d10(r.start_on).split('-').reverse().join('/')} — tới ngày app tự áp`);
+      if (d10(r.end_on) < today()) bad('Chính sách đã hết hạn');
+      return { msg: rollMsg(await policyRoll(db, r, user)) };
     },
     async new_version(r, d, { db, user, demo }) {
       const keep = ['code', 'project_ids', 'unit_group', 'mode', 'unit_price', 'maint_pct', 'vat_pct', 'content', 'target', 'seller_types', 'seller_ids', 'start_on', 'end_on', 'src_file', 'pay_sched', 'pay_mdot'];
@@ -1766,6 +1805,8 @@ async function expireHolds(db) {   // chỉ đổi 2 cột trạng thái (không
 async function jobs(db) {
   const t0 = Date.now();
   await expireHolds(db);
+  // chính sách bán hàng tới ngày bắt đầu (đã phát hành, chưa áp) → tự áp cho căn chưa bán
+  for (const p of await db.q("SELECT * FROM kd_price_policy WHERE status = 'phat_hanh' AND rolled_at IS NULL AND start_on <= $1 AND end_on >= $1", [today()])) await safely(db, () => policyRoll(db, p, null), 'policyRoll');
   for (const c of await db.q(`SELECT c.* FROM kd_contract c WHERE c.status = 'da_ky' AND c.kind <> 'hoan_thien' AND EXISTS (SELECT 1 FROM kd_reservation s WHERE (s.id = c.reservation_id OR (c.reservation_id IS NULL AND s.unit_id = c.unit_id AND s.customer_id = c.customer_id))
       AND s.status IN ${ACTIVE_RES} AND (s.status <> 'chuyen_hd' OR (c.kind IN ('hdmb','thue_mua') AND (s.reg_state IS DISTINCT FROM 'ky_hdmb' OR s.progress IS DISTINCT FROM 'da_ky'))))`)) await safely(db, () => resFromContract(db, c, null), 'resFromContract ' + c.id);
   // HĐ thuê (cho thuê) hết hạn: phiếu đăng ký của HĐ đó hết hiệu lực → căn đăng ký mới được

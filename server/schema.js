@@ -184,7 +184,10 @@ async function migrate(db) {
       await db.q(`CREATE TABLE ${t} (id serial PRIMARY KEY, ${defs.join(', ')},
         is_demo boolean NOT NULL DEFAULT false, created_by integer, created_at timestamptz NOT NULL DEFAULT now(), updated_by integer, updated_at timestamptz)`);
     } else {
-      for (const f of e.fields) if (!have.has(f.k)) await db.q(`ALTER TABLE ${t} ADD COLUMN ${f.k} ${SQLT[f.t]}${f.t === 'bool' ? ` DEFAULT ${f.def === true}` : ''}`);
+      for (const f of e.fields) if (!have.has(f.k)) {
+        await db.q(`ALTER TABLE ${t} ADD COLUMN ${f.k} ${SQLT[f.t]}${f.t === 'bool' ? ` DEFAULT ${f.def === true}` : ''}`);
+        if (f.addFill) await db.q(`UPDATE ${t} SET ${f.k} = ${f.addFill}`);   // giá trị cho dòng có sẵn lúc thêm cột
+      }
     }
   }
   // đổi giá trị danh sách chọn trước khi dựng lại CHECK (giá trị cũ không còn trong danh sách)
