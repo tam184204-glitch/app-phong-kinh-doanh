@@ -159,6 +159,13 @@ async function normSchedule(db, rows, value, label = 'Lịch thanh toán', maint
 // mỗi đợt: { name, days (số ngày sau ngày ký HĐMB), pct, bg?, bg_days? } — hạn = ngày ký + số ngày; đợt bàn giao: thông báo bàn giao đã phát hành thì
 // hạn = ngày bàn giao + số ngày được nộp, chưa có thì tạm theo số ngày sau ngày ký. Phí bảo trì ở dòng riêng cùng hạn đợt pay_mdot
 async function policySchedRows(db, pol, c) {
+  if (c.kind === 'hoan_thien') {   // 14/11/2026: HĐ hoàn thiện căn hộ (nội thất) theo «Tiến độ thu giá trị hoàn thiện» của chính sách
+    const fs = (Array.isArray(pol?.fin_sched) ? pol.fin_sched : []).filter(x => +x.pct > 0);
+    if (!fs.length || !(+c.value > 0)) return null;
+    const b = d10(c.contract_on || c.plan_sign) || today(), has = x => x.days != null && x.days !== '';
+    const rows = fs.map((x, i) => { const due = has(x) || !i ? C.addDays(b, +x.days || 0) : null; if (!due) bad(`Chính sách ${pol.code}: đợt hoàn thiện «${x.name}» chưa có ngày đến hạn cố định — mở HĐ nhập ngày cho đợt này`); return { name: x.name, pct: +x.pct, amount: null, due_on: due }; });
+    return normSchedule(db, rows, +c.value, `Tiến độ hoàn thiện theo chính sách ${pol.code}`, 0, 1, 0);
+  }
   const all = Array.isArray(pol?.pay_sched) ? pol.pay_sched : [], ps = all.filter(x => !x.maint && +x.pct > 0), mr = all.find(x => x.maint);
   if (!ps.length || !(+c.value > 0)) return null;
   const b = d10(c.contract_on || c.plan_sign) || today(), has = x => x.days != null && x.days !== '';
@@ -181,22 +188,24 @@ async function policySchedRows(db, pol, c) {
 // chính sách có khai tiến độ áp cho HĐ: chính sách ghi trên HĐ, không có tiến độ thì chính sách đang phát hành cho căn
 async function schedPolicy(db, c) {
   const p0 = c.price_policy_id ? await raw(db, 'price_policy', c.price_policy_id) : null;
-  if (p0?.pay_sched?.length) return p0;
+  const ok = p => c.kind === 'hoan_thien' ? p?.fin_sched?.length : p?.pay_sched?.length;
+  if (ok(p0)) return p0;
   const u = c.unit_id ? await raw(db, 'unit', c.unit_id) : null, p = u ? (await pricing(db, u, d10(c.contract_on) || today())).policy : null;
-  return p?.pay_sched?.length ? p : null;
+  return ok(p) ? p : null;
 }
 async function policyApplyOne(db, pol, c, user, demo) {
   const rows = await policySchedRows(db, pol, c); if (!rows) return false;
   await writeSchedule(db, c.id, rows, 'hop_dong', user, demo ?? c.is_demo);
-  await db.q('UPDATE kd_contract SET price_policy_id = $2, maint_dot = $3, updated_at = now() WHERE id = $1', [c.id, pol.id, Math.min(Math.max(1, +pol.pay_mdot || 3), pol.pay_sched.filter(x => !x.maint).length)]);
+  if (c.kind === 'hoan_thien') await db.q('UPDATE kd_contract SET price_policy_id = $2, updated_at = now() WHERE id = $1', [c.id, pol.id]);
+  else await db.q('UPDATE kd_contract SET price_policy_id = $2, maint_dot = $3, updated_at = now() WHERE id = $1', [c.id, pol.id, Math.min(Math.max(1, +pol.pay_mdot || 3), pol.pay_sched.filter(x => !x.maint).length)]);
   await C.audit(db, 'contract', c.id, 'tien_do_chinh_sach', null, { policy: pol.code + ' v' + pol.version }, user, `Lần thanh toán lấy theo tiến độ của chính sách ${pol.code} v${pol.version}`, demo ?? c.is_demo);
   return true;
 }
 // chính sách phát hành: HĐMB chưa trình duyệt (dự thảo / bị từ chối) của các căn đã tích → ghi lại Lần thanh toán. HĐ đã trình / đã ký giữ nguyên
 async function policyApply(db, pol, user) {
-  if (!pol?.pay_sched?.length) return { ok: [], err: [] };
+  if (!pol?.pay_sched?.length && !pol?.fin_sched?.length) return { ok: [], err: [] };
   const cs = await db.q(`SELECT c.*, u.code ucode, b.code bcode FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id LEFT JOIN kd_building b ON b.id = u.building_id
-    WHERE c.kind IN ('hdmb','thue_mua') AND c.status IN ('du_thao','tu_choi') AND u.project_id = ANY($1) ORDER BY c.id`, [pol.project_ids || []]);
+    WHERE c.kind IN (${pol.pay_sched?.length ? "'hdmb','thue_mua'," : ''}'hoan_thien') AND c.status IN ('du_thao','tu_choi') AND u.project_id = ANY($1) ORDER BY c.id`, [pol.project_ids || []]);
   const ok = [], err = [];
   for (const c of cs.filter(c => polHas(pol, c.ucode, c.bcode))) {
     try { if (await policyApplyOne(db, pol, c, user)) ok.push(c.number || c.code || '#' + c.id); } catch (e) { if (e.status !== 400) throw e; err.push(`${c.number || '#' + c.id}: ${e.message}`); }
@@ -236,12 +245,24 @@ async function policyRoll(db, pol, user) {
       if ((await pricing(db, u, on, r ? { source: r.source, agent_id: r.agent_id } : undefined)).policy?.id !== pol.id) continue;
       const nm = c.number || c.code || '#' + c.id;
       try {
-        if (fv != null && +(c.finish_value || 0) !== fv) { await sys(db, 'contract', c.id, { finish_value: fv }, user, 'hoan_thien_chinh_sach', `Giá trị hoàn thiện theo chính sách ${lab}`); await syncContractValue(db, c.id, user, `Giá trị hoàn thiện theo chính sách ${lab}`); if (!pol.pay_sched?.length && c.price_policy_id === pol.id) out.hd.push(nm); Object.assign(c, await raw(db, 'contract', c.id)); }   // đọc lại HĐ (giá trị, phí bảo trì, hoàn thiện mới) trước khi lập Lần thanh toán
+        if (fv != null && +(c.finish_value || 0) !== fv && (c.ptype === 'lien_ke' || +(c.finish_value || 0) > 0)) { await sys(db, 'contract', c.id, { finish_value: fv }, user, 'hoan_thien_chinh_sach', `Giá trị hoàn thiện theo chính sách ${lab}`); await syncContractValue(db, c.id, user, `Giá trị hoàn thiện theo chính sách ${lab}`); if (!pol.pay_sched?.length && c.price_policy_id === pol.id) out.hd.push(nm); Object.assign(c, await raw(db, 'contract', c.id)); }   // đọc lại HĐ (giá trị, phí bảo trì, hoàn thiện mới) trước khi lập Lần thanh toán
         if (pol.pay_sched?.length && await policyApplyOne(db, pol, c, user)) out.hd.push(nm);
         else if (c.price_policy_id !== pol.id) {
           await db.q('UPDATE kd_contract SET price_policy_id = $2, updated_at = now() WHERE id = $1', [c.id, pol.id]);
           await C.audit(db, 'contract', c.id, 'chinh_sach_moi', null, { policy: lab }, user, `Áp chính sách bán hàng mới ${lab}`, c.is_demo); out.hd.push(nm);
         }
+      } catch (e) { if (e.status !== 400) throw e; out.err.push(`${nm}: ${e.message}`); }
+    }
+    // HĐ hoàn thiện căn hộ (nội thất) dự thảo của căn: Lần thanh toán theo «Tiến độ thu giá trị hoàn thiện» của chính sách (14/11/2026)
+    if (fv != null || pol.fin_sched?.length) for (let c of await db.q("SELECT * FROM kd_contract WHERE unit_id = $1 AND kind = 'hoan_thien' AND status IN ('du_thao','tu_choi') ORDER BY id", [u.id])) {
+      const r = (c.reservation_id && await raw(db, 'reservation', c.reservation_id)) || rs[rs.length - 1];
+      if ((await pricing(db, u, on, r ? { source: r.source, agent_id: r.agent_id } : undefined)).policy?.id !== pol.id) continue;
+      const nm = c.number || c.code || '#' + c.id;
+      try {
+        let hit = false;
+        if (fv != null && +(c.finish_value || 0) !== fv) { await sys(db, 'contract', c.id, { finish_value: fv }, user, 'hoan_thien_chinh_sach', `Giá trị hoàn thiện theo chính sách ${lab}`); c = await raw(db, 'contract', c.id); hit = true; }
+        if (pol.fin_sched?.length && await policyApplyOne(db, pol, c, user)) hit = true;
+        if (hit) out.hd.push(nm);
       } catch (e) { if (e.status !== 400) throw e; out.err.push(`${nm}: ${e.message}`); }
     }
   }
@@ -1485,7 +1506,7 @@ H.contract = {
       if (key(cur) !== key(sched)) { await writeSchedule(db, r.id, sched, 'hop_dong', user, demo); if (['hdmb', 'thue_mua'].includes(r.kind) && r.status === 'da_ky') await bgReapply(db, r.id, user); }
     }
     // HĐMB mới chưa nhập Lần thanh toán (VD chuyển từ phiếu giữ chỗ): lấy theo tiến độ thu tiền của chính sách bán hàng áp cho căn (16/11/2026)
-    if (!old && !sched?.length && ['hdmb', 'thue_mua'].includes(r.kind) && ['du_thao', 'tu_choi'].includes(r.status)) { const p = await schedPolicy(db, r); if (p) try { await policyApplyOne(db, p, r, user, demo); } catch (e) { if (e.status !== 400) throw e; } }   // đợt chưa có ngày cố định: để HĐ tự nhập
+    if (!old && !sched?.length && ['hdmb', 'thue_mua', 'hoan_thien'].includes(r.kind) && ['du_thao', 'tu_choi'].includes(r.status)) { const p = await schedPolicy(db, r); if (p) try { await policyApplyOne(db, p, r, user, demo); } catch (e) { if (e.status !== 400) throw e; } }   // đợt chưa có ngày cố định: để HĐ tự nhập
     // HĐ thuê / vay bán căn đã ký, tiến độ HĐMB đổi: đợt gắn bàn giao theo thông báo đã phát hành (ghi vào thông báo để hủy thì trả hạn) — 16/11/2026
     if (['thue', 'vay'].includes(r.kind) && r.status === 'da_ky' && r.sale_on && JSON.stringify(r.sale_sched || null) !== JSON.stringify(old?.sale_sched || null)) await bgReapply(db, r.id, user);
     await resFromContract(db, r, user);

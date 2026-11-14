@@ -833,6 +833,8 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish, kind, debt, rec0 }) {
     id: ht?.id, status: ht?.status, snap, show, rentDraw, rentValue, loanDraw,
     sync(on) { nav.classList.toggle('hidden', !on); if (!on) view('mb'); $('[data-f=finish_value]', form)?.classList.toggle('hidden', on && !oldFinish); },
     finish(n) { if (!rd('ht_finish', 'money')) { $('[name=ht_finish]', hp).value = moneyStr(n); calc(); } },
+    // 14/11/2026: tiến độ thu giá trị hoàn thiện (nội thất) của chính sách → Lần thanh toán của HĐ hoàn thiện (không vào HĐMB); đã tự nhập đợt thì giữ
+    finSched(rows) { if (locked || ht?.id || (el._get().length && !el._pol)) return false; el._set(rows); el._pol = 1; if (!mk().checked) { mk().checked = true; nav.classList.add('ht-has'); } calc(); return true; },
     changed: () => !locked && (ht?.id ? JSON.stringify(snap()) !== first : mk().checked),
     filled: () => (ht?.id || mk().checked) && val() > 0,
   };
@@ -1100,8 +1102,10 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
       const mk = m && has(m) ? ns.findIndex(x => has(x) && +x.days === +m.days) : -1;
       form._mdot = mk >= 0 ? mk + 1 : d.pay_mdot; form._polSched = 1;
       const fr = (d.fin_sched || []).map(x => ({ name: x.name, pct: x.pct, amount: null, due_on: '', fin: true, ...(has(x) && +x.days ? { _days: +x.days } : { _d0: true }) }));   // đợt thu hoàn thiện — căn không có hoàn thiện thì máy chủ bỏ
-      sc._set([...ns.map(x => ({ name: x.name, pct: x.pct, amount: null, due_on: '', ...(has(x) && +x.days ? { _days: +x.days } : {}), ...(x.bg ? { bg: true, bg_days: x.bg_days ?? null } : {}) })), ...(d.finish_value > 0 || +readField(form, E.fields.find(f => f.k === 'finish_value')) > 0 ? fr : []), ...(m ? [{ name: m.name, maint: true }] : [])]);
-      toast(`Lần thanh toán điền theo tiến độ của chính sách ${d.sched_policy}`);
+      const htOn = htp && form.elements.ptype?.value !== 'lien_ke';   // chung cư: hoàn thiện (nội thất) là HĐ hoàn thiện riêng → đợt hoàn thiện sang tab Hoàn thiện căn hộ
+      sc._set([...ns.map(x => ({ name: x.name, pct: x.pct, amount: null, due_on: '', ...(has(x) && +x.days ? { _days: +x.days } : {}), ...(x.bg ? { bg: true, bg_days: x.bg_days ?? null } : {}) })), ...(!htOn && (d.finish_value > 0 || +readField(form, E.fields.find(f => f.k === 'finish_value')) > 0) ? fr : []), ...(m ? [{ name: m.name, maint: true }] : [])]);
+      const toHt = htOn && fr.length && d.finish_value > 0 && htp.finSched(fr.map(({ fin, ...x }) => x));
+      toast(`Lần thanh toán điền theo tiến độ của chính sách ${d.sched_policy}${toHt ? ' — tiến độ nội thất điền ở tab Hoàn thiện căn hộ' : ''}`);
     }
   };
   // số hợp đồng để trống → máy chủ cấp khi lưu; hiện sẵn số sẽ cấp ở ô (như BRAVO)
