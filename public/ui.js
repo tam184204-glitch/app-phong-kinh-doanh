@@ -157,7 +157,7 @@ function show(f, row, { plain } = {}) {
     case 'sel': { const o = optOf(f, v); return plain ? (o?.[1] ?? v) : o?.[2] ? pill(o[1], o[2]) : esc(o?.[1] ?? v); }
     case 'ref': case 'refs': case 'user': return esc(row[f.k + '__l'] ?? '#' + v);
     case 'check': { const n = v.filter(x => x.st === 'da_nhan').length, bad = v.filter(x => ['thieu', 'can_sua'].includes(x.st)).length; return plain ? `${n}/${v.length}` : `<span class="${bad ? 'neg' : ''}">${n}/${v.length}${bad ? ` · thiếu ${bad}` : ''}</span>`; }
-    case 'json': if (f.k === 'pay_sched' && Array.isArray(v)) return plain ? v.map((x, i) => `Đợt ${i + 1}: ${fnum(x.pct)}% sau ${x.days} ngày`).join('; ') : paySchedTable(v, row);
+    case 'json': if (f.k === 'pay_sched' && Array.isArray(v)) return plain ? v.map((x, i) => x.maint ? `Phí bảo trì: ${x.days ?? '—'} ngày` : `Đợt ${i + 1}: ${fnum(x.pct)}% sau ${x.days ?? '—'} ngày`).join('; ') : paySchedTable(v, row);
       if (f.grid && Array.isArray(v)) {
       if (!v.length) return plain ? '' : '<span class="muted">—</span>';
       if (plain) return v.map(x => x.name + (x.relation ? ` (${x.relation})` : '')).join('; ');
@@ -445,44 +445,33 @@ function combo(c, root, onChange) {
   $('.x', c).onclick = () => { hid.value = ''; txt.value = ''; hid.dispatchEvent(new Event('change', { bubbles: true })); onChange && onChange(); txt.focus(); };
 }
 
-// tiến độ thu tiền khai ở chính sách bán hàng (16/11/2026) — xem ở chi tiết chính sách
-const paySchedTable = (v, row = {}) => `<div class="tbl-wrap"><table class="t compact noclick sched"><thead><tr><th>Đợt</th><th>Nội dung</th><th>Hạn</th><th class="num">Tỷ lệ %</th></tr></thead><tbody>
-  ${v.map((x, i) => `<tr><td>${i + 1}</td><td>${esc(x.name || '')}${i + 1 === +(row.pay_mdot || 3) ? '<div class="small muted">+ thu phí bảo trì cùng hạn đợt này</div>' : ''}</td><td class="nowrap">${!x.days ? 'Ngày ký HĐMB' : `${x.days} ngày sau ngày ký`}</td><td class="num">${fnum(x.pct)}%</td></tr>`).join('')}
-  </tbody><tfoot><tr><td colspan="3"><b>Tổng</b></td><td class="num"><b>${fnum(v.reduce((s, x) => s + (+x.pct || 0), 0))}%</b></td></tr></tfoot></table></div>`;
-// soạn tiến độ thu tiền ở form chính sách: nội dung + số ngày sau ngày ký HĐMB + tỷ lệ % (+ tích đợt bàn giao); HĐMB các căn đã tích tự lấy theo
-function paySchedEditor(el, rows) {
-  let R = (rows || []).map(r => ({ ...r }));
-  const draw = () => {
-    const sum = Math.round(R.reduce((s, r) => s + (+r.pct || 0), 0) * 100) / 100;
-    el.innerHTML = `<div class="row mb">${(M.settings.schedule_presets || []).map((p, i) => `<button type="button" class="btn sm" data-pre="${i}">${ico('fa-wand-magic-sparkles')} ${esc(p.name)}</button>`).join('')}<span class="muted small">Lấy theo mẫu rồi sửa</span></div>
-      <table class="t compact noclick sched"><thead><tr><th>Đợt</th><th>Nội dung</th><th class="num" title="Hạn đợt = ngày ký HĐMB + số ngày (đợt 1 = 0: ngay khi ký)">Hạn: số ngày<br>sau ngày ký HĐMB</th><th class="num">Tỷ lệ %</th><th></th></tr></thead><tbody>
-      ${R.map((r, i) => `<tr data-i="${i}"><td>${i + 1}</td><td><input data-k="name" value="${esc(r.name || '')}" placeholder="VD: Đợt ${i + 1} – sau 60 ngày kể từ ngày ký HĐMB" style="width:100%;min-width:260px"></td>
-        <td class="num"><input data-k="days" value="${r.days ?? ''}" inputmode="numeric" placeholder="${i ? '' : '0'}" style="width:80px;text-align:right"></td>
-        <td class="num"><input data-k="pct" value="${r.pct != null ? fnum(r.pct) : ''}" inputmode="decimal" style="width:70px;text-align:right"></td>
-        <td><button type="button" class="btn sm" data-del="${i}" title="Bỏ đợt">${ico('fa-xmark')}</button></td></tr>`).join('')}
-      ${R.length ? '' : '<tr><td colspan="5" class="muted center">Chưa khai tiến độ — HĐMB tự nhập Lần thanh toán như cũ</td></tr>'}
-      </tbody><tfoot><tr><td colspan="3"><b>Tổng</b></td><td class="num ${R.length && sum !== 100 ? 'neg' : 'pos'}"><b>${fnum(sum)}%</b></td><td></td></tr></tfoot></table>
-      <button type="button" class="btn sm mt" data-add>${ico('fa-plus')} Thêm đợt</button>
-      <div class="small muted mt">Tỷ lệ % tính trên tiền sau thuế của từng căn; phí bảo trì thu ở dòng riêng cùng hạn đợt ghi ở ô «Phí bảo trì thu cùng hạn đợt». Chính sách được duyệt phát hành → HĐMB <b>dự thảo / bị từ chối</b> của các căn đã tích tự cập nhật Lần thanh toán; HĐMB lập mới cho các căn này tự điền theo tiến độ (vẫn sửa được). HĐ đã trình duyệt / đã ký giữ nguyên.</div>`;
-  };
-  const sync = () => $$('tbody tr[data-i]', el).forEach(tr => { const r = R[+tr.dataset.i]; for (const i of $$('input[data-k]', tr)) { const k = i.dataset.k, v = i.value.trim(); r[k] = k === 'name' ? i.value : v === '' ? null : k === 'pct' ? num(v) : Math.max(0, parseInt(v, 10) || 0); } });
-  el.addEventListener('click', e => {
-    const b = e.target.closest('button'); if (!b) return; sync();
-    if (b.dataset.add !== undefined) { const l = R[R.length - 1]; R.push({ name: `Đợt ${R.length + 1}`, days: l ? (+l.days || 0) + 60 : 0, pct: null }); }
-    if (b.dataset.del !== undefined) R.splice(+b.dataset.del, 1);
-    if (b.dataset.pre !== undefined) R = M.settings.schedule_presets[+b.dataset.pre].rows.map(([name, pct, days]) => ({ name, pct, days }));
-    draw();
-  });
-  el.addEventListener('change', e => {
-    const d = e.target.dataset;
-    if (d.k === 'pct') { sync(); draw(); }
-  });
-  el._get = () => { sync(); return R.filter(r => String(r.name || '').trim() || r.pct != null || r.days != null).map(r => ({ name: r.name, days: r.days, pct: r.pct, ...(r.bg ? { bg: true, bg_days: r.bg_days ?? null } : {}) })); };
-  draw();
+// tiến độ thu tiền khai ở chính sách bán hàng (16/11/2026) — xem ở chi tiết chính sách. Đợt: { name, pct, days (số ngày sau ngày ký HĐMB, trống = chưa có ngày cố định) };
+// dòng phí bảo trì { maint: true, name, days } (bản cũ không có dòng này: phí bảo trì cùng hạn đợt pay_mdot)
+const paySchedTable = (v, row = {}) => {
+  const ns = v.filter(x => !x.maint), m = v.find(x => x.maint), md = +(row.pay_mdot || 3);
+  const hn = x => x.days == null || x.days === '' ? '<span class="muted">Chưa có ngày cố định — nhập ở HĐ</span>' : !+x.days ? 'Ngày ký HĐMB' : `${x.days} ngày sau ngày ký HĐMB`;
+  return `<div class="tbl-wrap"><table class="t compact noclick sched"><thead><tr><th>Đợt</th><th>Nội dung</th><th>Hạn</th><th class="num">Tỷ lệ %</th></tr></thead><tbody>
+  ${ns.map((x, i) => `<tr><td>${i + 1}</td><td>${esc(x.name || '')}${!m && i + 1 === md ? '<div class="small muted">+ thu phí bảo trì cùng hạn đợt này</div>' : ''}</td><td class="nowrap">${hn(x)}</td><td class="num">${fnum(x.pct)}%</td></tr>`).join('')}
+  ${m ? `<tr class="sched-m"><td><b>Phí bảo trì</b></td><td>${esc(m.name || '')}</td><td class="nowrap">${hn(m)}</td><td class="num muted">—</td></tr>` : ''}
+  </tbody><tfoot><tr><td colspan="3"><b>Tổng</b></td><td class="num"><b>${fnum(ns.reduce((s, x) => s + (+x.pct || 0), 0))}%</b></td></tr></tfoot></table></div>`;
+};
+// soạn tiến độ thu tiền ở form chính sách — dùng đúng bảng «Lần thanh toán» của HĐMB (Tâm 16/11/2026: «bê y hệt»): chọn đợt gợi ý nội dung, «Sau N ngày…» tự ra hạn,
+// dòng phí bảo trì riêng. Ngày đến hạn tính mẫu theo ngày ký = Ngày bắt đầu chính sách; lưu thành số ngày sau ngày ký → HĐMB thật tính theo ngày ký của từng HĐ
+const dayDiff = (a, b) => Math.round((Date.parse(a + 'T00:00:00Z') - Date.parse(b + 'T00:00:00Z')) / 864e5);
+function paySchedEditor(el, rows, form, rec = {}) {
+  const sf = { k: 'start_on', t: 'date' }, baseOf = () => (form?.elements.start_on && readField(form, sf)) || rec.start_on || today();
+  const b0 = baseOf(), has = x => x.days != null && x.days !== '';
+  const R0 = (rows || []).map(x => x.maint ? { name: x.name, due_on: has(x) ? addDays(b0, +x.days) : '', maint: true }
+    : { name: x.name, pct: x.pct, amount: null, due_on: has(x) ? addDays(b0, +x.days) : '', ...(has(x) && +x.days ? { _days: +x.days } : {}) });
+  schedEditor(el, R0, { total: 0, first: baseOf, maint: () => 0, mdot: () => +(rec.pay_mdot || 3), pol: true });
+  const get = el._get;
+  el._get = () => { const b = baseOf(); return get().map(x => ({ name: x.name, ...(x.maint ? { maint: true } : { pct: x.pct }), days: x.due_on ? dayDiff(x.due_on, b) : null })); };
+  form?.addEventListener('change', e => { if (e.target.name === 'start_on') el._redraw?.(); });
 }
 
 // lịch thanh toán (soạn các đợt)
-function schedEditor(el, rows, { total, base, first, maint, mdot, bgBase } = {}) {   // bgBase(): { doc, on, days } — căn đã có thông báo bàn giao phát hành   // maint(): phí bảo trì, mdot(): đợt mặc định cho hạn phí bảo trì   // first(): ngày cố định của đợt 1 (hợp đồng: ngày ký HĐMB)
+function schedEditor(el, rows, { total, base, first, maint, mdot, bgBase, pol } = {}) {   // pol: bảng tiến độ ở chính sách bán hàng — không có số tiền (tính theo giá từng căn)
+    // bgBase(): { doc, on, days } — căn đã có thông báo bàn giao phát hành   // maint(): phí bảo trì, mdot(): đợt mặc định cho hạn phí bảo trì   // first(): ngày cố định của đợt 1 (hợp đồng: ngày ký HĐMB)
   let R = (rows || []).map(r => ({ ...r }));
   // HĐMB: phí bảo trì là DÒNG RIÊNG cố định cuối bảng (không xóa, số tiền = phí bảo trì); hạn tự theo đợt thu phí bảo trì cho đến khi sửa tay —
   // đợt có nội dung nhắc «bảo trì» (mẫu: «… và 2% phí bảo trì»), không có thì đợt mặc định (3)
@@ -523,12 +512,12 @@ function schedEditor(el, rows, { total, base, first, maint, mdot, bgBase } = {})
     const bgCell = (r, at) => `<td class="sched-bg"><label class="chk small"><input type="checkbox" ${at} ${r.bg ? 'checked' : ''}> Bàn giao</label>${r.bg ? `<div class="small nowrap"><input data-${at.startsWith('data-bgm') ? 'mk' : 'k'}="bg_days" value="${r.bg_days ?? ''}" placeholder="${bgB?.days ?? 0}" inputmode="numeric" style="width:46px;text-align:right" title="Số ngày được nộp kể từ ngày bàn giao — để trống = theo thông báo bàn giao"> ngày${r._bgAuto ? ' <span class="muted" title="App tự nhận theo nội dung đợt — bỏ tích nếu sai">· tự nhận</span>' : ''}</div>${bgB?.on ? `<div class="small hs-ok" title="Thông báo bàn giao ${esc(bgB.doc || '')}">BG ${dmy(bgB.on)}</div>` : ''}` : ''}</td>`;
     if (on) { MR ||= { name: 'Thu phí bảo trì (2% tiền trước thuế)', due_on: '', auto: true }; if (MR.auto) MR.due_on = R[mi]?.due_on || ''; }
     const pa = r => r.pct ? Math.round(base * r.pct / 100) : 0, sum = R.reduce((s, r) => s + (+r.amount || pa(r)), 0) + (hasM ? mt : 0);
-    const mRow = on ? `<tr data-m class="sched-m"><td><b>Phí bảo trì</b></td><td><input data-mk="name" value="${esc(MR.name || '')}" style="width:100%"></td><td><input data-mk="due_on" value="${esc(dmy(MR.due_on) || '')}" placeholder="dd/mm/yyyy" style="width:120px" title="Tự theo hạn đợt ${mi + 1} (đợt có nội dung nhắc phí bảo trì, không có thì đợt 3) — sửa được; xóa trống thì lại tự theo"></td><td class="num muted">—</td><td><input value="${mt ? fm(mt) : ''}" placeholder="chọn căn để tính" readonly style="width:150px;text-align:right" title="Phí bảo trì = 2% tiền trước thuế — tự tính khi chọn căn / nhập giá"></td>${SBG ? bgCell(MR, 'data-bgm="1"') : ''}<td></td></tr>` : '';
+    const mRow = on ? `<tr data-m class="sched-m"><td><b>Phí bảo trì</b></td><td><input data-mk="name" value="${esc(MR.name || '')}" style="width:100%"></td><td><input data-mk="due_on" value="${esc(dmy(MR.due_on) || '')}" placeholder="dd/mm/yyyy" style="width:120px" title="Tự theo hạn đợt ${mi + 1} (đợt có nội dung nhắc phí bảo trì, không có thì đợt 3) — sửa được; xóa trống thì lại tự theo"></td><td class="num muted">—</td><td><input value="${mt ? fm(mt) : ''}" placeholder="${pol ? '2% tiền trước thuế' : 'chọn căn để tính'}" readonly style="width:150px;text-align:right" title="Phí bảo trì = 2% tiền trước thuế — tự tính khi chọn căn / nhập giá"></td>${SBG ? bgCell(MR, 'data-bgm="1"') : ''}<td></td></tr>` : '';
     el.innerHTML = `<div class="row mb">${(M.settings.schedule_presets || []).map((p, i) => `<button type="button" class="btn sm" data-pre="${i}">${ico('fa-wand-magic-sparkles')} ${esc(p.name)}</button>`).join('')}<span class="muted small">Mẫu tính ngày từ ngày gốc</span><input class="inp" style="width:120px;height:30px" data-base value="${esc(dmy(d1 || base || today()))}"></div>
       <table class="t compact noclick sched ${C.length ? 'pick' : ''}"><thead><tr><th>Đợt</th><th>Nội dung</th><th>Ngày đến hạn</th><th class="num">Tỷ lệ %</th><th class="num">Số tiền</th>${on && SBG ? `<th title="Tích đợt thu khi bàn giao nhà (đợt 2, 3, 4… tùy hợp đồng) — Thông báo bàn giao phát hành thì hạn đợt này = ngày bàn giao + số ngày">Đợt bàn giao</th>` : ''}<th></th></tr></thead><tbody>
-      ${R.map((r, i) => `<tr data-i="${i}"><td>${C.length ? `<select data-sug="${i}" title="Chọn đợt để gợi ý nội dung, tỷ lệ, hạn"><option value="">Đợt ${i + 1}</option>${C.map((c, j) => `<option value="${j}" ${c.name === r.name ? 'selected' : ''}>${esc(c.dot)}</option>`).join('')}</select>` : i + 1}</td><td>${C.length ? `<textarea data-k="name" rows="2" placeholder="Chọn đợt để gợi ý hoặc tự ghi nội dung">${esc(r.name || '')}</textarea>` : `<input data-k="name" value="${esc(r.name || '')}">`}</td><td><input data-k="due_on" value="${esc(dmy(r.due_on) || r.due_on || '')}" placeholder="dd/mm/yyyy" style="width:120px"${d1 && !i ? ' readonly title="Tự theo ngày ký hợp đồng mua bán"' : r.bg && bgB?.on ? ` readonly title="Theo thông báo bàn giao ${esc(bgB.doc || '')}: ngày bàn giao ${dmy(bgB.on)} + ${r.bg_days ?? bgB.days ?? 0} ngày"` : ''}></td><td><input data-k="pct" value="${r.pct ?? ''}" style="width:70px;text-align:right"></td><td><input data-k="amount" value="${r.amount ? fm(r.amount) : ''}" placeholder="${r.pct && tot ? fm(pa(r)) : ''}" style="width:150px;text-align:right"></td>${on && SBG ? bgCell(r, `data-bg="${i}"`) : ''}<td><div class="sched-acts"><button type="button" class="btn ghost sm" data-del="${i}" title="Xóa đợt">${ico('fa-trash')}</button></div></td></tr>`).join('')}<tr class="sched-add"><td colspan="${on ? 7 : 6}"><button type="button" class="btn sm" data-add>${ico('fa-plus')} Thêm đợt</button></td></tr>${mRow}
-      </tbody><tfoot><tr><td colspan="3"><b>Tổng</b></td><td class="num">${fnum(R.reduce((s, r) => s + (+r.pct || 0), 0))}%</td><td class="num ${tot && Math.abs(sum - tot) > 1000 * (R.length + 1) ? 'neg' : 'pos'}">${fm(sum)}</td>${on && SBG ? '<td></td>' : ''}<td></td></tr></tfoot></table>
-      <div class="small muted mt">Phải khớp nghĩa vụ phải thu: <b>${fm(tot)}</b> đ.${hasM ? ` Tỷ lệ % các đợt tính trên tiền sau thuế <b>${fm(base)}</b> đ; phí bảo trì <b>${fm(mt)}</b> đ thu ở dòng riêng${R[mi] ? `, cùng hạn đợt ${mi + 1}` : ''}.` : ''} Nhập tỷ lệ % hoặc số tiền; chênh lệch làm tròn (≤ 1.000đ/đợt) dồn vào đợt cuối.</div>`;
+      ${R.map((r, i) => `<tr data-i="${i}"><td>${C.length ? `<select data-sug="${i}" title="Chọn đợt để gợi ý nội dung, tỷ lệ, hạn"><option value="">Đợt ${i + 1}</option>${C.map((c, j) => `<option value="${j}" ${c.name === r.name ? 'selected' : ''}>${esc(c.dot)}</option>`).join('')}</select>` : i + 1}</td><td>${C.length ? `<textarea data-k="name" rows="2" placeholder="Chọn đợt để gợi ý hoặc tự ghi nội dung">${esc(r.name || '')}</textarea>` : `<input data-k="name" value="${esc(r.name || '')}">`}</td><td><input data-k="due_on" value="${esc(dmy(r.due_on) || r.due_on || '')}" placeholder="dd/mm/yyyy" style="width:120px"${d1 && !i ? ' readonly title="Tự theo ngày ký hợp đồng mua bán"' : r.bg && bgB?.on ? ` readonly title="Theo thông báo bàn giao ${esc(bgB.doc || '')}: ngày bàn giao ${dmy(bgB.on)} + ${r.bg_days ?? bgB.days ?? 0} ngày"` : ''}></td><td><input data-k="pct" value="${r.pct ?? ''}" style="width:70px;text-align:right"></td><td><input data-k="amount" value="${r.amount && !pol ? fm(r.amount) : ''}" placeholder="${pol ? 'theo giá từng căn' : r.pct && tot ? fm(pa(r)) : ''}"${pol ? ' readonly title="Số tiền = tỷ lệ % × tiền sau thuế của từng căn — tính khi lập HĐMB"' : ''} style="width:150px;text-align:right"></td>${on && SBG ? bgCell(r, `data-bg="${i}"`) : ''}<td><div class="sched-acts"><button type="button" class="btn ghost sm" data-del="${i}" title="Xóa đợt">${ico('fa-trash')}</button></div></td></tr>`).join('')}<tr class="sched-add"><td colspan="${on ? 7 : 6}"><button type="button" class="btn sm" data-add>${ico('fa-plus')} Thêm đợt</button></td></tr>${mRow}
+      </tbody><tfoot><tr><td colspan="3"><b>Tổng</b></td><td class="num">${fnum(R.reduce((s, r) => s + (+r.pct || 0), 0))}%</td><td class="num ${tot && Math.abs(sum - tot) > 1000 * (R.length + 1) ? 'neg' : 'pos'}">${pol ? '' : fm(sum)}</td>${on && SBG ? '<td></td>' : ''}<td></td></tr></tfoot></table>
+      ${pol ? `<div class="small muted mt">Tổng tỷ lệ các đợt phải đủ 100% (tính trên tiền sau thuế của từng căn); phí bảo trì thu ở dòng riêng${R[mi] ? `, mặc định cùng hạn đợt ${mi + 1}` : ''}. Ngày đến hạn ở đây tính mẫu theo ngày ký HĐMB = <b>Ngày bắt đầu</b> của chính sách — HĐMB thật giữ đúng số ngày, tính theo ngày ký của từng HĐ; đợt không có ngày cố định (VD theo thông báo bàn giao) để trống, nhập ở HĐ.<br>Chính sách được duyệt phát hành → HĐMB <b>dự thảo / bị từ chối</b> của các căn đã tích tự cập nhật Lần thanh toán; lập HĐMB mới, chọn mã căn → Lần thanh toán tự điền theo chính sách (vẫn sửa được). HĐ đã trình duyệt / đã ký giữ nguyên.</div>` : `<div class="small muted mt">Phải khớp nghĩa vụ phải thu: <b>${fm(tot)}</b> đ.${hasM ? ` Tỷ lệ % các đợt tính trên tiền sau thuế <b>${fm(base)}</b> đ; phí bảo trì <b>${fm(mt)}</b> đ thu ở dòng riêng${R[mi] ? `, cùng hạn đợt ${mi + 1}` : ''}.` : ''} Nhập tỷ lệ % hoặc số tiền; chênh lệch làm tròn (≤ 1.000đ/đợt) dồn vào đợt cuối.</div>`}`;
   };
   const sync = () => {
     $$('tbody tr[data-i]', el).forEach(tr => { const r = R[+tr.dataset.i]; for (const i of $$('input[data-k],textarea[data-k]', tr)) { const k = i.dataset.k; r[k] = k === 'bg_days' ? (i.value.trim() === '' ? null : Math.max(0, parseInt(i.value, 10) || 0)) : k === 'pct' ? (i.value.trim() ? num(i.value) : null) : k === 'amount' ? (i.value.trim() ? num(i.value, true) : null) : k === 'due_on' ? parseDmy(i.value) : i.value; } });
@@ -577,10 +566,14 @@ function schedEditor(el, rows, { total, base, first, maint, mdot, bgBase } = {})
     if (n) { R[i]._days = n; $('[data-k="due_on"]', tr).value = dmy(addDays(d, n)); }
     else if (R[i]._days) { delete R[i]._days; R[i].due_on = ''; $('[data-k="due_on"]', tr).value = ''; }   // nội dung không còn theo ngày ký: bỏ hạn đã tự sổ
   });
-  el._set = rows => { R = rows.map(r => ({ ...r })); draw(); };   // điền sẵn các đợt (HĐ thuê tự chia kỳ)
+  el._set = rows => {   // điền sẵn các đợt (HĐ thuê tự chia kỳ; HĐMB theo tiến độ chính sách — có dòng phí bảo trì thì lấy tên, hạn tự theo đợt)
+    R = rows.map(r => ({ ...r }));
+    if (maint) { const m = R.find(r => r.maint); R = R.filter(r => !r.maint); if (m) MR = { name: m.name, due_on: m.due_on || '', auto: !m.due_on }; }
+    draw();
+  };   // điền sẵn các đợt (HĐ thuê tự chia kỳ)
   el._get = () => {
     sync(); const out = R.filter(r => r.name || r.due_on || r.pct || r.amount).map(r => ({ name: r.name, due_on: r.due_on, pct: r.pct, amount: r.amount, ...(r.bg ? { bg: true, bg_days: r.bg_days ?? null } : {}) }));
-    if (MR && +(maint?.() || 0) > 0) {
+    if (MR && (pol || +(maint?.() || 0) > 0)) {
       if (MR.auto) MR.due_on = R[mIdx()]?.due_on || '';
       out.push({ name: MR.name, due_on: MR.due_on, pct: null, amount: null, maint: true, ...(MR.bg ? { bg: true, bg_days: MR.bg_days ?? null } : {}) });   // máy chủ tự xếp dòng này theo ngày đến hạn
     }
@@ -916,7 +909,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   if (ent === 'handover_notice') $('.modal', m.el).classList.add('full');   // bảng căn bàn giao nhiều cột
   if (ent === 'contract') { bravoLayout(form, HD_LAYOUT); $('.modal', m.el).classList.add('full'); if (rec.kind !== 'hoan_thien') htp = hdPair(form, { ht: htRec, locked: htLocked, tab, draft: htDraft, oldFinish: +rec.finish_value > 0, kind: rec.kind, debt: rec._debt, rec0: rec }); }
   const sch = $('[data-sched]', form);
-  { const ps = $('[data-psched]', form); if (ps) paySchedEditor(ps, rec.pay_sched || []); }
+  { const ps = $('[data-psched]', form); if (ps) paySchedEditor(ps, rec.pay_sched || [], form, rec); }
   if (sch) schedEditor(sch, rec.new_schedule || [], { bgBase: () => rec._bg_base, mdot: () => form._mdot ?? rec.maint_dot ?? 3, maint: () => ent === 'contract' && ['hdmb', 'thue_mua'].includes(form.elements.kind?.value ?? rec.kind) ? (form.elements.maint_fee ? readField(form, E.fields.find(f => f.k === 'maint_fee')) : rec.maint_fee) || 0 : null, total: () => ent === 'contract' ? (form.elements.value ? readField(form, E.fields.find(f => f.k === 'value')) : rec.value) || 0 : readField(form, E.fields.find(f => f.k === 'value_after')) || rec.value_before || 0, first: ent === 'contract' ? () => { const kd = $('[name=kind]', form)?.value ?? rec.kind; const fk = kd === 'thue' ? 'eff_on' : kd === 'vay' && form.elements.loan_recv_on?.value ? 'loan_recv_on' : 'contract_on'; return form.elements[fk] ? readField(form, E.fields.find(f => f.k === fk)) : rec[fk]; } : null });
   const ssch = $('[data-ssched]', form);   // tiến độ thu tiền HĐMB của HĐ thuê / vay bán căn: % theo Giá trị HĐMB
   if (ssch) {   // 16/11/2026: như «Lần thanh toán» HĐMB — chọn đợt gợi ý nội dung, hạn theo ngày ký HĐ, dòng phí bảo trì (theo căn), cột đợt bàn giao
@@ -1084,8 +1077,10 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     // chính sách bán hàng có khai tiến độ thu tiền (16/11/2026): Lần thanh toán điền theo chính sách — hạn = ngày ký HĐMB + số ngày; đã tự nhập các đợt thì giữ
     const sc = $('[data-sched]', form);
     if (d.pay_sched?.length && sc?._set && ['hdmb', 'thue_mua'].includes(form.elements.kind?.value ?? rec.kind) && (form._polSched || !sc._get().some(x => !x.maint))) {
-      form._mdot = d.pay_mdot; form._polSched = 1;
-      sc._set(d.pay_sched.map(x => ({ name: x.name, pct: x.pct, amount: null, due_on: '', _days: +x.days || 0, ...(x.bg ? { bg: true, bg_days: x.bg_days ?? null } : {}) })));
+      const ns = d.pay_sched.filter(x => !x.maint), m = d.pay_sched.find(x => x.maint), has = x => x.days != null && x.days !== '';
+      const mk = m && has(m) ? ns.findIndex(x => has(x) && +x.days === +m.days) : -1;
+      form._mdot = mk >= 0 ? mk + 1 : d.pay_mdot; form._polSched = 1;
+      sc._set([...ns.map(x => ({ name: x.name, pct: x.pct, amount: null, due_on: '', ...(has(x) && +x.days ? { _days: +x.days } : {}), ...(x.bg ? { bg: true, bg_days: x.bg_days ?? null } : {}) })), ...(m ? [{ name: m.name, maint: true }] : [])]);
       toast(`Lần thanh toán điền theo tiến độ của chính sách ${d.sched_policy}`);
     }
   };

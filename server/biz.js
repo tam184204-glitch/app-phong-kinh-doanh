@@ -117,13 +117,17 @@ async function normSchedule(db, rows, value, label = 'Lịch thanh toán', maint
 // mỗi đợt: { name, days (số ngày sau ngày ký HĐMB), pct, bg?, bg_days? } — hạn = ngày ký + số ngày; đợt bàn giao: thông báo bàn giao đã phát hành thì
 // hạn = ngày bàn giao + số ngày được nộp, chưa có thì tạm theo số ngày sau ngày ký. Phí bảo trì ở dòng riêng cùng hạn đợt pay_mdot
 async function policySchedRows(db, pol, c) {
-  const ps = Array.isArray(pol?.pay_sched) ? pol.pay_sched.filter(x => +x.pct > 0) : [];
+  const all = Array.isArray(pol?.pay_sched) ? pol.pay_sched : [], ps = all.filter(x => !x.maint && +x.pct > 0), mr = all.find(x => x.maint);
   if (!ps.length || !(+c.value > 0)) return null;
-  const b = d10(c.contract_on || c.plan_sign) || today();
+  const b = d10(c.contract_on || c.plan_sign) || today(), has = x => x.days != null && x.days !== '';
   const n = c.unit_id && ps.some(x => x.bg) ? await bgNoticeOf(db, c.unit_id) : null, b0 = n ? d10(bgBase(n)) : null;
-  const rows = ps.map(x => ({ name: x.name, pct: +x.pct, amount: null, due_on: x.bg && b0 ? C.addDays(b0, x.bg_days ?? (+n.pay_days || 0)) : C.addDays(b, +x.days || 0), ...(x.bg ? { bg: true, bg_days: x.bg_days ?? null } : {}) }));
+  const rows = ps.map((x, i) => {
+    const due = x.bg && b0 ? C.addDays(b0, x.bg_days ?? (+n.pay_days || 0)) : has(x) || !i ? C.addDays(b, +x.days || 0) : null;
+    if (!due) bad(`Chính sách ${pol.code}: «${x.name}» chưa có ngày đến hạn cố định — mở HĐ nhập ngày cho đợt này`);
+    return { name: x.name, pct: +x.pct, amount: null, due_on: due, ...(x.bg ? { bg: true, bg_days: x.bg_days ?? null } : {}) };
+  });
   const mf = +c.maint_fee || 0, k = Math.min(Math.max(1, +pol.pay_mdot || 3), rows.length) - 1;
-  if (mf > 0) rows.push({ name: 'Thu phí bảo trì (2% tiền trước thuế)', due_on: rows[k].due_on, pct: null, amount: null, maint: true, ...(rows[k].bg ? { bg: true, bg_days: rows[k].bg_days } : {}) });
+  if (mf > 0) rows.push({ name: mr?.name || 'Thu phí bảo trì (2% tiền trước thuế)', due_on: mr && has(mr) ? C.addDays(b, +mr.days) : rows[k].due_on, pct: null, amount: null, maint: true, ...(!(mr && has(mr)) && rows[k].bg ? { bg: true, bg_days: rows[k].bg_days } : {}) });
   return normSchedule(db, rows, +c.value, `Tiến độ theo chính sách ${pol.code}`, mf, k + 1);
 }
 // chính sách có khai tiến độ áp cho HĐ: chính sách ghi trên HĐ, không có tiến độ thì chính sách đang phát hành cho căn
@@ -136,7 +140,7 @@ async function schedPolicy(db, c) {
 async function policyApplyOne(db, pol, c, user, demo) {
   const rows = await policySchedRows(db, pol, c); if (!rows) return false;
   await writeSchedule(db, c.id, rows, 'hop_dong', user, demo ?? c.is_demo);
-  await db.q('UPDATE kd_contract SET price_policy_id = $2, maint_dot = $3, updated_at = now() WHERE id = $1', [c.id, pol.id, Math.min(Math.max(1, +pol.pay_mdot || 3), pol.pay_sched.length)]);
+  await db.q('UPDATE kd_contract SET price_policy_id = $2, maint_dot = $3, updated_at = now() WHERE id = $1', [c.id, pol.id, Math.min(Math.max(1, +pol.pay_mdot || 3), pol.pay_sched.filter(x => !x.maint).length)]);
   await C.audit(db, 'contract', c.id, 'tien_do_chinh_sach', null, { policy: pol.code + ' v' + pol.version }, user, `Lần thanh toán lấy theo tiến độ của chính sách ${pol.code} v${pol.version}`, demo ?? c.is_demo);
   return true;
 }
@@ -483,21 +487,26 @@ H.price_policy = {
     if (r.mode === 'don_gia' && !(r.unit_price > 0)) bad('Cần đơn giá (đ/m²) khi tính theo đơn giá');
     r.unit_group = r.unit_group ? String(r.unit_group).toUpperCase().replace(/\s+/g, '') : '*';
     r.project_id = r.project_ids?.[0] ?? null;   // dự án chính = dự án chọn đầu tiên
-    // tiến độ thu tiền: tỷ lệ các đợt cộng đủ 100%, hạn (số ngày sau ngày ký) không lùi — trừ đợt bàn giao (hạn theo thông báo bàn giao)
-    const ps = (Array.isArray(r.pay_sched) ? r.pay_sched : []).filter(x => String(x.name || '').trim() || (x.pct != null && x.pct !== '') || (x.days != null && x.days !== ''));
-    const L = 'Tiến độ thu tiền', out = [];
-    for (const [i, x] of ps.entries()) {
-      const pct = +x.pct, days = x.days === '' || x.days == null ? (i ? NaN : 0) : parseInt(x.days, 10), bd = x.bg_days === '' || x.bg_days == null ? null : Math.max(0, parseInt(x.bg_days, 10) || 0);
-      if (!(pct > 0 && pct <= 100)) bad(`${L} đợt ${i + 1}: nhập tỷ lệ % (lớn hơn 0)`, { fields: ['pay_sched'] });
-      if (!(days >= 0)) bad(`${L} đợt ${i + 1}: nhập số ngày sau ngày ký HĐMB${x.bg ? ' (đợt bàn giao: số ngày dự kiến, dùng khi chưa có thông báo bàn giao)' : ''}`, { fields: ['pay_sched'] });
-      out.push({ name: String(x.name || '').trim() || `Đợt ${i + 1}`, days, pct, ...(x.bg ? { bg: true, bg_days: bd } : {}) });
+    // tiến độ thu tiền (bảng như Lần thanh toán HĐMB): tỷ lệ các đợt đủ 100%; hạn = số ngày sau ngày ký HĐMB (trống = chưa có ngày cố định, nhập ở HĐ), không lùi;
+    // dòng phí bảo trì riêng { maint: true, name, days }
+    const ps = (Array.isArray(r.pay_sched) ? r.pay_sched : []).filter(x => x.maint || String(x.name || '').trim() || (x.pct != null && x.pct !== ''));
+    const L = 'Tiến độ thu tiền', out = [], dOf = v => v === '' || v == null ? null : parseInt(v, 10);
+    let k = 0;
+    for (const x of ps) {
+      const days = dOf(x.days);
+      if (days != null && !(days >= 0)) bad(`${L}: «${x.name || 'đợt ' + (k + 1)}» có ngày đến hạn trước ngày ký HĐMB`, { fields: ['pay_sched'] });
+      if (x.maint) { out.push({ name: String(x.name || '').trim() || 'Thu phí bảo trì (2% tiền trước thuế)', maint: true, days }); continue; }
+      k++; const pct = +x.pct;
+      if (!(pct > 0 && pct <= 100)) bad(`${L} đợt ${k}: nhập tỷ lệ % (lớn hơn 0)`, { fields: ['pay_sched'] });
+      out.push({ name: String(x.name || '').trim() || `Đợt ${k}`, pct, days: k === 1 ? 0 : days, ...(x.bg ? { bg: true, bg_days: x.bg_days ?? null } : {}) });
     }
-    const nb = out.filter(x => !x.bg);
+    const nb = out.filter(x => !x.maint && !x.bg && x.days != null);
     for (let i = 1; i < nb.length; i++) if (nb[i].days < nb[i - 1].days) bad(`${L}: «${nb[i].name}» có hạn sớm hơn đợt trước`, { fields: ['pay_sched'] });
-    const sum = Math.round(out.reduce((s, x) => s + x.pct, 0) * 100) / 100;
-    if (out.length && sum !== 100) bad(`${L}: tổng tỷ lệ các đợt phải đủ 100% (đang ${String(sum).replace('.', ',')}%)`, { fields: ['pay_sched'] });
-    r.pay_sched = out.length ? out : null;
-    r.pay_mdot = out.length ? Math.min(Math.max(1, parseInt(r.pay_mdot, 10) || 3), out.length) : r.pay_mdot ?? 3;
+    const sum = Math.round(out.filter(x => !x.maint).reduce((s, x) => s + x.pct, 0) * 100) / 100;
+    if (k && sum !== 100) bad(`${L}: tổng tỷ lệ các đợt phải đủ 100% (đang ${String(sum).replace('.', ',')}%)`, { fields: ['pay_sched'] });
+    r.pay_sched = k ? out : null;
+    const mr = out.find(x => x.maint), mk = mr && mr.days != null ? out.filter(x => !x.maint).findIndex(x => x.days === mr.days) : -1;
+    r.pay_mdot = k ? (mk >= 0 ? mk + 1 : Math.min(Math.max(1, parseInt(r.pay_mdot, 10) || 3), k)) : r.pay_mdot ?? 3;
   },
   async afterApprove(r, ok, { db, user }) {
     if (ok && r.parent_id) await sys(db, 'price_policy', r.parent_id, { status: 'thay_the' }, user, 'thay_the', `Thay bằng phiên bản ${r.version}`);
@@ -1321,7 +1330,7 @@ H.contract = {
       if (key(cur) !== key(sched)) { await writeSchedule(db, r.id, sched, 'hop_dong', user, demo); if (['hdmb', 'thue_mua'].includes(r.kind) && r.status === 'da_ky') await bgReapply(db, r.id, user); }
     }
     // HĐMB mới chưa nhập Lần thanh toán (VD chuyển từ phiếu giữ chỗ): lấy theo tiến độ thu tiền của chính sách bán hàng áp cho căn (16/11/2026)
-    if (!old && !sched?.length && ['hdmb', 'thue_mua'].includes(r.kind) && ['du_thao', 'tu_choi'].includes(r.status)) { const p = await schedPolicy(db, r); if (p) await policyApplyOne(db, p, r, user, demo); }
+    if (!old && !sched?.length && ['hdmb', 'thue_mua'].includes(r.kind) && ['du_thao', 'tu_choi'].includes(r.status)) { const p = await schedPolicy(db, r); if (p) try { await policyApplyOne(db, p, r, user, demo); } catch (e) { if (e.status !== 400) throw e; } }   // đợt chưa có ngày cố định: để HĐ tự nhập
     // HĐ thuê / vay bán căn đã ký, tiến độ HĐMB đổi: đợt gắn bàn giao theo thông báo đã phát hành (ghi vào thông báo để hủy thì trả hạn) — 16/11/2026
     if (['thue', 'vay'].includes(r.kind) && r.status === 'da_ky' && r.sale_on && JSON.stringify(r.sale_sched || null) !== JSON.stringify(old?.sale_sched || null)) await bgReapply(db, r.id, user);
     await resFromContract(db, r, user);
