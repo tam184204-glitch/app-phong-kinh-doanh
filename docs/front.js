@@ -166,7 +166,7 @@ function show(f, row, { plain } = {}) {
     case 'ref': case 'refs': case 'user': return esc(row[f.k + '__l'] ?? '#' + v);
     case 'check': { const n = v.filter(x => x.st === 'da_nhan').length, bad = v.filter(x => ['thieu', 'can_sua'].includes(x.st)).length; return plain ? `${n}/${v.length}` : `<span class="${bad ? 'neg' : ''}">${n}/${v.length}${bad ? ` · thiếu ${bad}` : ''}</span>`; }
     case 'json': if (f.k === 'finish_vals' && v && typeof v === 'object') { const xs = Object.entries(v).sort((a, b) => a[0].localeCompare(b[0], 'vi', { numeric: true })); return plain ? xs.map(([k, n]) => `${k}: ${fm(n)}`).join('; ') : `<div class="small">${xs.map(([k, n]) => `${esc(k)}: <b>${fm(n)}</b>`).join(' · ')}</div>`; }
-      if (f.k === 'fin_sched' && Array.isArray(v)) return plain ? v.map((x, i) => `Đợt ${i + 1}: ${fnum(x.pct)}% sau ${x.days ?? '—'} ngày`).join('; ') : paySchedTable(v, { pay_mdot: 0 });
+      if (f.k === 'fin_sched' && Array.isArray(v)) return plain ? v.map((x, i) => `Đợt ${i + 1}: ${fnum(x.pct)}% sau ${x.days ?? '—'} ngày`).join('; ') : paySchedTable(v.map(x => ({ ...x, name: finTxt(x.name) })), { pay_mdot: 0 });
       if (f.k === 'pay_sched' && Array.isArray(v)) return plain ? v.map((x, i) => x.maint ? `Phí bảo trì: ${x.days ?? '—'} ngày` : `Đợt ${i + 1}: ${fnum(x.pct)}% sau ${x.days ?? '—'} ngày`).join('; ') : paySchedTable(v, row);
       if (f.grid && Array.isArray(v)) {
       if (!v.length) return plain ? '' : '<span class="muted">—</span>';
@@ -471,6 +471,8 @@ const paySchedTable = (v, row = {}) => {
 // soạn tiến độ thu tiền ở form chính sách — dùng đúng bảng «Lần thanh toán» của HĐMB (Tâm 16/11/2026: «bê y hệt»): chọn đợt gợi ý nội dung, «Sau N ngày…» tự ra hạn,
 // dòng phí bảo trì riêng. Ngày đến hạn tính mẫu theo ngày ký = Ngày bắt đầu chính sách; lưu thành số ngày sau ngày ký → HĐMB thật tính theo ngày ký của từng HĐ
 const dayDiff = (a, b) => Math.round((Date.parse(a + 'T00:00:00Z') - Date.parse(b + 'T00:00:00Z')) / 864e5);
+// tiến độ nội thất (HĐ hoàn thiện / tiến độ hoàn thiện của chính sách) — 14/11/2026: «giá trị căn hộ» đọc là «giá trị hoàn thiện nội thất»
+const finTxt = s => String(s ?? '').replace(/giá trị (của )?căn hộ/gi, 'giá trị hoàn thiện nội thất');
 function paySchedEditor(el, rows, form, rec = {}, { fin } = {}) {   // fin: tiến độ thu giá trị hoàn thiện (không có dòng phí bảo trì)
   const sf = { k: 'start_on', t: 'date' }, baseOf = () => (form?.elements.start_on && readField(form, sf)) || rec.start_on || today();
   const b0 = baseOf(), has = x => x.days != null && x.days !== '';
@@ -485,9 +487,10 @@ function paySchedEditor(el, rows, form, rec = {}, { fin } = {}) {   // fin: ti�
 // lịch thanh toán (soạn các đợt)
 // tổng tỷ lệ: đợt tiền nhà và đợt hoàn thiện (mỗi phần đủ 100%) tách riêng
 const pctSum = R => { const t = xs => fnum(xs.reduce((s, r) => s + (+r.pct || 0), 0)) + '%', f = R.filter(r => r.fin); return f.length ? `${t(R.filter(r => !r.fin))} · hoàn thiện ${t(f)}` : t(R); };
-function schedEditor(el, rows, { total, base, first, maint, mdot, bgBase, pol, fin, finish } = {}) {   // fin: bảng tiến độ hoàn thiện ở chính sách; finish(): giá trị hoàn thiện của HĐ — dòng r.fin tính % trên hoàn thiện   // pol: bảng tiến độ ở chính sách bán hàng — không có số tiền (tính theo giá từng căn)
+function schedEditor(el, rows, { total, base, first, maint, mdot, bgBase, pol, fin, finish, nt } = {}) {   // nt: tiến độ nội thất (HĐ hoàn thiện) — chữ «giá trị căn hộ» → «giá trị hoàn thiện nội thất»   // fin: bảng tiến độ hoàn thiện ở chính sách; finish(): giá trị hoàn thiện của HĐ — dòng r.fin tính % trên hoàn thiện   // pol: bảng tiến độ ở chính sách bán hàng — không có số tiền (tính theo giá từng căn)
     // bgBase(): { doc, on, days } — căn đã có thông báo bàn giao phát hành   // maint(): phí bảo trì, mdot(): đợt mặc định cho hạn phí bảo trì   // first(): ngày cố định của đợt 1 (hợp đồng: ngày ký HĐMB)
-  let R = (rows || []).map(r => ({ ...r }));
+  const ntOn = !!(fin || nt), ntR = r => ntOn && !r.maint ? { ...r, name: finTxt(r.name) } : { ...r };
+  let R = (rows || []).map(ntR);
   // HĐMB: phí bảo trì là DÒNG RIÊNG cố định cuối bảng (không xóa, số tiền = phí bảo trì); hạn tự theo đợt thu phí bảo trì cho đến khi sửa tay —
   // đợt có nội dung nhắc «bảo trì» (mẫu: «… và 2% phí bảo trì»), không có thì đợt mặc định (3)
   const mIdx = () => { const k = R.findIndex(r => /bảo trì/i.test(r.name || '')); return k >= 0 ? k : Math.max(1, +(mdot?.() || 3)) - 1; };
@@ -500,7 +503,7 @@ function schedEditor(el, rows, { total, base, first, maint, mdot, bgBase, pol, f
   const bgDaysIn = s => { const m = /(\d+)\s*(?:\([^)]*\)\s*)?ngày[^.;]{0,60}?(?:b[àa]n\s*giao|nh[ậa]n\s*nh[àa]|giao\s*nh[àa])/i.exec(s || ''); return m ? +m[1] : null; };
   if (SBG && maint && maint() != null && !R.some(r => r.bg)) { const k = R.findIndex(r => BG_T.test(r.name || '')); if (k >= 0) { R[k].bg = true; R[k]._bgAuto = true; R[k].bg_days ??= bgDaysIn(R[k].name); } }
   const totalOf = () => typeof total === 'function' ? total() : total;
-  const C = first ? M.settings.schedule_contents || [] : [];   // gợi ý nội dung từng đợt (hợp đồng)
+  const C = (first ? M.settings.schedule_contents || [] : []).map(c => ntOn ? { ...c, name: finTxt(c.name) } : c);   // gợi ý nội dung từng đợt (hợp đồng)
   // «Sau 60 ngày…», «Trong 60 ngày…», «Trong vòng 60 (sáu mươi) ngày…» = số ngày sau ngày ký; «… ngày kể từ ngày Bên Bán…» theo sự kiện khác nên không tính
   const nDays = s => +(/(?:sau|trong)(?:\s+vòng)?\s+(\d+)(?:\s*\([^)]*\))?\s+ngày(?!\s+kể từ ngày\s+(?!ký))/i.exec(s || '')?.[1] || 0);
   // tỷ lệ thanh toán ghi trong nội dung («… thanh toán 30% giá trị căn hộ»): số % đầu tiên KHÔNG thuộc phí bảo trì / thuế
@@ -584,7 +587,7 @@ function schedEditor(el, rows, { total, base, first, maint, mdot, bgBase, pol, f
     else if (R[i]._days) { delete R[i]._days; R[i].due_on = ''; if (dI) dI.value = ''; }   // nội dung không còn theo ngày ký: bỏ hạn đã tự sổ
   });
   el._set = rows => {   // điền sẵn các đợt (HĐ thuê tự chia kỳ; HĐMB theo tiến độ chính sách — có dòng phí bảo trì thì lấy tên, hạn tự theo đợt)
-    R = rows.map(r => ({ ...r }));
+    R = rows.map(ntR);
     if (maint) { const m = R.find(r => r.maint); R = R.filter(r => !r.maint); if (m) MR = { name: m.name, due_on: m.due_on || '', auto: !m.due_on }; }
     draw();
   };   // điền sẵn các đợt (HĐ thuê tự chia kỳ)
@@ -637,7 +640,7 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish, kind, debt, rec0 }) {
   $('[name=ht_number]', hp).placeholder = 'Để trống → tự cấp số'; $('[name=ht_value]', hp).readOnly = true;
   const rd = (k, t) => readField(form, { k, t }), val = () => Math.max(0, (rd('ht_finish', 'money') || 0) - (rd('ht_disc', 'money') || 0));
   const el = $('[data-sched2]', hp);
-  schedEditor(el, v.sched, { total: val, first: () => rd('ht_on', 'date') });
+  schedEditor(el, v.sched, { total: val, first: () => rd('ht_on', 'date'), nt: true });
   const calc = () => { $('[name=ht_value]', hp).value = val() ? moneyStr(val()) : ''; el._redraw(); };
   const mk = () => $('[name=ht_make]', hp);
   const touch = e => { if (e.isTrusted && e.target.name !== 'ht_make' && !mk().checked) { mk().checked = true; nav.classList.add('ht-has'); } };
@@ -932,7 +935,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   const sch = $('[data-sched]', form);
   { const ps = $('[data-psched]', form); if (ps) paySchedEditor(ps, rec.pay_sched || [], form, rec); }
   { const fs = $('[data-fsched]', form); if (fs) paySchedEditor(fs, rec.fin_sched || [], form, rec, { fin: true }); }
-  if (sch) schedEditor(sch, rec.new_schedule || [], { finish: () => ent === 'contract' ? (form.elements.finish_value ? readField(form, E.fields.find(f => f.k === 'finish_value')) : rec.finish_value) || 0 : 0, bgBase: () => rec._bg_base, mdot: () => form._mdot ?? rec.maint_dot ?? 3, maint: () => ent === 'contract' && ['hdmb', 'thue_mua'].includes(form.elements.kind?.value ?? rec.kind) ? (form.elements.maint_fee ? readField(form, E.fields.find(f => f.k === 'maint_fee')) : rec.maint_fee) || 0 : null, total: () => ent === 'contract' ? (form.elements.value ? readField(form, E.fields.find(f => f.k === 'value')) : rec.value) || 0 : readField(form, E.fields.find(f => f.k === 'value_after')) || rec.value_before || 0, first: ent === 'contract' ? () => { const kd = $('[name=kind]', form)?.value ?? rec.kind; const fk = kd === 'thue' ? 'eff_on' : kd === 'vay' && form.elements.loan_recv_on?.value ? 'loan_recv_on' : 'contract_on'; return form.elements[fk] ? readField(form, E.fields.find(f => f.k === fk)) : rec[fk]; } : null });
+  if (sch) schedEditor(sch, rec.new_schedule || [], { nt: rec.kind === 'hoan_thien' || preset.kind === 'hoan_thien', finish: () => ent === 'contract' ? (form.elements.finish_value ? readField(form, E.fields.find(f => f.k === 'finish_value')) : rec.finish_value) || 0 : 0, bgBase: () => rec._bg_base, mdot: () => form._mdot ?? rec.maint_dot ?? 3, maint: () => ent === 'contract' && ['hdmb', 'thue_mua'].includes(form.elements.kind?.value ?? rec.kind) ? (form.elements.maint_fee ? readField(form, E.fields.find(f => f.k === 'maint_fee')) : rec.maint_fee) || 0 : null, total: () => ent === 'contract' ? (form.elements.value ? readField(form, E.fields.find(f => f.k === 'value')) : rec.value) || 0 : readField(form, E.fields.find(f => f.k === 'value_after')) || rec.value_before || 0, first: ent === 'contract' ? () => { const kd = $('[name=kind]', form)?.value ?? rec.kind; const fk = kd === 'thue' ? 'eff_on' : kd === 'vay' && form.elements.loan_recv_on?.value ? 'loan_recv_on' : 'contract_on'; return form.elements[fk] ? readField(form, E.fields.find(f => f.k === fk)) : rec[fk]; } : null });
   const ssch = $('[data-ssched]', form);   // tiến độ thu tiền HĐMB của HĐ thuê / vay bán căn: % theo Giá trị HĐMB
   if (ssch) {   // 16/11/2026: như «Lần thanh toán» HĐMB — chọn đợt gợi ý nội dung, hạn theo ngày ký HĐ, dòng phí bảo trì (theo căn), cột đợt bàn giao
     let sm = null;

@@ -158,12 +158,13 @@ async function normSchedule(db, rows, value, label = 'Lịch thanh toán', maint
 // ---- tiến độ thu tiền khai ở chính sách bán hàng (16/11/2026) → «Lần thanh toán» HĐMB của các căn đã tích ----
 // mỗi đợt: { name, days (số ngày sau ngày ký HĐMB), pct, bg?, bg_days? } — hạn = ngày ký + số ngày; đợt bàn giao: thông báo bàn giao đã phát hành thì
 // hạn = ngày bàn giao + số ngày được nộp, chưa có thì tạm theo số ngày sau ngày ký. Phí bảo trì ở dòng riêng cùng hạn đợt pay_mdot
+const finTxt = s => String(s ?? '').replace(/giá trị (của )?căn hộ/gi, 'giá trị hoàn thiện nội thất');   // tiến độ nội thất: «giá trị căn hộ» → «giá trị hoàn thiện nội thất» (14/11/2026)
 async function policySchedRows(db, pol, c) {
   if (c.kind === 'hoan_thien') {   // 14/11/2026: HĐ hoàn thiện căn hộ (nội thất) theo «Tiến độ thu giá trị hoàn thiện» của chính sách
     const fs = (Array.isArray(pol?.fin_sched) ? pol.fin_sched : []).filter(x => +x.pct > 0);
     if (!fs.length || !(+c.value > 0)) return null;
     const b = d10(c.contract_on || c.plan_sign) || today(), has = x => x.days != null && x.days !== '';
-    const rows = fs.map((x, i) => { const due = has(x) || !i ? C.addDays(b, +x.days || 0) : null; if (!due) bad(`Chính sách ${pol.code}: đợt hoàn thiện «${x.name}» chưa có ngày đến hạn cố định — mở HĐ nhập ngày cho đợt này`); return { name: x.name, pct: +x.pct, amount: null, due_on: due }; });
+    const rows = fs.map((x, i) => { const due = has(x) || !i ? C.addDays(b, +x.days || 0) : null; if (!due) bad(`Chính sách ${pol.code}: đợt hoàn thiện «${x.name}» chưa có ngày đến hạn cố định — mở HĐ nhập ngày cho đợt này`); return { name: finTxt(x.name), pct: +x.pct, amount: null, due_on: due }; });
     return normSchedule(db, rows, +c.value, `Tiến độ hoàn thiện theo chính sách ${pol.code}`, 0, 1, 0);
   }
   const all = Array.isArray(pol?.pay_sched) ? pol.pay_sched : [], ps = all.filter(x => !x.maint && +x.pct > 0), mr = all.find(x => x.maint);
@@ -649,7 +650,7 @@ H.price_policy = {
         const days = dOf(x.days), pct = +x.pct, n = fo.length + 1;
         if (days != null && !(days >= 0)) bad(`${L2}: «${x.name || 'đợt ' + n}» có ngày đến hạn trước ngày ký HĐMB`, { fields: ['fin_sched'] });
         if (!(pct > 0 && pct <= 100)) bad(`${L2} đợt ${n}: nhập tỷ lệ % (lớn hơn 0)`, { fields: ['fin_sched'] });
-        fo.push({ name: String(x.name || '').trim() || `Hoàn thiện đợt ${n}`, pct, days: n === 1 && days == null ? 0 : days });
+        fo.push({ name: finTxt(String(x.name || '').trim()) || `Hoàn thiện đợt ${n}`, pct, days: n === 1 && days == null ? 0 : days });
       }
       const fsum = Math.round(fo.reduce((s, x) => s + x.pct, 0) * 100) / 100;
       if (fo.length && fsum !== 100) bad(`${L2}: tổng tỷ lệ các đợt phải đủ 100% (đang ${String(fsum).replace('.', ',')}%)`, { fields: ['fin_sched'] });
