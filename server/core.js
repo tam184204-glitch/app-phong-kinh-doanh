@@ -328,7 +328,7 @@ async function perms(e, row, user, approvals, db) {
     edit: can(user, e, 'u') && (!locked || !!keep.length), locked, lockKeep: keep, softOpen: !locked && !!e.softLock?.st.includes(row.status),
     del: can(user, e, 'd') && !lockDel(e, row.status) && !(H[e.key]?.noDelete?.(row)),
     submit: !!fl && fl.submit.includes(row[fl.field]) && (can(user, e, 'c') || can(user, e, 'u')),
-    approve: !!open && canApprove(e, row, user, open), selfApproval: !!open && open.requested_by === user.id && user.role !== 'admin',
+    approve: !!open && canApprove(e, row, user, open), selfApproval: !!open && open.requested_by === user.id && user.role !== 'admin' && !SELF_OK,   // chạy thử được tự duyệt → không hiện «Đang chờ cấp khác duyệt»
     acts: (e.acts || []).filter(a => (a.from === '*' || a.from.includes(row.status)) && (user.role === 'admin' || a.roles.includes(user.role))).map(a => a.k),
     files: can(user, e, 'u') || can(user, e, 'c') || (e.acts || []).some(a => a.roles.includes(user.role)),
     export: can(user, e, 'x'),
