@@ -1872,3 +1872,6 @@ label.tplr { display: flex; gap: 8px; align-items: center; padding: 7px 0; }
 .fld[data-f=finish_vals] { display: none; }
 .upick-fall { gap: 8px; align-items: center; margin: 6px 0 8px; font-size: 13px; flex-wrap: wrap; }
 .upick-fall .inp { height: 30px; }
+
+/* đợt thu giá trị hoàn thiện trong Lần thanh toán */
+.sched .fin-tag { color: var(--amber-d); font-weight: 600; margin-top: 2px; }

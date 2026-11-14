@@ -131,6 +131,8 @@ def('price_policy', {
     { k: 'finish_vals', l: 'Giá trị hoàn thiện căn hộ', t: 'json', pick: 'finish' },
     // tiến độ thu tiền (16/11/2026): HĐMB của các căn đã tích tự lấy «Lần thanh toán» theo đây — hạn = ngày ký HĐMB + số ngày; đợt bàn giao theo thông báo bàn giao
     { k: 'pay_sched', l: 'Tiến độ thu tiền (Lần thanh toán HĐMB)', t: 'json' },
+    // 14/11/2026: tiến độ thu GIÁ TRỊ HOÀN THIỆN (nội thất) riêng — chỉ sinh đợt cho căn có giá trị hoàn thiện > 0; căn không có hoàn thiện bỏ qua
+    { k: 'fin_sched', l: 'Tiến độ thu giá trị hoàn thiện căn hộ', t: 'json', help: 'Chỉ áp cho căn có giá trị hoàn thiện (nội thất). Tỷ lệ % tính trên giá trị hoàn thiện của từng căn; căn không có hoàn thiện thì HĐMB không có các đợt này' },
     { k: 'pay_mdot', l: 'Phí bảo trì thu cùng hạn đợt', t: 'int', def: 3, hide: 1, help: 'Phí bảo trì (2% tiền trước thuế) thu ở dòng riêng, cùng hạn với đợt này' },
     { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'nhap', o: [['nhap', 'Nháp', 's'], ['cho_duyet', 'Chờ duyệt', 'a'], ['phat_hanh', 'Đã phát hành', 'g'], ['tu_choi', 'Từ chối', 'r'], ['thay_the', 'Đã thay thế', 's']] },
     { k: 'parent_id', l: 'Phiên bản trước', t: 'ref', ref: 'price_policy', ro: 1 },
@@ -611,6 +613,7 @@ def('installment', {
     { k: 'is_maint', l: 'Dòng phí bảo trì', t: 'bool', ro: 1, hide: 1, def: false },
     // đợt bàn giao (13/11/2026): mỗi HĐMB tự chọn đợt nào là đợt thu khi bàn giao (đợt 2, 3, 4… tùy HĐ) + số ngày được nộp kể từ ngày bàn giao (trống = theo thông báo bàn giao)
     { k: 'is_bg', l: 'Đợt bàn giao', t: 'bool', ro: 1, hide: 1, def: false },
+    { k: 'is_fin', l: 'Đợt thu giá trị hoàn thiện', t: 'bool', ro: 1, hide: 1, def: false },   // 14/11/2026: % tính trên giá trị hoàn thiện của HĐ
     { k: 'bg_days', l: 'Số ngày nộp kể từ bàn giao', t: 'int', ro: 1, hide: 1 },   // HĐMB: phí bảo trì thu ở dòng riêng cố định (không cộng vào đợt nào)
     { k: 'src', l: 'Căn cứ', t: 'sel', ro: 1, def: 'hop_dong', o: [['hop_dong', 'Hợp đồng', 'b'], ['phu_luc', 'Phụ lục', 'v']] },
     { k: 'active', l: 'Hiệu lực', t: 'bool', ro: 1, def: true },
