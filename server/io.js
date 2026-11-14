@@ -581,6 +581,33 @@ async function regTemplates(kind, unitId) {
   const rank = t => (t.scope ? 0 : 2) + (t.bedrooms ? 0 : 1);
   return ts.filter(fit).sort((x, y) => rank(x) - rank(y) || x.id - y.id);
 }
+// «3. Phương thức thanh toán» trên bản đăng ký theo chính sách đang áp cho phiếu (14/11/2026): bản đăng ký căn hộ = Tiến độ thu tiền HĐMB (phí bảo trì
+// ghi vào đợt thu phí bảo trì), bản đăng ký nội thất = Tiến độ thu giá trị hoàn thiện. Chính sách không khai tiến độ → null (giữ nội dung của mẫu)
+function polPayLines(pol, kind) {
+  const pc = v => String(v).replace('.', ','), cut = s => String(s || '').trim().replace(/[.;,\s]+$/, '');
+  if (kind === 'dang_ky_noi_that') {
+    const fs = (Array.isArray(pol?.fin_sched) ? pol.fin_sched : []).filter(x => +x.pct > 0); if (!fs.length) return null;
+    return fs.map((x, i) => { let t = cut(x.name) || `Bên Mua thanh toán cho Bên Bán ${pc(x.pct)}% giá trị gói hoàn thiện`; if (!t.includes('%')) t += ` (${pc(x.pct)}% giá trị gói hoàn thiện)`;
+      return (fs.length > 1 && !/^Đợt\s/i.test(t) ? `Đợt ${i + 1}: ${t}` : t) + '.'; });
+  }
+  const all = Array.isArray(pol?.pay_sched) ? pol.pay_sched : [], ps = all.filter(x => !x.maint && +x.pct > 0), mr = all.find(x => x.maint); if (!ps.length) return null;
+  const mp = pc(pol.maint_pct ?? 2), own = mr && mr.days != null && mr.days !== '' && !ps.some(x => x.days != null && +x.days === +mr.days);   // phí bảo trì có hạn riêng → dòng riêng
+  const mk = !mr || own ? -1 : mr.days != null && mr.days !== '' ? ps.findIndex(x => x.days != null && +x.days === +mr.days) : Math.min(Math.max(1, +pol.pay_mdot || 3), ps.length) - 1;
+  const out = ps.map((x, i) => {
+    let t = cut(x.name) || `Bên Mua thanh toán cho Bên Bán ${pc(x.pct)}% giá trị căn hộ`; if (!t.includes('%')) t += ` (${pc(x.pct)}% giá trị căn hộ)`;
+    if (i === mk && !/bảo trì/i.test(t)) t += ` và ${mp}% phí bảo trì`;
+    return (/^Đợt\s/i.test(t) ? t : `Đợt ${i + 1}: ${t}`) + '.';
+  });
+  if (own) out.push(`${cut(mr.name) || 'Phí bảo trì'}: thanh toán sau ${mr.days} ngày kể từ ngày ký Hợp đồng mua bán.`);
+  return out;
+}
+// thay các đoạn dưới mục «… Phương thức thanh toán» của mẫu (tới mục đánh số kế tiếp / khung ký) bằng tiến độ của chính sách; mẫu có trường {tien_do_thanh_toan} thì điền vào đó
+function payReplace(html, lines) {
+  if (!lines?.length) return html.split('{tien_do_thanh_toan}').join('');
+  const ps = lines.map(t => `<p class="j">${escH(t)}</p>`).join('\n');
+  if (html.includes('{tien_do_thanh_toan}')) return html.split('{tien_do_thanh_toan}').join(ps);
+  return html.replace(/(<p[^>]*>(?:\s|<[^>]+>)*\d+\.\s*Phương thức thanh toán[\s\S]*?<\/p>)[\s\S]*?(?=<p[^>]*>(?:\s|<[^>]+>)*\d+\.\s|<table class="sign")/i, (m, h) => `${h}\n${ps}\n`);
+}
 async function printReservation(id, user, kind, tplCode) {
   if (!can(user, E.reservation, 'r')) deny();
   if (!PRINT_KIND[kind]) bad('Loại bản in không hợp lệ');
@@ -591,7 +618,7 @@ async function printReservation(id, user, kind, tplCode) {
   if (!tpl) bad(`Chưa có mẫu ${PRINT_KIND[kind]} cho căn ${u.code} — tạo ở Quản trị › Mẫu biểu`);
   const pii = ['truong_phong', 'lanh_dao', 'ho_so', 'admin'].includes(user.role);
   const k = r.customer_id ? await one('SELECT tax_code FROM kd_customer WHERE id = $1', [r.customer_id]) : null;
-  const pol = r.policy_id ? await one('SELECT code, version FROM kd_price_policy WHERE id = $1', [r.policy_id]) : null;
+  const pol = r.policy_id ? await one('SELECT code, version, pay_sched, fin_sched, pay_mdot, maint_pct FROM kd_price_policy WHERE id = $1', [r.policy_id]) : null;
   const lab = (f, v) => E.reservation.fields.find(x => x.k === f).o.find(o => o[0] === v)?.[1] || '';
   // giá trị hoàn thiện: số nhập trên phiếu đăng ký trước, chưa có thì theo căn / gói / mẫu
   const finish = r.finish_value ?? u.finish_value ?? u.pk_value ?? require('./mau-dang-ky').NT_GIA[tpl.code];
@@ -616,7 +643,7 @@ async function printReservation(id, user, kind, tplCode) {
   const html = /^\s*</.test(tpl.content || '');
   const merge = t => t.replace(/\{(\w+)\}/g, (m, x) => x in map ? mergeVal(map, x) : m);
   const body = html
-    ? merge(tpl.content.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, ''))
+    ? merge(payReplace(tpl.content.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, ''), polPayLines(pol, kind)))
     : `<div style="white-space:pre-wrap">${merge(escH(tpl.content))}</div>`;
   await C.audit({ q }, 'reservation', r.id, 'in_' + kind, null, null, user, tpl.code);
   return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${escH(r.code)} – ${escH(tpl.name)}</title><style>
