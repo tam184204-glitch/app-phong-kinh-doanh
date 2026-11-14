@@ -71,10 +71,12 @@ async function recomputeUnit(db, unitId, user) {
 // ======================= GIÁ =======================
 // chính sách áp cho căn: Căn hộ áp dụng có «*», mã tòa hoặc mã căn
 const polHas = (p, code, bcode) => { const g = String(p.unit_group || '*').split(/[,;\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean); return g.includes('*') || g.includes(String(bcode).toUpperCase()) || g.includes(String(code).toUpperCase()); };
-async function pricing(db, unit, on = today()) {
+// đối tượng áp dụng (seller_ids): trống = mọi người bán; có danh sách = chỉ đại lý trong đó (agent undefined = không lọc)
+const polFor = (p, agent) => agent === undefined || !p.seller_ids?.length || p.seller_ids.includes(+agent);
+async function pricing(db, unit, on = today(), agent) {
   const b = await db.one('SELECT code FROM kd_building WHERE id = $1', [unit.building_id]);
   const pols = await db.q("SELECT * FROM kd_price_policy WHERE status = 'phat_hanh' AND $1 = ANY(project_ids) AND start_on <= $2 AND end_on >= $2 ORDER BY start_on DESC, version DESC", [unit.project_id, on]);
-  const pol = pols.find(p => polHas(p, unit.code, b?.code));
+  const pol = pols.find(p => polHas(p, unit.code, b?.code) && polFor(p, agent));
   if (!pol) return { policy: null, price: unit.total_price || null };
   if (pol.mode === 'don_gia') { const after = Math.round(pol.unit_price * unit.area_tt), before = after / (1 + (pol.vat_pct ?? 5) / 100); return { policy: pol, price: after + Math.round(before * (pol.maint_pct ?? 2) / 100 / 1000) * 1000 }; }   // đơn giá đã gồm thuế; bảo trì = 2% × tiền trước thuế
   return { policy: pol, price: unit.total_price || unit.list_price || null };
@@ -535,7 +537,7 @@ H.price_policy = {
       return { msg: (ok.length ? `Đã cập nhật Lần thanh toán cho ${ok.length} HĐMB: ${ok.join(', ')}` : 'Không có HĐMB dự thảo / bị từ chối nào của các căn đã tích') + (err.length ? ` · Không áp được: ${err.join('; ')}` : '') };
     },
     async new_version(r, d, { db, user, demo }) {
-      const keep = ['code', 'project_ids', 'unit_group', 'mode', 'unit_price', 'maint_pct', 'vat_pct', 'content', 'target', 'start_on', 'end_on', 'src_file', 'pay_sched', 'pay_mdot'];
+      const keep = ['code', 'project_ids', 'unit_group', 'mode', 'unit_price', 'maint_pct', 'vat_pct', 'content', 'target', 'seller_ids', 'start_on', 'end_on', 'src_file', 'pay_sched', 'pay_mdot'];
       const n = (await create('price_policy', { ...Object.fromEntries(keep.map(k => [k, r[k]])), version: r.version + 1, parent_id: r.id, status: 'nhap' }, user, { db, system: true, demo })).row;
       return { open: ['price_policy', n.id], msg: `Đã tạo phiên bản ${n.version} (nháp). Phiên bản đang phát hành giữ nguyên tới khi bản mới được duyệt.` };
     },
@@ -694,13 +696,24 @@ H.reservation = {
       if (!(+r.rent > 0)) bad('Nhập tiền thuê/tháng dự kiến', { fields: ['rent'] });
       return;
     }
+    if (r.policy_id && old && (r.agent_id ?? null) !== (old.agent_id ?? null) && r.policy_id === old.policy_id) {   // đổi người bán: chính sách cũ không dành cho người bán mới → lấy lại
+      const p0 = await raw(db, 'price_policy', r.policy_id);
+      if (p0 && !polFor(p0, r.agent_id ?? 0)) { r.policy_id = null; warn.push(`Chính sách ${p0.code} v${p0.version} không dành cho người bán mới — đã bỏ và tự lấy chính sách phù hợp`); }
+    }
     if (changedUnit || r.price == null || !r.policy_id) {
-      const p = await pricing(db, u, r.reg_date);
+      const p = await pricing(db, u, r.reg_date, r.agent_id ?? 0);
       // giá theo mã căn ở Danh mục sản phẩm: giá trị căn hộ = sau thuế + bảo trì; hoàn thiện = giá trị hoàn thiện căn
       if (r.unit_value == null || (old && changedUnit)) r.unit_value = u.price_net != null ? +u.price_net + (+u.maint_fee || 0) : u.total_price != null ? +u.total_price - (+u.finish_value || 0) : p.price;
       if (old ? changedUnit : r.finish_value == null) r.finish_value = u.finish_value;
       if (!r.policy_id) r.policy_id = p.policy?.id ?? null;   // nhân viên chọn chính sách thì giữ, để trống thì tự lấy
       if (!p.policy && !r.policy_id) warn.push('Không có chính sách bán hàng đang phát hành cho căn này — giá lấy theo bảng hàng');
+    }
+    if (r.policy_id) {   // chính sách chỉ dành cho một số đại lý / sàn
+      const p0 = await raw(db, 'price_policy', r.policy_id);
+      if (p0 && !polFor(p0, r.agent_id ?? 0)) {
+        const ag = await db.q('SELECT code, name FROM kd_agent WHERE id = ANY($1::int[]) ORDER BY code', [p0.seller_ids]);
+        bad(`Chính sách ${p0.code} v${p0.version} chỉ áp dụng cho: ${ag.map(a => a.code + ' · ' + a.name).join(', ')} — ${r.agent_id ? 'đại lý của phiếu không nằm trong danh sách' : 'phiếu bán trực tiếp không dùng được'}`, { fields: ['policy_id'] });
+      }
     }
     if (r.unit_value != null) r.price = +r.unit_value + (+r.finish_value || 0);   // Tổng giá bán = giá trị căn hộ + hoàn thiện nội thất
     if (r.price == null) bad('Chưa có giá bán: nhập giá hoặc phát hành bảng giá cho dự án');
