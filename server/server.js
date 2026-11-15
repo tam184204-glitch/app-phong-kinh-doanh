@@ -102,7 +102,7 @@ async function login(req, res) {
 // ---------- meta gửi giao diện ----------
 const EXPORT_ROLES = ['lanh_dao', 'truong_phong', 'admin', 'cong_no', 'ke_toan', 'ho_so', 'cskh'];   // được xuất Excel từ màn tổng hợp
 async function metaFor(user) {
-  const strip = e => ({ ...e, fields: e.fields.filter(f => !f.hide).map(f => ({ ...f, ...(f.reqForm ? { req: 1 } : {}) })), perm: { r: can(user, e, 'r'), c: can(user, e, 'c'), u: can(user, e, 'u'), d: can(user, e, 'd'), a: can(user, e, 'a'), x: can(user, e, 'x') } });
+  const strip = e => ({ ...e, fields: e.fields.filter(f => !f.hide).map(f => ({ ...f, ...(f.reqForm ? { req: 1 } : {}) })), perm: { r: can(user, e, 'r'), c: can(user, e, 'c'), u: can(user, e, 'u'), d: can(user, e, 'd'), a: can(user, e, 'a') || !!(e.flow?.apprFlag && user[e.flow.apprFlag]), x: can(user, e, 'x') } });
   const ents = Object.fromEntries(Object.values(M.E).map(e => [e.key, strip(e)]));
   const lk = await C.lookups();
   for (const e of Object.values(ents)) for (const f of [...e.fields, ...(e.acts || []).flatMap(a => a.ask || [])]) if (f.opt) f.o = (lk[f.opt] || []).filter(x => x[2]).map(x => [x[0], x[1]]);
@@ -267,7 +267,16 @@ R('GET', '/api/templates', async (req, res, u, p, qs) => {
 R('POST', '/api/bulk/:ent/:op', async (req, res, u, p) => {
   const { ids = [], ok, comment } = await readJson(req); const out = { ok: 0, errors: [] };
   for (const id of ids.slice(0, 500)) {
-    try { if (p.op === 'submit') await C.submit(p.ent, id, u, { comment }); else if (p.op === 'approve') await C.approve(p.ent, id, u, { ok: !!ok, comment }); else bad('Thao tác không hợp lệ'); out.ok++; }
+    try {
+      if (p.op === 'submit') await C.submit(p.ent, id, u, { comment });
+      else if (p.op === 'approve') {
+        // 16/11/2026: hợp đồng còn dự thảo (chưa trình) → «Duyệt hợp đồng» trực tiếp (trình + duyệt 1 bước, kiểm tra quyền / hồ sơ NOXH / lịch thanh toán như nút trên hợp đồng)
+        const e = M.E[p.ent], rec = ok && (e?.acts || []).some(a => a.k === 'approve_direct') ? await one(`SELECT status FROM ${e.table} WHERE id = $1`, [+id]) : null;
+        if (rec && (e.flow?.submit || []).includes(rec.status)) await C.act(p.ent, id, 'approve_direct', u, comment ? { note: comment } : {});
+        else await C.approve(p.ent, id, u, { ok: !!ok, comment });
+      } else bad('Thao tác không hợp lệ');
+      out.ok++;
+    }
     catch (e) { if (!(e instanceof HttpError)) throw e; out.errors.push({ id, msg: e.message }); }
   }
   send(res, 200, out);
