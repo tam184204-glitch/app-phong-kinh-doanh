@@ -838,6 +838,8 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish, kind, debt, rec0 }) {
     id: ht?.id, status: ht?.status, snap, show, rentDraw, rentValue, loanDraw,
     sync(on) { nav.classList.toggle('hidden', !on); if (!on) view('mb'); $('[data-f=finish_value]', form)?.classList.toggle('hidden', on && !oldFinish); },
     finish(n) { if (!rd('ht_finish', 'money')) { $('[name=ht_finish]', hp).value = moneyStr(n); calc(); } },
+    // 15/11/2026: căn không có nội thất (chính sách không khai giá trị hoàn thiện) — HĐ hoàn thiện chưa lưu thì bỏ tích, xóa số / đợt của căn chọn trước
+    noFin() { if (locked || ht?.id) return; $('[name=ht_finish]', hp).value = ''; el._set([]); el._pol = 0; if (mk()) mk().checked = false; nav.classList.remove('ht-has'); calc(); },
     // 14/11/2026: tiến độ thu giá trị hoàn thiện (nội thất) của chính sách → Lần thanh toán của HĐ hoàn thiện (không vào HĐMB); đã tự nhập đợt thì giữ
     // nhớ tiến độ của chính sách (nút «Lấy tiến độ nội thất theo chính sách»); bảng đang trống / do chính sách điền thì điền luôn
     finSched(rows, lab) {
@@ -1078,6 +1080,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
         form._unitBase?.(src.base_price ?? (after != null && +src.area_tt > 0 ? Math.round((src.pretax ?? Math.round(after / (1 + (src.vat_pct ?? 5) / 100))) / src.area_tt) : null));
         // giá trị hoàn thiện theo căn thuộc hợp đồng hoàn thiện, không cộng vào hợp đồng mua bán
         const fv = readField(form, fields.find(x => x.k === 'finish_value') || {});
+        if (htp && !(fv > 0)) htp.noFin();
         if (htp && fv > 0 && form.elements.ptype.value !== 'lien_ke') { htp.finish(fv); form.elements.finish_value.value = ''; const tv = readField(form, fields.find(x => x.k === 'value')); if (tv > fv) form.elements.value.value = moneyStr(tv - fv); }
         contractCalc();
         form._ut0?.(src.total_price != null ? +src.total_price : src.price_net != null ? +src.price_net + (+src.maint_fee || 0) + (+src.finish_value || 0) : null);   // HĐ thuê: giá trị căn hộ theo danh mục − giảm giá (thông tin)
@@ -1120,7 +1123,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   // chọn căn → theo phiếu giữ chỗ đang hiệu lực: khách (điền cả bên mua), ngày đề nghị mua, số bảng giá, giá trị hoàn thiện, nhân viên KD
   // tiến độ nội thất của chính sách → tab Hoàn thiện căn hộ (chung cư; liền kề gộp hoàn thiện vào HĐMB) — 14/11/2026
   const htFin = d => {
-    if (!htp || form.elements.ptype?.value === 'lien_ke' || !d?.fin_sched?.length) return;
+    if (!htp || form.elements.ptype?.value === 'lien_ke' || !d?.fin_sched?.length || !(+d.finish_value > 0)) return;   // căn không có nội thất (chính sách không khai giá trị hoàn thiện) → không lập HĐ hoàn thiện (15/11/2026)
     const has = x => x.days != null && x.days !== '';
     if (htp.finSched(d.fin_sched.map(x => ({ name: x.name, pct: x.pct, amount: null, due_on: '', ...(has(x) && +x.days ? { _days: +x.days } : { _d0: true }) })), d.fin_policy)) toast(`Tiến độ nội thất điền ở tab Hoàn thiện căn hộ theo chính sách ${d.fin_policy}`);
   };
@@ -1129,7 +1132,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     const d = await api('GET', `/api/contract-prefill/${unit}`);
     pickRef('customer_id', d.customer_id, d.customer_label);
     if (d.request_on && form.elements.request_on && !form.elements.request_on.value) form.elements.request_on.value = dmy(d.request_on);
-    if (d.finish_value != null && form.elements.finish_value) form.elements.finish_value.value = moneyStr(d.finish_value);
+    if (form.elements.finish_value) form.elements.finish_value.value = +d.finish_value > 0 ? moneyStr(d.finish_value) : '';   // hoàn thiện (nội thất) chỉ theo chính sách — căn không khai = không có nội thất
     const o = form.elements.owner_id; if (d.owner_id && o?.tagName === 'SELECT' && [...o.options].some(x => x.value === String(d.owner_id))) o.value = d.owner_id;
     // chính sách bán hàng có khai tiến độ thu tiền (16/11/2026): Lần thanh toán điền theo chính sách — hạn = ngày ký HĐMB + số ngày; đã tự nhập các đợt thì giữ
     const sc = $('[data-sched]', form);

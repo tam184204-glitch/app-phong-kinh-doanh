@@ -874,7 +874,7 @@ H.reservation = {
         bad(`Chính sách ${p0.code} v${p0.version} chỉ áp dụng cho: ${await polWho(db, p0)} — nguồn bán của phiếu («${await C.optLabel(C.F.reservation.source, r.source)}») không dùng được`, { fields: ['policy_id', 'source'] });
       }
     }
-    if (u && r.deal !== 'thue') { const fv = await polFinish(db, u, r.policy_id, r.reg_date || today()); if (fv != null || changedUnit) r.finish_value = fv; }   // hoàn thiện: chỉ theo chính sách (15/11/2026)
+    if (u && r.deal !== 'thue') { r.finish_value = await polFinish(db, u, r.policy_id, r.reg_date || today()); }   // hoàn thiện (nội thất): chỉ theo chính sách — căn chính sách không khai = không có nội thất (15/11/2026)
     if (r.unit_value != null) r.price = +r.unit_value + (+r.finish_value || 0);   // Tổng giá bán = giá trị căn hộ + hoàn thiện nội thất
     if (r.price == null) bad('Chưa có giá bán: nhập giá hoặc phát hành bảng giá cho dự án');
     if (r.deposit > r.price) bad('Tiền đặt cọc lớn hơn giá bán');
