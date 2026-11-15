@@ -1255,11 +1255,11 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   // phiếu đăng ký: Tổng giá bán = Giá trị căn hộ + Giá trị hoàn thiện nội thất
   const sumRes = () => { const rd = k => readField(form, fields.find(f => f.k === k) || {}), uv = rd('unit_value'); if (uv != null && form.elements.price) form.elements.price.value = moneyStr(uv + (rd('finish_value') || 0)); };
   if (ent === 'reservation') form.addEventListener('input', e => { if (['unit_value', 'finish_value'].includes(e.target.name)) sumRes(); });
-  // HĐMB (15/11/2026): chọn khách chưa có hồ sơ NOXH đủ điều kiện tại căn → báo ngay (máy chủ chặn khi lưu)
+  // HĐMB (15/11/2026): chọn khách chưa có hồ sơ NOXH đủ điều kiện tại căn → báo ngay (vẫn lưu dự thảo; máy chủ chặn gửi trình duyệt / duyệt)
   if (ent === 'contract') form.addEventListener('change', async e => {
     if (e.target.name !== 'customer_id' || !e.target.value || (form.elements.kind?.value ?? rec.kind) !== 'hdmb' || !form.elements.unit_id?.value) return;
     try { const it = (await api('GET', `/api/opts/customer?unit=${form.elements.unit_id.value}`)).find(x => x.id === +e.target.value);
-      if (it && !it.ok) toast(`Khách hàng ${it.label} chưa được Sở Xây dựng xét duyệt đủ điều kiện mua nhà ở xã hội tại căn này (${it.sub.replace(/^[✓✗]\s*/, '')}) — không tạo được Hợp đồng mua bán`, true); } catch { }
+      if (it && !it.ok) toast(`Khách hàng ${it.label} chưa được Sở Xây dựng xét duyệt đủ điều kiện mua nhà ở xã hội tại căn này (${it.sub.replace(/^[✓✗]\s*/, '')}) — vẫn lưu dự thảo được, nhưng chưa gửi trình duyệt hợp đồng được`, true); } catch { }
   });
   // phiếu đăng ký (14/11/2026): chọn căn / đổi nguồn bán / đại lý → chính sách được duyệt gần nhất cho căn + người bán, giá trị hoàn thiện theo danh sách của chính sách
   const resPol = async uid => {
