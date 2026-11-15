@@ -237,7 +237,9 @@ async function policyRoll(db, pol, user) {
     .filter(u => polHas(pol, u.code, u.bcode));
   const FV = pol.finish_vals || {}, fin = { can: [] };
   for (const u of units) {
-    const fv = FV[String(u.code).toUpperCase()];   // giá trị hoàn thiện khai ở chính sách (undefined = giữ nguyên)
+    // giá trị hoàn thiện (nội thất) khai ở chính sách. 15/11/2026: chính sách có khai danh sách căn nội thất mà KHÔNG tích căn này → căn không có nội thất (0);
+    // chính sách không khai mục hoàn thiện nào → giữ nguyên
+    const fv = FV[String(u.code).toUpperCase()] ?? (pol.finish_vals ? 0 : null);
     if (fv != null && +(u.finish_value || 0) !== fv && (await pricing(db, u, on)).policy?.id === pol.id) {
       await sys(db, 'unit', u.id, { finish_value: fv, ...(u.price_net != null ? { total_price: +u.price_net + (+u.maint_fee || 0) + fv } : {}) }, user, 'hoan_thien_chinh_sach', `Giá trị hoàn thiện theo chính sách ${lab}`);
       fin.can.push(u.code);
@@ -264,6 +266,19 @@ async function policyRoll(db, pol, user) {
         }
       } catch (e) { if (e.status !== 400) throw e; out.err.push(`${nm}: ${e.message}`); }
     }
+    // 15/11/2026: HĐ thuê / HĐ vay dự thảo có «Tiến độ thu tiền HĐMB» → các đợt theo tiến độ thu tiền của chính sách mới (hạn = ngày ký HĐ + số ngày)
+    if (pol.pay_sched?.some(x => !x.maint && +x.pct > 0)) for (const c of await db.q("SELECT * FROM kd_contract WHERE unit_id = $1 AND kind IN ('thue','vay') AND sale_on AND status IN ('du_thao','tu_choi') ORDER BY id", [u.id])) {
+      const r = (c.reservation_id && await raw(db, 'reservation', c.reservation_id)) || rs[rs.length - 1];
+      if ((await pricing(db, u, on, r ? { source: r.source, agent_id: r.agent_id } : undefined)).policy?.id !== pol.id) continue;
+      const nm = c.number || c.code || '#' + c.id;
+      try {
+        const b = d10(c.contract_on || c.plan_sign) || on, has = x => x.days != null && x.days !== '', all = pol.pay_sched, ps = all.filter(x => !x.maint && +x.pct > 0), mr = all.find(x => x.maint);
+        const rows = ps.map((x, i) => { const due = has(x) || !i ? C.addDays(b, +x.days || 0) : null; if (!due && !x.bg) bad(`«${x.name}» chưa có ngày đến hạn cố định — mở HĐ nhập ngày cho đợt này`); return { name: x.name, pct: +x.pct, amount: null, due_on: due, ...(x.bg ? { bg: true, bg_days: x.bg_days ?? null } : {}) }; });
+        const k = Math.min(Math.max(1, +pol.pay_mdot || 3), rows.length) - 1;
+        if (+u.maint_fee > 0) rows.push({ name: mr?.name || 'Thu phí bảo trì (2% tiền trước thuế)', due_on: mr && has(mr) ? C.addDays(b, +mr.days) : rows[k].due_on, pct: null, amount: null, maint: true, ...(!(mr && has(mr)) && rows[k].bg ? { bg: true, bg_days: rows[k].bg_days } : {}) });
+        await sys(db, 'contract', c.id, { sale_sched: rows }, user, 'tien_do_chinh_sach', `Tiến độ thu tiền HĐMB theo chính sách ${lab}`); out.hd.push(nm);
+      } catch (e) { if (e.status !== 400) throw e; out.err.push(`${nm}: ${e.message}`); }
+    }
     // HĐ hoàn thiện căn hộ (nội thất) dự thảo của căn: Lần thanh toán theo «Tiến độ thu giá trị hoàn thiện» của chính sách (14/11/2026)
     if (fv != null || pol.fin_sched?.length) for (let c of await db.q("SELECT * FROM kd_contract WHERE unit_id = $1 AND kind = 'hoan_thien' AND status IN ('du_thao','tu_choi') ORDER BY id", [u.id])) {
       const r = (c.reservation_id && await raw(db, 'reservation', c.reservation_id)) || rs[rs.length - 1];
@@ -271,6 +286,7 @@ async function policyRoll(db, pol, user) {
       const nm = c.number || c.code || '#' + c.id;
       try {
         let hit = false;
+        if (fv === 0) { out.err.push(`${nm}: căn ${u.code} không còn nội thất theo chính sách ${lab} — xóa HĐ hoàn thiện dự thảo này nếu không dùng`); continue; }
         if (fv != null && +(c.finish_value || 0) !== fv) { await sys(db, 'contract', c.id, { finish_value: fv }, user, 'hoan_thien_chinh_sach', `Giá trị hoàn thiện theo chính sách ${lab}`); c = await raw(db, 'contract', c.id); hit = true; }
         if (pol.fin_sched?.length && await policyApplyOne(db, pol, c, user)) hit = true;
         if (hit) out.hd.push(nm);
@@ -283,7 +299,7 @@ async function policyRoll(db, pol, user) {
     `Tự áp cho căn chưa bán: ${out.can.length ? `hoàn thiện ${out.can.length} căn, ` : ''}${out.res.length} phiếu đăng ký${out.res.length ? ' (' + [...new Set(out.res)].join(', ') + ')' : ''}, ${out.hd.length} HĐMB dự thảo${out.hd.length ? ' (' + out.hd.join(', ') + ')' : ''}${out.err.length ? ` · ${out.err.length} chỗ không áp được` : ''}`);
   return out;
 }
-const rollMsg = o => (o.res.length || o.hd.length || o.can?.length ? `Đã áp chính sách cho căn chưa bán: ${o.can?.length ? `giá trị hoàn thiện ${o.can.length} căn, ` : ''}${o.res.length} phiếu đăng ký, ${o.hd.length} HĐMB dự thảo${o.hd.length ? ' (' + o.hd.join(', ') + ')' : ''}` : 'Không có phiếu đăng ký / HĐMB dự thảo nào cần đổi sang chính sách này') + (o.err.length ? ` · Không áp được: ${o.err.join('; ')}` : '');
+const rollMsg = o => (o.res.length || o.hd.length || o.can?.length ? `Đã áp chính sách cho căn chưa bán: ${o.can?.length ? `giá trị hoàn thiện ${o.can.length} căn, ` : ''}${o.res.length} phiếu đăng ký, ${o.hd.length} hợp đồng dự thảo${o.hd.length ? ' (' + o.hd.join(', ') + ')' : ''}` : 'Không có phiếu đăng ký / hợp đồng dự thảo nào cần đổi sang chính sách này') + (o.err.length ? ` · Không áp được: ${o.err.join('; ')}` : '');
 // căn chọn được khi tạo chính sách bán hàng (16/11/2026): còn trong bảng hàng (không ngừng kinh doanh), chưa ký HĐMB / thuê mua / vay / thuê.
 // Kèm chính sách đang phát hành áp cho căn (trừ chính sách đang sửa) và HĐMB dự thảo của căn — để biết căn nào sẽ đổi Lần thanh toán
 async function policyUnits(db, qs) {
