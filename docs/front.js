@@ -58,11 +58,12 @@ function modal({ title, body = '', wide, narrow, foot = '', onClose }) {
   ov.innerHTML = `<div class="modal ${wide ? 'wide' : ''} ${narrow ? 'narrow' : ''}" role="dialog" aria-modal="true"><div class="mh"><h3>${title}</h3><button class="btn ghost sm x" data-x aria-label="Đóng">${ico('fa-xmark')}</button></div><div class="mb">${body}</div>${foot ? `<div class="mf">${foot}</div>` : ''}</div>`;
   document.body.append(ov);
   const close = () => { ov.remove(); onClose && onClose(); document.removeEventListener('keydown', kd); };
-  const kd = e => { if (e.key === 'Escape' && document.body.lastElementChild === ov) close(); };
+  const userClose = () => { try { ov._beforeClose?.(); } catch {} close(); };   // 15/11/2026: form đang nhập dở → tự lưu nháp trước khi đóng
+  const kd = e => { if (e.key === 'Escape' && document.body.lastElementChild === ov) userClose(); };
   document.addEventListener('keydown', kd);
   ov.addEventListener('mousedown', e => { if (e.target === ov) ov._down = true; });
-  ov.addEventListener('mouseup', e => { if (e.target === ov && ov._down) close(); ov._down = false; });
-  $$('[data-x]', ov).forEach(b => b.onclick = close);
+  ov.addEventListener('mouseup', e => { if (e.target === ov && ov._down) userClose(); ov._down = false; });
+  $$('[data-x]', ov).forEach(b => b.onclick = userClose);
   setTimeout(() => $('input:not([type=hidden]):not([readonly]),select,textarea', ov)?.focus(), 30);
   return { el: ov, close, body: $('.mb', ov) };
 }
@@ -930,7 +931,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   const wide = f => ['long', 'check', 'json'].includes(f.t) || !!f.pick || !!f.upload;
   const body = `${E.note ? `<div class="warnbar">${ico('fa-circle-info')}<span>${esc(E.note)}</span></div>` : ''}${lockKeep ? `<div class="lockbar">${ico('fa-lock')} Bản ghi đã chốt — chỉ sửa được: ${[...lockKeep].filter(k => { const f = E.fields.find(x => x.k === k), sh = d => isShown(E.fields.find(x => x.k === d) || {}, rec); return !f?.show || isShown(f, rec) || Object.keys(f.show).every(d => lockKeep.has(d) && sh(d)); }).map(k => k === 'new_schedule' ? 'Lần thanh toán' : E.fields.find(f => f.k === k)?.l).join(', ')}</div>` : ''}${perm?.softOpen ? `<div class="warnbar">${ico('fa-unlock')}<span>Hợp đồng đã trình duyệt: nhân viên đã bị khóa, chỉ sửa được Lần thanh toán. Quản lý vẫn sửa được toàn bộ.</span></div>` : ''}<div id="ferr"></div><form class="form" autocomplete="off">${fields.map(f => {
     const ro = f.ro || (f.t === 'code' && !f.manual) || (lockKeep && !lockKeep.has(f.k)) || (f.pii && id && !M.piiRoles.includes(M.me.role) && rec[f.k]);
-    return `${f.sec ? `<div class="fsec">${esc(f.sec)}</div>` : ''}<div class="fld ${wide(f) ? 'wide' : ''}" data-f="${f.k}"><label for="f_${f.k}">${esc(f.l)}${f.req && !ro ? '<span class="req">*</span>' : ''}${f.pii ? ` <span class="tag" title="Dữ liệu cá nhân — chỉ người có quyền được xem">${ico('fa-shield-halved')} định danh</span>` : ''}</label>${input(f, rec[f.k], rec, { ro })}${f.help ? `<div class="help">${esc(f.help)}</div>` : ''}</div>`;
+    return `${f.sec ? `<div class="fsec">${esc(f.sec)}</div>` : ''}<div class="fld ${wide(f) ? 'wide' : ''}" data-f="${f.k}"><label for="f_${f.k}">${esc(f.l)}${f.req && !ro ? '<span class="req">*</span>' : ''}${f.pii ? ` <span class="tag" title="Dữ liệu cá nhân — chỉ người có quyền được xem">${ico('fa-shield-halved')} định danh</span>` : ''}${f.help ? ` <span class="hint" tabindex="0" role="note" data-tip="${esc(f.help)}" aria-label="Hướng dẫn: ${esc(f.help)}">${ico('fa-circle-info')}</span>` : ''}</label>${input(f, rec[f.k], rec, { ro })}${f.help ? `<div class="help">${esc(f.help)}</div>` : ''}</div>`;
   }).join('')}</form>`;
   const canSubmit = E.flow && !E.flow.custom && !E.direct && !id && E.flow.submit.includes(E.fields.find(f => f.k === E.flow.field)?.def);
   const m = modal({ title: title || (id ? `Sửa ${E.one} ${esc(rec.code || rec.number || '')}` : `${E.code ? `<span class="tag">${E.code}</span> ` : ''}Tạo ${E.one}`), wide: fields.length > 8 || fields.some(wide),
@@ -992,6 +993,42 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     if (list.length && JSON.stringify(list.map(x => x.n)) !== JSON.stringify(cur.map(x => x.n))) el.innerHTML = checkRows(list.map(x => ({ ...x, st: '', note: '' })), 'qty' in el.dataset);
   };
   wireInputs(form, () => { vis(); });
+  // 15/11/2026: tự lưu nháp — đã gõ / chọn gì mà đóng form không lưu (Esc, bấm ra ngoài, X, Hủy) thì giữ bản nháp trên máy này 7 ngày;
+  // mở lại đúng form đó (cùng bản ghi / cùng loại tạo mới) → thanh «Khôi phục / Bỏ nháp». Lưu thành công thì xóa nháp
+  {
+    const dKey = `ctg-kd-nhap:${ent}:${id || 'moi:' + (preset.kind || rec.kind || '')}`;
+    const lsGet = () => { try { const d = JSON.parse(localStorage.getItem(dKey) || 'null'); return d && Date.now() - d.at < 7 * 864e5 ? d : null; } catch { return null; } };
+    const lsDel = () => { try { localStorage.removeItem(dKey); } catch {} };
+    let touched = false;
+    for (const ev of ['input', 'change']) form.addEventListener(ev, e => { if (e.isTrusted) touched = true; }, true);
+    const snapD = () => {
+      const v = {}, lab = {}, js = {};
+      for (const el of form.elements) { if (!el.name || el.type === 'file' || el.type === 'button' || el.type === 'submit') continue; v[el.name] = el.type === 'checkbox' ? el.checked : el.type === 'radio' ? (el.checked ? el.value : v[el.name]) : el.value; }
+      $$('.combo:not([data-multi])', form).forEach(c => { const h = $('input[type=hidden]', c), t = $('[data-combo],input[type=text]', c); if (h?.name && t) lab[h.name] = t.value; });
+      for (const f of fields.filter(f => f.t === 'json')) { const el = $(`[name="${f.k}"]`, form); if (el?._get && !(el instanceof HTMLInputElement)) { try { js[f.k] = el._get(); } catch {} } }
+      return { at: Date.now(), v, lab, js };
+    };
+    m.el._beforeClose = () => { if (!touched) return; try { localStorage.setItem(dKey, JSON.stringify(snapD())); toast('Đã lưu nháp trên máy này — mở lại form này để khôi phục'); } catch {} };
+    form._clearDraft = lsDel;
+    const d0 = lsGet();
+    if (d0) {
+      const bar = document.createElement('div'); bar.className = 'warnbar draft-bar';
+      const t = new Date(d0.at), hm = `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')} ${dmy(new Date(d0.at - t.getTimezoneOffset() * 6e4).toISOString())}`;
+      bar.innerHTML = `${ico('fa-floppy-disk')}<span>Có bản nháp chưa lưu lúc <b>${hm}</b> (form bị đóng khi đang nhập).</span><button type="button" class="btn sm pri" data-dr>Khôi phục</button><button type="button" class="btn sm ghost" data-dd>Bỏ nháp</button>`;
+      form.prepend(bar);
+      $('[data-dd]', bar).onclick = () => { lsDel(); bar.remove(); };
+      $('[data-dr]', bar).onclick = () => {
+        for (const el of form.elements) {
+          if (!el.name || !(el.name in d0.v) || el.type === 'file') continue; const x = d0.v[el.name];
+          if (el.type === 'checkbox') el.checked = !!x; else if (el.type === 'radio') el.checked = el.value === x; else if (!el.disabled && !el.readOnly || el.type === 'hidden') el.value = x ?? '';
+        }
+        $$('.combo:not([data-multi])', form).forEach(c => { const h = $('input[type=hidden]', c), t = $('[data-combo],input[type=text]', c); if (h?.name && t && h.name in d0.lab) t.value = d0.lab[h.name]; });
+        for (const [k, x] of Object.entries(d0.js || {})) { const el = $(`[name="${k}"]`, form); if (el?._set && Array.isArray(x)) { try { el._set(x); } catch {} } }
+        try { vis(); } catch {}
+        touched = true; bar.remove(); toast('Đã khôi phục bản nháp — kiểm tra lại rồi bấm Lưu');
+      };
+    }
+  }
   // mã khách hàng: Enter hoặc rời ô → báo trùng ngay dưới ô
   const codeEl = ent === 'customer' && form.elements.code;
   if (codeEl) {
@@ -1284,14 +1321,14 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
         if (andSubmit && hid && ['du_thao', 'tu_choi', undefined].includes(htp.status)) await api('POST', `/api/e/contract/${hid}/submit`, {});
       } catch (e2) {
         if (andSubmit) await api('POST', `/api/e/${ent}/${r.row.id}/submit`, {}).catch(() => {});
-        m.close(); refresh(); toast('Hợp đồng mua bán đã lưu; hợp đồng hoàn thiện chưa lưu: ' + e2.message, true);
+        form._clearDraft?.(); m.close(); refresh(); toast('Hợp đồng mua bán đã lưu; hợp đồng hoàn thiện chưa lưu: ' + e2.message, true);
         openForm(ent, { id: r.row.id, tab: 'ht', onSaved, htDraft: (({ number, contract_on: on, finish_value: finish, discount: disc, new_schedule: sched }) => ({ number, on, finish, disc, sched }))(htp.snap()) });
         return r.row;
       }
       // tệp đính kèm chọn ngay trong form (vd. Tệp nguồn PDF) → lưu vào mục Tệp của bản ghi
       for (const f of fields.filter(x => x.upload)) for (const file of $(`[name="${f.k}"]`, form)?.files || []) { const fd = new FormData(); fd.append('kind', 'nguon'); fd.append('file', file, file.name); await api('POST', `/api/files/${ent}/${r.row.id}`, fd); }
       if (andSubmit) await api('POST', `/api/e/${ent}/${r.row.id}/submit`, {});
-      m.close(); toast((andSubmit ? 'Đã lưu và trình duyệt' : 'Đã lưu') + (r.warnings?.length ? ' — lưu ý: ' + r.warnings.join('; ') : ''), !!r.warnings?.some(w => /thông báo mở bán/.test(w)));
+      form._clearDraft?.(); m.close(); toast((andSubmit ? 'Đã lưu và trình duyệt' : 'Đã lưu') + (r.warnings?.length ? ' — lưu ý: ' + r.warnings.join('; ') : ''), !!r.warnings?.some(w => /thông báo mở bán/.test(w)));
       onSaved ? onSaved(r.row) : refresh();
       return r.row;
     } catch (e) { showErr(e); } finally { btns.forEach(b => b.disabled = false); }
@@ -1815,9 +1852,18 @@ async function listView(main, ent, params = {}) {
     const bulk = E.bulk || (E.flow && (E.perm.a || E.perm.d));
     $('#tb', main).innerHTML = d.rows.length ? `<table class="t ${LV ? 'grid-bravo hd2' : ''}"><thead>${head ? `<tr class="h1">${bulk ? '<th></th>' : ''}${head.map(([t, n]) => `<th colspan="${n}">${esc(t)}</th>`).join('')}</tr>` : ''}<tr>${bulk ? '<th style="width:30px"><input type="checkbox" id="selAll"></th>' : ''}${cols.map(k => { const f = E.fields.find(x => x.k === k); const s = S.sort.replace('-', '') === k ? (S.sort[0] === '-' ? ' ↓' : ' ↑') : ''; return `<th class="${f ? 'sort' : ''} ${f && ['money', 'num', 'int'].includes(f.t) || VIRT_MONEY.has(k) ? 'num' : ''}" data-k="${f ? k : ''}">${esc(headL(k))}${s}</th>`; }).join('')}</tr></thead>
       <tbody>${d.rows.map((r, i) => `<tr data-id="${r.id}" class="${S.sel.has(r.id) ? 'sel' : ''}">${bulk ? `<td><input type="checkbox" data-sel="${r.id}" ${S.sel.has(r.id) ? 'checked' : ''}></td>` : ''}${cols.map(k => { const c = cell(ent, k, r); const lf = E.fields.find(x => x.k === k); return `<td class="${c.num ? 'num' : ''} ${lf?.t === 'long' ? 'wrap' : ''}">${k === 'id' ? '#' + r.id : k === 'stt' ? i + 1 : c.html}${k === cols[0] && r.is_demo ? ' <span class="tag demo" title="Dữ liệu thử">thử</span>' : ''}</td>`; }).join('')}</tr>`).join('')}</tbody>
-      ${cols.some(k => E.fields.find(f => f.k === k)?.t === 'money' || VIRT_MONEY.has(k)) ? `<tfoot><tr>${bulk ? '<td></td>' : ''}${cols.map((k, i) => { const f = E.fields.find(x => x.k === k); return (f?.t === 'money' || VIRT_MONEY.has(k)) ? `<td class="num">${fm(d.rows.reduce((s, r) => s + (+r[k] || 0), 0))}</td>` : `<td>${i === 0 ? 'Tổng' : ''}</td>`; }).join('')}</tr></tfoot>` : ''}</table>`
+      ${cols.some(k => E.fields.find(f => f.k === k)?.t === 'money' || VIRT_MONEY.has(k)) ? `<tfoot><tr>${bulk ? '<td></td>' : ''}${cols.map((k, i) => { const f = E.fields.find(x => x.k === k); return (f?.t === 'money' || VIRT_MONEY.has(k)) ? `<td class="num" data-sum="${k}">${fm(d.rows.reduce((s, r) => s + (+r[k] || 0), 0))}</td>` : `<td${i === 0 ? ' data-sumlab' : ''}>${i === 0 ? (d.rows.length < d.total ? 'Tổng <span class="muted small">(đang tính…)</span>' : 'Tổng') : ''}</td>`; }).join('')}</tr></tfoot>` : ''}</table>`
       : `<div class="empty">${ico(E.icon)}Chưa có ${esc(E.one)} nào${S.q || S.status ? ' khớp bộ lọc' : ''}.${E.perm.c && ent !== 'reservation' ? ' Bấm «Tạo ' + esc(E.one) + '» để bắt đầu.' : ''}</div>`;
     $('#more', main).innerHTML = d.rows.length < d.total ? `<button class="btn" id="moreBtn">Tải thêm (${d.total - d.rows.length} còn lại)</button>` : '';
+    // 15/11/2026: dòng «Tổng» = tổng TOÀN BỘ bản ghi khớp bộ lọc, không chỉ các dòng đang hiện (danh sách chỉ tải 300 dòng đầu)
+    if (d.rows.length < d.total && $('[data-sum]', main)) {
+      const seq = (S._sumSeq = (S._sumSeq || 0) + 1), pa = new URLSearchParams(p); pa.set('limit', d.total);
+      api('GET', `/api/e/${ent}?${pa}`).then(all => {
+        if (seq !== S._sumSeq) return;
+        $$('[data-sum]', main).forEach(td => { const k = td.dataset.sum; td.textContent = fm(all.rows.reduce((s, r) => s + (+r[k] || 0), 0)); });
+        const l = $('[data-sumlab]', main); if (l) l.innerHTML = `Tổng <span class="muted small">(tất cả ${all.rows.length} dòng)</span>`;
+      }).catch(() => { const l = $('[data-sumlab]', main); if (l) l.innerHTML = `Tổng <span class="muted small">(${d.rows.length} dòng đang hiện)</span>`; });
+    }
     $('#moreBtn', main) && ($('#moreBtn', main).onclick = () => { S.limit += 500; load(); });
     drawBulk();
   };
