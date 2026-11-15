@@ -833,6 +833,8 @@ table.prod-t tfoot td { font-weight: 800 !important; color: var(--ink) !importan
 .bv .fld input[type=text], .bv .fld input:not([type]), .bv .fld select { height: 32px; border-radius: 7px; padding-top: 3px; padding-bottom: 3px; font-size: 13px; }
 .bv .fld .chk { height: 32px !important; }
 .bv .fld[data-f="new_schedule"] { display: block; } .bv .fld[data-f="new_schedule"] > label { display: none; }
+/* HĐ thuê / vay: tiến độ thu tiền HĐMB — nhãn trên, nút chính sách, bảng full chiều ngang (không chia 3 cột nhãn | nút | bảng) */
+.bv .fld[data-f="sale_sched"] { display: block; } .bv .fld[data-f="sale_sched"] > label { display: block; margin-bottom: 6px; }
 @media (max-width: 900px) { .bv-side, .bv-row { grid-template-columns: 1fr; } }
 
 /* danh sách hợp đồng căn hộ: 2 tầng tiêu đề như BRAVO */
@@ -842,7 +844,7 @@ table.prod-t tfoot td { font-weight: 800 !important; color: var(--ink) !importan
 /* bảng lần thanh toán: cột cố định, ô nhập thẳng hàng với tiêu đề và dòng tổng */
 .sched { width: 100%; table-layout: fixed; }
 .sched th:nth-child(1) { width: 52px; } .sched th:nth-child(3) { width: 140px; } .sched th:nth-child(4) { width: 100px; } .sched th:nth-child(5) { width: 180px; } .sched th:nth-child(6) { width: 56px; }
-.sched td input[data-k] { width: 100% !important; }
+.sched td input[data-k], .sched tr.sched-m td:not(.sched-bg) input:not([type=checkbox]) { width: 100% !important; }
 
 /* lần thanh toán hợp đồng: cột Đợt chọn gợi ý, Nội dung nhiều dòng */
 .sched.pick th:nth-child(1) { width: 130px; }
