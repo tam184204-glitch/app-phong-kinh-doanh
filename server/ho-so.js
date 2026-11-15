@@ -70,9 +70,12 @@ async function hsData(unitId, user, custId) {
   const bday = k?.birth ? dmy(k.birth) : '';
   const S = {
     ten_kh: c.b_name || k?.full_name || res?.cust_name || '',   // tên bên mua ghi trên HĐ trước
-    cccd: P(c.b_id_no || k?.id_no || res?.id_no), ngay_cap: P(dmy(c.b_id_date || k?.id_date || res?.id_date)), noi_cap: P(c.b_id_place || k?.id_place || res?.id_place),
-    ngay_sinh: P(bday), thuong_tru: c.b_perm_addr || c.b_addr || k?.address || res?.address || '', dia_chi: c.b_addr || k?.address || res?.address || '', dien_thoai: c.b_phone || k?.phone || res?.phone || '',
-    email: c.b_email || k?.email || '', mst: P(k?.tax_code || res?.tax_code), stk: P([c.b_bank_acc || k?.bank_account || res?.bank_account, c.b_bank_name && 'Ngân hàng ' + c.b_bank_name].filter(Boolean).join(' - ')),
+    // 15/11/2026 Tâm: CCCD / địa chỉ / liên hệ / tài khoản lấy theo THÔNG TIN KHÁCH HIỆN TẠI (như «In hợp đồng») — khách đổi CCCD sau khi ký HĐMB thì
+    // mọi giấy tờ in sau (HS bàn giao, thanh lý…) ra số mới; ô ghi trên HĐ chỉ dùng khi hồ sơ khách còn trống. Hộ khẩu thường trú chỉ khai ở HĐ (khách không có ô này)
+    cccd: P(k?.id_no || c.b_id_no || res?.id_no), ngay_cap: P(dmy(k?.id_no && k.id_no !== c.b_id_no ? k.id_date : k?.id_date || c.b_id_date || res?.id_date)), noi_cap: P(k?.id_no && k.id_no !== c.b_id_no ? k.id_place : k?.id_place || c.b_id_place || res?.id_place),   // CCCD mới: ngày / nơi cấp theo khách; cùng số thì bù chỗ trống từ HĐ
+    ngay_sinh: P(bday), thuong_tru: c.b_perm_addr || k?.address || c.b_addr || res?.address || '', dia_chi: k?.address || c.b_addr || res?.address || '', dien_thoai: k?.phone || c.b_phone || res?.phone || '',
+    email: k?.email || c.b_email || '', mst: P(k?.tax_code || res?.tax_code),
+    stk: P(k?.bank_account || [c.b_bank_acc || res?.bank_account, c.b_bank_acc && c.b_bank_name && 'Ngân hàng ' + c.b_bank_name].filter(Boolean).join(' - ')),
     // vợ / chồng: ô Đồng sở hữu khai ở HĐ trước (bản sẽ ký), chưa khai thì lấy thành viên «Vợ (Chồng)» ở hồ sơ NOXH của khách (13/11/2026)
     ...(() => { const h = hdmb || c, own = !!(h.co_owner || h.co_owner_id_no);
       return { vc_ten: (own ? h.co_owner : mem?.name) || '', vc_cccd: P(own ? h.co_owner_id_no : mem?.id_no), vc_ngay_cap: P(dmy(own ? h.co_owner_id_date : '')), vc_noi_cap: P(own ? h.co_owner_id_place : '') }; })(),
