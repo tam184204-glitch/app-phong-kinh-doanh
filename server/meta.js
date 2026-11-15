@@ -345,7 +345,7 @@ def('noxh_check', {
     { k: 'bank_account', l: 'Số tài khoản ngân hàng', t: 'text', pii: 1, help: 'Số tài khoản - Ngân hàng (VD 0070101168008 - Ngân hàng MB). Chọn khách / phiếu → tự điền; sửa ở đây thì khách, phiếu, hợp đồng cập nhật theo' },
     // chủ hộ và thành viên khai cùng các cột Mẫu 4 (03/11/2026: thành viên thêm điều kiện nhà ở, nơi ở, thu nhập); chỉ khác cột Quan hệ với chủ hộ
     { k: 'head', l: '2.1 Thông tin chủ hộ', t: 'json', sec: '2. Thông tin khách hàng', fixed: 1, grid: [...M4_PERSON(), { k: 'relation', l: 'Quan hệ với chủ hộ', w: 90, ro: 1, def: 'Chủ hộ' }] },
-    { k: 'members', l: '2.2 Thành viên hộ gia đình (ngoài chủ hộ)', t: 'json', grid: [...M4_PERSON(), { k: 'relation', l: 'Quan hệ với chủ hộ', o: M4.quan_he, w: 120 }] },
+    { k: 'members', l: '2.2 Thành viên hộ gia đình (ngoài chủ hộ)', t: 'json', grid: [...M4_PERSON().flatMap(c => c.k === 'id_no' ? [c, { k: 'id_date', l: 'Ngày cấp CCCD (dd/mm/yyyy)', w: 105, pii: 1 }, { k: 'id_place', l: 'Nơi cấp CCCD', w: 140, pii: 1 }] : [c]), { k: 'relation', l: 'Quan hệ với chủ hộ', o: M4.quan_he, w: 120 }] },   // 15/11/2026: + ngày / nơi cấp — vợ / chồng in đủ ở HĐ, bộ hồ sơ
     // cột Mẫu 4 của chủ hộ: tự chép từ dòng «2.1 Thông tin chủ hộ» khi lưu (giữ cho bảng tổng hợp / xuất Excel / nhập file Mẫu 4)
     { k: 'old_id_no', l: 'Số CMND cũ (chủ hộ)', t: 'text', pii: 1, noForm: 1 },
     { k: 'job', l: 'Nghề nghiệp (chủ hộ)', t: 'text', noForm: 1 },
@@ -488,6 +488,7 @@ def('contract', {
     { k: 'b_bank_acc', l: 'TK ngân hàng', t: 'text', pii: 1 },
     { k: 'b_bank_name', l: 'Tên ngân hàng', t: 'text' },
     { k: 'request_on', l: 'Ngày đề nghị mua', t: 'date' },
+    { k: 'co_owner_vc', l: 'Đồng sở hữu là vợ / chồng', t: 'bool', def: true, help: 'Tích: đồng sở hữu = vợ / chồng khai ở hồ sơ NOXH — sửa 1 nơi tự cập nhật nơi kia. Bỏ tích: đồng sở hữu không phải vợ / chồng, khai riêng ở hợp đồng' },
     { k: 'co_owner', l: 'Đồng sở hữu', t: 'text', help: 'Họ tên người đồng sở hữu (nếu có)' },
     // 13/11/2026: giấy tờ người đồng sở hữu (vợ / chồng) + ngày VBTT — nhập 1 lần ở HĐ, bộ hồ sơ tự in (trước luôn in «……»)
     { k: 'co_owner_id_no', l: 'Số CCCD người đồng sở hữu', t: 'text', pii: 1 },

@@ -373,6 +373,11 @@ R('GET', '/api/sale-track/:id', async (req, res, u, p, qs) => {   // HĐ thuê /
   const g = await C.get('contract', +p.id, u); if (!['thue', 'vay'].includes(g.row.kind)) C.bad('Chỉ áp dụng cho HĐ thuê / HĐ vay');
   send(res, 200, await B.saleTrack({ q, one }, g.row, qs.to));
 });
+// 15/11/2026: form hợp đồng chọn khách → hộ khẩu / đồng sở hữu / VBTT theo HĐ trước của khách + vợ / chồng ở hồ sơ NOXH
+R('GET', '/api/contract-buyer/:cust', async (req, res, u, p, qs) => { if (!can(u, M.E.contract, 'c') && !can(u, M.E.contract, 'u')) C.deny();
+  const d = await B.buyerCarry({ q, one }, +p.cust, qs.unit ? +qs.unit : null, qs.id ? +qs.id : null);
+  if (!M.PII_ROLES.includes(u.role)) for (const o of [d.carry, d.spouse || {}]) for (const k of ['co_owner_id_no', 'co_owner_id_date', 'co_owner_id_place']) delete o[k];
+  send(res, 200, d); });
 R('GET', '/api/contract-prefill/:unit', async (req, res, u, p, qs) => { if (!can(u, M.E.contract, 'c') && !can(u, M.E.contract, 'u')) C.deny(); send(res, 200, await B.contractPrefill({ q, one }, p.unit, qs.on)); });
 R('GET', '/api/policy-units', async (req, res, u, p, qs) => { if (!can(u, M.E.price_policy, 'c') && !can(u, M.E.price_policy, 'u')) C.deny(); send(res, 200, await B.policyUnits({ q, one }, qs)); });
 R('GET', '/api/sale-check/:id', async (req, res, u, p) => send(res, 200, await B.saleCheck({ q, one }, p.id) || {}));

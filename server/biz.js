@@ -761,6 +761,32 @@ const CUST_KEYS = [...Object.keys(RES_CUST), 'email'];
 const CT_OPEN = ['du_thao', 'cho_duyet', 'cho_ky', 'tu_choi'];   // hợp đồng đã ký chỉ được điền ô trống, không ghi đè
 // khách lưu một ô «Số tài khoản - Ngân hàng», hợp đồng tách 2 ô
 const bankSplit = s => { const [acc, ...n] = String(s || '').trim().split(/\s+-\s+/); return { acc: acc || null, name: n.join(' - ') || null }; };
+// ===== 15/11/2026: thông tin bên mua chỉ khai ở hợp đồng (hộ khẩu, đồng sở hữu, VBTT) + vợ / chồng nối với hồ sơ NOXH =====
+// HĐ mới của khách (VD HĐ vay / thuê → HĐMB): ô trống tự chép từ HĐ gần nhất của khách (ưu tiên cùng căn) — không phải gõ lại
+const CT_CARRY = ['b_perm_addr', 'b_temp_addr', 'co_owner', 'co_owner_id_no', 'co_owner_id_date', 'co_owner_id_place', 'agreement', 'agreement_on', 'co_owner_vc'];
+const CO_F = { name: 'co_owner', id_no: 'co_owner_id_no', id_date: 'co_owner_id_date', id_place: 'co_owner_id_place' };
+const isVC = m => /vợ|chồng/i.test(m?.relation || '');
+const isoD = v => { if (v instanceof Date) return v.toISOString().slice(0, 10); const t = String(v ?? '').trim(); const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : /^\d{4}-\d{2}-\d{2}/.test(t) ? t.slice(0, 10) : null; };
+const dmyD = v => { const i = isoD(v); return i ? i.split('-').reverse().join('/') : String(v ?? '').trim(); };
+const jArr = v => { try { const a = typeof v === 'string' ? JSON.parse(v) : v; return Array.isArray(a) ? a : []; } catch { return []; } };
+const s10 = v => v instanceof Date ? isoD(v) : String(v ?? '').slice(0, 10);
+// vợ / chồng của khách ở hồ sơ NOXH (thành viên hộ quan hệ «Vợ (Chồng)» / «Chồng (Vợ)»)
+async function noxhSpouse(db, custId, unitId) {
+  if (!custId) return null;
+  const nx = await db.one('SELECT id, status, members FROM kd_noxh_check WHERE customer_id = $1 ORDER BY (unit_id = $2) DESC NULLS LAST, id DESC LIMIT 1', [custId, unitId ?? null]);
+  if (!nx) return null;
+  const ms = jArr(nx.members), i = ms.findIndex(isVC);
+  return { nx, ms, i, m: i >= 0 ? ms[i] : null };
+}
+const spouseCo = m => m && m.name ? { co_owner: m.name || null, co_owner_id_no: m.id_no || null, co_owner_id_date: isoD(m.id_date), co_owner_id_place: m.id_place || null } : null;
+async function buyerCarry(db, custId, unitId, exceptId) {
+  const out = { carry: {}, spouse: null };
+  if (!custId) return out;
+  const prev = await db.one(`SELECT ${CT_CARRY.join(', ')} FROM kd_contract WHERE customer_id = $1 AND id IS DISTINCT FROM $3 AND status <> 'huy' ORDER BY (unit_id = $2) DESC NULLS LAST, id DESC LIMIT 1`, [custId, unitId ?? null, exceptId ?? null]);
+  if (prev) for (const k of CT_CARRY) if (prev[k] != null && prev[k] !== '') out.carry[k] = k.endsWith('_on') || k.endsWith('_date') ? isoD(prev[k]) : prev[k];
+  out.spouse = spouseCo((await noxhSpouse(db, custId, unitId))?.m);
+  return out;
+}
 const custVals = (r, old, map) => Object.fromEntries(Object.entries(map).filter(([, c]) => !old || String(old[c] ?? '') !== String(r[c] ?? '')).map(([k, c]) => [k, r[c]]));
 async function syncCustomer(db, id, vals, user, note) {
   const cur = id && await raw(db, 'customer', id); if (!cur) return;
@@ -1044,6 +1070,12 @@ H.noxh_check = {
     if (miss.length) bad('Chưa khai đủ thông tin Mẫu 4: ' + miss.join(', '));
   },
   async afterSave(r, old, { db, user }) {
+    // 15/11/2026: vợ / chồng (thành viên hộ) sửa ở hồ sơ NOXH → ô Đồng sở hữu của HĐ chưa ký của khách (HĐ tích «Đồng sở hữu là vợ / chồng»)
+    { const sp0 = spouseCo(jArr(old?.members).find(isVC)), sp = spouseCo(jArr(r.members).find(isVC));
+      if (sp && r.customer_id && JSON.stringify(sp) !== JSON.stringify(sp0))
+        await db.q(`UPDATE kd_contract SET co_owner = $1, co_owner_id_no = $2, co_owner_id_date = $3, co_owner_id_place = $4, updated_at = now()
+          WHERE customer_id = $5 AND ($6::int IS NULL OR unit_id = $6 OR unit_id IS NULL) AND coalesce(co_owner_vc, true) AND status IN ('du_thao', 'tu_choi', 'cho_duyet')`,
+          [sp.co_owner, sp.co_owner_id_no, sp.co_owner_id_date, sp.co_owner_id_place, r.customer_id, r.unit_id ?? null]); }
     // lịch ký nhập ở hồ sơ → sang hợp đồng chưa duyệt của khách (cùng căn nếu hồ sơ đã chọn căn)
     if (['plan_sign', 'sign_place', 'sign_status'].some(k => String(old?.[k] ?? '') !== String(r[k] ?? '')))
       await db.q(`UPDATE kd_contract SET plan_sign = $1, sign_place = $2, sign_status = coalesce($3, sign_status), updated_at = now() WHERE customer_id = $4 AND ($5::int IS NULL OR unit_id = $5) AND status IN ('du_thao', 'cho_duyet', 'tu_choi')`,
@@ -1382,6 +1414,25 @@ H.contract = {
       const k = await raw(db, 'customer', r.customer_id), b = bankSplit(k?.bank_account);
       if (k) for (const [f, c] of Object.entries(CT_CUST)) if (r[c] == null || r[c] === '') r[c] = k[f];
       r.b_bank_acc ||= b.acc; r.b_bank_name ||= b.name;
+      const bc = await buyerCarry(db, r.customer_id, r.unit_id, old?.id);   // 15/11/2026: hộ khẩu, đồng sở hữu, VBTT theo HĐ trước của khách
+      for (const [k, v] of Object.entries(bc.carry)) if (r[k] == null || r[k] === '' || (k === 'co_owner_vc' && !old)) r[k] = v;
+    }
+    // 15/11/2026: «Đồng sở hữu là vợ / chồng» (mặc định) → nối với thành viên «Vợ (Chồng)» ở hồ sơ NOXH của khách: sửa ở HĐ thì ghi sang NOXH,
+    // không sửa thì lấy theo NOXH. Bỏ tích = đồng sở hữu không phải vợ / chồng, khai riêng ở HĐ. HĐ đã ký / thanh lý / hủy giữ nguyên
+    if (r.co_owner_vc !== false && r.customer_id && !['da_ky', 'thanh_ly', 'huy'].includes(r.status)) {
+      const sp = await noxhSpouse(db, r.customer_id, r.unit_id);
+      if (sp) {
+        const typed = old ? Object.values(CO_F).some(c => s10(r[c]) !== s10(old[c])) : !!(r.co_owner || r.co_owner_id_no);
+        const cur = spouseCo(sp.m), same = cur && Object.values(CO_F).every(c => s10(r[c]) === s10(cur[c]));
+        if (typed && !same && r.co_owner) {
+          if (['cho_duyet', 'da_duyet'].includes(sp.nx.status)) warn.push('Hồ sơ NOXH của khách đã trình / đã duyệt — thông tin vợ / chồng sửa ở hợp đồng không ghi sang hồ sơ NOXH');
+          else {
+            const m = { ...(sp.m || { relation: 'Vợ (Chồng)' }), name: r.co_owner, id_no: r.co_owner_id_no || '', id_date: r.co_owner_id_date ? dmyD(r.co_owner_id_date) : '', id_place: r.co_owner_id_place || '' };
+            const ms = [...sp.ms]; if (sp.i >= 0) ms[sp.i] = m; else ms.push(m);
+            await db.q('UPDATE kd_noxh_check SET members = $1, updated_at = now() WHERE id = $2', [JSON.stringify(ms), sp.nx.id]);
+          }
+        } else if (cur) for (const [k, v] of Object.entries(cur)) r[k] = v;
+      }
     }
     if (/\s-\s/.test(r.b_bank_acc || '')) { const b = bankSplit(r.b_bank_acc); r.b_bank_acc = b.acc; r.b_bank_name = b.name || r.b_bank_name; }
     // số bảng giá = tòa của căn (Danh mục sản phẩm); chính sách giá lấy theo phiếu giữ chỗ / chính sách đang phát hành
@@ -1978,4 +2029,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { polFinish, saleTrack, policyUnits, bgSet, bgSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { buyerCarry, noxhSpouse, spouseCo, polFinish, saleTrack, policyUnits, bgSet, bgSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

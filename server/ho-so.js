@@ -77,8 +77,11 @@ async function hsData(unitId, user, custId) {
     email: k?.email || c.b_email || '', mst: P(k?.tax_code || res?.tax_code),
     stk: P(k?.bank_account || [c.b_bank_acc || res?.bank_account, c.b_bank_acc && c.b_bank_name && 'Ngân hàng ' + c.b_bank_name].filter(Boolean).join(' - ')),
     // vợ / chồng: ô Đồng sở hữu khai ở HĐ trước (bản sẽ ký), chưa khai thì lấy thành viên «Vợ (Chồng)» ở hồ sơ NOXH của khách (13/11/2026)
-    ...(() => { const h = hdmb || c, own = !!(h.co_owner || h.co_owner_id_no);
-      return { vc_ten: (own ? h.co_owner : mem?.name) || '', vc_cccd: P(own ? h.co_owner_id_no : mem?.id_no), vc_ngay_cap: P(dmy(own ? h.co_owner_id_date : '')), vc_noi_cap: P(own ? h.co_owner_id_place : '') }; })(),
+    // 15/11/2026: HĐ tích «Đồng sở hữu là vợ / chồng» (mặc định) → in theo vợ / chồng ở hồ sơ NOXH (sửa NOXH sau khi ký vẫn in số mới), thiếu ô nào bù từ HĐ;
+    // bỏ tích = đồng sở hữu khai riêng ở HĐ
+    ...(() => { const h = hdmb || c, vc = h.co_owner_vc !== false && mem?.name, fd = v => { const t = String(v ?? '').trim(); return /^\d{4}-\d{2}-\d{2}/.test(t) || v instanceof Date ? dmy(v) : t; };
+      return vc ? { vc_ten: mem.name, vc_cccd: P(mem.id_no || h.co_owner_id_no), vc_ngay_cap: P(fd(mem.id_date) || dmy(mem.id_no && mem.id_no !== h.co_owner_id_no ? '' : h.co_owner_id_date)), vc_noi_cap: P(mem.id_place || (mem.id_no && mem.id_no !== h.co_owner_id_no ? '' : h.co_owner_id_place) || '') }
+        : { vc_ten: h.co_owner || (h.co_owner_vc === false ? '' : mem?.name) || '', vc_cccd: P(h.co_owner_id_no), vc_ngay_cap: P(dmy(h.co_owner_id_date)), vc_noi_cap: P(h.co_owner_id_place || '') }; })(),
     ma_can: u.code, du_an: u.pname, // tòa / tầng lấy theo dữ liệu căn (không cắt mã căn theo vị trí — tòa «LK», mã dự án khác 3 ký tự vẫn đúng) (13/11/2026)
     toa: u.bcode || u.code.slice(4, 5), tang: u.floor != null && u.floor !== '' ? String(u.floor).padStart(2, '0') : u.code.slice(6, 8), can_so: u.code.slice(-2), so_can4: u.code.slice(-4), ma_can6: u.code.slice(-6), toa_ky: u.bcode ? '-' + u.bcode : u.code.slice(3, 5),
     so_hdmb: hdmb?.number || '', ngay_hdmb: dmy(hdmb?.contract_on), ngay_don: dmy(hdmb?.request_on || res?.reg_date),

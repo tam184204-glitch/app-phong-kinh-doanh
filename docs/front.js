@@ -609,7 +609,7 @@ const HD_LAYOUT = [
   { rows: [['unit_id', 'seller_unit']], cols: 2 },   // dùng chung cho HĐ mua bán và HĐ hoàn thiện
   { side: [
     { t: 'Bên mua nhà ở', rows: [['customer_id'], ['b_id_no'], ['b_id_date'], ['b_id_place'], ['b_addr'], ['b_perm_addr'], ['b_temp_addr'], ['b_phone', 'b_email'], ['b_bank_acc'], ['b_bank_name'], ['request_on'],
-      ['co_owner'], ['co_owner_id_no'], ['co_owner_id_date', 'co_owner_id_place'], ['agreement', 'agreement_on']] },   // người đồng sở hữu (vợ / chồng) + VBTT sở hữu chung (13/11/2026)
+      ['co_owner_vc'], ['co_owner'], ['co_owner_id_no'], ['co_owner_id_date', 'co_owner_id_place'], ['agreement', 'agreement_on']] },   // người đồng sở hữu (vợ / chồng) + VBTT sở hữu chung (13/11/2026)
     { t: 'Bên bán nhà ở', rows: [['s_name'], ['s_addr'], ['s_phone', 's_tax'], ['s_bank_acc'], ['s_bank_name'], ['s_rep'], ['s_title'], ['s_poa'], ['owner_id'], ['commission_amt', 'commission_pct'], ['common_area_amt', 'all_signed']] }] },
   { t: 'Thông tin chi tiết', cols: 4, rows: [['number', 'contract_on'], ['ptype', 'building_id', 'kind', 'nature'], ['base_price', 'area_tt', 'area_floor'], ['area_land', 'land_price', 'land_amt'], ['area_build', 'build_price', 'build_amt'],
     ['pretax', 'vat_pct', 'vat_amt', 'after_tax'], ['finish_value', 'maint_fee', 'corner_pct', 'corner_amt'],
@@ -1129,6 +1129,19 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     if (htp.finSched(d.fin_sched.map(x => ({ name: x.name, pct: x.pct, amount: null, due_on: '', ...(has(x) && +x.days ? { _days: +x.days } : { _d0: true }) })), d.fin_policy)) toast(`Tiến độ nội thất điền ở tab Hoàn thiện căn hộ theo chính sách ${d.fin_policy}`);
   };
   if (ent === 'contract' && htp && id && rec.unit_id && !htLocked) api('GET', `/api/contract-prefill/${rec.unit_id}`).then(d => { if (+d.finish_value > 0 && form.elements.ptype?.value !== 'lien_ke') htp.finish(d.finish_value); htFin(d); }).catch(() => {});   // + giá trị hoàn thiện theo chính sách nếu tab còn trống (15/11/2026)   // HĐ đã lưu: nút lấy tiến độ nội thất / điền nếu tab trống
+  // 15/11/2026: chọn khách / căn, tích «Đồng sở hữu là vợ / chồng» → ô trống lấy theo HĐ trước của khách (hộ khẩu, đồng sở hữu, VBTT);
+  // có tích thì đồng sở hữu = vợ / chồng ở hồ sơ NOXH (sửa ở đây → lưu sẽ ghi sang NOXH)
+  if (ent === 'contract' && form.elements.co_owner_vc) {
+    const buyerFill = async (force) => {
+      const k = form.elements.customer_id?.value || rec.customer_id; if (!k) return;
+      const d = await api('GET', `/api/contract-buyer/${k}?unit=${form.elements.unit_id?.value || rec.unit_id || ''}&id=${id || ''}`);
+      const put = (n, v) => { const el = form.elements[n], f = E.fields.find(x => x.k === n); if (!el || !f || v == null || v === '') return; if (f.t === 'bool') { if (!id) el.checked = !!v; return; } el.value = f.t === 'date' ? dmy(v) : v; };
+      for (const [n, v] of Object.entries(d.carry || {})) if (n === 'co_owner_vc' ? !id : !form.elements[n]?.value) put(n, v);
+      if (form.elements.co_owner_vc.checked && d.spouse && (force || !form.elements.co_owner.value)) for (const [n, v] of Object.entries(d.spouse)) { const el = form.elements[n]; if (el) el.value = v == null ? '' : E.fields.find(x => x.k === n)?.t === 'date' ? dmy(v) : v; }
+    };
+    form.addEventListener('change', e => { if (['customer_id', 'unit_id'].includes(e.target.name)) buyerFill(false).catch(() => {}); else if (e.target.name === 'co_owner_vc' && e.target.checked) buyerFill(true).catch(() => {}); });
+    if (!id && (form.elements.customer_id?.value || rec.customer_id)) buyerFill(false).catch(() => {});
+  }
   const contractPrefill = async unit => {
     const d = await api('GET', `/api/contract-prefill/${unit}`);
     pickRef('customer_id', d.customer_id, d.customer_label);
