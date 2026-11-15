@@ -25,6 +25,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS kd_user_username ON kd_user (lower(username));
 -- hồ sơ cá nhân (04/11/2026): ảnh đại diện / ảnh bìa lưu dạng data URL đã thu nhỏ ở trình duyệt, trạng thái làm việc, cài đặt giao diện riêng từng người
 ALTER TABLE kd_user ADD COLUMN IF NOT EXISTS avatar text, ADD COLUMN IF NOT EXISTS cover text, ADD COLUMN IF NOT EXISTS bio text,
   ADD COLUMN IF NOT EXISTS status text, ADD COLUMN IF NOT EXISTS status_msg text, ADD COLUMN IF NOT EXISTS prefs jsonb;
+-- 16/11/2026: nhân viên được phân quyền duyệt trực tiếp hợp đồng (mua bán, thuê, hoàn thiện, vay) — không bắt buộc trình lãnh đạo; tách với thẩm quyền ký
+ALTER TABLE kd_user ADD COLUMN IF NOT EXISTS ct_approve boolean NOT NULL DEFAULT false;
 CREATE TABLE IF NOT EXISTS kd_session (
   sid text PRIMARY KEY,
   user_id integer NOT NULL REFERENCES kd_user(id) ON DELETE CASCADE,

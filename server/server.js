@@ -66,7 +66,7 @@ const safeName = s => String(s).replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').slice(0, 
 // đổi vai trò bằng menu tên người dùng. Vận hành thật: bỏ NO_LOGIN trong .env.
 const NO_LOGIN = /^(1|true|yes)$/i.test(process.env.NO_LOGIN || '');
 const NO_LOGIN_USER = process.env.NO_LOGIN_USER || 'thu.truongphong';
-const USER_COLS = 'u.id, u.username, u.full_name, u.role, u.title, u.must_change, u.is_trial, u.status, u.status_msg, u.prefs';
+const USER_COLS = 'u.id, u.username, u.full_name, u.role, u.title, u.must_change, u.is_trial, u.status, u.status_msg, u.prefs, u.ct_approve';   // ct_approve: được duyệt hợp đồng (16/11/2026)
 async function userFromReq(req) {
   const sid = cookies(req).kd_sid;
   const u = sid && await one(`SELECT ${USER_COLS} FROM kd_session s JOIN kd_user u ON u.id = s.user_id
@@ -479,13 +479,14 @@ R('POST', '/api/import/:kind', async (req, res, u, p, qs) => {
 R('GET', '/api/imports', async (req, res, u) => send(res, 200, await q('SELECT i.*, us.full_name by_l FROM kd_import i LEFT JOIN kd_user us ON us.id = i.by ORDER BY i.at DESC LIMIT 100')));
 
 // --- quản trị ---
-R('GET', '/api/users', async (req, res, u) => { admin(u); send(res, 200, await q('SELECT id, username, full_name, role, title, dept, phone, email, active, is_trial, must_change, last_login, created_at FROM kd_user ORDER BY active DESC, role, full_name')); });
-R('POST', '/api/users', async (req, res, u) => { admin(u); const b = await readJson(req); send(res, 200, await tx(db => IO.createUser(db, b, u))); });
+R('GET', '/api/users', async (req, res, u) => { admin(u); send(res, 200, await q('SELECT id, username, full_name, role, title, dept, phone, email, active, is_trial, must_change, last_login, created_at, ct_approve FROM kd_user ORDER BY active DESC, role, full_name')); });
+R('POST', '/api/users', async (req, res, u) => { admin(u); const b = await readJson(req); send(res, 200, await tx(async db => { const r = await IO.createUser(db, b, u); if (b.ct_approve && r?.id) await db.q('UPDATE kd_user SET ct_approve = true WHERE id = $1', [r.id]); return r; })); });
 R('PUT', '/api/users/:id', async (req, res, u, p) => {
   admin(u); const b = await readJson(req); const old = notFound(await one('SELECT * FROM kd_user WHERE id = $1', [+p.id]), 'tài khoản');
   if (old.id === u.id && (b.active === false || (b.role && b.role !== 'admin'))) bad('Không tự khóa / tự hạ quyền tài khoản đang đăng nhập');
   if (b.role && !M.ROLES.some(r => r[0] === b.role)) bad('Vai trò không hợp lệ');
-  const keys = ['full_name', 'role', 'title', 'dept', 'phone', 'email', 'active'].filter(k => k in b);
+  if ('ct_approve' in b) b.ct_approve = !!b.ct_approve;   // quyền duyệt hợp đồng trên hệ thống (không phải thẩm quyền ký)
+  const keys = ['full_name', 'role', 'title', 'dept', 'phone', 'email', 'active', 'ct_approve'].filter(k => k in b);
   if (!keys.length) bad('Không có thay đổi');
   const r = await one(`UPDATE kd_user SET ${keys.map((k, i) => `${k} = $${i + 1}`).join(', ')} WHERE id = $${keys.length + 1} RETURNING id, username, full_name, role, active`, [...keys.map(k => b[k]), old.id]);
   if (b.active === false) await q('DELETE FROM kd_session WHERE user_id = $1', [old.id]);

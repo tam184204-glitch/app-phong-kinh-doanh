@@ -328,18 +328,20 @@ async function perms(e, row, user, approvals, db) {
     edit: can(user, e, 'u') && (!locked || !!keep.length), locked, lockKeep: keep, softOpen: !locked && !!e.softLock?.st.includes(row.status),
     del: can(user, e, 'd') && !lockDel(e, row.status) && !(H[e.key]?.noDelete?.(row)),
     submit: !!fl && fl.submit.includes(row[fl.field]) && (can(user, e, 'c') || can(user, e, 'u')),
-    approve: !!open && canApprove(e, row, user, open), selfApproval: !!open && open.requested_by === user.id && user.role !== 'admin' && !SELF_OK,   // chạy thử được tự duyệt → không hiện «Đang chờ cấp khác duyệt»
-    acts: (e.acts || []).filter(a => (a.from === '*' || a.from.includes(row.status)) && (user.role === 'admin' || a.roles.includes(user.role))).map(a => a.k),
+    approve: !!open && canApprove(e, row, user, open), selfApproval: !!open && open.requested_by === user.id && user.role !== 'admin' && !SELF_OK && !apprOk(e, user),   // chạy thử được tự duyệt → không hiện «Đang chờ cấp khác duyệt»
+    acts: (e.acts || []).filter(a => (a.from === '*' || a.from.includes(row.status)) && (user.role === 'admin' || a.roles.includes(user.role) || (a.flag && user[a.flag]))).map(a => a.k),   // a.flag: thao tác theo quyền riêng của tài khoản
     files: can(user, e, 'u') || can(user, e, 'c') || (e.acts || []).some(a => a.roles.includes(user.role)),
     export: can(user, e, 'x'),
   };
-  if (H[e.key]?.perms) Object.assign(out, await H[e.key].perms(row, user, db));
+  if (H[e.key]?.perms) Object.assign(out, await H[e.key].perms(row, user, db, out));   // out: quyền đã tính (hook sửa được, VD bỏ bớt thao tác)
   return out;
 }
+// 16/11/2026: người được phân quyền duyệt theo từng tài khoản (flow.apprFlag, VD «Được duyệt hợp đồng») — duyệt trực tiếp, không bắt buộc trình lãnh đạo
+const apprOk = (e, user) => !!(e.flow?.apprFlag && user?.[e.flow.apprFlag]);
 function canApprove(e, row, user, open) {
-  if (open.requested_by === user.id && user.role !== 'admin' && !SELF_OK) return false;          // tách nhiệm: không tự duyệt
+  if (open.requested_by === user.id && user.role !== 'admin' && !SELF_OK && !apprOk(e, user)) return false;          // tách nhiệm: không tự duyệt (trừ người được phân quyền duyệt trực tiếp)
   if (open.approver_id) return open.approver_id === user.id || user.role === 'admin';
-  return user.role === 'admin' || open.roles.includes(user.role);
+  return user.role === 'admin' || open.roles.includes(user.role) || apprOk(e, user);
 }
 
 // ---------- ghi ----------
@@ -486,7 +488,7 @@ async function submit(entKey, id, user, { comment, db: outer, demo } = {}) {
   const e = ent(entKey), fl = e.flow || bad('Loại dữ liệu này không có luồng phê duyệt');
   const run = async db => {
     const rec = notFound(await raw(db, entKey, +id, true));
-    if (!can(user, e, 'c') && !can(user, e, 'u')) deny();
+    if (!can(user, e, 'c') && !can(user, e, 'u') && !apprOk(e, user)) deny();   // người được phân quyền duyệt: trình + duyệt trực tiếp
     await scopeCheck(db, e, rec, user);
     if (!fl.submit.includes(rec[fl.field])) bad(`Không trình được khi đang «${await optLabel(F[entKey][fl.field], rec[fl.field])}»`);
     await requiredFiles(db, e, rec);
@@ -508,7 +510,7 @@ async function approve(entKey, id, user, { ok, comment, db: outer } = {}) {
     const rec = notFound(await raw(db, entKey, +id, true));
     const open = await db.one("SELECT * FROM kd_approval WHERE ent = $1 AND rec_id = $2 AND status = 'cho_duyet' FOR UPDATE", [entKey, rec.id]);
     if (!open || rec[fl.field] !== 'cho_duyet') bad('Không có đề nghị nào đang chờ duyệt');
-    if (open.requested_by === user.id && user.role !== 'admin' && !SELF_OK) deny('Không tự phê duyệt đề nghị do mình trình (tách nhiệm)');
+    if (open.requested_by === user.id && user.role !== 'admin' && !SELF_OK && !apprOk(e, user)) deny('Không tự phê duyệt đề nghị do mình trình (tách nhiệm)');
     if (!canApprove(e, rec, user, open)) deny('Bạn không phải cấp phê duyệt của đề nghị này');
     if (!ok && !comment) bad('Từ chối cần ghi rõ lý do');
     const ctx = ctxOf(db, user, { demo: rec.is_demo });
@@ -530,7 +532,7 @@ async function act(entKey, id, name, user, input = {}, { db: outer, demo } = {})
   const fn = H[entKey]?.acts?.[name] || bad('Thao tác chưa được cài đặt');
   const run = async db => {
     const rec = notFound(await raw(db, entKey, +id, true));
-    if (user.role !== 'admin' && !a.roles.includes(user.role)) deny(`Vai trò của bạn không được «${a.l}»`);
+    if (user.role !== 'admin' && !a.roles.includes(user.role) && !(a.flag && user[a.flag])) deny(`Vai trò của bạn không được «${a.l}»`);
     await scopeCheck(db, e, rec, user);
     if (a.from !== '*' && !a.from.includes(rec.status)) bad(`Không thực hiện «${a.l}» khi đang «${await optLabel(F[entKey].status, rec.status)}»`);
     const data = {};

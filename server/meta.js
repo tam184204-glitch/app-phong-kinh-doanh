@@ -594,13 +594,18 @@ def('contract', {
     { k: 'free_months', l: 'Miễn tiền thuê (tháng)', t: 'int', hide: 1 },
     owner('Nhân viên KD'),
     { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'du_thao', alt: { flag: 'noxh_wait', v: 'du_thao', l: 'Dự thảo – Chờ duyệt hồ sơ', c: 'a' }, o: [['du_thao', 'Dự thảo', 's'], ['cho_duyet', 'Đang rà soát', 'a'], ['cho_ky', 'Chờ ký', 'b'], ['tu_choi', 'Trả lại dự thảo', 'r'], ['da_ky', 'Đã ký', 'g'], ['thanh_ly', 'Đã thanh lý', 't'], ['huy', 'Đã hủy', 's']] },
+    { k: 'appr_by', l: 'Người duyệt', t: 'user', ro: 1 },   // 16/11/2026: ghi khi duyệt (kể cả duyệt trực tiếp) — lịch sử đầy đủ ở tab Phê duyệt / Lịch sử
+    { k: 'appr_at', l: 'Thời gian duyệt', t: 'dt', ro: 1 },
   ], list: ['number', 'contract_on', 'kind', 'unit_id', 'customer_id', 'value', 'plan_sign', 'sign_status', 'signed_on', 'status'],
   lock: ['da_ky', 'thanh_ly', 'huy'], lockKeep: ['sign_status', 'sign_place', 'plan_sign', 'owner_id', 'late_rate', 'new_schedule', 'sale_on', 'sale_sched', 'loan_status', 'loan_bank', 'loan_doc3', 'liquidated_on', 'liquidate_reason', 'liquidate_note'],
   // đã trình duyệt / chờ ký: nhân viên chỉ sửa được lần thanh toán (+ lockKeep); quản lý vẫn sửa được
   softLock: { st: ['cho_duyet', 'cho_ky'], keep: ['sign_status', 'sign_place', 'plan_sign', 'new_schedule', 'loan_status', 'loan_bank', 'loan_doc3'], boss: MGR },
   // saveOnly (07/11/2026): tạo hợp đồng chỉ có nút «Lưu dự thảo» — lưu xong ở Dự thảo, trình duyệt sau bằng nút «Gửi trình duyệt» trên hợp đồng
-  flow: { field: 'status', submit: ['du_thao', 'tu_choi'], approve: { ok: 'da_ky' }, submitLabel: 'Gửi trình duyệt', saveOnly: 1 },
+  flow: { field: 'status', submit: ['du_thao', 'tu_choi'], approve: { ok: 'da_ky' }, submitLabel: 'Gửi trình duyệt', saveOnly: 1, apprFlag: 'ct_approve' },   // apprFlag: tài khoản «Được duyệt hợp đồng» duyệt trực tiếp (16/11/2026)
   acts: [
+    // 16/11/2026: nhân viên được phân quyền duyệt hợp đồng (tài khoản «Được duyệt hợp đồng») + Trưởng phòng / Lãnh đạo duyệt thẳng từ dự thảo — không bắt buộc trình lãnh đạo;
+    // HĐ mua bán / thuê căn hộ NOXH vẫn phải có hồ sơ được Sở Xây dựng duyệt đủ điều kiện. Quyền duyệt trên hệ thống tách với thẩm quyền ký (người đại diện ký ở «Bên bán»)
+    { k: 'approve_direct', l: 'Duyệt hợp đồng', icon: 'fa-circle-check', from: ['du_thao', 'tu_choi', 'cho_duyet'], roles: ['truong_phong', 'lanh_dao'], flag: 'ct_approve' },
     { k: 'schedule', l: 'Lập lịch thanh toán', icon: 'fa-calendar-days', from: ['du_thao', 'tu_choi'], roles: ['ho_so', 'cong_no', 'truong_phong'], noBtn: 1 },   // bỏ nút 04/11/2026: lịch thanh toán soạn ở «Lần thanh toán» trong form hợp đồng (Sửa)
     { k: 'liquidate', l: 'Thanh lý', icon: 'fa-box-archive', from: ['da_ky'], roles: MGR, ask: [{ k: 'liquidated_on', l: 'Ngày thanh lý', t: 'date', req: 1, def: 'today' }, { k: 'liquidate_reason', l: 'Lý do', t: 'sel', o: LIQ_REASON, req: 1 }, { k: 'liquidate_note', l: 'Ghi chú', t: 'long' }] },
     { k: 'print', l: 'In theo mẫu', icon: 'fa-print', from: '*', roles: ALL },

@@ -290,8 +290,8 @@ async function myDay(db, user) {
 // ======================= PHÊ DUYỆT =======================
 async function approvalsFor(db, user) {
   return db.q(`SELECT a.*, r.full_name requested_by_l FROM kd_approval a LEFT JOIN kd_user r ON r.id = a.requested_by
-    WHERE a.status = 'cho_duyet' AND (a.requested_by IS DISTINCT FROM $1 OR $2 = 'admin') AND (CASE WHEN a.approver_id IS NOT NULL THEN a.approver_id = $1 OR $2 = 'admin' ELSE $2 = ANY(a.roles) OR $2 = 'admin' END)
-    ORDER BY a.requested_at`, [user.id, user.role]);
+    WHERE a.status = 'cho_duyet' AND (a.requested_by IS DISTINCT FROM $1 OR $2 = 'admin' OR (a.ent = 'contract' AND $3)) AND (CASE WHEN a.approver_id IS NOT NULL THEN a.approver_id = $1 OR $2 = 'admin' ELSE $2 = ANY(a.roles) OR $2 = 'admin' OR (a.ent = 'contract' AND $3) END)
+    ORDER BY a.requested_at`, [user.id, user.role, !!user.ct_approve]);   // 16/11/2026: người được duyệt hợp đồng
 }
 async function approvals(db, user) {
   const mine = await db.q(`SELECT a.*, d.full_name decided_by_l FROM kd_approval a LEFT JOIN kd_user d ON d.id = a.decided_by WHERE a.requested_by = $1 ORDER BY a.requested_at DESC LIMIT 100`, [user.id]);
