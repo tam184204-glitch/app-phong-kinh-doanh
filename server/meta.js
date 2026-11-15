@@ -623,6 +623,7 @@ def('installment', {
     { k: 'is_bg', l: 'Đợt bàn giao', t: 'bool', ro: 1, hide: 1, def: false },
     { k: 'is_fin', l: 'Đợt thu giá trị hoàn thiện', t: 'bool', ro: 1, hide: 1, def: false },   // 14/11/2026: % tính trên giá trị hoàn thiện của HĐ
     { k: 'bg_days', l: 'Số ngày nộp kể từ bàn giao', t: 'int', ro: 1, hide: 1 },   // HĐMB: phí bảo trì thu ở dòng riêng cố định (không cộng vào đợt nào)
+    { k: 'sign_days', l: 'Số ngày sau ngày ký', t: 'int', ro: 1, hide: 1 },   // 15/11/2026: đợt tính theo ngày ký — ngày ký chính thức đổi thì hạn = ngày ký + số ngày
     { k: 'src', l: 'Căn cứ', t: 'sel', ro: 1, def: 'hop_dong', o: [['hop_dong', 'Hợp đồng', 'b'], ['phu_luc', 'Phụ lục', 'v']] },
     { k: 'active', l: 'Hiệu lực', t: 'bool', ro: 1, def: true },
   ], list: ['contract_id', 'seq', 'name', 'due_on', 'pct', 'amount', 'paid', 'pay_status', 'src'],

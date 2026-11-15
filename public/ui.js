@@ -524,7 +524,8 @@ function schedEditor(el, rows, { total, base, first, maint, mdot, bgBase, pol, f
     return null;
   };
   const useC = (r, c) => { const d = first?.(); Object.assign(r, { name: c.name, pct: c.pct, amount: null, _days: c.days || 0, due_on: c.days && d ? addDays(d, c.days) : c.days === 0 ? r.due_on || d : '' }); };
-  if (first?.()) for (const r of R) { const n = nDays(r.name); if (n && addDays(first(), n) === r.due_on) r._days = n; }   // lịch đã lưu: hạn đúng «Sau N ngày» thì vẫn đi theo ngày ký
+  { const f0 = first?.() || R[0]?.due_on;   // lịch đã lưu: hạn đúng «Sau N ngày» thì vẫn đi theo ngày ký (15/11/2026: HĐ chưa ghi ngày ký → mốc = hạn kỳ 1, VD HĐ tự lập từ hồ sơ NOXH)
+    if (f0) for (const r of R) { const n = +r.sign_days > 0 ? +r.sign_days : nDays(r.name); if (n && addDays(f0, n) === r.due_on) r._days = n; } }
   const draw = () => {
     const f1 = first?.(), d1 = /^\d{4}-\d{2}-\d{2}$/.test(f1 || '') ? f1 : null; if (d1 && R[0]) R[0].due_on = d1;   // ngày đang gõ dở thì giữ ngày trước
     if (d1) R.forEach((r, i) => { if ((i || fin) && r._days) r.due_on = addDays(d1, r._days); if (r._d0) r.due_on = d1; });   // đợt tính theo ngày ký đi theo ngày ký

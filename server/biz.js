@@ -124,6 +124,8 @@ async function pricing(db, unit, on = today(), seller) {
 // HĐMB: % các đợt × tiền sau thuế (= giá trị HĐ − phí bảo trì); phí bảo trì thu riêng, cộng trọn vào đợt «Đợt thu phí bảo trì» (mặc định 3)
 // maint > 0 (HĐMB): tỷ lệ % các đợt × tiền sau thuế (= giá trị − phí bảo trì); phí bảo trì thu ở DÒNG RIÊNG cố định (dòng maint: true, số tiền = phí bảo trì,
 // tự xếp theo ngày đến hạn). Lịch cũ / nhập file không có dòng riêng: cộng trọn phí bảo trì vào «Đợt thu phí bảo trì» (dot) như trước
+// «Sau 60 ngày…», «Trong (vòng) 60 (sáu mươi) ngày…» = số ngày sau ngày ký; «… ngày kể từ ngày Bên Bán…» theo sự kiện khác nên không tính (như nDays ở public/ui.js)
+const schedDays = s => +(/(?:sau|trong)(?:\s+vòng)?\s+(\d+)(?:\s*\([^)]*\))?\s+ngày(?!\s+kể từ ngày\s+(?!ký))/i.exec(s || '')?.[1] || 0);
 async function normSchedule(db, rows, value, label = 'Lịch thanh toán', maint = 0, dot = 3, finish = 0) {
   if (Array.isArray(rows) && !(maint > 0)) rows = rows.filter(r => !r.maint || +r.amount > 0);   // không có phí bảo trì: bỏ dòng bảo trì trống
   // đợt thu giá trị hoàn thiện (fin): % tính trên giá trị hoàn thiện; căn không có hoàn thiện → bỏ các đợt này. Có đợt hoàn thiện thì % các đợt khác tính trên phần còn lại
@@ -139,18 +141,26 @@ async function normSchedule(db, rows, value, label = 'Lịch thanh toán', maint
     let amount = m ? maint : await C.normField(F.amount, r.amount, db, `${at} — số tiền`);
     const pct = m || r.pct === '' || r.pct == null ? null : await C.normField(F.pct, r.pct, db, `${at} — tỷ lệ`);
     if (amount == null && pct != null) amount = Math.round((r.fin ? fs : base) * pct / 100) + (i === mi ? maint : 0);
-    if (!due_on || !amount) bad(`${at}: cần ngày đến hạn và số tiền (hoặc tỷ lệ)`);
+    // 15/11/2026: đợt chưa có ngày cố định (theo bàn giao, nhận Giấy chứng nhận…) được để trống hạn — điền khi có ngày chính thức; kỳ 1 vẫn phải có ngày
+    if (!amount) bad(`${at}: cần số tiền (hoặc tỷ lệ)`);
+    if (!due_on && i === 0 && !m) bad(`${at}: cần ngày đến hạn`);
     const bgd = r.bg_days === '' || r.bg_days == null ? null : Math.max(0, parseInt(r.bg_days, 10) || 0);
-    out.push({ name: String(r.name || (m ? 'Phí bảo trì' : `Đợt ${i + 1}`)).trim(), due_on, pct, amount, is_maint: !!r.maint, is_bg: !!r.bg, bg_days: r.bg ? bgd : null, is_fin: !!r.fin && !m });   // nhiều đợt gắn bàn giao, kể cả dòng phí bảo trì
+    const sd = r.sign_days === '' || r.sign_days == null ? null : Math.max(0, parseInt(r.sign_days, 10) || 0);
+    out.push({ name: String(r.name || (m ? 'Phí bảo trì' : `Đợt ${i + 1}`)).trim(), due_on: due_on || null, pct, amount, is_maint: !!r.maint, is_bg: !!r.bg, bg_days: r.bg ? bgd : null, is_fin: !!r.fin && !m, sign_days: sd });   // nhiều đợt gắn bàn giao, kể cả dòng phí bảo trì
   }
-  if (own) {   // dòng phí bảo trì: đặt sau các đợt có hạn không muộn hơn hạn của nó
-    const mr = out.find(r => r.is_maint), rest = out.filter(r => r !== mr), at = rest.filter(r => r.due_on <= mr.due_on).length;
+  // số ngày sau ngày ký (sign_days) chưa ghi: kỳ đầu = 0; đợt ghi «Sau / Trong (vòng) N ngày…» có hạn đúng = kỳ đầu + N (như bảng Lần thanh toán ở form)
+  { const f0 = out.find(r => !r.is_maint && !r.is_bg)?.due_on;
+    if (f0) out.forEach((r, i) => { if (r.sign_days != null || r.is_bg || !r.due_on) return;
+      if (r.due_on === f0 && (i === 0 || r.is_maint)) { r.sign_days = 0; return; }
+      const nd = schedDays(r.name); if (nd && C.addDays(f0, nd) === String(r.due_on).slice(0, 10)) r.sign_days = nd; }); }
+  if (own) {   // dòng phí bảo trì: đặt sau các đợt có hạn không muộn hơn hạn của nó (chưa có hạn → sau đợt thu phí bảo trì)
+    const mr = out.find(r => r.is_maint), rest = out.filter(r => r !== mr), at = mr.due_on ? rest.filter(r => r.due_on && r.due_on <= mr.due_on).length : Math.min(Math.max(1, +dot || 3), rest.length);
     out = [...rest.slice(0, at), mr, ...rest.slice(at)];
   }
   if (fs) { const d = r => String(r.due_on); const ms = out.filter(r => r.is_maint); out = out.filter(r => !r.is_maint).map((r, i) => [r, i]).sort((a, b) => d(a[0]) < d(b[0]) ? -1 : d(a[0]) > d(b[0]) ? 1 : a[1] - b[1]).map(x => x[0]);   // đợt hoàn thiện xếp xen theo ngày đến hạn
     for (const mr of ms) { const at = out.filter(r => r.due_on <= mr.due_on).length; out.splice(at, 0, mr); } }
   out.forEach((r, i) => { r.seq = i + 1; });
-  for (let i = 1; i < out.length; i++) if (out[i].due_on < out[i - 1].due_on && !out[i].is_bg && !out[i - 1].is_bg) bad(`${label}: ngày đến hạn kỳ ${i + 1} sớm hơn kỳ ${i}`);   // đợt bàn giao: hạn theo thông báo bàn giao, có thể lệch thứ tự
+  for (let i = 1; i < out.length; i++) if (out[i].due_on && out[i - 1].due_on && out[i].due_on < out[i - 1].due_on && !out[i].is_bg && !out[i - 1].is_bg) bad(`${label}: ngày đến hạn kỳ ${i + 1} sớm hơn kỳ ${i}`);   // đợt bàn giao: hạn theo thông báo bàn giao, có thể lệch thứ tự
   const sum = out.reduce((s, r) => s + r.amount, 0);
   // làm tròn: dồn chênh lệch nhỏ (≤ 1.000đ / kỳ) vào kỳ cuối (không dồn vào dòng phí bảo trì)
   const li = Math.max(out.map(r => r.is_maint).lastIndexOf(false), 0);
@@ -167,26 +177,29 @@ async function policySchedRows(db, pol, c) {
     const fs = (Array.isArray(pol?.fin_sched) ? pol.fin_sched : []).filter(x => +x.pct > 0);
     if (!fs.length || !(+c.value > 0)) return null;
     const b = d10(c.contract_on || c.plan_sign) || today(), has = x => x.days != null && x.days !== '';
-    const rows = fs.map((x, i) => { const due = has(x) || !i ? C.addDays(b, +x.days || 0) : null; if (!due) bad(`Chính sách ${pol.code}: đợt hoàn thiện «${x.name}» chưa có ngày đến hạn cố định — mở HĐ nhập ngày cho đợt này`); return { name: finTxt(x.name), pct: +x.pct, amount: null, due_on: due }; });
+    const rows = fs.map((x, i) => { const due = has(x) || !i ? C.addDays(b, +x.days || 0) : null; return { name: finTxt(x.name), pct: +x.pct, amount: null, due_on: due, ...(due ? { sign_days: +x.days || 0 } : { pend: true }) }; });   // đợt chưa có ngày cố định: để trống hạn (15/11/2026)
     return normSchedule(db, rows, +c.value, `Tiến độ hoàn thiện theo chính sách ${pol.code}`, 0, 1, 0);
   }
   const all = Array.isArray(pol?.pay_sched) ? pol.pay_sched : [], ps = all.filter(x => !x.maint && +x.pct > 0), mr = all.find(x => x.maint);
   if (!ps.length || !(+c.value > 0)) return null;
   const b = d10(c.contract_on || c.plan_sign) || today(), has = x => x.days != null && x.days !== '';
   const n = c.unit_id && ps.some(x => x.bg) ? await bgNoticeOf(db, c.unit_id) : null, b0 = n ? d10(bgBase(n)) : null;
+  // 15/11/2026: đợt chưa có ngày cố định (theo thông báo bàn giao, nhận Giấy chứng nhận…) vẫn đưa vào Lần thanh toán, để trống hạn (pend) — trước đây báo lỗi
+  // nên cả lịch không điền được. Hạn đợt bàn giao do thông báo bàn giao điền khi phát hành; đợt tính theo ngày ký ghi số ngày (sign_days) để đổi theo ngày ký chính thức
   const rows = ps.map((x, i) => {
-    const due = x.bg && b0 ? C.addDays(b0, x.bg_days ?? (+n.pay_days || 0)) : has(x) || !i ? C.addDays(b, +x.days || 0) : null;
-    if (!due) bad(`Chính sách ${pol.code}: «${x.name}» chưa có ngày đến hạn cố định — mở HĐ nhập ngày cho đợt này`);
-    return { name: x.name, pct: +x.pct, amount: null, due_on: due, ...(x.bg ? { bg: true, bg_days: x.bg_days ?? null } : {}) };
+    if (x.bg && b0) return { name: x.name, pct: +x.pct, amount: null, due_on: C.addDays(b0, x.bg_days ?? (+n.pay_days || 0)), bg: true, bg_days: x.bg_days ?? null };
+    if (has(x) || !i) return { name: x.name, pct: +x.pct, amount: null, due_on: C.addDays(b, +x.days || 0), ...(x.bg ? { bg: true, bg_days: x.bg_days ?? null } : { sign_days: +x.days || 0 }) };
+    return { name: x.name, pct: +x.pct, amount: null, due_on: null, pend: true, ...(x.bg ? { bg: true, bg_days: x.bg_days ?? null } : {}) };
   });
   const fv = +c.finish_value || 0;
   if (fv > 0) for (const [i, x] of (Array.isArray(pol.fin_sched) ? pol.fin_sched : []).filter(x => +x.pct > 0).entries()) {   // căn có hoàn thiện: đợt thu hoàn thiện theo chính sách
     const due = has(x) || !i ? C.addDays(b, +x.days || 0) : null;
-    if (!due) bad(`Chính sách ${pol.code}: đợt hoàn thiện «${x.name}» chưa có ngày đến hạn cố định — mở HĐ nhập ngày cho đợt này`);
-    rows.push({ name: x.name, pct: +x.pct, amount: null, due_on: due, fin: true });
+    rows.push({ name: x.name, pct: +x.pct, amount: null, due_on: due, fin: true, ...(due ? { sign_days: +x.days || 0 } : { pend: true }) });
   }
   const pn = rows.filter(x => !x.fin).length, mf = +c.maint_fee || 0, k = Math.min(Math.max(1, +pol.pay_mdot || 3), pn) - 1;
-  if (mf > 0) rows.push({ name: mr?.name || 'Thu phí bảo trì (2% tiền trước thuế)', due_on: mr && has(mr) ? C.addDays(b, +mr.days) : rows[k].due_on, pct: null, amount: null, maint: true, ...(!(mr && has(mr)) && rows[k].bg ? { bg: true, bg_days: rows[k].bg_days } : {}) });
+  if (mf > 0) { const own = mr && has(mr), rk = rows[k];   // phí bảo trì: hạn riêng theo số ngày sau ngày ký, không có thì cùng hạn đợt thu phí bảo trì
+    rows.push({ name: mr?.name || 'Thu phí bảo trì (2% tiền trước thuế)', due_on: own ? C.addDays(b, +mr.days) : rk.due_on, pct: null, amount: null, maint: true,
+      ...(own ? { sign_days: +mr.days } : rk.sign_days != null ? { sign_days: rk.sign_days } : {}), ...(!own && rk.bg ? { bg: true, bg_days: rk.bg_days } : {}), ...(!own && rk.pend ? { pend: true } : {}) }); }
   return normSchedule(db, rows, +c.value, `Tiến độ theo chính sách ${pol.code}`, mf, k + 1, fv);
 }
 // chính sách có khai tiến độ áp cho HĐ: chính sách ghi trên HĐ, không có tiến độ thì chính sách đang phát hành cho căn
@@ -300,8 +313,8 @@ async function writeSchedule(db, contractId, rows, src, user, demo) {
   const prev = await db.q('SELECT id, seq, is_maint FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [contractId]);
   await db.q('UPDATE kd_installment SET active = false, updated_at = now(), updated_by = $2 WHERE contract_id = $1 AND active', [contractId, user?.id ?? null]);
   const made = [];
-  for (const r of rows) made.push({ ...(await db.one('INSERT INTO kd_installment (contract_id, seq, name, due_on, pct, amount, is_maint, src, active, created_by, is_demo, is_bg, bg_days, is_fin) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$10,$11,$12,$13) RETURNING id',
-      [contractId, r.seq, r.name, r.due_on, r.pct, r.amount, !!r.is_maint, src, user?.id ?? null, !!demo, !!r.is_bg, r.is_bg ? r.bg_days ?? null : null, !!r.is_fin])), is_maint: !!r.is_maint });
+  for (const r of rows) made.push({ ...(await db.one('INSERT INTO kd_installment (contract_id, seq, name, due_on, pct, amount, is_maint, src, active, created_by, is_demo, is_bg, bg_days, is_fin, sign_days) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$10,$11,$12,$13,$14) RETURNING id',
+      [contractId, r.seq, r.name, r.due_on, r.pct, r.amount, !!r.is_maint, src, user?.id ?? null, !!demo, !!r.is_bg, r.is_bg ? r.bg_days ?? null : null, !!r.is_fin, r.is_bg ? null : r.sign_days ?? null])), is_maint: !!r.is_maint });
   // phiếu thu đã chọn đợt: dòng phí bảo trì ↔ dòng phí bảo trì, đợt thứ k ↔ đợt thứ k (không có đợt tương ứng → bỏ gắn, chia theo thứ tự hạn)
   const po = prev.filter(x => !x.is_maint), mo = made.filter(x => !x.is_maint), pm = prev.find(x => x.is_maint), mm = made.find(x => x.is_maint);
   const pairs = [...po.map((x, k) => [x.id, mo[k]?.id ?? null]), ...(pm ? [[pm.id, mm?.id ?? null]] : [])];
@@ -827,8 +840,19 @@ async function noxhAutoContract(db, n, user, warn = [], demo) {
     const data = { kind, unit_id: unitId, customer_id: custId, owner_id: s?.owner_id || user?.id, noxh_id: n.id, noxh_wait: wait, ...(s ? { reservation_id: s.id } : {}) };
     if (kind === 'thue') { if (!(+s?.rent > 0)) bad('phiếu đăng ký thuê của hồ sơ chưa có tiền thuê/tháng'); Object.assign(data, { rent: +s.rent, term_months: nn, eff_on: a, exp_on: addDays(addMonths(a, nn), -1), value: Math.round(+s.rent * nn) }); }
     else data.value = s?.price ?? (u?.total_price != null ? +u.total_price : null);
-    const c = (await create('contract', data, user, { db, system: true, demo })).row;
+    const made = await create('contract', data, user, { db, system: true, demo }), c = made.row;
     await markCustomer(db, custId, user);
+    for (const w of made.warnings || []) warn.push(`${c.number}: ${w}`);   // Lần thanh toán theo chính sách / chưa xác định được chính sách
+    // căn hộ có giá trị hoàn thiện (nội thất) theo chính sách / phiếu: lập kèm HĐ hoàn thiện căn hộ dự thảo (như form HĐMB tab «Hoàn thiện căn hộ»),
+    // Lần thanh toán theo «Tiến độ thu giá trị hoàn thiện» của chính sách; cùng hồ sơ nên cùng «Chờ duyệt hồ sơ»
+    if (kind === 'hdmb' && c.ptype !== 'lien_ke') {
+      const pol = (await pricing(db, u, today(), { source: s?.source || 'truc_tiep', agent_id: s?.agent_id ?? null })).policy;
+      const fv = +(s?.finish_value ?? polFin(pol, u.code) ?? 0);
+      if (fv > 0 && !(await db.one("SELECT 1 FROM kd_contract WHERE unit_id = $1 AND customer_id = $2 AND kind = 'hoan_thien' AND status NOT IN ('huy','thanh_ly') LIMIT 1", [unitId, custId]))) {
+        const ht = await create('contract', { kind: 'hoan_thien', ptype: c.ptype, unit_id: unitId, customer_id: custId, owner_id: data.owner_id, value: fv, finish_value: fv, noxh_id: n.id, noxh_wait: wait, ...(s ? { reservation_id: s.id } : {}) }, user, { db, system: true, demo });
+        warn.push(`Đã tự lập hợp đồng hoàn thiện căn hộ ${ht.row.number} (${fmtMoney(fv)}đ)`); for (const w of ht.warnings || []) warn.push(`${ht.row.number}: ${w}`);
+      }
+    }
     if (s && ['giu_cho', 'da_coc'].includes(s.status)) await sys(db, 'reservation', s.id, { status: 'chuyen_hd' }, user, 'tt:to_contract', `Tự lập ${HD_L[kind]} ${c.number} khi hồ sơ NOXH #${n.id} chuyển «Chờ xét duyệt»`);
     if (sp) await db.q('RELEASE SAVEPOINT sp_auto_hd');
     warn.push(`Đã tự lập ${HD_L[kind]} ${c.number} — ${wait ? '«Dự thảo – Chờ duyệt hồ sơ»' : '«Dự thảo»'}`);
@@ -1606,7 +1630,7 @@ H.contract = {
     if (r.kind !== 'thue' && !n.n) bad('Chưa có lịch thanh toán — bấm «Sửa», nhập «Lần thanh toán» rồi lưu trước khi gửi trình duyệt');
     if (n.n && n.s !== r.value) bad(`Tổng lịch thanh toán ${fmtMoney(n.s)} khác giá trị hợp đồng ${fmtMoney(r.value)}`);
   },
-  async afterSave(r, old, { db, user, demo, sched }) {
+  async afterSave(r, old, { db, user, demo, sched, warn = [] }) {
     // nối giao dịch: hợp đồng trước ghi «Đã chuyển sang hợp đồng»; hủy / thanh lý / bỏ nối thì gỡ
     const live = !['huy', 'thanh_ly'].includes(r.status);
     if (old?.prev_id && (old.prev_id !== r.prev_id || !live)) await db.q('UPDATE kd_contract SET next_id = NULL, updated_at = now() WHERE id = $1 AND next_id = $2', [old.prev_id, r.id]);
@@ -1634,7 +1658,24 @@ H.contract = {
       if (key(cur) !== key(sched)) { await writeSchedule(db, r.id, sched, 'hop_dong', user, demo); if (['hdmb', 'thue_mua'].includes(r.kind) && r.status === 'da_ky') await bgReapply(db, r.id, user); }
     }
     // HĐMB mới chưa nhập Lần thanh toán (VD chuyển từ phiếu giữ chỗ): lấy theo tiến độ thu tiền của chính sách bán hàng áp cho căn (16/11/2026)
-    if (!old && !sched?.length && ['hdmb', 'thue_mua', 'hoan_thien'].includes(r.kind) && ['du_thao', 'tu_choi'].includes(r.status)) { const p = await schedPolicy(db, r); if (p) try { await policyApplyOne(db, p, r, user, demo); } catch (e) { if (e.status !== 400) throw e; } }   // đợt chưa có ngày cố định: để HĐ tự nhập
+    // 15/11/2026: đợt chưa có ngày cố định để trống hạn (điền khi có ngày bàn giao / ngày chính thức); chưa xác định được chính sách → cảnh báo, không tự điền
+    if (!old && !sched?.length && ['hdmb', 'thue_mua', 'hoan_thien'].includes(r.kind) && ['du_thao', 'tu_choi'].includes(r.status)) {
+      const p = await schedPolicy(db, r), L = r.kind === 'hoan_thien' ? 'tiến độ thu giá trị hoàn thiện' : 'tiến độ thu tiền';
+      if (!p) { if (r.kind !== 'hoan_thien') warn.push(`Chưa xác định được chính sách bán hàng (có khai ${L}) áp cho căn — chưa tự điền Lần thanh toán: bổ sung chính sách hoặc nhập Lần thanh toán`); }
+      else try {
+        if (await policyApplyOne(db, p, r, user, demo)) {
+          const xs = await db.q('SELECT due_on FROM kd_installment WHERE contract_id = $1 AND active', [r.id]), pend = xs.filter(x => !x.due_on).length;
+          warn.push(`Lần thanh toán theo ${L} của chính sách ${p.code} v${p.version}: ${xs.length} kỳ${pend ? ` · ${pend} kỳ chưa có ngày đến hạn (theo bàn giao / mốc khác) — tự điền khi thông báo bàn giao phát hành, hoặc nhập khi có ngày chính thức` : ''}`);
+        }
+      } catch (e) { if (e.status !== 400) throw e; warn.push(`Chưa tự điền được Lần thanh toán theo chính sách ${p.code}: ${e.message}`); }
+    }
+    // 15/11/2026: có / đổi ngày ký chính thức (Ngày ký HĐ, hoặc ngày ký khi duyệt nếu chưa ghi) mà lần lưu này không gửi Lần thanh toán → hạn các đợt tính theo ngày ký = ngày ký + số ngày
+    const ky = d10(r.contract_on || r.signed_on), ky0 = old ? d10(old.contract_on || old.signed_on) : null;
+    if (old && !sched?.length && ky && ky !== ky0 && !['huy', 'thanh_ly'].includes(r.status)) {
+      const xs = await db.q(`UPDATE kd_installment SET due_on = $2::date + sign_days, updated_at = now(), updated_by = $3
+        WHERE contract_id = $1 AND active AND sign_days IS NOT NULL AND NOT coalesce(is_bg, false) AND due_on IS DISTINCT FROM $2::date + sign_days RETURNING seq`, [r.id, ky, user?.id ?? null]);
+      if (xs.length) await C.audit(db, 'contract', r.id, 'han_theo_ngay_ky', null, { ngay_ky: ky, dot: xs.map(x => x.seq) }, user, `Ngày ký ${ky.split('-').reverse().join('/')} → cập nhật hạn ${xs.length} đợt tính theo ngày ký`, r.is_demo);
+    }
     // HĐ thuê / vay bán căn đã ký, tiến độ HĐMB đổi: đợt gắn bàn giao theo thông báo đã phát hành (ghi vào thông báo để hủy thì trả hạn) — 16/11/2026
     if (['thue', 'vay'].includes(r.kind) && r.status === 'da_ky' && r.sale_on && JSON.stringify(r.sale_sched || null) !== JSON.stringify(old?.sale_sched || null)) await bgReapply(db, r.id, user);
     await resFromContract(db, r, user);
@@ -2074,4 +2115,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, bgSet, bgSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, bgSet, bgSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
