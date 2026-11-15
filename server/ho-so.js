@@ -88,7 +88,7 @@ async function hsData(unitId, user, custId) {
   const N = {
     dt_tt: num(hdmb?.area_tt ?? vay?.area_tt ?? u.area_tt), dt_san: num(hdmb?.area_floor ?? u.area_xd), don_gia: num(hdmb?.base_price ?? vay?.base_price ?? u.base_price),
     gia_truoc_thue: num(hdmb?.pretax ?? u.pretax), thue_vat: num(hdmb?.vat_amt ?? u.tax_amt), phi_bao_tri: num(hdmb?.maint_fee ?? u.maint_fee), gia_sau_thue: num(hdmb?.after_tax ?? vay?.unit_total ?? u.price_net),
-    tong_gia: num(hdmb?.value ?? u.total_price), gia_tri_hdmb: num(hdmb?.value), gia_tri_ht: num(ht?.value ?? hdmb?.finish_value ?? u.finish_value), tien_vay: num(vay?.value), tien_s_chung: num(hdmb?.common_area_amt),   // HĐMB có giá: tính lại bên dưới, không gồm hoàn thiện
+    tong_gia: num(hdmb?.value ?? u.total_price), gia_tri_hdmb: num(hdmb?.value), gia_tri_ht: num(ht?.value ?? (+hdmb?.finish_value ? hdmb.finish_value : await require('./biz').polFinish({ q, one }, u, hdmb?.price_policy_id || res?.policy_id))), tien_vay: num(vay?.value), tien_s_chung: num(hdmb?.common_area_amt),   // HĐMB có giá: tính lại bên dưới, không gồm hoàn thiện
   };
   // HĐ chưa lưu sẵn giá trước thuế / VAT / bảo trì: tính theo đơn giá × diện tích như file Excel — % thuế theo HĐ / căn (mặc định 5%), bảo trì 2% (13/11/2026: hết cứng 5%)
   if (N.don_gia && N.dt_tt) {

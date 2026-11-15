@@ -117,6 +117,16 @@ async function pricing(db, unit, on = today(), seller) {
   return { policy: pol, price: unit.total_price || unit.list_price || null };
 }
 
+// 15/11/2026 Tâm: giá trị hoàn thiện CHỈ lấy theo giá trị khai cho căn ở chính sách bán hàng (finish_vals) — khai 1 lần, mọi chỗ dùng lại.
+// Chính sách: polId (theo phiếu giữ chỗ / HĐ) nếu có khai căn này, không thì chính sách đang áp cho căn. Không khai → null (căn không có hoàn thiện)
+async function polFinish(db, u, polId, on = today()) {
+  const fk = String(u?.code || '').toUpperCase().trim(); if (!fk) return null;
+  const p0 = polId ? await raw(db, 'price_policy', polId) : null;
+  if (p0?.finish_vals?.[fk] != null) return +p0.finish_vals[fk];
+  const cur = (await pricing(db, u, on)).policy;
+  return cur?.finish_vals?.[fk] != null ? +cur.finish_vals[fk] : null;
+}
+
 // ======================= LỊCH THANH TOÁN =======================
 // HĐMB: % các đợt × tiền sau thuế (= giá trị HĐ − phí bảo trì); phí bảo trì thu riêng, cộng trọn vào đợt «Đợt thu phí bảo trì» (mặc định 3)
 // maint > 0 (HĐMB): tỷ lệ % các đợt × tiền sau thuế (= giá trị − phí bảo trì); phí bảo trì thu ở DÒNG RIÊNG cố định (dòng maint: true, số tiền = phí bảo trì,
@@ -347,9 +357,7 @@ async function contractPrefill(db, unitId, on = today()) {
   const cur = (await pricing(db, u, on)).policy, p0 = res?.policy_id ? await raw(db, 'price_policy', res.policy_id) : null, pol = p0 || cur;
   const sp = p0?.pay_sched?.length ? p0 : cur?.pay_sched?.length ? cur : null;
   const fp = p0?.fin_sched?.length ? p0 : cur?.fin_sched?.length ? cur : null;   // tiến độ nội thất (HĐ hoàn thiện) lấy riêng — chính sách không khai tiến độ HĐMB vẫn có (14/11/2026)
-  // 15/11/2026: giá trị hoàn thiện — phiếu giữ chỗ có số thì theo phiếu; không thì theo giá trị khai cho căn ở chính sách (finish_vals); không có nữa thì theo bảng hàng
-  const fk = String(u.code || '').toUpperCase().trim(), pfv = [p0, cur, fp].map(p => p?.finish_vals?.[fk]).find(v => v != null);
-  const fval = +res?.finish_value > 0 ? +res.finish_value : pfv != null ? +pfv : +u.finish_value > 0 ? +u.finish_value : res?.finish_value ?? null;
+  const fval = await polFinish(db, u, res?.policy_id, on);   // giá trị hoàn thiện: chỉ theo chính sách (15/11/2026)
   return { customer_id: res?.customer_id ?? null, customer_label: res?.customer_label ?? null, request_on: res?.reg_date ?? null, finish_value: fval, owner_id: res?.owner_id ?? null,
     policy_id: pol?.id ?? null, policy_label: pol ? `${pol.code} v${pol.version}` : null, ...(sp ? { pay_sched: sp.pay_sched, pay_mdot: sp.pay_mdot ?? 3, sched_policy: `${sp.code} v${sp.version}` } : {}),
     ...(fp ? { fin_sched: fp.fin_sched.map(x => ({ ...x, name: finTxt(x.name) })), fin_policy: `${fp.code} v${fp.version}` } : {}) };
@@ -857,7 +865,6 @@ H.reservation = {
       const p = await pricing(db, u, r.reg_date, seller);
       // giá theo mã căn ở Danh mục sản phẩm: giá trị căn hộ = sau thuế + bảo trì; hoàn thiện = giá trị hoàn thiện căn
       if (r.unit_value == null || (old && changedUnit)) r.unit_value = u.price_net != null ? +u.price_net + (+u.maint_fee || 0) : u.total_price != null ? +u.total_price - (+u.finish_value || 0) : p.price;
-      if (old ? changedUnit : r.finish_value == null) r.finish_value = u.finish_value;
       if (!r.policy_id) r.policy_id = p.policy?.id ?? null;   // nhân viên chọn chính sách thì giữ, để trống thì tự lấy
       if (!p.policy && !r.policy_id) warn.push('Không có chính sách bán hàng đang phát hành cho căn này — giá lấy theo bảng hàng');
     }
@@ -867,6 +874,7 @@ H.reservation = {
         bad(`Chính sách ${p0.code} v${p0.version} chỉ áp dụng cho: ${await polWho(db, p0)} — nguồn bán của phiếu («${await C.optLabel(C.F.reservation.source, r.source)}») không dùng được`, { fields: ['policy_id', 'source'] });
       }
     }
+    if (u && r.deal !== 'thue') { const fv = await polFinish(db, u, r.policy_id, r.reg_date || today()); if (fv != null || changedUnit) r.finish_value = fv; }   // hoàn thiện: chỉ theo chính sách (15/11/2026)
     if (r.unit_value != null) r.price = +r.unit_value + (+r.finish_value || 0);   // Tổng giá bán = giá trị căn hộ + hoàn thiện nội thất
     if (r.price == null) bad('Chưa có giá bán: nhập giá hoặc phát hành bảng giá cho dự án');
     if (r.deposit > r.price) bad('Tiền đặt cọc lớn hơn giá bán');
@@ -1952,4 +1960,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { saleTrack, policyUnits, bgSet, bgSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { polFinish, saleTrack, policyUnits, bgSet, bgSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
