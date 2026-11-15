@@ -1473,7 +1473,7 @@ H.contract = {
     if (r.pretax > 0 && r.after_tax == null) r.after_tax = r.pretax + (r.vat_amt || 0);
     if (r.pretax > 0 && r.maint_fee == null && ['hdmb', 'thue_mua'].includes(r.kind)) r.maint_fee = Math.round(+r.pretax * 0.02 / 1000) * 1000;   // phí bảo trì = 2% × tiền trước thuế
     if (r.kind === 'hoan_thien' && r.finish_value != null) r.value = +r.finish_value - (+r.discount || 0);
-    if (!(r.value > 0)) bad('Giá trị hợp đồng phải > 0');
+    if (!(r.value > 0)) bad('Giá trị hợp đồng phải > 0', { fields: ['value'] });
     if (r.status === 'thanh_ly') { { const miss = ['liquidated_on', 'liquidate_reason'].filter(k => !r[k]); if (miss.length) bad('Hợp đồng đã thanh lý: chọn ' + miss.map(k => C.F.contract[k].l).join(' và '), { fields: miss }); } if (r.liquidated_on > today()) bad('Ngày thanh lý không được sau hôm nay'); }
     else { r.liquidated_on = null; r.liquidate_reason = null; r.liquidate_note = null; }
     if (r.loan_status === 'co_vay' && !String(r.loan_bank || '').trim()) bad('Có vay: ghi ngân hàng cho vay');

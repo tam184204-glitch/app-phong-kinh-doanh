@@ -1902,3 +1902,14 @@ label.tplr { display: flex; gap: 8px; align-items: center; padding: 7px 0; }
 .bv .fld > label { overflow: visible; }
 /* thanh khôi phục bản nháp (form bị đóng khi đang nhập) */
 .draft-bar { align-items: center; } .draft-bar span { flex: 1; }
+
+/* 15/11/2026: laptop 1024–1366px — form hợp đồng 3–4 cột xuống 2 cột, nhãn hẹp lại để ô tiền không bị cắt số */
+@media (max-width: 1366px) and (min-width: 901px) {
+  .bv-row[style*="--n:3"], .bv-row[style*="--n:4"], .bv-row[style*="--n: 3"], .bv-row[style*="--n: 4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .bv .fld > label { flex-basis: 104px; font-size: 12px; }
+}
+@media (max-width: 1100px) and (min-width: 901px) { .bv-side { grid-template-columns: 1fr; } }
+
+/* 15/11/2026: ô ngày chữ + nút lịch (addPicker) trong bảng / thanh lọc */
+.dwrap-in { display: inline-block; position: relative; width: 100%; } .sc-per .dwrap-in { width: 150px; } .dwrap-in > input[type=text] { padding-right: 34px !important; }
+.dwrap-in button { top: 50% !important; transform: translateY(-50%); height: 28px !important; }

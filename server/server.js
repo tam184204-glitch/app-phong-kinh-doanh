@@ -6,6 +6,8 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const zlib = require('zlib');
+const STATIC = new Map();   // bộ đệm tệp tĩnh: ETag + bản nén gzip theo thời điểm sửa tệp
 const Busboy = require('busboy');
 const { q, one, tx } = require('./db');
 const { migrate } = require('./schema');
@@ -115,7 +117,8 @@ async function metaFor(user) {
     imports: Object.fromEntries(Object.entries(IO.IMPORTS).filter(([, i]) => user.role === 'admin' || i.roles.includes(user.role)).map(([k, i]) => [k, { title: i.title, note: i.note }])),
     users: await q('SELECT id, full_name, role, title, active FROM kd_user ORDER BY active DESC, full_name'),
     projects: await q('SELECT id, code, name FROM kd_project ORDER BY code'), buildings: await q('SELECT id, project_id, code, name FROM kd_building ORDER BY code'),
-    noLogin: NO_LOGIN, ai: AI.enabled(), today: C.today(), demo: (await one("SELECT (SELECT count(*) FROM kd_contract WHERE is_demo) + (SELECT count(*) FROM kd_customer WHERE is_demo) AS n")).n,
+    noLogin: NO_LOGIN, testTools: !!NO_LOGIN || process.env.TEST_TOOLS === '1', ai: AI.enabled(),   // 15/11/2026: nút dữ liệu thử chỉ hiện khi chạy thử
+ today: C.today(), demo: (await one("SELECT (SELECT count(*) FROM kd_contract WHERE is_demo) + (SELECT count(*) FROM kd_customer WHERE is_demo) AS n")).n,
   };
 }
 
@@ -648,11 +651,24 @@ async function handle(req, res) {
   if (!pth.startsWith('/api/') && !pth.startsWith('/print/')) {
     const file = path.join(PUBLIC, pth === '/' ? 'index.html' : pth);
     if (!file.startsWith(PUBLIC)) return send(res, 403, 'Forbidden');
-    fs.readFile(file, (err, buf) => {
-      if (err) return fs.readFile(path.join(PUBLIC, 'index.html'), (e2, b2) => e2 ? send(res, 404, 'Not found') : send(res, 200, b2, { 'Content-Type': TYPES['.html'] }));
-      send(res, 200, buf, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
+    // 15/11/2026: tệp tĩnh có ETag (trình duyệt hỏi lại, không đổi thì trả 304 — không tải lại ~800KB) + nén gzip cho js / css / html / json / svg
+    return fs.stat(file, (se, st) => {
+      if (se || !st.isFile()) return fs.readFile(path.join(PUBLIC, 'index.html'), (e2, b2) => e2 ? send(res, 404, 'Not found') : send(res, 200, b2, { 'Content-Type': TYPES['.html'] }));
+      const hit = STATIC.get(file), type = TYPES[path.extname(file)] || 'application/octet-stream';
+      const go = c => {
+        const h = { 'Content-Type': type, 'Cache-Control': 'no-cache', ETag: c.etag, Vary: 'Accept-Encoding' };
+        if (req.headers['if-none-match'] === c.etag) { res.writeHead(304, h); return res.end(); }
+        if (c.gz && /\bgzip\b/.test(req.headers['accept-encoding'] || '')) return send(res, 200, c.gz, { ...h, 'Content-Encoding': 'gzip' });
+        send(res, 200, c.buf, h);
+      };
+      if (hit && hit.mtime === st.mtimeMs && hit.size === st.size) return go(hit);
+      fs.readFile(file, (err, buf) => {
+        if (err) return send(res, 404, 'Not found');
+        const c = { mtime: st.mtimeMs, size: st.size, buf, etag: '"' + crypto.createHash('sha1').update(buf).digest('base64').slice(0, 27) + '"',
+          gz: /\.(js|css|html|json|svg|txt|map)$/i.test(file) && buf.length > 1024 ? zlib.gzipSync(buf, { level: 6 }) : null };
+        STATIC.set(file, c); go(c);
+      });
     });
-    return;
   }
   for (const r of routes) {
     if (r.method !== req.method) continue;

@@ -517,8 +517,10 @@ V.products = async (main, params) => {
   const s = ST.prod ||= { project: '', building: '', q: '', st: '', shut: new Set() };
   if (params.project) s.project = params.project;
   const ue = M.ents.unit.perm;
-  const draw = async () => {
-    const d = await catalogData(), q = s.q.trim().toLowerCase();
+  let D0 = null;   // 15/11/2026: tải dữ liệu 1 lần — gõ tìm / lọc / mở nhóm chỉ lọc trên máy, không tải lại cả danh mục mỗi phím
+  const draw = async (fresh) => {
+    if (!D0 || fresh === true) D0 = await catalogData();
+    const d = D0, q = s.q.trim().toLowerCase();
     const base = d.units.filter(u => (!s.project || u.project_id === +s.project) && (!s.building || u.building_id === +s.building));
     const us = base.filter(u => unitMatch(u, q) && (!s.st || u.status === s.st));
     const cnt = {}; base.forEach(u => cnt[u.status] = (cnt[u.status] || 0) + 1);
@@ -546,14 +548,14 @@ V.products = async (main, params) => {
     inp.oninput = debounce(() => { s.q = inp.value; draw().then(() => { const i = $('#pq', main); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }); }, 250);
     $('#pst', main).onchange = e => { s.st = e.target.value; draw(); };
   };
-  ST.reload = draw;
+  ST.reload = () => draw(true);
   main.onclick = run(async e => {
     const bl = e.target.closest('[data-bld]'); if (bl) { s.building = s.building === bl.dataset.bld ? '' : bl.dataset.bld; return draw(); }
     const p = e.target.closest('[data-p]'); if (p) { s.building = ''; s.project = s.project === p.dataset.p ? '' : p.dataset.p; return draw(); }
     const g = e.target.closest('tr[data-g]'); if (g) { const id = +g.dataset.g; s.shut.has(id) ? s.shut.delete(id) : s.shut.add(id); return draw(); }
     const u = e.target.closest('tr[data-u]'); if (u) return openDetail('unit', +u.dataset.u);
-    if (e.target.closest('#pNew')) return openForm('unit', { preset: { ...(s.project ? { project_id: +s.project } : {}), ...(s.building ? { building_id: +s.building } : {}) }, onSaved: () => draw() });
-    if (e.target.closest('#pImp')) return importModal('units', draw);
+    if (e.target.closest('#pNew')) return openForm('unit', { preset: { ...(s.project ? { project_id: +s.project } : {}), ...(s.building ? { building_id: +s.building } : {}) }, onSaved: () => draw(true) });
+    if (e.target.closest('#pImp')) return importModal('units', () => draw(true));
     // xuất Excel đúng mẫu «DM bảng hàng và sản phẩm»
     if (e.target.closest('#pXls')) return download('/api/export-rows', { title: 'DM bảng hàng và sản phẩm', cols: PROD_COLS.map(c => [c[0], c[1], c[2] === 'pct' ? 'num' : c[2]]), rows: main._rows, sum: PROD_COLS.filter(c => c[3]).map(c => c[0]), file: 'DM_bang_hang_va_san_pham' });
   });
@@ -568,9 +570,11 @@ V.customers = async (main, params) => {
   if (params.project) s.project = params.project;
   const ce = M.ents.customer.perm;
   const CC = [['code', 'Mã'], ['full_name', 'Tên'], ['address', 'Địa chỉ'], ['phone', 'Điện thoại'], ['email', 'Email'], ['tax_code', 'Mã số thuế']];   // như lưới Bravo, mã trước tên; bỏ cột Tình trạng (03/11/2026) — vẫn lọc được ở ô «Mọi tình trạng»
-  const draw = async () => {
+  let D1 = null;   // 15/11/2026: tải dữ liệu 1 lần — gõ tìm / lọc chỉ lọc trên máy
+  const draw = async (fresh) => {
     const get = async e => M.ents[e]?.perm.r ? (await api('GET', `/api/e/${e}?limit=20000${e === 'customer' ? '&group=sau_ban' : ''}`)).rows : [];   // 02 chỉ khách sau mở bán; khách tiềm năng ở 03
-    const [cs, us, hd, gc, pj] = await Promise.all([get('customer'), get('unit'), get('contract'), get('reservation'), get('project')]);
+    if (!D1 || fresh === true) D1 = await Promise.all([get('customer'), get('unit'), get('contract'), get('reservation'), get('project')]);
+    const [cs, us, hd, gc, pj] = D1;
     const unit = new Map(us.map(u => [u.id, u])), link = new Map();
     const add = (cid, uid) => { const u = unit.get(uid); if (!u) return; const l = link.get(cid) || link.set(cid, new Map()).get(cid); l.set(u.id, u); };
     hd.filter(c => !['huy', 'thanh_ly'].includes(c.status)).forEach(c => add(c.customer_id, c.unit_id));
@@ -597,12 +601,12 @@ V.customers = async (main, params) => {
     $('#kst', main).onchange = e => { s.st = e.target.value; draw(); };
     main._list = list;
   };
-  ST.reload = draw;
+  ST.reload = () => draw(true);
   main.onclick = run(async e => {
     const p = e.target.closest('[data-p]'); if (p) { s.project = p.dataset.p; return draw(); }
     const tr = e.target.closest('tr[data-c]'); if (tr) return openDetail('customer', +tr.dataset.c);
-    if (e.target.closest('#kNew')) return openForm('customer', { skip: ['kind', 'stage', 'noxh_group', 'owner_id'], preset: { stage: 'da_nop_hsmn', ...(s.project ? { interest_project: +s.project } : {}) }, onSaved: row => { draw(); openDetail('customer', row.id); } });
-    if (e.target.closest('#kImp')) return importModal('customers', draw);
+    if (e.target.closest('#kNew')) return openForm('customer', { skip: ['kind', 'stage', 'noxh_group', 'owner_id'], preset: { stage: 'da_nop_hsmn', ...(s.project ? { interest_project: +s.project } : {}) }, onSaved: row => { draw(true); openDetail('customer', row.id); } });
+    if (e.target.closest('#kImp')) return importModal('customers', () => draw(true));
     if (e.target.closest('#kXls')) return download('/api/export-rows', { title: 'Danh mục khách hàng', cols: CC.map(([k, l]) => [k === 'stage' ? 'stage_l' : k, l]), rows: main._list.map(r => ({ ...r, stage_l: optL('customer', 'stage', r.stage) })), file: 'danh_muc_khach_hang' });
   });
   await draw();
@@ -789,7 +793,7 @@ V.signing = async main => {
     const pct = all.length ? Math.round(stN.III / all.length * 100) : 0, wd = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'], sd = new Date(sel + 'T00:00:00Z'), dDone = day.filter(x => x.cls === 'g').length;
     main.innerHTML = `<style>${SC_CSS}</style><div class="page">${head('04', 'Lịch ký hợp đồng', 'fa-calendar-days', '', '5.5')}${filterBar(f, { period: false, building: false })}
       <div class="card sc-per"><div class="sc-per-t"><h3>Khoảng thời gian báo cáo</h3><div class="small muted">Áp dụng cho số liệu tổng hợp, lịch ký và danh sách · Theo ngày dự kiến ký</div><div class="small ${bad ? 'sc-bad' : 'muted'} mt">${bad ? 'Ngày kết thúc phải từ ngày bắt đầu trở đi.' : period}</div></div>
-        <label class="small muted">Từ ngày<input type="date" id="scF" class="inp" value="${lf}" aria-label="Từ ngày dự kiến ký"></label><label class="small muted">Đến ngày<input type="date" id="scTo" class="inp" value="${lt}" aria-label="Đến ngày dự kiến ký"></label><button class="btn" id="scAll">Toàn bộ thời gian</button></div>
+        <label class="small muted">Từ ngày<input type="text" id="scF" class="inp" value="${dmy(lf)}" placeholder="dd/mm/yyyy" autocomplete="off" aria-label="Từ ngày dự kiến ký"></label><label class="small muted">Đến ngày<input type="text" id="scTo" class="inp" value="${dmy(lt)}" placeholder="dd/mm/yyyy" autocomplete="off" aria-label="Đến ngày dự kiến ký"></label><button class="btn" id="scAll">Toàn bộ thời gian</button></div>
       <div class="sc-tiles mt">${[['thang', 'fa-copy', 'Tổng hợp đồng', all.length, 'Căn hộ đang theo dõi'],
         ['tong', 'fa-circle-check', 'Đã ký hợp đồng', `${stN.III} ${pill(pct + '%', 'g')}`, `Hoàn thành trên tổng danh sách<div class="sc-track"><b style="width:${pct}%"></b></div>`],
         ['tinh_trang', 'fa-phone-slash', 'Chưa liên lạc được', stN.I, 'Cần tiếp tục liên hệ khách hàng'],
@@ -821,8 +825,9 @@ V.signing = async main => {
     else P.innerHTML = `<div class="hd"><div><h3>${wd[sd.getUTCDay()]}, ${sd.getUTCDate()} tháng ${sd.getUTCMonth() + 1}</h3><div class="small muted">${day.length ? `${day.length} lịch ký · ${dDone} đã ký · ${day.length - dDone} cần xử lý` : 'Chưa có lịch ký'}</div></div><span class="grow"></span>${sel === t ? pill('Hôm nay', 'b') : ''}</div><div class="sc-list">${day.length ? day.map(line).join('') : '<div class="empty">Không có lịch hẹn trong ngày này.</div>'}</div>`;
     drawList();
     $('#scQ', main).oninput = debounce(e => { lq = e.target.value; drawList(); }, 200);
-    $('#scF', main).onchange = e => { const v = e.target.value; if (v && !okDay(v)) return; if (v && lt && v > lt) return toast('Từ ngày phải trước Đến ngày', true); lf = v; render(); };
-    $('#scTo', main).onchange = e => { const v = e.target.value; if (v && !okDay(v)) return; if (v && lf && lf > v) return toast('Từ ngày phải trước Đến ngày', true); lt = v; render(); };
+    addPicker($('#scF', main)); addPicker($('#scTo', main));   // 15/11/2026: dd/mm/yyyy như các form
+    $('#scF', main).onchange = e => { const v = e.target.value.trim() ? parseDmy(e.target.value) : ''; if (e.target.value.trim() && !v) return toast('Ngày không hợp lệ — nhập dd/mm/yyyy', true); if (v && !okDay(v)) return; if (v && lt && v > lt) return toast('Từ ngày phải trước Đến ngày', true); lf = v; render(); };
+    $('#scTo', main).onchange = e => { const v = e.target.value.trim() ? parseDmy(e.target.value) : ''; if (e.target.value.trim() && !v) return toast('Ngày không hợp lệ — nhập dd/mm/yyyy', true); if (v && !okDay(v)) return; if (v && lf && lf > v) return toast('Từ ngày phải trước Đến ngày', true); lt = v; render(); };
     $('#scAll', main).onclick = () => { lf = lt = ''; render(); };
     const toMonth = () => { ym = `${$('#scY', main).value}-${String($('#scM', main).value).padStart(2, '0')}`; render(); };
     $('#scM', main).onchange = toMonth; $('#scY', main).onchange = toMonth;
@@ -1509,7 +1514,7 @@ V.integr = async main => {
     <div class="card"><div class="hd"><h3>${ico('fa-diagram-project')} BSC — quản lý mục tiêu & công việc</h3></div><div class="bd"><p class="small" style="margin-top:0">Chưa thống nhất cơ chế tích hợp với BSC. Trong lúc chờ: xuất danh sách việc tồn đọng (theo người phụ trách, hạn) và chỉ tiêu KPI để nhập vào BSC.</p><div class="row"><button class="btn" id="bscA">${ico('fa-file-excel')} Xuất việc tồn đọng</button><button class="btn" id="bscK">${ico('fa-file-excel')} Xuất KPI nhân viên</button></div></div></div>
     <div class="card span2"><div class="hd"><h3>${ico('fa-file-import')} Nhập dữ liệu hiện có (dữ liệu lịch sử)</h3></div><div class="bd"><p class="small" style="margin-top:0">Thứ tự nên nhập: <b>bảng hàng → khách hàng → hợp đồng + lịch thanh toán → chứng từ thu</b>. Mỗi loại có tệp mẫu; «Kiểm tra trước» chạy thử toàn bộ, báo lỗi từng dòng (trùng, thiếu, sai định dạng) mà không ghi dữ liệu.</p><div class="row">${Object.entries(M.imports).map(([k, i]) => `<button class="btn" data-imp="${k}">${ico('fa-upload')} ${esc(i.title)}</button>`).join('')}</div>
       <div class="sec-title">Lịch sử nhập</div>${rowsTable([['at', 'Thời điểm', 'dt'], ['kind', 'Loại'], ['file_name', 'Tệp'], ['by_l', 'Người nhập'], ['total', 'Tổng dòng', 'int'], ['ok', 'Thành công', 'int'], ['failed', 'Lỗi', 'int']], imps.map(x => ({ ...x, kind: M.imports[x.kind]?.title || x.kind })), null, { click: false })}</div></div>
-    ${isAdmin ? `<div class="card span2"><div class="hd"><h3>${ico('fa-flask')} Dữ liệu thử</h3></div><div class="bd"><p class="small" style="margin-top:0">Giao dịch thử (đánh dấu <span class="tag demo">thử</span>) phục vụ chạy thử toàn bộ quy trình. Dữ liệu gốc thật — dự án, tòa, căn theo bảng hàng, chính sách giá, mẫu biểu, tài khoản — <b>không bị ảnh hưởng</b>. Trước khi vận hành: xóa dữ liệu thử, khóa tài khoản thử.</p>
+    ${isAdmin && (M.testTools || M.demo) ? `<div class="card span2"><div class="hd"><h3>${ico('fa-flask')} Dữ liệu thử</h3></div><div class="bd"><p class="small" style="margin-top:0">Giao dịch thử (đánh dấu <span class="tag demo">thử</span>) phục vụ chạy thử toàn bộ quy trình. Dữ liệu gốc thật — dự án, tòa, căn theo bảng hàng, chính sách giá, mẫu biểu, tài khoản — <b>không bị ảnh hưởng</b>. Trước khi vận hành: xóa dữ liệu thử, khóa tài khoản thử.</p>
       <div class="row"><span>Hiện có: <b>${M.demo}</b> khách hàng / hợp đồng thử</span><span class="grow"></span>${M.demo ? `<button class="btn danger" id="clrDemo">${ico('fa-trash')} Xóa toàn bộ dữ liệu thử</button>` : `<button class="btn" id="ldDemo">${ico('fa-flask')} Nạp lại dữ liệu thử</button>`}</div></div></div>` : ''}
   </div></div>`;
   main.onclick = run(async e => {

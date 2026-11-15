@@ -182,7 +182,7 @@ function show(f, row, { plain } = {}) {
 const RET_COLS = ['doc_ret', 'doc_ret_on', 'ret_files'];
 function retCell(k, r) {
   if (k === 'doc_ret') return `<select class="ret-st ${r.doc_ret === 'da_tra' ? 'g' : 'a'}" data-ret="doc_ret">${[['chua_tra', 'Chưa trả hồ sơ'], ['da_tra', 'Đã trả hồ sơ']].map(([v, l]) => `<option value="${v}" ${(r.doc_ret || 'chua_tra') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
-  if (k === 'doc_ret_on') return `<input type="date" class="ret-d" data-ret="doc_ret_on" value="${esc(r.doc_ret_on || '')}" min="1900-01-01" max="2100-12-31">`;
+  if (k === 'doc_ret_on') return `<input type="text" class="ret-d" data-ret="doc_ret_on" data-dp value="${esc(dmy(r.doc_ret_on))}" placeholder="dd/mm/yyyy" autocomplete="off" style="width:130px">`;
   const fs = r.ret_files || [];
   return `<div class="ret-f">${fs.map(f => `<span class="ret-fi"><a href="/api/file/${f.id}" target="_blank" rel="noopener" title="${esc(f.name)}">${ico(/\.pdf$/i.test(f.name) ? 'fa-file-pdf' : /\.(png|jpe?g|webp)$/i.test(f.name) ? 'fa-file-image' : 'fa-file')} ${esc(f.name)}</a><button type="button" data-retdel="${f.id}" title="Xóa tệp">×</button></span>`).join('')}<button type="button" class="btn sm" data-retup>${ico('fa-paperclip')} ${fs.length ? 'Thêm' : 'Đính kèm'}</button></div>`;
 }
@@ -349,6 +349,16 @@ document.addEventListener('focusin', e => {
 });
 const gridVals = (el, f) => $$('tr[data-gr]', el).map(tr => Object.fromEntries(f.grid.map(c => [c.k, $(`[data-gc="${c.k}"]`, tr).value.trim()])));
 const readGrid = (el, f) => gridVals(el, f).filter(x => f.grid.some(c => !c.ro && x[c.k] && x[c.k] !== c.def));   // dòng chỉ có giá trị mặc định (VD Tỉnh = Bắc Ninh) = dòng trống
+// 15/11/2026: mọi ô ngày cùng 1 kiểu — gõ dd/mm/yyyy hoặc bấm nút lịch (không dùng ô ngày của trình duyệt: Windows tiếng Anh hiện mm/dd/yyyy)
+function addPicker(txt) {
+  if (!txt || txt.readOnly || txt.closest('.dwrap')) return;
+  const w = document.createElement('span'); w.className = 'dwrap dwrap-in'; txt.before(w); w.append(txt);
+  w.insertAdjacentHTML('beforeend', `<button type="button" tabindex="-1" title="Chọn ngày">${ico('fa-calendar-days')}</button><input type="date" tabindex="-1" aria-hidden="true">`);
+  const b = $('button', w), nat = $('input[type=date]', w);
+  b.onclick = () => { try { nat.value = parseDmy(txt.value) || ''; } catch { } try { nat.showPicker(); } catch { nat.click(); } };
+  nat.onchange = () => { txt.value = nat.value ? dmy(nat.value) : ''; txt.dispatchEvent(new Event('input', { bubbles: true })); txt.dispatchEvent(new Event('change', { bubbles: true })); };
+  txt.addEventListener('blur', () => { const m = /^(\d{1,2})(\d{2})(\d{4})$/.exec(txt.value.trim()); if (m) txt.value = `${m[1].padStart(2, '0')}/${m[2]}/${m[3]}`; });
+}
 function wireInputs(root, onChange) {
   $$('[data-pick]', root).forEach(b => {
     const wrap = b.parentElement, txt = $('input[name]', wrap), nat = $(`input[type=${b.dataset.pick}]`, wrap);
@@ -536,6 +546,7 @@ function schedEditor(el, rows, { total, base, first, maint, mdot, bgBase, pol, f
       ${R.map((r, i) => `<tr data-i="${i}"><td>${C.length ? `<select data-sug="${i}" title="Chọn đợt để gợi ý nội dung, tỷ lệ, hạn"><option value="">Đợt ${i + 1}</option>${C.map((c, j) => `<option value="${j}" ${c.name === r.name ? 'selected' : ''}>${esc(c.dot)}</option>`).join('')}</select>` : i + 1}${r.fin ? '<div class="small fin-tag">Hoàn thiện</div>' : ''}</td><td>${C.length ? `<textarea data-k="name" rows="${pol ? 3 : 2}" placeholder="Chọn đợt để gợi ý hoặc tự ghi nội dung">${esc(r.name || '')}</textarea>` : `<input data-k="name" value="${esc(r.name || '')}">`}</td>${pol ? '' : `<td><input data-k="due_on" value="${esc(dmy(r.due_on) || r.due_on || '')}" placeholder="dd/mm/yyyy" style="width:120px"${d1 && !i ? ' readonly title="Tự theo ngày ký hợp đồng mua bán"' : r.bg && bgB?.on ? ` readonly title="Theo thông báo bàn giao ${esc(bgB.doc || '')}: ngày bàn giao ${dmy(bgB.on)} + ${r.bg_days ?? bgB.days ?? 0} ngày"` : ''}></td>`}<td><input data-k="pct" value="${r.pct ?? ''}" style="width:70px;text-align:right"></td>${pol ? '' : `<td><input data-k="amount" value="${r.amount && !pol ? fm(r.amount) : ''}" placeholder="${pol ? 'theo giá từng căn' : r.pct && tot ? fm(pa(r)) : ''}"${pol ? ' readonly title="Số tiền = tỷ lệ % × tiền sau thuế của từng căn — tính khi lập HĐMB"' : ''} style="width:150px;text-align:right"></td>`}${on && SBG ? bgCell(r, `data-bg="${i}"`) : ''}<td><div class="sched-acts"><button type="button" class="btn ghost sm" data-del="${i}" title="Xóa đợt">${ico('fa-trash')}</button></div></td></tr>`).join('')}<tr class="sched-add"><td colspan="${(on && SBG ? 7 : 6) - (pol ? 2 : 0)}"><button type="button" class="btn sm" data-add>${ico('fa-plus')} Thêm đợt</button></td></tr>${mRow}
       </tbody><tfoot><tr><td colspan="${pol ? 2 : 3}"><b>Tổng</b></td><td class="num">${pctSum(R)}</td>${pol ? '' : `<td class="num ${tot && Math.abs(sum - tot) > 1000 * (R.length + 1) ? 'neg' : 'pos'}">${fm(sum)}</td>`}${on && SBG ? '<td></td>' : ''}<td></td></tr></tfoot></table>
       ${pol && fin ? `<div class="small muted mt">Tổng tỷ lệ các đợt phải đủ 100% — tính trên <b>giá trị hoàn thiện</b> của từng căn. Chỉ căn có giá trị hoàn thiện (nội thất) mới có các đợt này trong HĐMB; căn không có hoàn thiện bỏ qua. Đợt 1 mặc định thu khi ký HĐMB; nội dung «Sau / Trong (vòng) N ngày…» = N ngày sau ngày ký.</div>` : pol ? `<div class="small muted mt">Tổng tỷ lệ các đợt phải đủ 100% (tính trên tiền sau thuế của từng căn); phí bảo trì thu ở dòng riêng${R[mi] ? `, mặc định cùng hạn đợt ${mi + 1}` : ''}. Không nhập ngày đến hạn / số tiền ở chính sách: HĐMB tự tính — đợt 1 = ngày ký HĐMB, nội dung «Sau / Trong (vòng) N ngày…» = N ngày sau ngày ký; đợt theo sự kiện khác (VD thông báo bàn giao) nhập hạn ở HĐ hoặc theo thông báo bàn giao. Số tiền = tỷ lệ % × tiền sau thuế của từng căn.<br>Chính sách được duyệt phát hành → HĐMB <b>dự thảo / bị từ chối</b> của các căn đã tích tự cập nhật Lần thanh toán; lập HĐMB mới, chọn mã căn → Lần thanh toán tự điền theo chính sách (vẫn sửa được). HĐ đã trình duyệt / đã ký giữ nguyên.</div>` : `<div class="small muted mt">Phải khớp nghĩa vụ phải thu: <b>${fm(tot)}</b> đ.${hasM ? ` Tỷ lệ % các đợt tính trên tiền sau thuế <b>${fm(base)}</b> đ; phí bảo trì <b>${fm(mt)}</b> đ thu ở dòng riêng${R[mi] ? `, cùng hạn đợt ${mi + 1}` : ''}.` : ''} Nhập tỷ lệ % hoặc số tiền; chênh lệch làm tròn (≤ 1.000đ/đợt) dồn vào đợt cuối.</div>`}`;
+    $$('input[data-k=due_on], input[data-mk=due_on]', el).forEach(addPicker);   // 15/11/2026: hạn các đợt có nút lịch
   };
   const sync = () => {
     $$('tbody tr[data-i]', el).forEach(tr => { const r = R[+tr.dataset.i]; for (const i of $$('input[data-k],textarea[data-k]', tr)) { const k = i.dataset.k; r[k] = k === 'bg_days' ? (i.value.trim() === '' ? null : Math.max(0, parseInt(i.value, 10) || 0)) : k === 'pct' ? (i.value.trim() ? num(i.value) : null) : k === 'amount' ? (i.value.trim() ? num(i.value, true) : null) : k === 'due_on' ? parseDmy(i.value) : i.value; } });
@@ -1294,7 +1305,16 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   if (ckF && !id) { fillCheck(); form.addEventListener('change', e => { if (e.target.name === ckF.srcBy || e.target.name === 'reg_kind') fillCheck(); }); }
   vis();
   const errBox = $('#ferr', m.el);
-  const showErr = (e) => { errBox.innerHTML = `<div class="errbar">${ico('fa-triangle-exclamation')} ${esc(e.message)}</div>`; $$('.fld.err', form).forEach(x => x.classList.remove('err')); (e.fields || []).forEach(k => $(`[data-f="${k}"]`, form)?.classList.add('err')); errBox.scrollIntoView({ block: 'nearest' }); };
+  const showErr = (e) => { errBox.innerHTML = `<div class="errbar">${ico('fa-triangle-exclamation')} ${esc(e.message)}</div>`; $$('.fld.err', form).forEach(x => x.classList.remove('err')); let ef = e.fields || [];
+    if (!ef.length && e.message) {   // 15/11/2026: lỗi không chỉ ô → dò tên ô có trong câu báo lỗi (tên dài nhất trước), chỉ ô đang hiện
+      const msg = e.message.toLowerCase(), hit = fields.filter(f => f.l && f.l.length >= 4 && $(`[data-f="${f.k}"]`, form) && msg.includes(f.l.toLowerCase().replace(/\s*\(.*\)$/, ''))).sort((a, b) => b.l.length - a.l.length)[0];
+      if (hit) ef = [hit.k];
+    }
+    ef.forEach(k => $(`[data-f="${k}"]`, form)?.classList.add('err')); errBox.scrollIntoView({ block: 'nearest' });
+    // 15/11/2026: ô lỗi nằm ở tab khác / cuối form → chuyển tab, cuộn tới ô đầu tiên bị lỗi và đặt con trỏ vào đó
+    const f0 = $('.fld.err', form); if (!f0) return;
+    if (f0.offsetParent === null) { const nv = $('.hd-tabs', m.el), b = nv && (f0.closest('fieldset') ? $('[data-p="ht"]', nv) : [...$$('[data-p]', nv)].find(x => x.dataset.p !== 'ht' && !x.hidden)); b?.click(); }
+    setTimeout(() => { if (f0.offsetParent === null) return; f0.scrollIntoView({ block: 'center', behavior: 'smooth' }); $('input:not([type=hidden]),select,textarea', f0)?.focus({ preventScroll: true }); }, 60); };
   const showWarn = w => { if (w?.length) errBox.innerHTML = `<div class="warnbar">${ico('fa-circle-exclamation')}<div>${w.map(esc).join('<br>')}</div></div>`; };
   const send = async (check) => {
     const data = collect();
@@ -1853,6 +1873,7 @@ async function listView(main, ent, params = {}) {
       <tbody>${d.rows.map((r, i) => `<tr data-id="${r.id}" class="${S.sel.has(r.id) ? 'sel' : ''}">${bulk ? `<td><input type="checkbox" data-sel="${r.id}" ${S.sel.has(r.id) ? 'checked' : ''}></td>` : ''}${cols.map(k => { const c = cell(ent, k, r); const lf = E.fields.find(x => x.k === k); return `<td class="${c.num ? 'num' : ''} ${lf?.t === 'long' ? 'wrap' : ''}">${k === 'id' ? '#' + r.id : k === 'stt' ? i + 1 : c.html}${k === cols[0] && r.is_demo ? ' <span class="tag demo" title="Dữ liệu thử">thử</span>' : ''}</td>`; }).join('')}</tr>`).join('')}</tbody>
       ${cols.some(k => E.fields.find(f => f.k === k)?.t === 'money' || VIRT_MONEY.has(k)) ? `<tfoot><tr>${bulk ? '<td></td>' : ''}${cols.map((k, i) => { const f = E.fields.find(x => x.k === k); return (f?.t === 'money' || VIRT_MONEY.has(k)) ? `<td class="num" data-sum="${k}">${fm(d.rows.reduce((s, r) => s + (+r[k] || 0), 0))}</td>` : `<td${i === 0 ? ' data-sumlab' : ''}>${i === 0 ? (d.rows.length < d.total ? 'Tổng <span class="muted small">(đang tính…)</span>' : 'Tổng') : ''}</td>`; }).join('')}</tr></tfoot>` : ''}</table>`
       : `<div class="empty">${ico(E.icon)}Chưa có ${esc(E.one)} nào${S.q || S.status ? ' khớp bộ lọc' : ''}.${E.perm.c && ent !== 'reservation' ? ' Bấm «Tạo ' + esc(E.one) + '» để bắt đầu.' : ''}</div>`;
+    $$('input[data-dp]', main).forEach(addPicker);
     $('#more', main).innerHTML = d.rows.length < d.total ? `<button class="btn" id="moreBtn">Tải thêm (${d.total - d.rows.length} còn lại)</button>` : '';
     // 15/11/2026: dòng «Tổng» = tổng TOÀN BỘ bản ghi khớp bộ lọc, không chỉ các dòng đang hiện (danh sách chỉ tải 300 dòng đầu)
     if (d.rows.length < d.total && $('[data-sum]', main)) {
@@ -1952,7 +1973,7 @@ async function listView(main, ent, params = {}) {
       toast(`Thành công ${r.ok}${r.errors.length ? ` · lỗi ${r.errors.length}: ${r.errors.slice(0, 2).map(x => '#' + x.id + ' ' + x.msg).join('; ')}` : ''}`, !!r.errors.length);
       S.sel.clear(); updateBadges(); return load();
     }
-    if (t.closest('[data-ret], .ret-fi a')) return;
+    if (t.closest('[data-ret], .ret-fi a, .dwrap-in')) return;
     const ru = t.closest('[data-retup]'), rd = t.closest('[data-retdel]');
     if (ru) { const id = +ru.closest('tr[data-id]').dataset.id, i = document.createElement('input'); i.type = 'file'; i.multiple = true; i.accept = '.pdf,.png,.jpg,.jpeg,.webp'; i.onchange = run(async () => { const fd = new FormData(); fd.append('kind', 'tra_ho_so'); [...i.files].forEach(f => fd.append('file', f, f.name)); await api('POST', `/api/files/reservation/${id}`, fd); toast('Đã đính kèm file scan trả hồ sơ'); load(); }); return i.click(); }
     if (rd) { if (!await ask('Xóa tệp', 'Xóa file scan này? (Lịch sử vẫn ghi lại)', { danger: 1, okLabel: 'Xóa' })) return; await api('DELETE', `/api/file/${rd.dataset.retdel}`); return load(); }
@@ -1963,7 +1984,8 @@ async function listView(main, ent, params = {}) {
   });
   main.onchange = run(async e => {
     const t = e.target.closest('[data-ret]'); if (!t) return;
-    const k = t.dataset.ret, v = t.value || null;
+    const k = t.dataset.ret, v = k === 'doc_ret_on' ? (t.value.trim() ? parseDmy(t.value) : null) : t.value || null;
+    if (k === 'doc_ret_on' && t.value.trim() && !v) return toast('Ngày không hợp lệ — nhập dd/mm/yyyy', true);
     if (k === 'doc_ret') t.className = `ret-st ${v === 'da_tra' ? 'g' : 'a'}`;
     const patch = { [k]: v };
     if (k === 'doc_ret' && v === 'da_tra' && !t.closest('tr').querySelector('[data-ret=doc_ret_on]').value) patch.doc_ret_on = today();   // chọn Đã trả mà chưa có ngày → lấy hôm nay
@@ -2004,7 +2026,7 @@ async function suggestModal() {
 async function importModal(kind, after) {
   const I = M.imports[kind];
   const m = modal({ title: `${ico('fa-file-import')} Nhập ${esc(I.title)}`, body: `<div class="warnbar">${ico('fa-circle-info')}<div>${esc(I.note || 'Dùng đúng tệp mẫu. Mỗi dòng được kiểm tra theo luật như nhập tay; dòng lỗi bị bỏ qua và báo lại số dòng.')}<br>Bấm <b>Kiểm tra trước</b> để chạy thử (không ghi dữ liệu), rồi <b>Nhập</b>.</div></div>
-    <div class="row mb"><button class="btn" id="tpl">${ico('fa-download')} Tải tệp mẫu</button>${kind === 'misa' ? `<button class="btn" id="tplT" title="File giả lập sổ quỹ MISA theo các hợp đồng thử đang nợ — tải về rồi chọn lại để thử nhập">${ico('fa-flask')} Tải file MISA thử</button>` : ''}<input type="file" id="ifile" accept=".xlsx,.csv" class="inp" style="padding-top:5px;flex:1"></div><div id="ires"></div>`,
+    <div class="row mb"><button class="btn" id="tpl">${ico('fa-download')} Tải tệp mẫu</button>${kind === 'misa' && M.testTools ? `<button class="btn" id="tplT" title="File giả lập sổ quỹ MISA theo các hợp đồng thử đang nợ — tải về rồi chọn lại để thử nhập">${ico('fa-flask')} Tải file MISA thử</button>` : ''}<input type="file" id="ifile" accept=".xlsx,.csv" class="inp" style="padding-top:5px;flex:1"></div><div id="ires"></div>`,
     foot: `<button class="btn" data-x>Đóng</button><button class="btn" id="iDry">${ico('fa-list-check')} Kiểm tra trước</button><button class="btn pri" id="iGo">${ico('fa-file-import')} Nhập</button>` });
   $('#tpl', m.el).onclick = () => download(`/api/import/template/${kind}`);
   if ($('#tplT', m.el)) $('#tplT', m.el).onclick = run(() => download('/api/import/misa-sample'));
