@@ -478,6 +478,9 @@ def('contract', {
     { k: 'unit_id', l: 'Mã căn hộ', t: 'ref', ref: 'unit', req: 1, dep: 'building_id',
       fill: { area_tt: 'area_tt', base_price: 'base_price', pretax: 'pretax', vat_pct: 'vat_pct', vat_amt: 'tax_amt', after_tax: 'price_net', maint_fee: 'maint_fee', finish_value: 'finish_value', value: 'total_price', area_land: 'area_dat', area_build: 'area_xd' } },
     { k: 'reservation_id', l: 'Phiếu giữ chỗ', t: 'ref', ref: 'reservation', ro: 1 },
+    // 15/11/2026: HĐ tự lập khi hồ sơ mua / thuê NOXH chuyển «Chờ xét duyệt» — mỗi hồ sơ 1 HĐ; noxh_wait = «Dự thảo – Chờ duyệt hồ sơ» (chưa trình / ký được tới khi SXD duyệt đủ điều kiện)
+    { k: 'noxh_id', l: 'Hồ sơ NOXH', t: 'ref', ref: 'noxh_check', ro: 1 },
+    { k: 'noxh_wait', l: 'Chờ duyệt hồ sơ NOXH', t: 'bool', ro: 1, noForm: 1 },
     // bên mua nhà ở
     { k: 'customer_id', l: 'Khách hàng (chủ hợp đồng)', t: 'ref', ref: 'customer', req: 1, sec: 'Bên mua nhà ở', byUnit: 'unit_id',   // HĐMB: chọn trong khách gắn với căn (15/11/2026)
       fill: { b_id_no: 'id_no', b_id_date: 'id_date', b_id_place: 'id_place', b_addr: 'address', b_phone: 'phone', b_email: 'email', b_bank_acc: 'bank_account' } },
@@ -590,7 +593,7 @@ def('contract', {
     { k: 'pay_period', l: 'Kỳ thanh toán', t: 'sel', o: [['thang', 'Tháng'], ['quy', 'Quý'], ['nam', 'Năm']], hide: 1 },
     { k: 'free_months', l: 'Miễn tiền thuê (tháng)', t: 'int', hide: 1 },
     owner('Nhân viên KD'),
-    { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'du_thao', o: [['du_thao', 'Dự thảo', 's'], ['cho_duyet', 'Đang rà soát', 'a'], ['cho_ky', 'Chờ ký', 'b'], ['tu_choi', 'Trả lại dự thảo', 'r'], ['da_ky', 'Đã ký', 'g'], ['thanh_ly', 'Đã thanh lý', 't'], ['huy', 'Đã hủy', 's']] },
+    { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'du_thao', alt: { flag: 'noxh_wait', v: 'du_thao', l: 'Dự thảo – Chờ duyệt hồ sơ', c: 'a' }, o: [['du_thao', 'Dự thảo', 's'], ['cho_duyet', 'Đang rà soát', 'a'], ['cho_ky', 'Chờ ký', 'b'], ['tu_choi', 'Trả lại dự thảo', 'r'], ['da_ky', 'Đã ký', 'g'], ['thanh_ly', 'Đã thanh lý', 't'], ['huy', 'Đã hủy', 's']] },
   ], list: ['number', 'contract_on', 'kind', 'unit_id', 'customer_id', 'value', 'plan_sign', 'sign_status', 'signed_on', 'status'],
   lock: ['da_ky', 'thanh_ly', 'huy'], lockKeep: ['sign_status', 'sign_place', 'plan_sign', 'owner_id', 'late_rate', 'new_schedule', 'sale_on', 'sale_sched', 'loan_status', 'loan_bank', 'loan_doc3', 'liquidated_on', 'liquidate_reason', 'liquidate_note'],
   // đã trình duyệt / chờ ký: nhân viên chỉ sửa được lần thanh toán (+ lockKeep); quản lý vẫn sửa được
