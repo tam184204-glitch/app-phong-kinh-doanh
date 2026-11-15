@@ -1889,3 +1889,6 @@ label.tplr { display: flex; gap: 8px; align-items: center; padding: 7px 0; }
 .sched-v th:nth-child(1) { width: 52px; } .sched-v th:nth-child(3) { width: 230px; } .sched-v th:nth-child(4) { width: 90px; }
 .sched-v td:nth-child(2) { white-space: normal; line-height: 1.4; }
 .sched-v td.nowrap { white-space: normal; }
+
+/* 15/11/2026: tạm ẩn các nút lấy tiến độ (mẫu NOXH / Thương mại + ngày gốc, «Lấy tiến độ nội thất theo chính sách», «Lấy tiến độ theo chính sách») — tiến độ vẫn tự sổ theo chính sách */
+.sched-pre, .ht-pol, .ss-pol { display: none !important; }
