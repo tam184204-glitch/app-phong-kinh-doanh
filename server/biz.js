@@ -1042,9 +1042,13 @@ H.noxh_check = {
     if (['plan_sign', 'sign_place', 'sign_status'].some(k => String(old?.[k] ?? '') !== String(r[k] ?? '')))
       await db.q(`UPDATE kd_contract SET plan_sign = $1, sign_place = $2, sign_status = coalesce($3, sign_status), updated_at = now() WHERE customer_id = $4 AND ($5::int IS NULL OR unit_id = $5) AND status IN ('du_thao', 'cho_duyet', 'tu_choi')`,
         [r.plan_sign ?? null, r.sign_place ?? null, r.sign_status ?? null, r.customer_id, r.unit_id ?? null]);
-    if (!r.reservation_id || old?.status === r.status) return;
-    const s = await raw(db, 'reservation', r.reservation_id), to = { cho_duyet: 'cho_xet_duyet', da_duyet: 'du_dk' }[r.status];
-    if (s && to && REG_ORDER.indexOf(to) > REG_ORDER.indexOf(s.progress)) await sys(db, 'reservation', s.id, { progress: to }, user, 'cap_nhat_tien_trinh', `Theo hồ sơ NOXH #${r.id}`);
+    // tiến trình giao dịch của phiếu đăng ký theo hồ sơ NOXH: Chờ xét duyệt → «Đã nộp hồ sơ chờ xét duyệt»; Đã duyệt SXD → «Đủ điều kiện ký HĐMB»,
+    // 15/11/2026: SXD xét duyệt KHÔNG đủ điều kiện → «Không đủ điều kiện» (kể cả khi chỉ sửa lại kết quả xét duyệt); phiếu đã ký HĐMB giữ nguyên
+    if (!r.reservation_id || (old?.status === r.status && (old?.sxd_result ?? null) === (r.sxd_result ?? null))) return;
+    const s = await raw(db, 'reservation', r.reservation_id); if (!s || s.progress === 'da_ky') return;
+    const to = r.status === 'da_duyet' ? (r.sxd_result === 'khong_duyet' ? 'khong_du_dk' : 'du_dk') : r.status === 'cho_duyet' ? 'cho_xet_duyet' : null;
+    if (to && to !== s.progress && (to === 'khong_du_dk' || s.progress === 'khong_du_dk' || REG_ORDER.indexOf(to) > REG_ORDER.indexOf(s.progress)))
+      await sys(db, 'reservation', s.id, { progress: to }, user, 'cap_nhat_tien_trinh', `Theo hồ sơ NOXH #${r.id}${to === 'khong_du_dk' ? ' — Sở Xây dựng xét duyệt không đủ điều kiện' : ''}`);
   },
   acts: {
     async review(r, d, { user }) {

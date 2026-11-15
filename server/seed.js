@@ -214,6 +214,7 @@ async function ensureTemplates() {
     await db.q(`UPDATE kd_reservation r SET reg_state = CASE WHEN r.status IN ('huy','het_han','tu_choi') THEN 'huy'
       WHEN EXISTS (SELECT 1 FROM kd_contract c WHERE c.reservation_id = r.id AND c.status = 'da_ky') THEN 'ky_hdmb' ELSE 'giu_cho' END WHERE r.reg_state IS NULL`);
     await db.q(`UPDATE kd_reservation r SET progress = CASE WHEN r.reg_state = 'ky_hdmb' THEN 'da_ky'
+      WHEN EXISTS (SELECT 1 FROM kd_noxh_check n WHERE n.reservation_id = r.id AND n.status = 'da_duyet' AND n.sxd_result = 'khong_duyet') THEN 'khong_du_dk'
       WHEN r.status = 'chuyen_hd' OR EXISTS (SELECT 1 FROM kd_noxh_check n WHERE n.reservation_id = r.id AND n.status = 'da_duyet') THEN 'du_dk'
       WHEN EXISTS (SELECT 1 FROM kd_noxh_check n WHERE n.reservation_id = r.id AND n.status = 'cho_duyet') THEN 'cho_xet_duyet' ELSE 'tiep_nhan' END WHERE r.progress IS NULL`);
   });
