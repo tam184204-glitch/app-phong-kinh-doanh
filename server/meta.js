@@ -479,7 +479,7 @@ def('contract', {
       fill: { area_tt: 'area_tt', base_price: 'base_price', pretax: 'pretax', vat_pct: 'vat_pct', vat_amt: 'tax_amt', after_tax: 'price_net', maint_fee: 'maint_fee', finish_value: 'finish_value', value: 'total_price', area_land: 'area_dat', area_build: 'area_xd' } },
     { k: 'reservation_id', l: 'Phiếu giữ chỗ', t: 'ref', ref: 'reservation', ro: 1 },
     // bên mua nhà ở
-    { k: 'customer_id', l: 'Khách hàng (chủ hợp đồng)', t: 'ref', ref: 'customer', req: 1, sec: 'Bên mua nhà ở',
+    { k: 'customer_id', l: 'Khách hàng (chủ hợp đồng)', t: 'ref', ref: 'customer', req: 1, sec: 'Bên mua nhà ở', byUnit: 'unit_id',   // HĐMB: chọn trong khách gắn với căn (15/11/2026)
       fill: { b_id_no: 'id_no', b_id_date: 'id_date', b_id_place: 'id_place', b_addr: 'address', b_phone: 'phone', b_email: 'email', b_bank_acc: 'bank_account' } },
     { k: 'b_id_no', l: 'Số CMND / CCCD', t: 'text', pii: 1 },
     { k: 'b_id_date', l: 'Ngày cấp', t: 'date', pii: 1 },

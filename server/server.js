@@ -274,6 +274,7 @@ R('POST', '/api/bulk/:ent/:op', async (req, res, u, p) => {
 });
 R('GET', '/api/opts/:ent', async (req, res, u, p, qs) => {
   const e = M.E[p.ent] || bad('Loại dữ liệu không hợp lệ'); if (!can(u, e, 'r')) return send(res, 200, []);
+  if (p.ent === 'customer' && qs.unit && !qs.id) return send(res, 200, await B.unitCustomers({ q, one }, +qs.unit, qs.q));   // HĐMB: khách gắn với căn + tình trạng hồ sơ NOXH (15/11/2026)
   const w = [], params = [];
   if (qs.q) { params.push(`%${qs.q}%`); w.push(`(${e.disp}) ILIKE $${params.length}`); }
   if (qs.id) { params.push(+qs.id); w.push(`t.id = $${params.length}`); }

@@ -278,7 +278,7 @@ function input(f, v, rec = {}, { ro, id } = {}) {
     case 'bool': return `<label class="chk" style="height:38px"><input type="checkbox" ${nm} ${v ? 'checked' : ''}> Có</label>`;
     case 'user': { const us = M.users.filter(u => (u.active || u.id === v) && (!f.roles || f.roles.includes(u.role) || u.role === 'admin')); return `<select ${nm}><option value="">— chọn —</option>${us.map(u => `<option value="${u.id}" ${u.id === v ? 'selected' : ''}>${esc(u.full_name)} · ${esc(roleName(u.role))}</option>`).join('')}</select>`; }
     case 'ref': if (f.auto) return `<div class="ref-auto"><input type="text" readonly tabindex="-1" placeholder="${esc(f.autoPh || 'Tự lấy')}" value="${esc(rec[f.k + '__l'] ?? '')}" style="background:var(--soft, #f4f6f9);cursor:default"><input type="hidden" ${nm} value="${esc(v ?? '')}"></div>`;   // ô tự điền (chỉ đọc)
-      return `<div class="combo" data-ref="${f.ref}" ${f.filter ? `data-filter="${f.filter}"` : ''} ${f.dep ? `data-dep="${f.dep}"` : ''}><input type="text" placeholder="Gõ để tìm ${esc(M.ents[f.ref].one)}…" value="${esc(rec[f.k + '__l'] ?? '')}" autocomplete="off" data-combo><input type="hidden" ${nm} value="${esc(v ?? '')}"><button type="button" class="x" tabindex="-1" title="Bỏ chọn">${ico('fa-xmark')}</button></div>`;
+      return `<div class="combo" data-ref="${f.ref}" ${f.filter ? `data-filter="${f.filter}"` : ''} ${f.dep ? `data-dep="${f.dep}"` : ''} ${f.byUnit ? `data-byunit="${f.byUnit}"` : ''}><input type="text" placeholder="Gõ để tìm ${esc(M.ents[f.ref].one)}…" value="${esc(rec[f.k + '__l'] ?? '')}" autocomplete="off" data-combo><input type="hidden" ${nm} value="${esc(v ?? '')}"><button type="button" class="x" tabindex="-1" title="Bỏ chọn">${ico('fa-xmark')}</button></div>`;
     case 'refs': { const ids = v || [], ls = String(rec[f.k + '__l'] ?? '').split(', '), lab = (id, i) => { const p = f.ref === 'project' && M.projects.find(x => x.id === id); return p ? `${p.code} · ${p.name}` : ids.length === ls.length ? ls[i] : '#' + id; };
       return `<div class="combo multi" data-ref="${f.ref}" data-multi><div class="chips">${ids.map((id, i) => `<span class="chip" data-id="${id}">${esc(lab(id, i))}<button type="button" tabindex="-1" title="Bỏ">${ico('fa-xmark')}</button></span>`).join('')}<input type="text" placeholder="${ids.length ? 'Thêm' : 'Gõ để tìm'} ${esc(M.ents[f.ref].one)}…" autocomplete="off" data-combo></div><input type="hidden" ${nm} value="${esc(ids.join(','))}"></div>`; }
     case 'check': return `<div class="cklist${f.qty ? ' qty' : ''}" ${nm} ${f.qty ? 'data-qty' : ''}>${checkRows(v || [], f.qty)}</div>`;
@@ -436,7 +436,12 @@ function combo(c, root, onChange) {
     const p = new URLSearchParams({ q: txt.value.trim() });
     if (c.dataset.filter) p.set('filter', c.dataset.filter);
     if (c.dataset.dep) { const d = $(`[name="${c.dataset.dep}"]`, root)?.value; if (d) { p.set('dep', c.dataset.dep); p.set('depv', d); } }
+    // HĐMB (15/11/2026): ô khách hàng chỉ hiện khách gắn với căn đã chọn + tình trạng xét duyệt hồ sơ NOXH; chưa chọn căn thì nhắc chọn căn trước
+    const byU = c.dataset.byunit && ($('[name="kind"]', root)?.value || 'hdmb') === 'hdmb', uv = byU ? $(`[name="${c.dataset.byunit}"]`, root)?.value : null;
+    if (byU && !uv) { items = []; if (document.activeElement !== txt) return; close(); box = document.createElement('div'); box.className = 'opts'; box.innerHTML = '<div class="muted">Chọn mã căn hộ trước — danh sách khách hàng theo căn đã chọn</div>'; c.append(box); return; }
+    if (uv) p.set('unit', uv);
     try { items = await api('GET', `/api/opts/${ref}?${p}`); } catch { items = []; }
+    if (uv && !items.length && document.activeElement === txt) { close(); box = document.createElement('div'); box.className = 'opts'; box.innerHTML = '<div class="muted">Căn này chưa có khách hàng đăng ký / hồ sơ NOXH</div>'; c.append(box); return; }
     if (multi) items = items.filter(it => !ids().includes(it.id));
     if (document.activeElement !== txt) return;
     close(); box = document.createElement('div'); box.className = 'opts'; cur = -1;
@@ -1152,7 +1157,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   if (ent === 'contract' && htp && id && rec.unit_id && !htLocked) api('GET', `/api/contract-prefill/${rec.unit_id}`).then(htFin).catch(() => {});   // HĐ đã lưu: nút lấy tiến độ nội thất / điền nếu tab trống
   const contractPrefill = async unit => {
     const d = await api('GET', `/api/contract-prefill/${unit}`);
-    pickRef('customer_id', d.customer_id, d.customer_label);
+    if ((form.elements.kind?.value ?? rec.kind) !== 'hdmb') pickRef('customer_id', d.customer_id, d.customer_label);   // HĐMB (15/11/2026): không tự điền khách — chọn ở ô Mã khách hàng (khách gắn với căn + tình trạng hồ sơ)
     if (d.request_on && form.elements.request_on && !form.elements.request_on.value) form.elements.request_on.value = dmy(d.request_on);
     if (d.finish_value != null && form.elements.finish_value) form.elements.finish_value.value = moneyStr(d.finish_value);
     const o = form.elements.owner_id; if (d.owner_id && o?.tagName === 'SELECT' && [...o.options].some(x => x.value === String(d.owner_id))) o.value = d.owner_id;
@@ -1250,6 +1255,12 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   // phiếu đăng ký: Tổng giá bán = Giá trị căn hộ + Giá trị hoàn thiện nội thất
   const sumRes = () => { const rd = k => readField(form, fields.find(f => f.k === k) || {}), uv = rd('unit_value'); if (uv != null && form.elements.price) form.elements.price.value = moneyStr(uv + (rd('finish_value') || 0)); };
   if (ent === 'reservation') form.addEventListener('input', e => { if (['unit_value', 'finish_value'].includes(e.target.name)) sumRes(); });
+  // HĐMB (15/11/2026): chọn khách chưa có hồ sơ NOXH đủ điều kiện tại căn → báo ngay (máy chủ chặn khi lưu)
+  if (ent === 'contract') form.addEventListener('change', async e => {
+    if (e.target.name !== 'customer_id' || !e.target.value || (form.elements.kind?.value ?? rec.kind) !== 'hdmb' || !form.elements.unit_id?.value) return;
+    try { const it = (await api('GET', `/api/opts/customer?unit=${form.elements.unit_id.value}`)).find(x => x.id === +e.target.value);
+      if (it && !it.ok) toast(`Khách hàng ${it.label} chưa được Sở Xây dựng xét duyệt đủ điều kiện mua nhà ở xã hội tại căn này (${it.sub.replace(/^[✓✗]\s*/, '')}) — không tạo được Hợp đồng mua bán`, true); } catch { }
+  });
   // phiếu đăng ký (14/11/2026): chọn căn / đổi nguồn bán / đại lý → chính sách được duyệt gần nhất cho căn + người bán, giá trị hoàn thiện theo danh sách của chính sách
   const resPol = async uid => {
     uid = uid || form.elements.unit_id?.value; if (!uid || !form.elements.unit_value || form.elements.deal?.value === 'thue') return;

@@ -800,6 +800,36 @@ async function saleCheck(db, unitId, cache = new Map()) {   // cache: theo dự 
 const saleWarn = async (db, r, warn) => { const sc = await saleCheck(db, r.unit_id); r.sale_check = sc?.text ?? null; if (sc && !sc.ok) warn.push(sc.text.slice(2)); };
 const saleLive = async (db, rows) => { const c = new Map(); for (const r of rows) if (r.unit_id) r.sale_check = (await saleCheck(db, r.unit_id, c))?.text ?? r.sale_check; };   // danh sách / chi tiết: theo thông báo hiện tại
 
+// ===== HĐMB căn hộ NOXH (15/11/2026): chỉ lập khi khách có hồ sơ NOXH tại đúng căn được Sở Xây dựng xét duyệt đủ điều kiện =====
+// hồ sơ NOXH mới nhất của khách tại căn (theo căn ghi ở hồ sơ hoặc căn của phiếu đăng ký) → tình trạng xét duyệt
+const NOXH_ST = { chua_co: 'Chưa có hồ sơ NOXH', tra_lai: 'Hồ sơ bị trả lại', tiep_nhan: 'Đang tiếp nhận hồ sơ — chưa nộp Sở Xây dựng', cho_duyet: 'Đang chờ Sở Xây dựng xét duyệt',
+  khong_du_dk: 'Sở Xây dựng xét duyệt KHÔNG đủ điều kiện', du_dk: 'Đủ điều kiện — Sở Xây dựng đã duyệt' };
+const noxhKey = n => !n ? 'chua_co' : n.status === 'tu_choi' ? 'tra_lai' : n.status === 'nhap' ? 'tiep_nhan' : n.status === 'cho_duyet' ? 'cho_duyet' : n.sxd_result === 'khong_duyet' ? 'khong_du_dk' : 'du_dk';
+const noxhLast = (db, customerId, unitId) => db.one(`SELECT n.status, n.sxd_result FROM kd_noxh_check n LEFT JOIN kd_reservation r ON r.id = n.reservation_id
+  WHERE n.customer_id = $1 AND (n.unit_id = $2 OR r.unit_id = $2) ORDER BY n.id DESC LIMIT 1`, [customerId, unitId]);
+// căn phải xét: căn hộ chung cư thuộc dự án nhà ở xã hội / hỗn hợp (liền kề, shophouse, dự án thương mại không xét)
+async function noxhUnit(db, unitId) {
+  const u = unitId ? await db.one('SELECT u.code, u.kind, p.kind pkind FROM kd_unit u JOIN kd_project p ON p.id = u.project_id WHERE u.id = $1', [unitId]) : null;
+  return u && ['noxh', 'hon_hop'].includes(u.pkind) && !['lien_ke', 'shophouse'].includes(u.kind) ? u : null;
+}
+async function noxhGate(db, kind, customerId, unitId) {
+  if (kind !== 'hdmb' || !customerId || !unitId) return;
+  const u = await noxhUnit(db, unitId); if (!u) return;
+  const st = noxhKey(await noxhLast(db, customerId, unitId)); if (st === 'du_dk') return;
+  const k = await db.one('SELECT code, full_name FROM kd_customer WHERE id = $1', [customerId]);
+  bad(`Không tạo được Hợp đồng mua bán: khách hàng ${[k?.code, k?.full_name].filter(Boolean).join(' · ')} chưa có hồ sơ được Sở Xây dựng xét duyệt đủ điều kiện mua nhà ở xã hội tại căn ${u.code} (tình trạng hồ sơ: ${NOXH_ST[st]})`, { fields: ['customer_id'] });
+}
+// ô «Mã khách hàng» của HĐMB: khách gắn với căn (phiếu đăng ký còn hiệu lực / hồ sơ NOXH tại căn) + họ tên + tình trạng xét duyệt hồ sơ
+async function unitCustomers(db, unitId, q) {
+  const params = [+unitId]; let w = '';
+  if (q) { params.push(`%${q}%`); w = ` AND (k.code || ' · ' || k.full_name) ILIKE $2`; }
+  const ks = await db.q(`SELECT k.id, k.code, k.full_name FROM kd_customer k WHERE k.id IN (
+      SELECT customer_id FROM kd_reservation WHERE unit_id = $1 AND status NOT IN ('huy','het_han') AND customer_id IS NOT NULL
+      UNION SELECT n.customer_id FROM kd_noxh_check n LEFT JOIN kd_reservation r ON r.id = n.reservation_id WHERE (n.unit_id = $1 OR r.unit_id = $1) AND n.customer_id IS NOT NULL)${w} ORDER BY k.code`, params);
+  const need = !!(await noxhUnit(db, unitId)), out = [];
+  for (const k of ks) { const st = noxhKey(await noxhLast(db, k.id, unitId)); out.push({ id: k.id, label: [k.code, k.full_name].filter(Boolean).join(' · '), sub: need ? (st === 'du_dk' ? '✓ ' : '✗ ') + NOXH_ST[st] : NOXH_ST[st], ok: !need || st === 'du_dk' }); }
+  return out.sort((a, b) => b.ok - a.ok);
+}
 // form phiếu đăng ký (14/11/2026): chọn căn / đổi nguồn bán → chính sách được duyệt gần nhất + giá trị hoàn thiện theo chính sách
 async function resPolicy(db, qs) {
   const u = +qs.unit ? await raw(db, 'unit', +qs.unit) : null; if (!u) return { policy: null };
@@ -929,6 +959,7 @@ H.reservation = {
       if (r.deal !== 'thue' && d.kind === 'thue') bad('Phiếu đăng ký mua không lập hợp đồng thuê — sửa phiếu sang «Đăng ký thuê» và nhập tiền thuê/tháng, hoặc lập phiếu đăng ký thuê mới');
       const kind = r.deal === 'thue' ? 'thue' : d.kind, n = +r.term_months || 12, a = d.plan_sign || today();   // phiếu thuê luôn ra HĐ thuê
       const rent = kind === 'thue' ? { rent: r.rent, term_months: n, eff_on: a, exp_on: addDays(addMonths(a, n), -1), value: Math.round(+r.rent * n) } : { value: r.price };
+      await noxhGate(db, kind, r.customer_id, r.unit_id);   // lập HĐMB từ phiếu: cũng phải có hồ sơ NOXH đủ điều kiện (15/11/2026)
       const c = (await create('contract', { kind, number: d.number, plan_sign: d.plan_sign, unit_id: r.unit_id, customer_id: r.customer_id, ...rent, owner_id: r.owner_id || user.id, reservation_id: r.id },
         user, { db, system: true, demo })).row;
       await markCustomer(db, r.customer_id, user);
@@ -1366,6 +1397,8 @@ H.contract = {
   },
   async beforeSave(r, old, ctx) {
     const { db, opts } = ctx;
+    // HĐMB căn hộ NOXH: chỉ lập khi khách có hồ sơ được Sở Xây dựng xét duyệt đủ điều kiện tại căn (tạo mới / đổi khách, đổi căn ở HĐ chưa duyệt); nhập file / dữ liệu thử (system) không xét
+    if (!opts?.system && r.kind === 'hdmb' && (!old || (['du_thao', 'tu_choi'].includes(old.status) && (old.customer_id !== r.customer_id || old.unit_id !== r.unit_id)))) await noxhGate(db, r.kind, r.customer_id, r.unit_id);
     r.number = r.number?.trim().toUpperCase().replace(/\s+/g, '') || null;
     // phân loại theo loại căn
     if (!old || old.unit_id !== r.unit_id || !r.ptype) { const u0 = await raw(db, 'unit', r.unit_id); if (u0) r.ptype = ['lien_ke', 'shophouse'].includes(u0.kind) ? 'lien_ke' : 'can_ho'; }
@@ -1976,4 +2009,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { saleTrack, policyUnits, resPolicy, bgSet, bgSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, bgSet, bgSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
