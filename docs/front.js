@@ -1125,7 +1125,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     const has = x => x.days != null && x.days !== '';
     if (htp.finSched(d.fin_sched.map(x => ({ name: x.name, pct: x.pct, amount: null, due_on: '', ...(has(x) && +x.days ? { _days: +x.days } : { _d0: true }) })), d.fin_policy)) toast(`Tiến độ nội thất điền ở tab Hoàn thiện căn hộ theo chính sách ${d.fin_policy}`);
   };
-  if (ent === 'contract' && htp && id && rec.unit_id && !htLocked) api('GET', `/api/contract-prefill/${rec.unit_id}`).then(htFin).catch(() => {});   // HĐ đã lưu: nút lấy tiến độ nội thất / điền nếu tab trống
+  if (ent === 'contract' && htp && id && rec.unit_id && !htLocked) api('GET', `/api/contract-prefill/${rec.unit_id}`).then(d => { if (+d.finish_value > 0 && form.elements.ptype?.value !== 'lien_ke') htp.finish(d.finish_value); htFin(d); }).catch(() => {});   // + giá trị hoàn thiện theo chính sách nếu tab còn trống (15/11/2026)   // HĐ đã lưu: nút lấy tiến độ nội thất / điền nếu tab trống
   const contractPrefill = async unit => {
     const d = await api('GET', `/api/contract-prefill/${unit}`);
     pickRef('customer_id', d.customer_id, d.customer_label);

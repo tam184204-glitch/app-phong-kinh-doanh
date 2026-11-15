@@ -347,7 +347,10 @@ async function contractPrefill(db, unitId, on = today()) {
   const cur = (await pricing(db, u, on)).policy, p0 = res?.policy_id ? await raw(db, 'price_policy', res.policy_id) : null, pol = p0 || cur;
   const sp = p0?.pay_sched?.length ? p0 : cur?.pay_sched?.length ? cur : null;
   const fp = p0?.fin_sched?.length ? p0 : cur?.fin_sched?.length ? cur : null;   // tiến độ nội thất (HĐ hoàn thiện) lấy riêng — chính sách không khai tiến độ HĐMB vẫn có (14/11/2026)
-  return { customer_id: res?.customer_id ?? null, customer_label: res?.customer_label ?? null, request_on: res?.reg_date ?? null, finish_value: res?.finish_value ?? null, owner_id: res?.owner_id ?? null,
+  // 15/11/2026: giá trị hoàn thiện — phiếu giữ chỗ có số thì theo phiếu; không thì theo giá trị khai cho căn ở chính sách (finish_vals); không có nữa thì theo bảng hàng
+  const fk = String(u.code || '').toUpperCase().trim(), pfv = [p0, cur, fp].map(p => p?.finish_vals?.[fk]).find(v => v != null);
+  const fval = +res?.finish_value > 0 ? +res.finish_value : pfv != null ? +pfv : +u.finish_value > 0 ? +u.finish_value : res?.finish_value ?? null;
+  return { customer_id: res?.customer_id ?? null, customer_label: res?.customer_label ?? null, request_on: res?.reg_date ?? null, finish_value: fval, owner_id: res?.owner_id ?? null,
     policy_id: pol?.id ?? null, policy_label: pol ? `${pol.code} v${pol.version}` : null, ...(sp ? { pay_sched: sp.pay_sched, pay_mdot: sp.pay_mdot ?? 3, sched_policy: `${sp.code} v${sp.version}` } : {}),
     ...(fp ? { fin_sched: fp.fin_sched.map(x => ({ ...x, name: finTxt(x.name) })), fin_policy: `${fp.code} v${fp.version}` } : {}) };
 }
