@@ -636,7 +636,9 @@ H.price_policy = {
     r.project_id = r.project_ids?.[0] ?? null;   // dự án chính = dự án chọn đầu tiên
     if (r.finish_vals != null) {   // giá trị hoàn thiện từng căn: { MÃ CĂN: số tiền ≥ 0 }
       if (typeof r.finish_vals !== 'object' || Array.isArray(r.finish_vals)) bad('Giá trị hoàn thiện căn hộ không hợp lệ');
-      const o = {}; for (const [k, v] of Object.entries(r.finish_vals)) { if (v === '' || v == null) continue; const n = Math.round(+v); if (!(n >= 0)) bad(`Giá trị hoàn thiện căn ${k} không hợp lệ`); o[String(k).toUpperCase().trim()] = n; }
+      const o = {}, miss = Object.entries(r.finish_vals).filter(([, v]) => v === '' || v == null).map(([k]) => k);
+      if (miss.length) bad(`Căn đã tích có hoàn thiện (nội thất) nhưng chưa nhập giá trị hoàn thiện: ${miss.slice(0, 10).join(', ')}${miss.length > 10 ? ` và ${miss.length - 10} căn khác` : ''} — nhập giá trị hoặc bỏ tích`, { fields: ['finish_vals'] });
+      for (const [k, v] of Object.entries(r.finish_vals)) { const n = Math.round(+v); if (!(n >= 0)) bad(`Giá trị hoàn thiện căn ${k} không hợp lệ`); o[String(k).toUpperCase().trim()] = n; }
       r.finish_vals = Object.keys(o).length ? o : null;
     }
     // tiến độ thu tiền (bảng như Lần thanh toán HĐMB): tỷ lệ các đợt đủ 100%; hạn = số ngày sau ngày ký HĐMB (trống = chưa có ngày cố định, nhập ở HĐ), không lùi;

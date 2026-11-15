@@ -593,8 +593,8 @@ async function printReservation(id, user, kind, tplCode) {
   const k = r.customer_id ? await one('SELECT tax_code FROM kd_customer WHERE id = $1', [r.customer_id]) : null;
   const pol = r.policy_id ? await one('SELECT code, version FROM kd_price_policy WHERE id = $1', [r.policy_id]) : null;
   const lab = (f, v) => E.reservation.fields.find(x => x.k === f).o.find(o => o[0] === v)?.[1] || '';
-  // giá trị hoàn thiện: số nhập trên phiếu đăng ký trước, chưa có thì theo căn / gói / mẫu
-  const finish = r.finish_value ?? u.finish_value ?? u.pk_value ?? require('./mau-dang-ky').NT_GIA[tpl.code];
+  // giá trị hoàn thiện (nội thất): chỉ theo chính sách bán hàng (15/11/2026) — chính sách không khai căn này = không có nội thất
+  const finish = await B.polFinish({ q, one }, u, r.policy_id, r.reg_date || undefined);
   // bảng giá trên đơn = đúng các cột của căn ở Danh mục sản phẩm (cùng cách tính với prodRow, public/screens.js):
   // căn có số Bravo (đơn giá nền, trước thuế, tiền thuế) thì lấy nguyên; chưa có thì tách từ giá sau thuế theo % thuế (mặc định 5%)
   const vat = u.vat_pct ?? 5;

@@ -1295,7 +1295,7 @@ function finishPicker(el, root, { self } = {}) {
   const hid = $('input[type=hidden]', el), box = $('.upick-bd', el), projEl = $('[name="project_ids"]', root), ugEl = $('[name="unit_group"]', root);
   let val = {}; try { val = JSON.parse(hid.value || '{}') || {}; } catch { val = {}; }
   const on = new Set(Object.keys(val)); let units = [], loadedFor = null, bf = '', q = '', bulk = '';
-  hid._get = () => { const o = {}; for (const k of on) if (val[k] != null) o[k] = val[k]; return Object.keys(o).length ? o : null; };
+  hid._get = () => { const o = {}; for (const k of on) o[k] = val[k] ?? ''; return Object.keys(o).length ? o : null; };   // căn đã tích chưa nhập giá vẫn gửi → máy chủ báo lỗi, không lặng lẽ bỏ căn (15/11/2026)
   const KIND = Object.fromEntries(M.ents.unit.fields.find(f => f.k === 'kind').o), K = u => u.code.toUpperCase();
   const gv = u => u.price_net != null ? +u.price_net + (+u.maint_fee || 0) : (+u.total_price || 0) - (+u.finish_value || 0);   // giá căn hộ chưa gồm hoàn thiện
   const fvOf = u => on.has(K(u)) ? +(val[K(u)] || 0) : 0;
