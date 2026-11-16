@@ -581,6 +581,33 @@ async function regTemplates(kind, unitId) {
   const rank = t => (t.scope ? 0 : 2) + (t.bedrooms ? 0 : 1);
   return ts.filter(fit).sort((x, y) => rank(x) - rank(y) || x.id - y.id);
 }
+// «3. Phương thức thanh toán» trên bản đăng ký theo chính sách đang áp cho phiếu (14/11/2026): bản đăng ký căn hộ = Tiến độ thu tiền HĐMB (phí bảo trì
+// ghi vào đợt thu phí bảo trì), bản đăng ký nội thất = Tiến độ thu giá trị hoàn thiện. Chính sách không khai tiến độ → null (giữ nội dung của mẫu)
+function polPayLines(pol, kind) {
+  const pc = v => String(v).replace('.', ','), cut = s => String(s || '').trim().replace(/[.;,\s]+$/, '');
+  if (kind === 'dang_ky_noi_that') {
+    const fs = (Array.isArray(pol?.fin_sched) ? pol.fin_sched : []).filter(x => +x.pct > 0); if (!fs.length) return null;
+    return fs.map((x, i) => { let t = cut(x.name) || `Bên Mua thanh toán cho Bên Bán ${pc(x.pct)}% giá trị gói hoàn thiện`; if (!t.includes('%')) t += ` (${pc(x.pct)}% giá trị gói hoàn thiện)`;
+      return (fs.length > 1 && !/^Đợt\s/i.test(t) ? `Đợt ${i + 1}: ${t}` : t) + '.'; });
+  }
+  const all = Array.isArray(pol?.pay_sched) ? pol.pay_sched : [], ps = all.filter(x => !x.maint && +x.pct > 0), mr = all.find(x => x.maint); if (!ps.length) return null;
+  const mp = pc(pol.maint_pct ?? 2), own = mr && mr.days != null && mr.days !== '' && !ps.some(x => x.days != null && +x.days === +mr.days);   // phí bảo trì có hạn riêng → dòng riêng
+  const mk = !mr || own ? -1 : mr.days != null && mr.days !== '' ? ps.findIndex(x => x.days != null && +x.days === +mr.days) : Math.min(Math.max(1, +pol.pay_mdot || 3), ps.length) - 1;
+  const out = ps.map((x, i) => {
+    let t = cut(x.name) || `Bên Mua thanh toán cho Bên Bán ${pc(x.pct)}% giá trị căn hộ`; if (!t.includes('%')) t += ` (${pc(x.pct)}% giá trị căn hộ)`;
+    if (i === mk && !/bảo trì/i.test(t)) t += ` và ${mp}% phí bảo trì`;
+    return (/^Đợt\s/i.test(t) ? t : `Đợt ${i + 1}: ${t}`) + '.';
+  });
+  if (own) out.push(`${cut(mr.name) || 'Phí bảo trì'}: thanh toán sau ${mr.days} ngày kể từ ngày ký Hợp đồng mua bán.`);
+  return out;
+}
+// thay các đoạn dưới mục «… Phương thức thanh toán» của mẫu (tới mục đánh số kế tiếp / khung ký) bằng tiến độ của chính sách; mẫu có trường {tien_do_thanh_toan} thì điền vào đó
+function payReplace(html, lines) {
+  if (!lines?.length) return html.split('{tien_do_thanh_toan}').join('');
+  const ps = lines.map(t => `<p class="j">${escH(t)}</p>`).join('\n');
+  if (html.includes('{tien_do_thanh_toan}')) return html.split('{tien_do_thanh_toan}').join(ps);
+  return html.replace(/(<p[^>]*>(?:\s|<[^>]+>)*\d+\.\s*Phương thức thanh toán[\s\S]*?<\/p>)[\s\S]*?(?=<p[^>]*>(?:\s|<[^>]+>)*\d+\.\s|<table class="sign")/i, (m, h) => `${h}\n${ps}\n`);
+}
 async function printReservation(id, user, kind, tplCode) {
   if (!can(user, E.reservation, 'r')) deny();
   if (!PRINT_KIND[kind]) bad('Loại bản in không hợp lệ');
@@ -591,7 +618,7 @@ async function printReservation(id, user, kind, tplCode) {
   if (!tpl) bad(`Chưa có mẫu ${PRINT_KIND[kind]} cho căn ${u.code} — tạo ở Quản trị › Mẫu biểu`);
   const pii = ['truong_phong', 'lanh_dao', 'ho_so', 'admin'].includes(user.role);
   const k = r.customer_id ? await one('SELECT tax_code FROM kd_customer WHERE id = $1', [r.customer_id]) : null;
-  const pol = r.policy_id ? await one('SELECT code, version FROM kd_price_policy WHERE id = $1', [r.policy_id]) : null;
+  const pol = r.policy_id ? await one('SELECT code, version, pay_sched, fin_sched, pay_mdot, maint_pct FROM kd_price_policy WHERE id = $1', [r.policy_id]) : null;
   const lab = (f, v) => E.reservation.fields.find(x => x.k === f).o.find(o => o[0] === v)?.[1] || '';
   // giá trị hoàn thiện (nội thất): chỉ theo chính sách bán hàng (15/11/2026) — chính sách không khai căn này = không có nội thất
   const finish = await B.polFinish({ q, one }, u, r.policy_id, r.reg_date || undefined);
@@ -616,7 +643,7 @@ async function printReservation(id, user, kind, tplCode) {
   const html = /^\s*</.test(tpl.content || '');
   const merge = t => t.replace(/\{(\w+)\}/g, (m, x) => x in map ? mergeVal(map, x) : m);
   const body = html
-    ? merge(tpl.content.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, ''))
+    ? merge(payReplace(tpl.content.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, ''), polPayLines(pol, kind)))
     : `<div style="white-space:pre-wrap">${merge(escH(tpl.content))}</div>`;
   await C.audit({ q }, 'reservation', r.id, 'in_' + kind, null, null, user, tpl.code);
   return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${escH(r.code)} – ${escH(tpl.name)}</title><style>
@@ -630,6 +657,14 @@ async function printReservation(id, user, kind, tplCode) {
 }
 
 // phiếu đề nghị hủy giao dịch / đổi căn / đổi khách (3 phần + ký: người lập phiếu – bộ phận kiểm tra – người phê duyệt)
+// phiếu thanh lý chung (16/11/2026): bảng từng hợp đồng — loại, số HĐ, tiền đã thu, khấu trừ, phải hoàn trả + tổng
+function liqLinesHtml(r) {
+  const xs = r.kind === 'thanh_ly' && Array.isArray(r.items) ? r.items : []; if (!xs.length) return '';
+  const KL = Object.fromEntries(E.contract.fields.find(f => f.k === 'kind').o.map(o => [o[0], o[1]])), t = k => xs.reduce((s, x) => s + (+x[k] || 0), 0), m = v => fmtMoney(+v || 0);
+  return `<p>Các hợp đồng thanh lý chung trong phiếu:</p><table class="lq"><tr><th>STT</th><th>Loại hợp đồng</th><th>Số hợp đồng</th><th>Tiền đã thu</th><th>Khấu trừ</th><th>Phải hoàn trả</th></tr>
+${xs.map((x, i) => `<tr><td class="c">${i + 1}</td><td>${escH(KL[x.kind] || x.kind || '')}</td><td>${escH(x.number || '')}</td><td class="n">${m(x.collected)}</td><td class="n">${m(x.deduct)}</td><td class="n">${m(x.refund)}</td></tr>`).join('')}
+<tr><td></td><td colspan="2"><b>Tổng cộng</b></td><td class="n"><b>${m(t('collected'))}</b></td><td class="n"><b>${m(t('deduct'))}</b></td><td class="n"><b>${m(t('refund'))}</b></td></tr></table>`;
+}
 async function printCancelReq(id, user) {
   const { row: r } = await C.get('cancel_req', id, user, { reveal: true });
   const x = await one(`SELECT p.name project, u.code unit, c.number contract, s.code res, nu.code new_unit, nk.full_name new_cust, o.full_name maker
@@ -644,11 +679,11 @@ async function printCancelReq(id, user) {
 <h2>PHIẾU ĐỀ NGHỊ ${escH(lab('kind', r.kind).toUpperCase())}</h2><p class="c">Số: ${escH(r.code)}</p>
 <p class="h">1. Thông tin khách hàng</p>
 <p>Họ tên khách hàng: <b>${v(r.cust_name)}</b></p><p>Số điện thoại: ${v(r.phone)}</p>
-<p>Dự án: ${v(x.project)}&nbsp;&nbsp;&nbsp;&nbsp;Mã căn hộ: <b>${v(x.unit)}</b></p><p>Mã hợp đồng: ${v(x.contract)}${x.res ? `&nbsp;&nbsp;&nbsp;&nbsp;Phiếu giữ chỗ: ${escH(x.res)}` : ''}</p>
+<p>Dự án: ${v(x.project)}&nbsp;&nbsp;&nbsp;&nbsp;Mã căn hộ: <b>${v(x.unit)}</b></p><p>Mã hợp đồng: ${Array.isArray(r.items) && r.items.length > 1 ? escH(r.items.map(i => i.number).join(' + ')) : v(x.contract)}${x.res ? `&nbsp;&nbsp;&nbsp;&nbsp;Phiếu giữ chỗ: ${escH(x.res)}` : ''}</p>
 <p class="h">2. Nội dung đề nghị</p>
 <p>Loại đề nghị: ${kind}</p><p>Phương án xử lý: ${plan}</p>
-<p>Số tiền đề nghị xử lý: <b>${r.pay_amount ? fmtMoney(r.pay_amount) : D}</b> đồng${r.pay_amount ? ` <i>(${moneyWords(r.pay_amount)})</i>` : ''}</p>
-<p>Ngày ký thanh lý HĐMB (nếu có): ${r.liquidate_on ? dmy(r.liquidate_on) : '....../....../......'}</p><p>Ngày đề nghị chi trả: ${r.pay_due ? dmy(r.pay_due) : '....../....../......'}</p>
+${liqLinesHtml(r)}<p>${r.kind === 'thanh_ly' ? 'Tổng số tiền phải hoàn trả' : 'Số tiền đề nghị xử lý'}: <b>${r.pay_amount ? fmtMoney(r.pay_amount) : D}</b> đồng${r.pay_amount ? ` <i>(${moneyWords(r.pay_amount)})</i>` : ''}</p>
+<p>Ngày thanh lý: ${r.liquidate_on ? dmy(r.liquidate_on) : '....../....../......'}</p><p>Ngày dự kiến chi trả: ${r.pay_due ? dmy(r.pay_due) : '....../....../......'}${r.wait_days != null && r.liquidate_on ? ` <i>(ngày thanh lý + ${r.wait_days} ngày)</i>` : ''}</p>
 ${r.reason ? `<p>Lý do: ${escH(r.reason)}</p>` : ''}
 <p class="h">3. Chuyển xử lý</p>
 <p>Bộ phận tiếp nhận xử lý: ${v(r.handler_dept)}</p><p>Hồ sơ kèm theo: ${v(r.attachments)}</p><p>Ghi chú: ${v(r.note)}</p>
@@ -660,6 +695,7 @@ ${r.reason ? `<p>Lý do: ${escH(r.reason)}</p>` : ''}
     @page{size:A4;margin:20mm 15mm 20mm 25mm} body{font:13pt/1.45 "Times New Roman",serif;color:#000;max-width:170mm;margin:auto}
     .qh{text-align:center;line-height:1.3} .qh .tn{display:inline-block;padding-bottom:2pt;border-bottom:1px solid #000} h2{text-align:center;font-size:14pt;margin:14pt 0 2pt}
     p{margin:3pt 0} .c{text-align:center} .r{text-align:right;margin-top:10pt} .h{font-weight:bold;margin-top:9pt}
+    table.lq{width:100%;border-collapse:collapse;margin:4pt 0} table.lq th,table.lq td{border:1px solid #000;padding:2pt 5pt;font-size:12pt} table.lq .n{text-align:right;white-space:nowrap}
     table.sign3{width:100%;border-collapse:collapse;margin-top:6pt;page-break-inside:avoid} table.sign3 td{width:33%;text-align:center;vertical-align:top} table.sign3 tr.nm td{padding-top:70pt}
     ${EDIT_CSS}</style></head><body>${editBar(`Phiếu đề nghị ${escH(r.code)}`)}${editDoc(body)}</body></html>`;
 }

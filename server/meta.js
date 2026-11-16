@@ -100,13 +100,14 @@ def('unit', {
   flow: { field: 'status', submit: ['chua_mo_ban'], approve: { ok: 'con_ban' }, submitLabel: 'Trình duyệt kích hoạt' },
 });
 // đối tượng áp dụng chính sách = người bán nhà cho CĐT (14/11/2026) — khớp với «Nguồn bán» của phiếu đăng ký
-const SELLER_T = [['khach_gt', 'Khách hàng cũ giới thiệu khách hàng mới'], ['ctv', 'Cộng tác viên'], ['cbnv', 'Cán bộ nhân viên'], ['san', 'Đơn vị sàn phân phối']];
+// 14/11/2026: thêm «CĐT bán trực tiếp» — trước chỉ 4 nhóm nên chính sách tích sẵn 4 nhóm không áp cho phiếu nguồn bán Trực tiếp
+const SELLER_T = [['truc_tiep', 'CĐT bán trực tiếp'], ['khach_gt', 'Khách hàng cũ giới thiệu khách hàng mới'], ['ctv', 'Cộng tác viên'], ['cbnv', 'Cán bộ nhân viên'], ['san', 'Đơn vị sàn phân phối']];
 def('price_policy', {
   title: 'Chính sách bán hàng', one: 'chính sách', code: 'DA-02', mod: '02', icon: 'fa-tags', disp: "t.code||' v'||t.version",
   purpose: 'Quản lý phiên bản giá và ưu đãi', users: 'Trưởng phòng / nhân sự được phân quyền',
   how: 'Tạo nháp → trình duyệt → phát hành → tự áp dụng cho giao dịch mới',
   rules: 'Không sửa phiên bản đã phát hành; chính sách hết hạn không tự áp dụng',
-  c: ['truong_phong'], a: ['lanh_dao'], files: [['phe_duyet', 'Quyết định / tờ trình phê duyệt'], ['nguon', 'Tệp nguồn (PDF)']], fields: [
+  c: ['truong_phong'], a: ['truong_phong', 'lanh_dao'], files: [['phe_duyet', 'Quyết định / tờ trình phê duyệt'], ['nguon', 'Tệp nguồn (PDF)']], fields: [   // 14/11/2026: Trưởng phòng được duyệt chính sách (như các phiếu khác)
     { k: 'code', l: 'Mã chính sách', t: 'text', req: 1, help: 'CSBH-2026-01' },
     { k: 'version', l: 'Phiên bản', t: 'int', ro: 1, def: 1 },
     { k: 'project_ids', l: 'Dự án', t: 'refs', ref: 'project', req: 1, help: 'Chọn được nhiều dự án cùng áp dụng một chính sách' },
@@ -121,14 +122,14 @@ def('price_policy', {
     { k: 'pay_method', l: 'Phương thức thanh toán', t: 'long', hide: 1 },
     { k: 'bank_policy', l: 'Chính sách ngân hàng', t: 'long', hide: 1 },
     // 14/11/2026: đối tượng áp dụng = người bán nhà cho CĐT (đại lý / sàn / CTV) — chọn từ danh mục đối tác; ô chữ cũ giữ dữ liệu
-    { k: 'seller_types', l: 'Đối tượng áp dụng', t: 'tags', o: SELLER_T, uiDef: 'khach_gt,ctv,cbnv,san', help: 'Tích những người bán nhà cho CĐT được hưởng chính sách. Không tích = áp dụng cho mọi người bán (kể cả CĐT bán trực tiếp)' },
+    { k: 'seller_types', l: 'Đối tượng áp dụng', t: 'tags', o: SELLER_T, uiDef: 'truc_tiep,khach_gt,ctv,cbnv,san', help: 'Tích những nhóm người bán được hưởng chính sách — mặc định tích cả 5 nhóm = áp dụng cho mọi người bán, kể cả CĐT bán trực tiếp. Bỏ tích nhóm nào thì phiếu của nhóm đó không nhận chính sách này' },
     { k: 'seller_ids', l: 'Chỉ áp dụng cho sàn / CTV cụ thể', t: 'refs', ref: 'agent', help: 'Không bắt buộc. Để trống = mọi sàn / CTV thuộc đối tượng đã tích' },
     { k: 'target', l: 'Đối tượng áp dụng (ghi chú cũ)', t: 'text', hide: 1 },
     { k: 'start_on', l: 'Ngày bắt đầu', t: 'date', req: 1 },
     { k: 'end_on', l: 'Ngày kết thúc', t: 'date', req: 1 },
     { k: 'unit_group', l: 'Căn hộ áp dụng', t: 'text', req: 1, def: '', pick: 'units', help: 'Chỉ hiện căn còn trong bảng hàng (chưa ký HĐMB / vay / thuê). Bấm Tòa để lọc, tích từng căn hoặc cả tòa; «Chọn tất cả» = cả dự án.' },
     // 14/11/2026: giá trị hoàn thiện từng căn khai ở bảng chọn căn { 'CTS-O-0103': 120000000 } — chính sách có hiệu lực thì cập nhật căn chưa bán / phiếu / HĐMB dự thảo
-    { k: 'finish_vals', l: 'Căn hộ có hoàn thiện', t: 'json', pick: 'finish', help: 'Tích căn có hoàn thiện (nội thất) trong các căn đã chọn ở tab 1, nhập giá trị từng căn hoặc nhập 1 lần cho các căn đã tích. Căn không tích = không khai hoàn thiện ở chính sách này' },
+    { k: 'finish_vals', l: 'Căn hộ có hoàn thiện', t: 'json', pick: 'finish', help: 'Nhập giá trị hoàn thiện (nội thất) từng căn, hoặc tích chọn nhiều căn rồi nhập 1 lần và bấm «Áp cho căn đã tích». Căn có số = có hoàn thiện; bỏ tích không xóa số đã nhập — muốn bỏ hoàn thiện của căn thì xóa số ở ô của căn' },
     // tiến độ thu tiền (16/11/2026): HĐMB của các căn đã tích tự lấy «Lần thanh toán» theo đây — hạn = ngày ký HĐMB + số ngày; đợt bàn giao theo thông báo bàn giao
     { k: 'pay_sched', l: 'Tiến độ thu tiền (Lần thanh toán HĐMB)', t: 'json' },
     // 14/11/2026: tiến độ thu GIÁ TRỊ HOÀN THIỆN (nội thất) riêng — chỉ sinh đợt cho căn có giá trị hoàn thiện > 0; căn không có hoàn thiện bỏ qua
@@ -160,14 +161,15 @@ def('customer', {
   purpose: 'Tạo một hồ sơ khách hàng thống nhất', users: 'Nhân viên kinh doanh / hồ sơ',
   how: 'Tìm khách cũ → nếu chưa có thì tạo → kiểm tra trùng → liên kết giao dịch',
   rules: 'Chỉ người có quyền được xem dữ liệu định danh; cảnh báo trùng điện thoại/giấy tờ',
-  c: ['ban_hang', 'truong_phong', 'ho_so', 'cskh'], own: ['ban_hang'], search: ['code', 'full_name', 'phone', 'phone2'], fields: [
-    { k: 'code', l: 'Mã khách hàng', t: 'code', prefix: 'KH', pad: 6, manual: 1, help: 'Để trống → hệ thống tự cấp (KH000001…)' },
+  c: ['ban_hang', 'truong_phong', 'ho_so', 'cskh'], own: ['ban_hang'], search: ['code', 'full_name', 'phone', 'phone2'], listPii: 1, fields: [   // listPii: danh mục hiện đủ STK, CCCD, MST… cho vai trò được xem định danh (07/11/2026)
+    { k: 'code', l: 'Mã khách hàng', t: 'code', prefix: 'KH', pad: 6, manual: 1, help: 'Để trống → hệ thống tự cấp (KH000001…)' },   // hiện lại ở phiếu khách hàng 07/11/2026 (VD mã = mã căn CTS-K-101)
     { k: 'full_name', l: 'Họ tên', t: 'text', req: 1 },
     { k: 'phone', l: 'Điện thoại', t: 'text', req: 1, help: '09xxxxxxxx' },
     { k: 'phone2', l: 'Điện thoại khác', t: 'text' },
-    { k: 'email', l: 'Email', t: 'text' },
-    { k: 'tax_code', l: 'Mã số thuế', t: 'text', pii: 1, help: 'MST cá nhân (thường trùng số CCCD)' },
-    { k: 'bank_account', l: 'Tài khoản ngân hàng', t: 'text', pii: 1, help: 'Số tài khoản - Ngân hàng (VD 0070101168008 - Ngân hàng MB)' },
+    // reqForm: bắt buộc khi tạo khách trên phiếu khách hàng (07/11/2026) — khách tự tạo từ phiếu đăng ký / nhập Excel / lead không bị chặn
+    { k: 'email', l: 'Email', t: 'text' },   // 14/11/2026: Email không bắt buộc
+    { k: 'tax_code', l: 'Mã số thuế', t: 'text', pii: 1, reqForm: 1, help: 'MST cá nhân (thường trùng số CCCD)' },
+    { k: 'bank_account', l: 'Tài khoản ngân hàng', t: 'text', pii: 1, reqForm: 1, help: 'Số tài khoản - Ngân hàng (VD 0070101168008 - Ngân hàng MB)' },
     { k: 'kind', l: 'Phân loại', t: 'sel', def: 'tiem_nang', o: [['tiem_nang', 'Tiềm năng', 'a'], ['giao_dich', 'Đã giao dịch', 'g']] },
     { k: 'stage', l: 'Tình trạng', t: 'sel', def: 'moi', o: [['moi', 'Mới', 's'], ['dang_cham_soc', 'Đang chăm sóc', 'b'], ['hen_tham_quan', 'Hẹn tham quan', 'v'], ['quan_tam_cao', 'Quan tâm cao', 'g'], ['khong_nhu_cau', 'Không có nhu cầu', 'r'],
       // sau mở bán: hồ sơ mua nhà → ký HĐMB → thanh toán → bàn giao → thanh lý
@@ -176,18 +178,18 @@ def('customer', {
       ['lam_don_thanh_ly', 'Làm đơn thanh lý', 'r'], ['da_thanh_ly', 'Đã thanh lý', 's'], ['da_nop_hs_so', 'Đã nộp hồ sơ làm sổ', 'v'], ['da_ra_so', 'Đã ra sổ', 'g']] },
     { k: 'source', l: 'Nguồn khách', t: 'sel', opt: 'nguon_khach', req: 1 },
     { k: 'agent_id', l: 'Đại lý / CTV giới thiệu', t: 'ref', ref: 'agent' },
-    { k: 'interest_project', l: 'Dự án quan tâm', t: 'ref', ref: 'project' },
+    { k: 'interest_project', l: 'Dự án quan tâm', t: 'ref', ref: 'project', reqForm: 1 },
     { k: 'need', l: 'Nhu cầu', t: 'long' },
     money('budget', 'Khả năng tài chính'),
-    { k: 'id_no', l: 'Số CCCD / hộ chiếu', t: 'text', pii: 1 },
-    { k: 'id_date', l: 'Ngày cấp', t: 'date', pii: 1 },
-    { k: 'id_place', l: 'Nơi cấp', t: 'text', pii: 1 },
-    { k: 'birth', l: 'Ngày sinh', t: 'date', pii: 1 },
-    { k: 'address', l: 'Địa chỉ liên hệ', t: 'text' },
+    { k: 'id_no', l: 'Số CCCD / hộ chiếu', t: 'text', pii: 1, reqForm: 1 },
+    { k: 'id_date', l: 'Ngày cấp', t: 'date', pii: 1, reqForm: 1 },
+    { k: 'id_place', l: 'Nơi cấp', t: 'text', pii: 1, reqForm: 1 },
+    { k: 'birth', l: 'Ngày sinh', t: 'date', pii: 1, reqForm: 1 },
+    { k: 'address', l: 'Địa chỉ liên hệ', t: 'text', reqForm: 1 },
     { k: 'noxh_group', l: 'Nhóm đối tượng NOXH', t: 'sel', opt: 'nhom_noxh', noForm: 1 },
     owner(undefined, { noForm: 1 }),   // không hiện trong form tạo / sửa — tự lấy người tạo
     { k: 'note', l: 'Ghi chú', t: 'long' },
-  ], list: ['full_name', 'code', 'address', 'phone', 'email', 'tax_code', 'stage'],
+  ], list: ['code', 'full_name', 'address', 'phone', 'email', 'tax_code', 'stage'],
 });
 def('contact_log', {
   title: 'Nhật ký tư vấn – liên hệ', one: 'nhật ký', code: 'KH-02', mod: '03', icon: 'fa-comments', disp: "to_char(t.at,'DD/MM/YYYY HH24:MI')",
@@ -212,7 +214,7 @@ const RES_ST = [['nhap', 'Nháp', 's'], ['cho_duyet', 'Chờ duyệt', 'a'], ['g
   ['chuyen_hd', 'Đã chuyển hợp đồng', 'g'], ['het_han', 'Hết hạn', 's'], ['tu_choi', 'Từ chối', 'r'], ['huy', 'Đã hủy', 's']];
 // phiếu đăng ký căn hộ (lập từ Bảng hàng): trạng thái căn + tiến trình do nhân viên chọn
 const REG_ST = [['giu_cho', 'Giữ chỗ', 'a'], ['qua_han', 'Quá hạn giữ chỗ', 'r'], ['ky_hdmb', 'Ký HĐMB', 'g'], ['huy', 'Đã hủy', 'r']];   // giải phóng căn = hủy đăng ký: 1 mục «Đã hủy» (07/11/2026)   // quá hạn: tự đặt khi qua «Hạn giữ chỗ» chưa đặt cọc
-const REG_PROG = [['tiep_nhan', 'Đã tiếp nhận hồ sơ', 's'], ['cho_xet_duyet', 'Đã nộp hồ sơ chờ xét duyệt', 'a'], ['du_dk', 'Đủ điều kiện ký HĐMB', 'b'], ['da_ky', 'Đã ký HĐMB', 'g']];
+const REG_PROG = [['tiep_nhan', 'Đã tiếp nhận hồ sơ', 's'], ['cho_xet_duyet', 'Đã nộp hồ sơ chờ xét duyệt', 'a'], ['du_dk', 'Đủ điều kiện ký HĐMB', 'b'], ['khong_du_dk', 'Không đủ điều kiện', 'r'], ['da_ky', 'Đã ký HĐMB', 'g']];
 // thông báo mở bán căn hộ: mỗi đợt mở bán (văn bản thông báo, thời gian nhận hồ sơ, căn mở bán) — duyệt thì căn chưa mở bán trong đợt chuyển «Còn bán»
 def('sale_notice', {
   title: 'Thông báo mở bán căn hộ', one: 'thông báo', code: 'GD-03', mod: '04', icon: 'fa-bullhorn', disp: "t.code||coalesce(' · '||t.title,'')",
@@ -246,9 +248,10 @@ def('reservation', {
     { k: 'sale_check', l: 'Thông báo mở bán', t: 'text', ro: 1 },   // kiểm tra căn có trong thông báo mở bán đã duyệt gần nhất (cảnh báo, không chặn)
     { k: 'unit_id', l: 'Mã căn hộ', t: 'ref', ref: 'unit', req: 1, filter: 'con_ban,chua_mo_ban', fill: { price: 'total_price', finish_value: 'finish_value' } },
     { k: 'deal', l: 'Hình thức đăng ký', t: 'sel', req: 1, def: 'mua', o: [['mua', 'Đăng ký mua', 'b'], ['thue', 'Đăng ký thuê', 'v']] },
-    { k: 'customer_id', l: 'Khách hàng đã có', t: 'ref', ref: 'customer', help: 'Chọn khách có sẵn để điền nhanh — để trống: hệ thống tự khớp theo CCCD / SĐT hoặc tạo khách mới',
-      fill: { cust_code: 'code', cust_name: 'full_name', id_no: 'id_no', id_date: 'id_date', id_place: 'id_place', address: 'address', phone: 'phone', tax_code: 'tax_code', bank_account: 'bank_account' } },
-    { k: 'cust_code', l: 'Mã khách hàng', t: 'text', help: 'Để trống → lấy mã khách đã có (khớp CCCD / SĐT) hoặc tự cấp mã mới (KH000001…)' },
+    // 07/11/2026: bỏ ô «Khách hàng đã có» khỏi phiếu — chọn khách ngay ở ô Mã khách hàng (gõ → sổ các mã đã có); máy chủ gắn khách theo mã khi lưu
+    { k: 'customer_id', l: 'Khách hàng đã có', t: 'ref', ref: 'customer', noForm: 1 },
+    { k: 'cust_code', l: 'Mã khách hàng', t: 'text', sugRef: 'customer', help: 'Gõ mã hoặc tên → chọn khách đã có (tự điền thông tin khách). Để trống / mã mới → hệ thống tự khớp theo CCCD / SĐT hoặc tự cấp mã mới (KH000001…)',
+      sugFill: { cust_name: 'full_name', id_no: 'id_no', id_date: 'id_date', id_place: 'id_place', address: 'address', phone: 'phone', tax_code: 'tax_code', bank_account: 'bank_account' } },
     { k: 'cust_name', l: 'Họ tên khách hàng', t: 'text', req: 1 },
     { k: 'id_no', l: 'Căn cước công dân', t: 'text', pii: 1 },
     { k: 'id_date', l: 'Ngày cấp', t: 'date', pii: 1 },
@@ -264,7 +267,8 @@ def('reservation', {
     { k: 'term_months', l: 'Thời hạn thuê dự kiến (tháng)', t: 'int', show: { deal: ['thue'] } },
     { k: 'reg_state', l: 'Trạng thái căn hộ', t: 'sel', req: 1, def: 'giu_cho', o: REG_ST },
     { k: 'progress', l: 'Tiến trình giao dịch', t: 'sel', req: 1, def: 'tiep_nhan', o: REG_PROG },
-    { k: 'policy_id', l: 'Chính sách áp dụng', t: 'ref', ref: 'price_policy', filter: 'phat_hanh', show: { deal: ['mua'] }, help: 'Để trống → tự lấy chính sách bán hàng đang phát hành cho căn' },
+    { k: 'policy_id', l: 'Chính sách áp dụng', t: 'ref', ref: 'price_policy', filter: 'phat_hanh', show: { deal: ['mua'] }, auto: 1, autoPh: 'Tự lấy khi chọn căn',   // 14/11/2026: tự lấy, không chọn tay
+      help: 'Tự lấy chính sách được duyệt gần nhất áp cho căn và nguồn bán; khi có chính sách mới được duyệt, phiếu còn hiệu lực tự đổi theo. Giá trị hoàn thiện lấy theo danh sách căn có hoàn thiện của chính sách' },
     { k: 'note', l: 'Ghi chú', t: 'long' },
     { k: 'reg_at', l: 'Ngày giờ đăng ký', t: 'dt', req: 1, def: 'now', help: 'Tự lấy giờ hiện tại khi mở phiếu — sửa được' },
     { k: 'reg_date', l: 'Ngày đăng ký', t: 'date', hide: 1 },   // = ngày của reg_at (giờ VN), giữ cho giá / hoa hồng / kiểm tra hạn
@@ -389,27 +393,38 @@ def('cancel_req', {
     { k: 'cust_name', l: 'Họ tên khách hàng', t: 'text', help: 'Tự lấy theo hợp đồng / phiếu giữ chỗ' },
     { k: 'phone', l: 'Số điện thoại', t: 'text' },
     { k: 'project_id', l: 'Dự án', t: 'ref', ref: 'project' },
-    { k: 'kind', l: 'Loại đề nghị', t: 'sel', req: 1, o: [['huy', 'Hủy giao dịch'], ['doi_can', 'Đổi căn'], ['doi_kh', 'Thay đổi khách hàng']], sec: '2. Nội dung đề nghị' },
+    { k: 'kind', l: 'Loại đề nghị', t: 'sel', req: 1, o: [['huy', 'Hủy giao dịch'], ['doi_can', 'Đổi căn'], ['doi_kh', 'Thay đổi khách hàng'], ['thanh_ly', 'Thanh lý hợp đồng']], sec: '2. Nội dung đề nghị' },   // thanh_ly: tự lập khi hợp đồng chuyển «Thanh lý» (16/11/2026)
     { k: 'new_unit_id', l: 'Căn mới', t: 'ref', ref: 'unit', filter: 'con_ban', show: { kind: ['doi_can'] } },
     { k: 'new_customer_id', l: 'Khách hàng mới', t: 'ref', ref: 'customer', show: { kind: ['doi_kh'] } },
     { k: 'money_plan', l: 'Phương án xử lý', t: 'sel', req: 1, def: 'hoan_tien', o: [['hoan_tien', 'Hoàn tiền'], ['chuyen_can_moi', 'Chuyển tiền/bù trừ'], ['khac', 'Khác']] },
     { k: 'money_note', l: 'Diễn giải phương án khác', t: 'text', show: { money_plan: ['khac'] } },
-    money('pay_amount', 'Số tiền đề nghị xử lý (đồng)', { help: 'Tự lấy = số tiền khách đã nộp — sửa được' }),
-    { k: 'liquidate_on', l: 'Ngày ký thanh lý HĐMB (nếu có)', t: 'date' },
-    { k: 'pay_due', l: 'Ngày đề nghị chi trả', t: 'date', help: 'Để trống → ngày ký thanh lý + thời gian chờ chi trả' },
+    // 16/11/2026 theo dõi thanh lý & chi trả: tổng đã thu (phiếu thu của HĐ), khấu trừ theo hồ sơ thanh lý, phải hoàn trả = đã thu − khấu trừ, đã chi = phiếu chi hoàn tiền / hoàn cọc / thanh lý của HĐ
+    // 16/11/2026: phiếu thanh lý chung — nhiều hợp đồng cùng căn, cùng khách (HĐMB + HĐ hoàn thiện…): từng HĐ có tiền đã thu, khấu trừ, phải hoàn trả; tổng chung ở bảng
+    { k: 'items', l: 'Hợp đồng thanh lý trong phiếu', t: 'json', pick: 'liq', show: { kind: ['thanh_ly'] }, help: 'Tích các hợp đồng của căn / khách cần thanh lý chung 1 phiếu. Tiền đã thu tự tính theo phiếu thu; phải hoàn trả = đã thu − khấu trừ (sửa được). Hợp đồng đã ở phiếu khác không chọn được' },
+    { k: 'ct_ids', l: 'Các hợp đồng trong phiếu', t: 'refs', ref: 'contract', ro: 1, hide: 1 },
+    { k: 'liq_reason', l: 'Lý do thanh lý', t: 'sel', def: 'tra_lai', o: [['tra_lai', 'Trả lại hẳn'], ['chuyen_ten', 'Chuyển tên']], show: { kind: ['thanh_ly'] }, help: 'Duyệt phiếu → các hợp đồng chưa thanh lý trong phiếu được thanh lý với lý do này' },
+    money('collected', 'Tổng tiền đã thu (đồng)', { show: { kind: ['huy', 'doi_can', 'doi_kh'] }, help: 'Tự tính = các phiếu thu hợp lệ của hợp đồng — sửa tay thì giữ số đã sửa' }),
+    money('deduct_amount', 'Các khoản khấu trừ (đồng)', { show: { kind: ['huy', 'doi_can', 'doi_kh'] }, help: 'Theo hồ sơ thanh lý (phạt vi phạm, phí, chi phí…)' }),
+    { k: 'deduct_note', l: 'Diễn giải khấu trừ', t: 'text', show: { kind: ['huy', 'doi_can', 'doi_kh'] } },
+    money('pay_amount', 'Số tiền phải hoàn trả (đồng)', { show: { kind: ['huy', 'doi_can', 'doi_kh'] }, help: 'Thanh lý hợp đồng: tự tính = tổng đã thu − khấu trừ. Đề nghị hủy / đổi: để trống = số khách đã nộp — sửa được' }),
+    money('paid_amount', 'Số tiền đã chi trả (đồng)', { help: 'Tự cộng các phiếu chi hoàn tiền / hoàn cọc / thanh lý của hợp đồng — sửa tay thì giữ số đã sửa' }),
+    { k: 'edited', l: 'Ô đã sửa tay', t: 'json', ro: 1, hide: 1 },   // 16/11/2026: đồng bộ lại từ hợp đồng / phiếu thu chi không ghi đè các ô này
+    { k: 'liquidate_on', l: 'Ngày thanh lý', t: 'date', help: 'Tự lấy theo ngày thanh lý của hợp đồng / phiếu thanh lý — sửa được (phiếu gộp nhiều hợp đồng: ngày thanh lý chung của phiếu)' },
+    { k: 'pay_due', l: 'Ngày dự kiến chi trả', t: 'date', help: '= Ngày thanh lý + Số ngày chi trả tiền — tự tính lại khi đổi 1 trong 2 ô, sửa được' },
     { k: 'reason', l: 'Lý do', t: 'long' },
     { k: 'handler_dept', l: 'Bộ phận tiếp nhận xử lý', t: 'text', def: 'Phòng Kế toán', sug: ['Phòng Kế toán', 'Phòng Kinh doanh', 'Phòng Pháp chế', 'Ban Giám đốc'], sec: '3. Chuyển xử lý' },
     { k: 'attachments', l: 'Hồ sơ kèm theo', t: 'long', def: 'Đơn đề nghị của khách hàng; bản gốc hợp đồng / phiếu đăng ký; phiếu thu đã nộp' },
     { k: 'note', l: 'Ghi chú', t: 'long' },
-    { k: 'wait_days', l: 'Thời gian chờ chi trả (ngày)', t: 'int', def: 30, sec: 'Theo dõi thanh lý & chi trả' },
+    { k: 'wait_days', l: 'Số ngày chi trả tiền', t: 'int', def: 30, sec: 'Theo dõi thanh lý & chi trả', help: 'Số ngày kể từ ngày thanh lý đến hạn chi trả' },
     { k: 'acct_status', l: 'Tình trạng bàn giao hồ sơ cho kế toán', t: 'sel', def: 'chua', o: [['chua', 'Chưa bàn giao', 'a'], ['da', 'Đã bàn giao', 'g']] },
     { k: 'acct_on', l: 'Ngày bàn giao hồ sơ', t: 'date' },
-    { k: 'pay_status', l: 'Tình trạng chi tiền', t: 'sel', def: 'chua_chi', o: [['chua_chi', 'Chưa chi', 'a'], ['mot_phan', 'Chi một phần', 'b'], ['da_chi', 'Đã chi', 'g'], ['khong_chi', 'Không phát sinh chi', 's']] },
+    { k: 'pay_status', l: 'Trạng thái chi trả', t: 'sel', def: 'chua_chi', o: [['chua_chi', 'Chưa chi trả', 'a'], ['mot_phan', 'Đã chi trả một phần', 'b'], ['da_chi', 'Đã chi trả đủ', 'g'], ['khong_chi', 'Không phát sinh chi', 's']], help: 'Tự cập nhật theo phiếu chi của hợp đồng' },
     { k: 'paid_on', l: 'Ngày chi tiền thực tế', t: 'date' },
     { k: 'status', l: 'Trạng thái', t: 'sel', o: S.duyet, ro: 1, def: 'nhap' },
   ], list: ['code', 'kind', 'reservation_id', 'contract_id', 'money_plan', 'liquidate_on', 'pay_due', 'pay_amount', 'pay_status', 'status'],
-  lock: ['da_duyet', 'cho_duyet'], lockKeep: ['liquidate_on', 'wait_days', 'pay_due', 'pay_amount', 'acct_status', 'acct_on', 'pay_status', 'paid_on', 'note'], flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'da_duyet' } },
-  acts: [{ k: 'phieu', l: 'In phiếu đề nghị', icon: 'fa-print', from: '*', roles: ALL, url: '/print/cancel_req/:id' }],
+  lock: ['da_duyet', 'cho_duyet'], lockKeep: ['liquidate_on', 'wait_days', 'pay_due', 'pay_amount', 'deduct_amount', 'deduct_note', 'acct_status', 'acct_on', 'pay_status', 'paid_on', 'note'], flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'da_duyet' } },
+  acts: [{ k: 'phieu', l: 'In phiếu đề nghị', icon: 'fa-print', from: '*', roles: ALL, url: '/print/cancel_req/:id' },
+    { k: 'resync', l: 'Tính lại tự động', icon: 'fa-rotate', from: '*', roles: ['ban_hang', 'truong_phong', 'ho_so', 'cong_no', 'ke_toan'] }],   // bỏ các số sửa tay → tính lại theo hợp đồng, phiếu thu, phiếu chi (16/11/2026)
   files: [['don_de_nghi', 'Đơn đề nghị của khách', 1]],
 });
 
@@ -474,8 +489,11 @@ def('contract', {
     { k: 'unit_id', l: 'Mã căn hộ', t: 'ref', ref: 'unit', req: 1, dep: 'building_id',
       fill: { area_tt: 'area_tt', base_price: 'base_price', pretax: 'pretax', vat_pct: 'vat_pct', vat_amt: 'tax_amt', after_tax: 'price_net', maint_fee: 'maint_fee', finish_value: 'finish_value', value: 'total_price', area_land: 'area_dat', area_build: 'area_xd' } },
     { k: 'reservation_id', l: 'Phiếu giữ chỗ', t: 'ref', ref: 'reservation', ro: 1 },
+    // 15/11/2026: HĐ tự lập khi hồ sơ mua / thuê NOXH chuyển «Chờ xét duyệt» — mỗi hồ sơ 1 HĐ; noxh_wait = «Dự thảo – Chờ duyệt hồ sơ» (chưa trình / ký được tới khi SXD duyệt đủ điều kiện)
+    { k: 'noxh_id', l: 'Hồ sơ NOXH', t: 'ref', ref: 'noxh_check', ro: 1 },
+    { k: 'noxh_wait', l: 'Chờ duyệt hồ sơ NOXH', t: 'bool', ro: 1, noForm: 1 },
     // bên mua nhà ở
-    { k: 'customer_id', l: 'Khách hàng (chủ hợp đồng)', t: 'ref', ref: 'customer', req: 1, sec: 'Bên mua nhà ở',
+    { k: 'customer_id', l: 'Khách hàng (chủ hợp đồng)', t: 'ref', ref: 'customer', req: 1, sec: 'Bên mua nhà ở', byUnit: 'unit_id',   // HĐMB: chọn trong khách gắn với căn (15/11/2026)
       fill: { b_id_no: 'id_no', b_id_date: 'id_date', b_id_place: 'id_place', b_addr: 'address', b_phone: 'phone', b_email: 'email', b_bank_acc: 'bank_account' } },
     { k: 'b_id_no', l: 'Số CMND / CCCD', t: 'text', pii: 1 },
     { k: 'b_id_date', l: 'Ngày cấp', t: 'date', pii: 1 },
@@ -587,13 +605,19 @@ def('contract', {
     { k: 'pay_period', l: 'Kỳ thanh toán', t: 'sel', o: [['thang', 'Tháng'], ['quy', 'Quý'], ['nam', 'Năm']], hide: 1 },
     { k: 'free_months', l: 'Miễn tiền thuê (tháng)', t: 'int', hide: 1 },
     owner('Nhân viên KD'),
-    { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'du_thao', o: [['du_thao', 'Dự thảo', 's'], ['cho_duyet', 'Đang rà soát', 'a'], ['cho_ky', 'Chờ ký', 'b'], ['tu_choi', 'Trả lại dự thảo', 'r'], ['da_ky', 'Đã ký', 'g'], ['thanh_ly', 'Đã thanh lý', 't'], ['huy', 'Đã hủy', 's']] },
+    { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'du_thao', alt: { flag: 'noxh_wait', v: 'du_thao', l: 'Dự thảo – Chờ duyệt hồ sơ', c: 'a' }, o: [['du_thao', 'Dự thảo', 's'], ['cho_duyet', 'Đang rà soát', 'a'], ['cho_ky', 'Chờ ký', 'b'], ['tu_choi', 'Trả lại dự thảo', 'r'], ['da_ky', 'Đã ký', 'g'], ['thanh_ly', 'Đã thanh lý', 't'], ['huy', 'Đã hủy', 's']] },
+    { k: 'appr_by', l: 'Người duyệt', t: 'user', ro: 1 },   // 16/11/2026: ghi khi duyệt (kể cả duyệt trực tiếp) — lịch sử đầy đủ ở tab Phê duyệt / Lịch sử
+    { k: 'appr_at', l: 'Thời gian duyệt', t: 'dt', ro: 1 },
   ], list: ['number', 'contract_on', 'kind', 'unit_id', 'customer_id', 'value', 'plan_sign', 'sign_status', 'signed_on', 'status'],
   lock: ['da_ky', 'thanh_ly', 'huy'], lockKeep: ['sign_status', 'sign_place', 'plan_sign', 'owner_id', 'late_rate', 'new_schedule', 'sale_on', 'sale_sched', 'loan_status', 'loan_bank', 'loan_doc3', 'liquidated_on', 'liquidate_reason', 'liquidate_note'],
   // đã trình duyệt / chờ ký: nhân viên chỉ sửa được lần thanh toán (+ lockKeep); quản lý vẫn sửa được
   softLock: { st: ['cho_duyet', 'cho_ky'], keep: ['sign_status', 'sign_place', 'plan_sign', 'new_schedule', 'loan_status', 'loan_bank', 'loan_doc3'], boss: MGR },
-  flow: { field: 'status', submit: ['du_thao', 'tu_choi'], approve: { ok: 'da_ky' }, submitLabel: 'Gửi trình duyệt' },
+  // saveOnly (07/11/2026): tạo hợp đồng chỉ có nút «Lưu dự thảo» — lưu xong ở Dự thảo, trình duyệt sau bằng nút «Gửi trình duyệt» trên hợp đồng
+  flow: { field: 'status', submit: ['du_thao', 'tu_choi'], approve: { ok: 'da_ky' }, submitLabel: 'Gửi trình duyệt', saveOnly: 1, apprFlag: 'ct_approve' },   // apprFlag: tài khoản «Được duyệt hợp đồng» duyệt trực tiếp (16/11/2026)
   acts: [
+    // 16/11/2026: nhân viên được phân quyền duyệt hợp đồng (tài khoản «Được duyệt hợp đồng») + Trưởng phòng / Lãnh đạo duyệt thẳng từ dự thảo — không bắt buộc trình lãnh đạo;
+    // HĐ mua bán / thuê căn hộ NOXH vẫn phải có hồ sơ được Sở Xây dựng duyệt đủ điều kiện. Quyền duyệt trên hệ thống tách với thẩm quyền ký (người đại diện ký ở «Bên bán»)
+    { k: 'approve_direct', l: 'Duyệt hợp đồng', icon: 'fa-circle-check', from: ['du_thao', 'tu_choi', 'cho_duyet'], roles: ['truong_phong', 'lanh_dao'], flag: 'ct_approve' },
     { k: 'schedule', l: 'Lập lịch thanh toán', icon: 'fa-calendar-days', from: ['du_thao', 'tu_choi'], roles: ['ho_so', 'cong_no', 'truong_phong'], noBtn: 1 },   // bỏ nút 04/11/2026: lịch thanh toán soạn ở «Lần thanh toán» trong form hợp đồng (Sửa)
     { k: 'liquidate', l: 'Thanh lý', icon: 'fa-box-archive', from: ['da_ky'], roles: MGR, ask: [{ k: 'liquidated_on', l: 'Ngày thanh lý', t: 'date', req: 1, def: 'today' }, { k: 'liquidate_reason', l: 'Lý do', t: 'sel', o: LIQ_REASON, req: 1 }, { k: 'liquidate_note', l: 'Ghi chú', t: 'long' }] },
     { k: 'print', l: 'In theo mẫu', icon: 'fa-print', from: '*', roles: ALL },
@@ -616,6 +640,9 @@ def('installment', {
     { k: 'is_bg', l: 'Đợt bàn giao', t: 'bool', ro: 1, hide: 1, def: false },
     { k: 'is_fin', l: 'Đợt thu giá trị hoàn thiện', t: 'bool', ro: 1, hide: 1, def: false },   // 14/11/2026: % tính trên giá trị hoàn thiện của HĐ
     { k: 'bg_days', l: 'Số ngày nộp kể từ bàn giao', t: 'int', ro: 1, hide: 1 },   // HĐMB: phí bảo trì thu ở dòng riêng cố định (không cộng vào đợt nào)
+    { k: 'is_gcn', l: 'Đợt gắn Giấy chứng nhận', t: 'bool', ro: 1, hide: 1, def: false },   // 17/11/2026: hạn theo Thông báo bàn giao Giấy chứng nhận
+    { k: 'gcn_days', l: 'Số ngày nộp kể từ bàn giao Giấy chứng nhận', t: 'int', ro: 1, hide: 1 },
+    { k: 'sign_days', l: 'Số ngày sau ngày ký', t: 'int', ro: 1, hide: 1 },   // 15/11/2026: đợt tính theo ngày ký — ngày ký chính thức đổi thì hạn = ngày ký + số ngày
     { k: 'src', l: 'Căn cứ', t: 'sel', ro: 1, def: 'hop_dong', o: [['hop_dong', 'Hợp đồng', 'b'], ['phu_luc', 'Phụ lục', 'v']] },
     { k: 'active', l: 'Hiệu lực', t: 'bool', ro: 1, def: true },
   ], list: ['contract_id', 'seq', 'name', 'due_on', 'pct', 'amount', 'paid', 'pay_status', 'src'],
@@ -671,9 +698,9 @@ def('receipt', {
   c: ['cong_no', 'ho_so', 'ban_hang', 'truong_phong', 'ke_toan'], u: ['cong_no', 'ho_so', 'truong_phong'], d: [], order: 't.voucher_date desc', search: ['voucher_no', 'content'], fields: [
     { k: 'voucher_no', l: 'Số phiếu thu', t: 'code', prefix: 'PT-{Y}-', pad: 4, manual: 1, help: 'Để trống → tự cấp (PT-2026-0001…)' },
     { k: 'voucher_date', l: 'Ngày thu', t: 'date', req: 1, def: 'today' },
-    { k: 'contract_id', l: 'Mã hợp đồng', t: 'ref', ref: 'contract', req: 1, sec: '1. Hợp đồng – khách hàng', help: 'Chọn hợp đồng (hoặc mã căn) → tự điền mã căn, khách hàng, dự án, loại hợp đồng' },
-    { k: 'unit_id', l: 'Mã căn hộ', t: 'ref', ref: 'unit', help: 'Chọn căn → tự lấy hợp đồng của căn' },
-    { k: 'cust_code', l: 'Mã khách hàng', t: 'text', help: 'Tự lấy theo hợp đồng' },
+    { k: 'contract_id', l: 'Mã hợp đồng', t: 'ref', ref: 'contract', req: 1, sec: '1. Hợp đồng – khách hàng', unitOpt: 'unit_id', help: 'Đã chọn mã căn: danh sách các hợp đồng của căn (số HĐ – loại – khách hàng – trạng thái) để chọn. Chọn hợp đồng → tự điền mã căn, khách hàng, dự án, loại hợp đồng' },
+    { k: 'unit_id', l: 'Mã căn hộ', t: 'ref', ref: 'unit', help: 'Chọn căn → chọn tiếp hợp đồng trong danh sách hợp đồng của căn (không tự điền)' },
+    { k: 'cust_code', l: 'Mã khách hàng', t: 'text', hide: 1 },   // ẩn 07/11/2026
     { k: 'cust_name', l: 'Họ tên khách hàng', t: 'text', help: 'Tự lấy theo hợp đồng' },
     { k: 'project_name', l: 'Dự án', t: 'text', help: 'Tự lấy theo hợp đồng' },
     { k: 'ct_kind', l: 'Loại hợp đồng', t: 'sel', o: HD_KIND, help: 'Tự lấy theo hợp đồng' },
@@ -685,7 +712,7 @@ def('receipt', {
     { k: 'synced_at', l: 'Ngày chốt dữ liệu', t: 'dt', ro: 1 },
     { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'hop_le', o: [['hop_le', 'Hợp lệ', 'g'], ['huy', 'Đã hủy', 'r']] },
     { k: 'void_reason', l: 'Lý do hủy', t: 'text', ro: 1 },
-  ], list: ['voucher_no', 'voucher_date', 'contract_id', 'unit_id', 'cust_code', 'cust_name', 'grp', 'installment_id', 'amount', 'content', 'status'],
+  ], list: ['voucher_no', 'voucher_date', 'contract_id', 'unit_id', 'cust_name', 'grp', 'installment_id', 'amount', 'content', 'status'],
   acts: [{ k: 'void', l: 'Hủy phiếu thu', icon: 'fa-ban', from: ['hop_le'], roles: ['cong_no', 'ho_so', 'truong_phong'], danger: 1, ask: [{ k: 'reason', l: 'Lý do hủy', t: 'long', req: 1 }] }],
 });
 // Phiếu chi (06/11/2026): tiền công ty chi ra theo hợp đồng → Theo dõi công nợ tự cập nhật
@@ -696,13 +723,15 @@ def('payment', {
   c: ['cong_no', 'ho_so', 'ban_hang', 'truong_phong', 'ke_toan'], u: ['cong_no', 'ho_so', 'truong_phong'], d: [], order: 't.voucher_date desc, t.id desc', search: ['voucher_no', 'content', 'receiver'], fields: [
     { k: 'voucher_no', l: 'Số phiếu chi', t: 'code', prefix: 'PC-{Y}-', pad: 4, manual: 1, help: 'Để trống → tự cấp (PC-2026-0001…)' },
     { k: 'voucher_date', l: 'Ngày chi', t: 'date', req: 1, def: 'today' },
-    { k: 'contract_id', l: 'Mã hợp đồng', t: 'ref', ref: 'contract', req: 1, sec: '1. Hợp đồng – khách hàng', help: 'Chọn hợp đồng (hoặc mã căn) → tự điền mã căn, khách hàng, dự án, loại hợp đồng' },
-    { k: 'unit_id', l: 'Mã căn hộ', t: 'ref', ref: 'unit', help: 'Chọn căn → tự lấy hợp đồng của căn' },
-    { k: 'cust_code', l: 'Mã khách hàng', t: 'text', help: 'Tự lấy theo hợp đồng' },
+    { k: 'contract_id', l: 'Mã hợp đồng', t: 'ref', ref: 'contract', req: 1, sec: '1. Hợp đồng – khách hàng', unitOpt: 'unit_id', help: 'Đã chọn mã căn: danh sách các hợp đồng của căn (số HĐ – loại – khách hàng – trạng thái, gồm cả HĐ đã thanh lý) để chọn. Chọn hợp đồng → tự điền mã căn, khách hàng, dự án, loại hợp đồng' },
+    { k: 'unit_id', l: 'Mã căn hộ', t: 'ref', ref: 'unit', help: 'Chọn căn → chọn tiếp hợp đồng trong danh sách hợp đồng của căn (không tự điền)' },
+    { k: 'cust_code', l: 'Mã khách hàng', t: 'text', hide: 1 },   // ẩn 07/11/2026
     { k: 'cust_name', l: 'Họ tên khách hàng', t: 'text', help: 'Tự lấy theo hợp đồng' },
     { k: 'project_name', l: 'Dự án', t: 'text', help: 'Tự lấy theo hợp đồng' },
     { k: 'ct_kind', l: 'Loại hợp đồng', t: 'sel', o: HD_KIND, help: 'Tự lấy theo hợp đồng' },
-    { k: 'kind', l: 'Nhóm chi', t: 'sel', req: 1, sec: '2. Nội dung chi', o: [['tra_lai', 'Trả lãi HĐ vay', 'b'], ['tra_goc', 'Trả gốc HĐ vay', 'v'], ['hoan_tien', 'Hoàn tiền khách', 'a'], ['hoan_coc', 'Hoàn tiền đặt cọc HĐ thuê', 't'], ['thanh_ly', 'Thanh lý HĐMB', 'r'], ['khac', 'Khác', 's']] },
+    { k: 'kind', l: 'Nhóm chi', t: 'sel', req: 1, sec: '2. Nội dung chi', o: [['tra_lai', 'Trả lãi HĐ vay', 'b'], ['tra_goc', 'Trả gốc HĐ vay', 'v'], ['hoan_tien', 'Hoàn tiền khách', 'a'], ['hoan_coc', 'Hoàn tiền đặt cọc HĐ thuê', 't'], ['thanh_ly', 'Hoàn tiền thanh lý hợp đồng', 'r'], ['khac', 'Khác', 's']] },
+    // 17/11/2026: chi hoàn tiền thanh lý theo phiếu thanh lý (kể cả phiếu thanh lý chung nhiều HĐ của căn) — ghi nhận chi trả đúng hồ sơ ở «Theo dõi thanh lý & chi trả»
+    { k: 'cancel_req_id', l: 'Phiếu thanh lý', t: 'ref', ref: 'cancel_req', unitOpt: 'unit_id', optq: 'liq=1', show: { kind: ['thanh_ly', 'hoan_tien'] }, help: 'Chọn phiếu thanh lý (phiếu chung nhiều hợp đồng của căn cũng được) → tự điền hợp đồng, khách hàng, số còn phải trả' },
     { k: 'loan_pay_id', l: 'Đợt chi (kỳ trả HĐ vay)', t: 'ref', ref: 'loan_pay', dep: 'contract_id', show: { kind: ['tra_lai', 'tra_goc'] }, help: 'Chọn kỳ → tự điền số tiền còn phải trả. Để trống = tự trừ vào kỳ chưa trả sớm nhất; trả nhiều hơn 1 kỳ thì phần dư sang kỳ sau' },
     { k: 'refund_id', l: 'Đề xuất hoàn tiền', t: 'ref', ref: 'refund', dep: 'contract_id', filter: 'da_duyet', show: { kind: ['hoan_tien'] }, help: 'Không bắt buộc. Chọn đề xuất đã duyệt thì đề xuất tự chuyển «Đã thực hiện»' },
     money('amount', 'Số tiền', { req: 1 }),
@@ -712,7 +741,7 @@ def('payment', {
     { k: 'src', l: 'Nguồn', t: 'sel', ro: 1, def: 'thu_cong', o: [['bravo', 'Bravo', 'b'], ['misa', 'MISA', 'v'], ['thu_cong', 'Phòng KD nhập', 's']] },
     { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'hop_le', o: [['hop_le', 'Hợp lệ', 'g'], ['huy', 'Đã hủy', 'r']] },
     { k: 'void_reason', l: 'Lý do hủy', t: 'text', ro: 1 },
-  ], list: ['voucher_no', 'voucher_date', 'contract_id', 'unit_id', 'cust_code', 'cust_name', 'kind', 'loan_pay_id', 'amount', 'receiver', 'content', 'status'],
+  ], list: ['voucher_no', 'voucher_date', 'contract_id', 'unit_id', 'cust_name', 'kind', 'loan_pay_id', 'amount', 'receiver', 'content', 'status'],
   acts: [{ k: 'void', l: 'Hủy phiếu chi', icon: 'fa-ban', from: ['hop_le'], roles: ['cong_no', 'ho_so', 'truong_phong'], danger: 1, ask: [{ k: 'reason', l: 'Lý do hủy', t: 'long', req: 1 }] }],
 });
 def('collect_plan', {
@@ -735,9 +764,9 @@ def('collect_plan', {
     owner(),
     { k: 'version', l: 'Phiên bản', t: 'int', ro: 1, def: 1 },
     { k: 'reason_miss', l: 'Nguyên nhân chưa thu được', t: 'long' },
-    { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'nhap', o: [...S.duyet, ['thay_the', 'Đã thay thế', 's']] },
+    { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'nhap', o: [...S.duyet, ['thay_the', 'Đã thay thế', 's'], ['dong', 'Đã đóng (HĐ thanh lý)', 's']] },
   ], list: ['month', 'project', 'building', 'unit_id', 'customer_id', 'debt_left', 'expected', 'expected_on', 'basis', 'ability', 'actual', 'gap', 'owner_id', 'status'],
-  lock: ['cho_duyet', 'da_duyet', 'thay_the'], lockKeep: ['reason_miss'],
+  lock: ['cho_duyet', 'da_duyet', 'thay_the', 'dong'], lockKeep: ['reason_miss'],
   flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'da_duyet' } },
   acts: [{ k: 'revise', l: 'Lập phiên bản mới', icon: 'fa-code-branch', from: ['da_duyet'], roles: ['cong_no', 'truong_phong'] }],
 });
@@ -854,6 +883,32 @@ def('handover_notice', {
   ], list: ['doc_no', 'project_id', 'building_id', 'notice_on', 'handover_on', 'bg_from', 'n_units', 'n_hd', 'bg_amount', 'status'],
   lock: ['cho_duyet', 'da_duyet', 'huy'], lockKeep: ['note'], flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'da_duyet', no: 'tu_choi' }, submitLabel: 'Trình duyệt' },
   acts: [{ k: 'revoke', l: 'Hủy thông báo', icon: 'fa-ban', from: ['da_duyet'], roles: MGR, ask: [{ k: 'reason', l: 'Lý do hủy', t: 'long', req: 1 }], help: 'Trả hạn thu đợt bàn giao về như trước khi phát hành (đợt nào đã bị sửa tay thì giữ nguyên)' }],
+});
+
+// Thông báo bàn giao Giấy chứng nhận (17/11/2026): như Thông báo bàn giao căn hộ — số TB, dự án, tòa, tích căn, ngày bàn giao Giấy chứng nhận;
+// phát hành (duyệt) → hạn đợt thu gắn với cấp / bàn giao Giấy chứng nhận của từng HĐMB = ngày bàn giao GCN (hoặc ngày thông báo) + số ngày; hủy → trả hạn cũ
+def('gcn_notice', {
+  title: 'Thông báo bàn giao Giấy chứng nhận', one: 'thông báo bàn giao GCN', code: 'SH-02', mod: '08', icon: 'fa-certificate', disp: "coalesce(t.doc_no, t.code)",
+  purpose: 'Chốt ngày cấp / bàn giao Giấy chứng nhận và hạn thu đợt thanh toán gắn với Giấy chứng nhận của các HĐMB', users: 'Trưởng phòng / nhân viên hồ sơ, công nợ',
+  how: 'Chọn dự án, tòa → app tự tích các căn có HĐMB đã ký → điền ngày bàn giao Giấy chứng nhận (xem trước hạn thu mới) → trình duyệt → duyệt (phát hành) là hạn đợt thu gắn Giấy chứng nhận của các HĐMB tự cập nhật',
+  rules: 'Mỗi căn chỉ thuộc 1 thông báo bàn giao GCN còn hiệu lực; đợt gắn GCN của từng HĐMB = đợt được gắn ở bảng căn (chưa gắn thì app tự nhận đợt có nội dung nhắc «Giấy chứng nhận / sổ hồng»); số ngày theo nội dung đợt («… 15 ngày kể từ … Giấy chứng nhận») hoặc theo thông báo. Hủy thông báo trả hạn cũ (đợt đã sửa tay sau khi phát hành thì giữ)',
+  c: ['truong_phong', 'ho_so', 'ban_hang', 'cong_no', 'cskh'], u: ['truong_phong', 'ho_so', 'ban_hang', 'cong_no', 'cskh'], d: ['truong_phong', 'ho_so', 'ban_hang', 'cong_no', 'cskh'], a: MGR,
+  search: ['code', 'doc_no'], files: [['van_ban', 'Văn bản thông báo bàn giao Giấy chứng nhận']], fields: [
+    { k: 'code', l: 'Mã thông báo', t: 'code', prefix: 'TBGCN-{Y}-', pad: 4 },
+    { k: 'doc_no', l: 'Số thông báo', t: 'text', req: 1, uniq: 1, help: 'Số văn bản thông báo cấp / bàn giao Giấy chứng nhận' },
+    { k: 'project_id', l: 'Dự án', t: 'ref', ref: 'project', req: 1 },
+    { k: 'building_id', l: 'Mã tòa', t: 'ref', ref: 'building', req: 1, dep: 'project_id' },
+    { k: 'notice_on', l: 'Ngày thông báo', t: 'date', def: 'today' },
+    { k: 'handover_on', l: 'Ngày bàn giao Giấy chứng nhận', t: 'date', req: 1, help: 'Ngày bắt đầu bàn giao Giấy chứng nhận (sổ hồng) cho khách' },
+    { k: 'pay_from', l: 'Hạn nộp tiền tính từ', t: 'sel', def: 'ban_giao', o: [['ban_giao', 'Ngày bàn giao Giấy chứng nhận'], ['thong_bao', 'Ngày thông báo']] },
+    { k: 'pay_days', l: 'Số ngày được nộp tiền (mặc định)', t: 'int', def: 0, help: 'Hạn đợt thu gắn GCN = ngày bàn giao GCN (hoặc ngày thông báo) + số ngày. Dùng cho HĐMB chưa ghi số ngày riêng; đợt ghi «… 15 ngày kể từ … Giấy chứng nhận» thì lấy 15' },
+    { k: 'unit_list', l: 'Căn hộ được bàn giao Giấy chứng nhận', t: 'text', req: 1, def: '', pick: 'gcn_units', help: 'Tự tích các căn có HĐMB đã ký của tòa — bỏ tích căn chưa có Giấy chứng nhận đợt này' },
+    { k: 'note', l: 'Ghi chú', t: 'long' },
+    { k: 'applied', l: 'Hạn thu đã cập nhật', t: 'json', ro: 1, hide: 1 },
+    { k: 'status', l: 'Trạng thái', t: 'sel', o: [['nhap', 'Nháp', 's'], ['cho_duyet', 'Chờ duyệt', 'a'], ['da_duyet', 'Đã phát hành', 'g'], ['tu_choi', 'Từ chối', 'r'], ['huy', 'Đã hủy', 's']], ro: 1, def: 'nhap' },
+  ], list: ['doc_no', 'project_id', 'building_id', 'notice_on', 'handover_on', 'n_units', 'n_hd', 'bg_amount', 'status'],
+  lock: ['cho_duyet', 'da_duyet', 'huy'], lockKeep: ['note'], flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'da_duyet', no: 'tu_choi' }, submitLabel: 'Trình duyệt' },
+  acts: [{ k: 'revoke', l: 'Hủy thông báo', icon: 'fa-ban', from: ['da_duyet'], roles: MGR, ask: [{ k: 'reason', l: 'Lý do hủy', t: 'long', req: 1 }], help: 'Trả hạn đợt thu gắn Giấy chứng nhận về như trước khi phát hành (đợt nào đã bị sửa tay sau đó thì giữ)' }],
 });
 
 // ===================== 08. CẤP SỔ HỒNG =====================
@@ -1062,9 +1117,9 @@ const MENU = [
   ['03', 'Khách hàng tiềm năng', 'fa-users', [['e:contact_log']]],   // hồ sơ khách tự sinh từ kênh liên hệ (Website, Messenger, Zalo, Hotline, trực tiếp)
   ['04', 'Giao dịch bán hàng', 'fa-handshake-angle', [['e:sale_notice'], ['e:reservation'], ['e:noxh_check'], ['signing', 'Lịch ký hợp đồng'], ['payouts', 'Theo dõi thanh lý & chi trả', 'GD-04']]],
   ['05', 'Hồ sơ & hợp đồng', 'fa-file-contract', [['e:contract?group=can_ho', 'Hợp đồng căn hộ chung cư'], ['e:contract?group=lien_ke', 'Hợp đồng nhà liền kề'], ['loans', 'Theo dõi hợp đồng 3 bên', 'HD-05'], ['e:contract_change'], ['vault', 'Hồ sơ & lưu trữ theo căn', 'HD-06']]],
-  ['06', 'Công nợ & kế hoạch thu', 'fa-sack-dollar', [['vouchers', 'Phiếu thu – Phiếu chi', 'CN-09'], ['loantrack', 'Theo dõi công nợ', 'CN-07'], ['unitstatus', 'Tình trạng công nợ đến hạn', 'CN-06'], ['ledger', 'Sổ công nợ căn hộ'], ['e:collect_plan']]],   // bỏ menu Nhật ký nhắc nợ (07/11/2026): ghi ở Tình trạng công nợ đến hạn, tự hiện ở Hồ sơ 360°
+  ['06', 'Công nợ & kế hoạch thu', 'fa-sack-dollar', [['vouchers', 'Phiếu thu – Phiếu chi', 'CN-09'], ['loantrack', 'Theo dõi công nợ', 'CN-07'], ['duedebt', 'Theo dõi công nợ đến hạn', 'CN-11'], ['unitstatus', 'Tình trạng công nợ đến hạn', 'CN-06'], ['ledger', 'Sổ công nợ căn hộ'], ['e:collect_plan']]],   // bỏ menu Nhật ký nhắc nợ (07/11/2026): ghi ở Tình trạng công nợ đến hạn, tự hiện ở Hồ sơ 360°
   ['07', 'Bàn giao căn hộ', 'fa-key', [['ready', 'Căn đủ điều kiện'], ['e:handover_notice'], ['e:handover'], ['e:defect']]],
-  ['08', 'Cấp sổ hồng', 'fa-book', [['e:pinkbook']]],
+  ['08', 'Cấp sổ hồng', 'fa-book', [['e:gcn_notice'], ['e:pinkbook']]],   // 17/11/2026: Thông báo bàn giao Giấy chứng nhận
   ['09', 'Chăm sóc khách hàng', 'fa-headset', [['e:ticket'], ['e:notice']]],
   ['10', 'Đại lý & cộng tác viên', 'fa-people-arrows', [['e:agent'], ['e:agent_alloc'], ['e:commission_policy'], ['e:commission']]],
   ['11', 'Báo cáo quản trị', 'fa-chart-pie', [['reports', 'Báo cáo tổng hợp'], ['e:report'], ['e:target']]],

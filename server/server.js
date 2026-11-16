@@ -68,7 +68,7 @@ const safeName = s => String(s).replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').slice(0, 
 // đổi vai trò bằng menu tên người dùng. Vận hành thật: bỏ NO_LOGIN trong .env.
 const NO_LOGIN = /^(1|true|yes)$/i.test(process.env.NO_LOGIN || '');
 const NO_LOGIN_USER = process.env.NO_LOGIN_USER || 'thu.truongphong';
-const USER_COLS = 'u.id, u.username, u.full_name, u.role, u.title, u.must_change, u.is_trial, u.status, u.status_msg, u.prefs';
+const USER_COLS = 'u.id, u.username, u.full_name, u.role, u.title, u.must_change, u.is_trial, u.status, u.status_msg, u.prefs, u.ct_approve';   // ct_approve: được duyệt hợp đồng (16/11/2026)
 async function userFromReq(req) {
   const sid = cookies(req).kd_sid;
   const u = sid && await one(`SELECT ${USER_COLS} FROM kd_session s JOIN kd_user u ON u.id = s.user_id
@@ -104,7 +104,7 @@ async function login(req, res) {
 // ---------- meta gửi giao diện ----------
 const EXPORT_ROLES = ['lanh_dao', 'truong_phong', 'admin', 'cong_no', 'ke_toan', 'ho_so', 'cskh'];   // được xuất Excel từ màn tổng hợp
 async function metaFor(user) {
-  const strip = e => ({ ...e, fields: e.fields.filter(f => !f.hide).map(f => ({ ...f })), perm: { r: can(user, e, 'r'), c: can(user, e, 'c'), u: can(user, e, 'u'), d: can(user, e, 'd'), a: can(user, e, 'a'), x: can(user, e, 'x') } });
+  const strip = e => ({ ...e, fields: e.fields.filter(f => !f.hide).map(f => ({ ...f, ...(f.reqForm ? { req: 1 } : {}) })), perm: { r: can(user, e, 'r'), c: can(user, e, 'c'), u: can(user, e, 'u'), d: can(user, e, 'd'), a: can(user, e, 'a') || !!(e.flow?.apprFlag && user[e.flow.apprFlag]), x: can(user, e, 'x') } });
   const ents = Object.fromEntries(Object.values(M.E).map(e => [e.key, strip(e)]));
   const lk = await C.lookups();
   for (const e of Object.values(ents)) for (const f of [...e.fields, ...(e.acts || []).flatMap(a => a.ask || [])]) if (f.opt) f.o = (lk[f.opt] || []).filter(x => x[2]).map(x => [x[0], x[1]]);
@@ -212,7 +212,10 @@ R('GET', '/api/ver', (req, res) => {
 // --- dữ liệu chung ---
 R('GET', '/api/e/:ent', async (req, res, u, p, qs) => send(res, 200, await C.list(p.ent, u, qs)));
 R('GET', '/api/e/:ent/:id', async (req, res, u, p) => send(res, 200, await C.get(p.ent, p.id, u)));
-R('POST', '/api/e/:ent', async (req, res, u, p, qs) => { const b = await readJson(req); send(res, 200, await C.create(p.ent, b, u, { check: qs.check === '1', copyOf: +qs.copy_of || 0 })); });
+R('POST', '/api/e/:ent', async (req, res, u, p, qs) => { const b = await readJson(req);
+  { const miss = (M.E[p.ent]?.fields || []).filter(f => f.reqForm && (b[f.k] == null || b[f.k] === ''));   // phiếu khách hàng: khai báo đủ thông tin (07/11/2026)
+    if (miss.length) bad('Thiếu thông tin bắt buộc: ' + miss.map(f => f.l).join(', '), { fields: miss.map(f => f.k) }); }
+  send(res, 200, await C.create(p.ent, b, u, { check: qs.check === '1', copyOf: +qs.copy_of || 0 })); });
 R('PUT', '/api/e/:ent/:id', async (req, res, u, p, qs) => { const b = await readJson(req); send(res, 200, await C.update(p.ent, p.id, b, u, { check: qs.check === '1' })); });
 R('DELETE', '/api/e/:ent/:id', async (req, res, u, p) => send(res, 200, await C.remove(p.ent, p.id, u)));
 R('POST', '/api/e/:ent/:id/submit', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await C.submit(p.ent, p.id, u, b)); });
@@ -267,13 +270,25 @@ R('GET', '/api/templates', async (req, res, u, p, qs) => {
 R('POST', '/api/bulk/:ent/:op', async (req, res, u, p) => {
   const { ids = [], ok, comment } = await readJson(req); const out = { ok: 0, errors: [] };
   for (const id of ids.slice(0, 500)) {
-    try { if (p.op === 'submit') await C.submit(p.ent, id, u, { comment }); else if (p.op === 'approve') await C.approve(p.ent, id, u, { ok: !!ok, comment }); else bad('Thao tác không hợp lệ'); out.ok++; }
+    try {
+      if (p.op === 'submit') await C.submit(p.ent, id, u, { comment });
+      else if (p.op === 'approve') {
+        // 16/11/2026: hợp đồng còn dự thảo (chưa trình) → «Duyệt hợp đồng» trực tiếp (trình + duyệt 1 bước, kiểm tra quyền / hồ sơ NOXH / lịch thanh toán như nút trên hợp đồng)
+        const e = M.E[p.ent], rec = ok && (e?.acts || []).some(a => a.k === 'approve_direct') ? await one(`SELECT status FROM ${e.table} WHERE id = $1`, [+id]) : null;
+        if (rec && (e.flow?.submit || []).includes(rec.status)) await C.act(p.ent, id, 'approve_direct', u, comment ? { note: comment } : {});
+        else await C.approve(p.ent, id, u, { ok: !!ok, comment });
+      } else bad('Thao tác không hợp lệ');
+      out.ok++;
+    }
     catch (e) { if (!(e instanceof HttpError)) throw e; out.errors.push({ id, msg: e.message }); }
   }
   send(res, 200, out);
 });
 R('GET', '/api/opts/:ent', async (req, res, u, p, qs) => {
   const e = M.E[p.ent] || bad('Loại dữ liệu không hợp lệ'); if (!can(u, e, 'r')) return send(res, 200, []);
+  if (p.ent === 'customer' && qs.unit && !qs.id) return send(res, 200, await B.unitCustomers({ q, one }, +qs.unit, qs.q));   // HĐMB: khách gắn với căn + tình trạng hồ sơ NOXH (15/11/2026)
+  if (p.ent === 'contract' && qs.unit && !qs.id) return send(res, 200, await B.unitContracts({ q, one }, u, +qs.unit, qs.q));   // phiếu thu / chi: các HĐ của căn đã chọn (17/11/2026)
+  if (p.ent === 'cancel_req' && qs.liq) return send(res, 200, await B.liqSlipOpts({ q, one }, qs.unit ? +qs.unit : null, qs.q, qs.id));   // phiếu chi hoàn tiền thanh lý: phiếu thanh lý
   const w = [], params = [];
   if (qs.q) { params.push(`%${qs.q}%`); w.push(`(${e.disp}) ILIKE $${params.length}`); }
   if (qs.id) { params.push(+qs.id); w.push(`t.id = $${params.length}`); }
@@ -330,6 +345,7 @@ R('GET', '/api/my-day', async (req, res, u) => send(res, 200, await V.myDay({ q,
 R('GET', '/api/alerts', async (req, res, u, p, qs) => send(res, 200, await V.alerts({ q, one }, u, { all: qs.all === '1' && (mgr(u)), project: qs.project })));
 R('GET', '/api/approvals', async (req, res, u) => send(res, 200, await V.approvals({ q, one }, u)));
 R('GET', '/api/board', async (req, res, u, p, qs) => send(res, 200, await V.board({ q, one }, u, qs)));
+R('GET', '/api/liq-contracts', async (req, res, u, p, qs) => { if (!can(u, M.E.cancel_req, 'c') && !can(u, M.E.cancel_req, 'u')) C.deny(); send(res, 200, await B.liqContracts({ q, one }, qs)); });   // phiếu thanh lý chung (16/11/2026)
 R('GET', '/api/payouts', async (req, res, u, p, qs) => send(res, 200, await V.payouts({ q, one }, u, qs)));
 R('GET', '/api/loan-track', async (req, res, u, p, qs) => send(res, 200, await V.loanTrack({ q, one }, u, qs)));
 R('GET', '/api/loan-track/:id', async (req, res, u, p) => send(res, 200, await V.loanItems({ q, one }, u, p.id)));
@@ -348,6 +364,7 @@ R('GET', '/api/debt-status', async (req, res, u, p, qs) => send(res, 200, await 
 R('PUT', '/api/debt-status/days', async (req, res, u) => { const b = await readJson(req); send(res, 200, await tx(db => V.setDebtDays(db, u, b.days))); });
 R('PUT', '/api/debt-status/:id/class', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await tx(db => V.setDebtClass(db, u, p.id, b))); });
 R('GET', '/api/unit-status', async (req, res, u, p, qs) => send(res, 200, await V.unitStatus({ q, one }, u, qs)));
+R('GET', '/api/due-debt', async (req, res, u, p, qs) => send(res, 200, await V.dueDebt({ q, one }, u, qs)));   // Theo dõi công nợ đến hạn (17/11/2026)
 R('GET', '/api/finish-pay', async (req, res, u, p, qs) => send(res, 200, await V.finishPay({ q, one }, u, qs)));
 R('GET', '/api/loans', async (req, res, u, p, qs) => send(res, 200, await V.loans({ q, one }, u, qs)));
 R('GET', '/api/price-sheet/:id', async (req, res, u, p) => send(res, 200, await V.priceSheet({ q, one }, u, p.id)));
@@ -382,6 +399,7 @@ R('GET', '/api/contract-buyer/:cust', async (req, res, u, p, qs) => { if (!can(u
   if (!M.PII_ROLES.includes(u.role)) for (const o of [d.carry, d.spouse || {}]) for (const k of ['co_owner_id_no', 'co_owner_id_date', 'co_owner_id_place']) delete o[k];
   send(res, 200, d); });
 R('GET', '/api/contract-prefill/:unit', async (req, res, u, p, qs) => { if (!can(u, M.E.contract, 'c') && !can(u, M.E.contract, 'u')) C.deny(); send(res, 200, await B.contractPrefill({ q, one }, p.unit, qs.on)); });
+R('GET', '/api/res-policy', async (req, res, u, p, qs) => { if (!can(u, M.E.reservation, 'c') && !can(u, M.E.reservation, 'u')) C.deny(); send(res, 200, await B.resPolicy({ q, one }, qs)); });   // phiếu đăng ký: chính sách duyệt gần nhất + hoàn thiện theo chính sách (14/11/2026)
 R('GET', '/api/policy-units', async (req, res, u, p, qs) => { if (!can(u, M.E.price_policy, 'c') && !can(u, M.E.price_policy, 'u')) C.deny(); send(res, 200, await B.policyUnits({ q, one }, qs)); });
 R('GET', '/api/sale-check/:id', async (req, res, u, p) => send(res, 200, await B.saleCheck({ q, one }, p.id) || {}));
 R('GET', '/api/unit360/:id', async (req, res, u, p) => send(res, 200, await V.unit360({ q, one }, u, p.id)));
@@ -482,13 +500,14 @@ R('POST', '/api/import/:kind', async (req, res, u, p, qs) => {
 R('GET', '/api/imports', async (req, res, u) => send(res, 200, await q('SELECT i.*, us.full_name by_l FROM kd_import i LEFT JOIN kd_user us ON us.id = i.by ORDER BY i.at DESC LIMIT 100')));
 
 // --- quản trị ---
-R('GET', '/api/users', async (req, res, u) => { admin(u); send(res, 200, await q('SELECT id, username, full_name, role, title, dept, phone, email, active, is_trial, must_change, last_login, created_at FROM kd_user ORDER BY active DESC, role, full_name')); });
-R('POST', '/api/users', async (req, res, u) => { admin(u); const b = await readJson(req); send(res, 200, await tx(db => IO.createUser(db, b, u))); });
+R('GET', '/api/users', async (req, res, u) => { admin(u); send(res, 200, await q('SELECT id, username, full_name, role, title, dept, phone, email, active, is_trial, must_change, last_login, created_at, ct_approve FROM kd_user ORDER BY active DESC, role, full_name')); });
+R('POST', '/api/users', async (req, res, u) => { admin(u); const b = await readJson(req); send(res, 200, await tx(async db => { const r = await IO.createUser(db, b, u); if (b.ct_approve && r?.id) await db.q('UPDATE kd_user SET ct_approve = true WHERE id = $1', [r.id]); return r; })); });
 R('PUT', '/api/users/:id', async (req, res, u, p) => {
   admin(u); const b = await readJson(req); const old = notFound(await one('SELECT * FROM kd_user WHERE id = $1', [+p.id]), 'tài khoản');
   if (old.id === u.id && (b.active === false || (b.role && b.role !== 'admin'))) bad('Không tự khóa / tự hạ quyền tài khoản đang đăng nhập');
   if (b.role && !M.ROLES.some(r => r[0] === b.role)) bad('Vai trò không hợp lệ');
-  const keys = ['full_name', 'role', 'title', 'dept', 'phone', 'email', 'active'].filter(k => k in b);
+  if ('ct_approve' in b) b.ct_approve = !!b.ct_approve;   // quyền duyệt hợp đồng trên hệ thống (không phải thẩm quyền ký)
+  const keys = ['full_name', 'role', 'title', 'dept', 'phone', 'email', 'active', 'ct_approve'].filter(k => k in b);
   if (!keys.length) bad('Không có thay đổi');
   const r = await one(`UPDATE kd_user SET ${keys.map((k, i) => `${k} = $${i + 1}`).join(', ')} WHERE id = $${keys.length + 1} RETURNING id, username, full_name, role, active`, [...keys.map(k => b[k]), old.id]);
   if (b.active === false) await q('DELETE FROM kd_session WHERE user_id = $1', [old.id]);
@@ -562,9 +581,12 @@ R('GET', '/print/reservation/:id', async (req, res, u, p, qs) => send(res, 200, 
 R('GET', '/api/handover-templates', async (req, res, u, p, qs) => send(res, 200, await M4.handoverTemplates(qs)));
 R('GET', '/print/handover/:kind/:id', async (req, res, u, p, qs) => send(res, 200, await M4.printHandover(p.kind, p.id, u, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 // phiếu đề nghị hủy / đổi: tự điền theo hợp đồng / phiếu giữ chỗ
-R('GET', '/api/voucher-prefill', async (req, res, u, p, qs) => { if (!can(u, M.E.receipt, 'c') && !can(u, M.E.payment, 'c')) C.deny(); send(res, 200, await B.voucherPrefill({ q, one }, qs)); });
+R('GET', '/api/voucher-prefill', async (req, res, u, p, qs) => { if (!can(u, M.E.receipt, 'c') && !can(u, M.E.payment, 'c')) C.deny(); send(res, 200, await B.voucherPrefill({ q, one }, qs, u)); });
 R('POST', '/api/handover-notice/set-bg', async (req, res, u) => { if (!can(u, M.E.contract, 'u')) C.deny('Bạn không được sửa hợp đồng'); const b = await readJson(req); send(res, 200, await tx(db => B.bgSet(db, u, b))); });   // chọn đợt bàn giao / số ngày cho 1 HĐMB ngay ở thông báo
 R('GET', '/api/handover-notice/suggest', async (req, res, u, p, qs) => { if (!can(u, M.E.handover_notice, 'c') && !can(u, M.E.handover_notice, 'u') && !can(u, M.E.handover_notice, 'r')) C.deny(); send(res, 200, await B.bgSuggest({ q, one }, qs)); });   // thông báo bàn giao: gợi ý căn có HĐMB đã ký + hạn thu đợt bàn giao
+// 17/11/2026: Thông báo bàn giao Giấy chứng nhận — bảng căn (gợi ý hạn mới) + gắn đợt thu với GCN
+R('POST', '/api/gcn-notice/set', async (req, res, u) => { if (!can(u, M.E.contract, 'u')) C.deny('Bạn không được sửa hợp đồng'); const b = await readJson(req); send(res, 200, await tx(db => B.gcnSet(db, u, b))); });
+R('GET', '/api/gcn-notice/suggest', async (req, res, u, p, qs) => { if (!can(u, M.E.gcn_notice, 'c') && !can(u, M.E.gcn_notice, 'u') && !can(u, M.E.gcn_notice, 'r')) C.deny(); send(res, 200, await B.gcnSuggest({ q, one }, qs)); });
 R('GET', '/api/cancel_prefill', async (req, res, u, p, qs) => { if (!can(u, M.E.cancel_req, 'c') && !can(u, M.E.cancel_req, 'u')) C.deny(); send(res, 200, await B.cancelPrefill({ q, one }, qs)); });
 // bên bán theo tên (Bên A): thông tin mặc định + ô đã ghi ở hợp đồng gần nhất cùng Bên A
 // thông tin bên bán: ghi nhớ theo từng Bên A ngay khi nhập (kd_setting.seller_info_v2), không phụ thuộc hợp đồng có lưu được hay không; chưa nhập thì lấy giá trị gần nhất trên hợp đồng

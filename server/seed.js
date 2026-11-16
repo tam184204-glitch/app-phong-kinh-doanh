@@ -214,6 +214,7 @@ async function ensureTemplates() {
     await db.q(`UPDATE kd_reservation r SET reg_state = CASE WHEN r.status IN ('huy','het_han','tu_choi') THEN 'huy'
       WHEN EXISTS (SELECT 1 FROM kd_contract c WHERE c.reservation_id = r.id AND c.status = 'da_ky') THEN 'ky_hdmb' ELSE 'giu_cho' END WHERE r.reg_state IS NULL`);
     await db.q(`UPDATE kd_reservation r SET progress = CASE WHEN r.reg_state = 'ky_hdmb' THEN 'da_ky'
+      WHEN EXISTS (SELECT 1 FROM kd_noxh_check n WHERE n.reservation_id = r.id AND n.status = 'da_duyet' AND n.sxd_result = 'khong_duyet') THEN 'khong_du_dk'
       WHEN r.status = 'chuyen_hd' OR EXISTS (SELECT 1 FROM kd_noxh_check n WHERE n.reservation_id = r.id AND n.status = 'da_duyet') THEN 'du_dk'
       WHEN EXISTS (SELECT 1 FROM kd_noxh_check n WHERE n.reservation_id = r.id AND n.status = 'cho_duyet') THEN 'cho_xet_duyet' ELSE 'tiep_nhan' END WHERE r.progress IS NULL`);
   });
@@ -579,7 +580,8 @@ async function loadDemo() {
 }
 
 // ======================= XÓA DỮ LIỆU THỬ =======================
-const ORDER = ['sale_notice', 'commission', 'collect_plan', 'debt_call', 'refund', 'cancel_req', 'receipt', 'contract_change', 'defect', 'pinkbook', 'handover', 'ticket', 'notice', 'noxh_check', 'contact_log', 'loan_pay', 'installment', 'contract', 'reservation',
+// phiếu chi trỏ tới đề xuất hoàn tiền / kỳ trả lãi HĐ vay / hợp đồng → xóa trước các bảng đó
+const ORDER = ['sale_notice', 'commission', 'collect_plan', 'debt_call', 'payment', 'refund', 'cancel_req', 'receipt', 'contract_change', 'defect', 'pinkbook', 'handover', 'ticket', 'notice', 'noxh_check', 'contact_log', 'loan_pay', 'installment', 'contract', 'reservation',
   'report', 'target', 'agent_alloc', 'commission', 'customer', 'commission_policy', 'agent', 'package'];
 async function clearDemo() {
   const out = {};

@@ -84,40 +84,41 @@ const unitsTable = us => { if (us.length && 'b' in us[0]) return polUnitsTable(u
 
 // chính sách bán hàng (14/11/2026): căn hộ áp dụng dạng cột, gom theo tòa
 const polUnitsTable = us => { const KIND = Object.fromEntries(M.ents.unit.fields.find(f => f.k === 'kind').o), fin = us.some(u => u.fin != null), bs = [...new Set(us.map(u => u.b))];
-  return `<div class="small muted mb">${us.length} căn${bs.length > 1 ? ' · ' + bs.map(b => `Tòa ${esc(b)}: ${us.filter(u => u.b === b).length}`).join(' · ') : ''}</div><div class="tbl-wrap ds-can"><table class="t compact noclick"><thead><tr><th class="center">STT</th><th>Mã căn</th><th>Tòa</th><th class="num">Tầng</th><th>Loại</th><th class="num">DT thông thủy</th><th class="num">Tổng giá căn hộ</th>${fin ? '<th class="num">Giá trị hoàn thiện</th>' : ''}</tr></thead>
-    <tbody>${us.map((u, i) => `<tr><td class="center">${i + 1}</td><td>${esc(u.code)}</td><td>${esc(u.b)}</td><td class="num">${u.floor ?? ''}</td><td>${esc(KIND[u.kind] || u.kind || '')}</td><td class="num">${fnum(u.area_tt)}</td><td class="num">${fm(u.total_price)}</td>${fin ? `<td class="num">${u.fin != null ? fm(u.fin) : ''}</td>` : ''}</tr>`).join('')}</tbody></table></div>`; };
+  return `<div class="small muted mb">${us.length} căn${bs.length > 1 ? ' · ' + bs.map(b => `Tòa ${esc(b)}: ${us.filter(u => u.b === b).length}`).join(' · ') : ''}</div><div class="tbl-wrap ds-can"><table class="t compact noclick"><thead><tr><th class="center">STT</th><th>Mã căn</th><th>Tòa</th><th class="num">Tầng</th><th>Loại</th><th class="num">DT thông thủy</th><th class="num">Tổng giá căn hộ</th>${fin ? '<th class="num">Giá trị hoàn thiện</th>' : ''}<th class="num">Tổng giá trị căn hộ</th></tr></thead>
+    <tbody>${us.map((u, i) => { const g = u.base ?? +u.total_price ?? 0; return `<tr><td class="center">${i + 1}</td><td>${esc(u.code)}</td><td>${esc(u.b)}</td><td class="num">${u.floor ?? ''}</td><td>${esc(KIND[u.kind] || u.kind || '')}</td><td class="num">${fnum(u.area_tt)}</td><td class="num">${fm(g)}</td>${fin ? `<td class="num">${u.fin != null ? fm(u.fin) : ''}</td>` : ''}<td class="num"><b>${fm(g + (+u.fin || 0))}</b></td></tr>`; }).join('')}</tbody></table></div>`; };   // 14/11/2026: Tổng giá trị căn hộ = tổng giá căn hộ + giá trị hoàn thiện
 
 // ---------- Thông báo bàn giao (13/11/2026): bảng căn của tòa + HĐMB đã ký + đợt bàn giao, hạn hiện tại → hạn mới ----------
-const bgTable = (rs, { pick, sel } = {}) => {
-  const d = v => v ? dmy(String(v).slice(0, 10)) : '';
+const bgTable = (rs, { pick, sel, mode } = {}) => {
+  const d = v => v ? dmy(String(v).slice(0, 10)) : '', W = mode === 'gcn' ? 'Giấy chứng nhận' : 'bàn giao', WD = mode === 'gcn' ? 'bàn giao Giấy chứng nhận' : 'bàn giao';   // 17/11/2026: dùng chung cho thông báo bàn giao Giấy chứng nhận
   // mỗi căn: các đợt gắn bàn giao (nhiều đợt, kể cả phí bảo trì) — đợt · số ngày · số tiền · hạn hiện tại → hạn mới
   const items = x => !x.contract_id ? '<span class="muted">Chưa có HĐMB đã ký</span>' : `<div class="bg-its">${x.items.map(i => {
       const chg = i.due_new && i.due_old !== i.due_new;
-      return `<div class="bg-it"><span class="bg-n" title="${esc(i.name)}">${pick ? `<button type="button" class="lnk" data-bgx="${x.contract_id}" data-seq="${i.seq}" title="Bỏ đợt này khỏi bàn giao">${ico('fa-xmark')}</button> ` : ''}${esc(String(i.name).slice(0, 48))}</span>
-        <span class="bg-d">${pick ? `<input data-bgn="${x.contract_id}" data-seq="${i.seq}" value="${i.own ?? ''}" placeholder="${i.days}" inputmode="numeric" title="Số ngày được nộp kể từ ngày bàn giao — để trống = theo ô «Số ngày được nộp tiền (mặc định)»">` : `<b>${i.days}</b>`} ngày${i.own == null ? '<small class="muted"> (mặc định)</small>' : ''}</span>
+      return `<div class="bg-it"><span class="bg-n" title="${esc(i.name)}">${pick ? `<button type="button" class="lnk" data-bgx="${x.contract_id}" data-seq="${i.seq}" title="Bỏ gắn đợt này với ${W}">${ico('fa-xmark')}</button> ` : ''}${esc(String(i.name).slice(0, 48))}</span>
+        <span class="bg-d">${pick ? `<input data-bgn="${x.contract_id}" data-seq="${i.seq}" value="${i.own ?? ''}" placeholder="${i.days}" inputmode="numeric" title="Số ngày được nộp kể từ ngày ${WD} — để trống = theo ô «Số ngày được nộp tiền (mặc định)»">` : `<b>${i.days}</b>`} ngày${i.own == null ? '<small class="muted"> (mặc định)</small>' : ''}</span>
         <span class="bg-a">${fm(i.amount)}</span><span class="bg-h">${d(i.due_old)}${i.due_new ? ` → <b${chg ? ' style="color:var(--cobalt)"' : ''}>${d(i.due_new)}</b>` : ''}</span></div>`; }).join('')}
-    ${!x.items.length ? '<div class="hs-miss small">Chưa rõ đợt gắn bàn giao — chọn ở dưới</div>' : x.how === 'text' ? '<div class="small muted">tự nhận theo nội dung đợt — kiểm tra lại</div>' : ''}
-    ${pick ? (() => { const rest = x.dots.filter(o => !x.items.some(i => i.seq === o.seq)); return rest.length ? `<select data-bgadd="${x.contract_id}" class="${x.items.length ? '' : 'bg-none'}"><option value="">+ Thêm đợt gắn bàn giao…</option>${rest.map(o => `<option value="${o.seq}">${esc(String(o.name).slice(0, 55))}</option>`).join('')}</select>` : ''; })() : ''}</div>`;
-  return `<div class="tbl-wrap bg-t"><table class="t compact noclick"><thead><tr>${pick ? '<th style="width:30px"></th>' : ''}<th>Mã căn</th><th>Khách hàng</th><th>Số HĐMB</th><th>Ngày ký</th><th>Các đợt gắn bàn giao · số ngày · số tiền · hạn hiện tại → hạn mới</th><th>Ghi chú</th></tr></thead><tbody>
+    ${!x.items.length ? `<div class="hs-miss small">Chưa rõ đợt gắn ${W} — chọn ở dưới</div>` : x.how === 'text' ? '<div class="small muted">tự nhận theo nội dung đợt — kiểm tra lại</div>' : ''}
+    ${pick ? (() => { const rest = x.dots.filter(o => !x.items.some(i => i.seq === o.seq)); return rest.length ? `<select data-bgadd="${x.contract_id}" class="${x.items.length ? '' : 'bg-none'}"><option value="">+ Thêm đợt gắn ${W}…</option>${rest.map(o => `<option value="${o.seq}">${esc(String(o.name).slice(0, 55))}</option>`).join('')}</select>` : ''; })() : ''}</div>`;
+  return `<div class="tbl-wrap bg-t"><table class="t compact noclick"><thead><tr>${pick ? '<th style="width:30px"></th>' : ''}<th>Mã căn</th><th>Khách hàng</th><th>Số HĐMB</th><th>Ngày ký</th><th>Các đợt gắn ${W} · số ngày · số tiền · hạn hiện tại → hạn mới</th><th>Ghi chú</th></tr></thead><tbody>
     ${rs.map(x => { const on = pick && sel.has(x.code.toUpperCase());
-      return `<tr${on ? ' class="sel"' : ''}>${pick ? `<td><input type="checkbox" data-bgu="${esc(x.code)}" ${on ? 'checked' : ''} ${x.other ? 'disabled' : ''}></td>` : ''}<td>${esc(x.code)}</td><td>${esc(x.customer || '')}</td><td>${esc(x.number || '')}</td><td>${d(x.contract_on)}</td>
-        <td>${items(x)}</td><td class="small">${x.other ? `<span class="hs-miss">Đã có trong TB ${esc(x.other)}</span>` : ''}</td></tr>`; }).join('')}
+      return `<tr${on ? ' class="sel"' : ''}>${pick ? `<td><input type="checkbox" data-bgu="${esc(x.code)}" ${on ? 'checked' : ''}></td>` : ''}<td>${esc(x.code)}</td><td>${esc(x.customer || '')}</td><td>${esc(x.number || '')}</td><td>${d(x.contract_on)}</td>
+        <td>${items(x)}</td><td class="small">${x.other ? `<span class="hs-miss" title="Vẫn tích chọn được — phát hành thông báo này thì căn theo thông báo mới nhất (thông báo cũ giữ để tra cứu)">Đã có trong thông báo số ${esc(x.other)}</span>` : ''}</td></tr>`; }).join('')}
     </tbody></table></div>`;
 };
 async function bgPicker(el, form) {
-  const hid = $('input[type=hidden]', el), box = $('.upick-bd', el), F = k => M.ents.handover_notice.fields.find(f => f.k === k);
+  const G = el.dataset.mode === 'gcn', W = G ? 'Giấy chứng nhận' : 'bàn giao', AP = G ? '/api/gcn-notice/' : '/api/handover-notice/';
+  const hid = $('input[type=hidden]', el), box = $('.upick-bd', el), F = k => M.ents[G ? 'gcn_notice' : 'handover_notice'].fields.find(f => f.k === k);
   const val = k => readField(form, F(k));
   let rows = [], key = '', auto = !hid.value, sel = new Set(String(hid.value).toUpperCase().split(/[,;\s]+/).filter(Boolean)), first = null;
   const draw = () => {
     if (!val('building_id')) { box.innerHTML = '<div class="muted small">Chọn dự án và mã tòa — app tự hiện các căn có HĐMB đã ký để tích.</div>'; return; }
     if (!rows.length) { box.innerHTML = '<div class="muted small">Tòa này chưa có căn hộ.</div>'; return; }
     box.innerHTML = `<div class="upick-sum">${sumHtml()}</div>
-      ${val('handover_on') ? '' : '<div class="small hs-miss">Điền «Ngày bàn giao» để xem hạn thu mới của đợt bàn giao.</div>'}${bgTable(rows, { pick: true, sel })}`;
+      ${val('handover_on') ? '' : `<div class="small hs-miss">Điền «${G ? 'Ngày bàn giao Giấy chứng nhận' : 'Ngày bàn giao'}» để xem hạn thu mới của đợt gắn ${W}.</div>`}${bgTable(rows, { pick: true, sel, mode: G ? 'gcn' : '' })}`;
   };
   const sumHtml = () => { const on = rows.filter(x => sel.has(x.code.toUpperCase())), hd = on.filter(x => x.inst_id), tot = hd.reduce((s, x) => s + (+x.amount || 0), 0);
     const unk = on.filter(x => x.contract_id && !x.inst_id).length;
-    return `<b>Đã chọn ${on.length}/${rows.length} căn</b> · ${hd.length} HĐMB có đợt gắn bàn giao · tiền các đợt gắn bàn giao ${fm(tot)} đ${unk ? ` · <span class="hs-miss">${unk} HĐ chưa rõ đợt — chọn ở cột «Các đợt gắn bàn giao»</span>` : ''}
-      ${first ? ` · <span class="hs-ok">tòa đã bàn giao từ ${dmy(String(first).slice(0, 10))}</span>` : ''}<span class="grow"></span>
+    return `<b>Đã chọn ${on.length}/${rows.length} căn</b> · ${hd.length} HĐMB có đợt gắn ${W} · tiền các đợt gắn ${W} ${fm(tot)} đ${unk ? ` · <span class="hs-miss">${unk} HĐ chưa rõ đợt — chọn ở cột «Các đợt gắn ${W}»</span>` : ''}
+      ${first ? ` · <span class="hs-ok">tòa đã ${G ? 'bàn giao Giấy chứng nhận' : 'bàn giao'} từ ${dmy(String(first).slice(0, 10))}</span>` : ''}<span class="grow"></span>
       <button type="button" class="btn sm" data-bga="hd">Chọn căn có HĐMB đã ký</button><button type="button" class="btn sm" data-bga="1">Chọn tất cả</button><button type="button" class="btn sm ghost" data-bga="0">Bỏ chọn hết</button>`; };
   const setHid = () => { hid.value = rows.filter(x => sel.has(x.code.toUpperCase())).map(x => x.code).join(','); };
   const setSel = s => { sel = s; setHid(); draw(); };
@@ -125,7 +126,7 @@ async function bgPicker(el, form) {
     const qs = new URLSearchParams({ id: form.dataset.id || '', building: val('building_id') || '', on: val('handover_on') || '', notice: val('notice_on') || '', from: val('pay_from') || 'ban_giao', days: val('pay_days') ?? 0 });
     if (qs.toString() === key) return; const bChanged = !key.includes(`building=${qs.get('building')}&`); key = qs.toString();
     if (!qs.get('building')) { rows = []; draw(); return; }
-    const r = await api('GET', '/api/handover-notice/suggest?' + qs); rows = r.rows; first = r.bg_from;
+    const r = await api('GET', AP + 'suggest?' + qs); rows = r.rows; first = r.bg_from;
     if (bChanged && (auto || !rows.some(x => sel.has(x.code.toUpperCase())))) { auto = true; setSel(new Set(rows.filter(x => x.inst_id && !x.other).map(x => x.code.toUpperCase()))); } else draw();
   };
   let tm = 0; const soon = () => { clearTimeout(tm); tm = setTimeout(() => load().catch(e => toast(e.message, true)), 250); };
@@ -137,19 +138,21 @@ async function bgPicker(el, form) {
   // đổi các đợt gắn bàn giao / số ngày của 1 HĐ: ghi thẳng vào Lần thanh toán của HĐMB (lần sau mọi thông báo đều nhận đúng)
   const saveBg = async (ct, fn, msg) => { const x = rows.find(y => y.contract_id === ct); if (!x) return;
     const its = fn(x.items.map(i => ({ seq: i.seq, days: i.own })));
-    await api('POST', '/api/handover-notice/set-bg', { contract_id: ct, items: its }); toast(msg); key = ''; await load(); };
+    await api('POST', AP + (G ? 'set' : 'set-bg'), { contract_id: ct, items: its }); toast(msg); key = ''; await load(); };
   box.addEventListener('change', run(async e => { const c = e.target, d = c.dataset; if (!d.bgadd && !d.bgn) return; e.stopPropagation(); c.disabled = true;
-    try { if (d.bgadd && c.value) await saveBg(+d.bgadd, its => [...its, { seq: +c.value, days: null }], 'Đã gắn thêm đợt vào bàn giao (lưu vào HĐMB)');
+    try { if (d.bgadd && c.value) await saveBg(+d.bgadd, its => [...its, { seq: +c.value, days: null }], `Đã gắn thêm đợt với ${W} (lưu vào HĐMB)`);
       if (d.bgn) await saveBg(+d.bgn, its => its.map(i => i.seq === +d.seq ? { ...i, days: c.value.trim() } : i), 'Đã lưu số ngày vào HĐMB'); } finally { c.disabled = false; } }));
   box.addEventListener('click', run(async e => { const b = e.target.closest('[data-bgx]'); if (!b) return; e.preventDefault();
-    await saveBg(+b.dataset.bgx, its => its.filter(i => i.seq !== +b.dataset.seq), 'Đã bỏ đợt khỏi bàn giao (lưu vào HĐMB)'); }));
+    await saveBg(+b.dataset.bgx, its => its.filter(i => i.seq !== +b.dataset.seq), `Đã bỏ gắn đợt với ${W} (lưu vào HĐMB)`); }));
   box.addEventListener('click', e => { const b = e.target.closest('[data-bga]'); if (!b) return; auto = false;
-    setSel(new Set(rows.filter(x => !x.other && (b.dataset.bga === '1' || (b.dataset.bga === 'hd' && x.inst_id))).map(x => x.code.toUpperCase()))); });
+    setSel(new Set(rows.filter(x => b.dataset.bga === '1' || (b.dataset.bga === 'hd' && x.inst_id)).map(x => x.code.toUpperCase()))); });   // 17/11/2026: kể cả căn đã có trong thông báo trước
   await load();
 }
 function show(f, row, { plain } = {}) {
   if (f.pick === 'units' && Array.isArray(row._units) && !plain) return unitsTable(row._units);
+  if (f.pick === 'liq' && Array.isArray(row[f.k])) return plain ? row[f.k].map(x => x.number).join(' + ') : liqTable(row[f.k]);   // phiếu thanh lý chung: bảng từng hợp đồng + tổng
   if (f.pick === 'bg_units' && Array.isArray(row._bg) && !plain) return `<div class="small muted mb">${row._bg.length} căn · hạn thu đợt bàn giao ${row.status === 'da_duyet' ? 'đã cập nhật vào HĐMB' : 'sẽ cập nhật khi phát hành'}</div>` + bgTable(row._bg);
+  if (f.pick === 'gcn_units' && Array.isArray(row._bg) && !plain) return `<div class="small muted mb">${row._bg.length} căn · hạn thu đợt gắn Giấy chứng nhận ${row.status === 'da_duyet' ? 'đã cập nhật vào HĐMB' : row.status === 'huy' ? 'đã trả về như trước khi phát hành' : 'sẽ cập nhật khi phát hành'}</div>` + bgTable(row._bg, { mode: 'gcn' });
   const v = row[f.k];
   if (f.k === 'fin_sched' && !plain && !(Array.isArray(v) && v.length)) return '<span class="muted">Chưa khai tiến độ riêng — giá trị hoàn thiện thu chung theo tiến độ thu tiền HĐMB ở trên</span>';
   if (v == null || v === '') return plain ? '' : '<span class="muted">—</span>';
@@ -161,7 +164,7 @@ function show(f, row, { plain } = {}) {
     case 'dt': return dmyhm(v);
     case 'month': return mmy(v);
     case 'bool': return v ? (plain ? 'Có' : `<span style="color:var(--g)">${ico('fa-circle-check')}</span>`) : (plain ? '' : `<span class="muted">${ico('fa-circle-minus')}</span>`);
-    case 'sel': { const o = optOf(f, v); return plain ? (o?.[1] ?? v) : o?.[2] ? pill(o[1], o[2]) : esc(o?.[1] ?? v); }
+    case 'sel': { const o = f.alt && row[f.alt.flag] && v === f.alt.v ? [v, f.alt.l, f.alt.c] : optOf(f, v); return plain ? (o?.[1] ?? v) : o?.[2] ? pill(o[1], o[2]) : esc(o?.[1] ?? v); }   // alt: nhãn phụ theo cờ (VD HĐ «Dự thảo – Chờ duyệt hồ sơ»)
     case 'tags': { const ls = String(v).split(',').filter(Boolean).map(k => optOf(f, k)?.[1] ?? k); return plain ? ls.join(', ') : ls.map(l => `<span class="tag">${esc(l)}</span>`).join(' '); }
     case 'ref': case 'refs': case 'user': return esc(row[f.k + '__l'] ?? '#' + v);
     case 'check': { const n = v.filter(x => x.st === 'da_nhan').length, bad = v.filter(x => ['thieu', 'can_sua'].includes(x.st)).length; return plain ? `${n}/${v.length}` : `<span class="${bad ? 'neg' : ''}">${n}/${v.length}${bad ? ` · thiếu ${bad}` : ''}</span>`; }
@@ -265,7 +268,7 @@ function input(f, v, rec = {}, { ro, id } = {}) {
   const nm = `name="${f.k}" data-t="${f.t}" id="${id || 'f_' + f.k}"`;
   if (ro) return `<div class="ro">${show(f, rec)}</div>`;
   if (f.upload) return `<div class="upfile"><input type="file" accept="${f.upload}" ${f.multi ? 'multiple ' : ''}${nm}>${v ? `<span class="small muted">Đang có: ${esc(v)} — chọn tệp mới để thay</span>` : ''}</div>`;
-  if (f.pick === 'bg_units') return `<div class="upick" data-pick-bg><input type="hidden" ${nm} value="${esc(v ?? '')}"><div class="upick-bd"></div></div>`;
+  if (f.pick === 'bg_units' || f.pick === 'gcn_units') return `<div class="upick" data-pick-bg${f.pick === 'gcn_units' ? ' data-mode="gcn"' : ''}><input type="hidden" ${nm} value="${esc(v ?? '')}"><div class="upick-bd"></div></div>`;
   if (f.pick === 'units') return `<div class="upick" data-pick-units><input type="hidden" ${nm} value="${esc(v ?? f.def ?? '*')}"${f.def === '' ? ' data-none' : ''}><div class="upick-bd"></div></div>`;   // def '' = chưa chọn căn nào
   switch (f.t) {
     case 'long': return `<textarea ${nm} rows="3">${esc(v ?? '')}</textarea>`;
@@ -278,13 +281,16 @@ function input(f, v, rec = {}, { ro, id } = {}) {
     case 'tags': { const on = String(v ?? '').split(','); return `<div class="tagpick" ${nm}>${(f.o || []).map(o => `<label class="chk"><input type="checkbox" value="${esc(o[0])}" ${on.includes(o[0]) ? 'checked' : ''}> ${esc(o[1])}</label>`).join('')}</div>`; }
     case 'bool': return `<label class="chk" style="height:38px"><input type="checkbox" ${nm} ${v ? 'checked' : ''}> Có</label>`;
     case 'user': { const us = M.users.filter(u => (u.active || u.id === v) && (!f.roles || f.roles.includes(u.role) || u.role === 'admin')); return `<select ${nm}><option value="">— chọn —</option>${us.map(u => `<option value="${u.id}" ${u.id === v ? 'selected' : ''}>${esc(u.full_name)} · ${esc(roleName(u.role))}</option>`).join('')}</select>`; }
-    case 'ref': return `<div class="combo" data-ref="${f.ref}" ${f.filter ? `data-filter="${f.filter}"` : ''} ${f.dep ? `data-dep="${f.dep}"` : ''}><input type="text" placeholder="Gõ để tìm ${esc(M.ents[f.ref].one)}…" value="${esc(rec[f.k + '__l'] ?? '')}" autocomplete="off" data-combo><input type="hidden" ${nm} value="${esc(v ?? '')}"><button type="button" class="x" tabindex="-1" title="Bỏ chọn">${ico('fa-xmark')}</button></div>`;
+    case 'ref': if (f.auto) return `<div class="ref-auto"><input type="text" readonly tabindex="-1" placeholder="${esc(f.autoPh || 'Tự lấy')}" value="${esc(rec[f.k + '__l'] ?? '')}" style="background:var(--soft, #f4f6f9);cursor:default"><input type="hidden" ${nm} value="${esc(v ?? '')}"></div>`;   // ô tự điền (chỉ đọc)
+      return `<div class="combo" data-ref="${f.ref}" ${f.filter ? `data-filter="${f.filter}"` : ''} ${f.dep ? `data-dep="${f.dep}"` : ''} ${f.byUnit ? `data-byunit="${f.byUnit}"` : ''} ${f.unitOpt ? `data-unitopt="${f.unitOpt}"` : ''} ${f.optq ? `data-optq="${f.optq}"` : ''}><input type="text" placeholder="Gõ để tìm ${esc(M.ents[f.ref].one)}…" value="${esc(rec[f.k + '__l'] ?? '')}" autocomplete="off" data-combo><input type="hidden" ${nm} value="${esc(v ?? '')}"><button type="button" class="x" tabindex="-1" title="Bỏ chọn">${ico('fa-xmark')}</button></div>`;
     case 'refs': { const ids = v || [], ls = String(rec[f.k + '__l'] ?? '').split(', '), lab = (id, i) => { const p = f.ref === 'project' && M.projects.find(x => x.id === id); return p ? `${p.code} · ${p.name}` : ids.length === ls.length ? ls[i] : '#' + id; };
       return `<div class="combo multi" data-ref="${f.ref}" data-multi><div class="chips">${ids.map((id, i) => `<span class="chip" data-id="${id}">${esc(lab(id, i))}<button type="button" tabindex="-1" title="Bỏ">${ico('fa-xmark')}</button></span>`).join('')}<input type="text" placeholder="${ids.length ? 'Thêm' : 'Gõ để tìm'} ${esc(M.ents[f.ref].one)}…" autocomplete="off" data-combo></div><input type="hidden" ${nm} value="${esc(ids.join(','))}"></div>`; }
     case 'check': return `<div class="cklist${f.qty ? ' qty' : ''}" ${nm} ${f.qty ? 'data-qty' : ''}>${checkRows(v || [], f.qty)}</div>`;
-    case 'json': if (f.pick === 'finish') return `<div class="upick" data-pick-fin><input type="hidden" ${nm} value="${esc(JSON.stringify(v || {}))}"><div class="upick-bd"></div></div>`;
+    case 'json': if (f.pick === 'liq') return `<div class="upick" data-pick-liq><input type="hidden" ${nm} value="${esc(JSON.stringify(Array.isArray(v) ? v : []))}"><div class="upick-bd"></div></div>`;   // phiếu thanh lý chung (16/11/2026)
+      if (f.pick === 'finish') return `<div class="upick" data-pick-fin><input type="hidden" ${nm} value="${esc(JSON.stringify(v || {}))}"><div class="upick-bd"></div></div>`;
       return f.k === 'pay_sched' ? `<div data-psched ${nm}></div>` : f.k === 'fin_sched' ? `<div data-fsched ${nm}></div>` : f.k === 'new_schedule' ? `<div data-sched ${nm}></div>` : f.k === 'sale_sched' ? `<div data-ssched ${nm}></div>` : f.grid ? `<div class="gridin" ${nm}>${gridRows(f, v || [])}</div>` : `<div class="ro">${show(f, rec)}</div>`;
     default: if (f.choose) return `<select ${nm}>${[...new Set([...f.choose, ...(v ? [v] : [])])].map(o => `<option ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;   // ô chữ nhưng chọn trong danh sách (giữ giá trị cũ ngoài danh sách)
+      if (f.sugRef) return `<input ${nm} value="${esc(v ?? '')}" autocomplete="off" list="dl_${f.k}" placeholder="Gõ mã hoặc tên để tìm ${esc(M.ents[f.sugRef].one)} đã có…"><datalist id="dl_${f.k}"></datalist>`;   // gợi ý động: xem openForm
       return `<input ${nm} value="${esc(v ?? '')}" autocomplete="off"${f.sug ? ` list="dl_${f.k}"` : ''}>${f.sug ? sugList('dl_' + f.k, f.sug) : ''}`;
   }
 }
@@ -445,7 +451,16 @@ function combo(c, root, onChange) {
     const p = new URLSearchParams({ q: txt.value.trim() });
     if (c.dataset.filter) p.set('filter', c.dataset.filter);
     if (c.dataset.dep) { const d = $(`[name="${c.dataset.dep}"]`, root)?.value; if (d) { p.set('dep', c.dataset.dep); p.set('depv', d); } }
+    // HĐMB (15/11/2026): ô khách hàng chỉ hiện khách gắn với căn đã chọn + tình trạng xét duyệt hồ sơ NOXH; chưa chọn căn thì nhắc chọn căn trước
+    const byU = c.dataset.byunit && ($('[name="kind"]', root)?.value || 'hdmb') === 'hdmb', uv = byU ? $(`[name="${c.dataset.byunit}"]`, root)?.value : null;
+    if (byU && !uv) { items = []; if (document.activeElement !== txt) return; close(); box = document.createElement('div'); box.className = 'opts'; box.innerHTML = '<div class="muted">Chọn mã căn hộ trước — danh sách khách hàng theo căn đã chọn</div>'; c.append(box); return; }
+    if (uv) p.set('unit', uv);
+    // phiếu thu / chi (17/11/2026): đã chọn mã căn → chỉ các hợp đồng (phiếu thanh lý) của căn đó; chưa chọn căn thì tìm trong tất cả
+    const uo = c.dataset.unitopt ? $(`[name="${c.dataset.unitopt}"]`, root)?.value : null; if (uo) p.set('unit', uo);
+    if (c.dataset.optq) new URLSearchParams(c.dataset.optq).forEach((v, k) => p.set(k, v));
     try { items = await api('GET', `/api/opts/${ref}?${p}`); } catch { items = []; }
+    if (uo && !items.length && !txt.value.trim() && document.activeElement === txt) { close(); box = document.createElement('div'); box.className = 'opts'; box.innerHTML = `<div class="muted">Căn này chưa có ${esc(M.ents[ref].one)} nào${c.dataset.optq ? '' : ' (trừ HĐ đã hủy)'}</div>`; c.append(box); return; }
+    if (uv && !items.length && document.activeElement === txt) { close(); box = document.createElement('div'); box.className = 'opts'; box.innerHTML = '<div class="muted">Căn này chưa có khách hàng đăng ký / hồ sơ NOXH</div>'; c.append(box); return; }
     if (multi) items = items.filter(it => !ids().includes(it.id));
     if (document.activeElement !== txt) return;
     close(); box = document.createElement('div'); box.className = 'opts'; cur = -1;
@@ -528,7 +543,8 @@ function schedEditor(el, rows, { total, base, first, maint, mdot, bgBase, pol, f
     return null;
   };
   const useC = (r, c) => { const d = first?.(); Object.assign(r, { name: c.name, pct: c.pct, amount: null, _days: c.days || 0, due_on: c.days && d ? addDays(d, c.days) : c.days === 0 ? r.due_on || d : '' }); };
-  if (first?.()) for (const r of R) { const n = nDays(r.name); if (n && addDays(first(), n) === r.due_on) r._days = n; }   // lịch đã lưu: hạn đúng «Sau N ngày» thì vẫn đi theo ngày ký
+  { const f0 = first?.() || R[0]?.due_on;   // lịch đã lưu: hạn đúng «Sau N ngày» thì vẫn đi theo ngày ký (15/11/2026: HĐ chưa ghi ngày ký → mốc = hạn kỳ 1, VD HĐ tự lập từ hồ sơ NOXH)
+    if (f0) for (const r of R) { const n = +r.sign_days > 0 ? +r.sign_days : nDays(r.name); if (n && addDays(f0, n) === r.due_on) r._days = n; } }
   const draw = () => {
     const f1 = first?.(), d1 = /^\d{4}-\d{2}-\d{2}$/.test(f1 || '') ? f1 : null; if (d1 && R[0]) R[0].due_on = d1;   // ngày đang gõ dở thì giữ ngày trước
     if (d1) R.forEach((r, i) => { if ((i || fin) && r._days) r.due_on = addDays(d1, r._days); if (r._d0) r.due_on = d1; });   // đợt tính theo ngày ký đi theo ngày ký
@@ -543,7 +559,7 @@ function schedEditor(el, rows, { total, base, first, maint, mdot, bgBase, pol, f
     const mRow = on ? `<tr data-m class="sched-m"><td><b>Phí bảo trì</b></td><td><input data-mk="name" value="${esc(MR.name || '')}" style="width:100%"></td>${pol ? '' : `<td><input data-mk="due_on" value="${esc(dmy(MR.due_on) || '')}" placeholder="dd/mm/yyyy" style="width:120px" title="Tự theo hạn đợt ${mi + 1} (đợt có nội dung nhắc phí bảo trì, không có thì đợt 3) — sửa được; xóa trống thì lại tự theo"></td>`}<td class="num muted">—</td>${pol ? '' : `<td><input value="${mt ? fm(mt) : ''}" placeholder="${pol ? '2% tiền trước thuế' : 'chọn căn để tính'}" readonly style="width:150px;text-align:right" title="Phí bảo trì = 2% tiền trước thuế — tự tính khi chọn căn / nhập giá"></td>`}${SBG ? bgCell(MR, 'data-bgm="1"') : ''}<td></td></tr>` : '';
     el.innerHTML = `<div class="row mb sched-pre"${pol ? ' style="display:none"' : ''}>${(M.settings.schedule_presets || []).map((p, i) => `<button type="button" class="btn sm" data-pre="${i}">${ico('fa-wand-magic-sparkles')} ${esc(p.name)}</button>`).join('')}<span class="muted small"${pol ? ' hidden' : ''}>Mẫu tính ngày từ ngày gốc</span><input class="inp" style="width:120px;height:30px${pol ? ';display:none' : ''}" data-base value="${esc(dmy(d1 || base || today()))}"></div>
       <table class="t compact noclick sched ${C.length ? 'pick' : ''} ${pol ? 'pol' : ''}"><thead><tr><th>Đợt</th><th>Nội dung</th>${pol ? '' : '<th>Ngày đến hạn</th>'}<th class="num">Tỷ lệ %</th>${pol ? '' : '<th class="num">Số tiền</th>'}${on && SBG ? `<th title="Tích đợt thu khi bàn giao nhà (đợt 2, 3, 4… tùy hợp đồng) — Thông báo bàn giao phát hành thì hạn đợt này = ngày bàn giao + số ngày">Đợt bàn giao</th>` : ''}<th></th></tr></thead><tbody>
-      ${R.map((r, i) => `<tr data-i="${i}"><td>${C.length ? `<select data-sug="${i}" title="Chọn đợt để gợi ý nội dung, tỷ lệ, hạn"><option value="">Đợt ${i + 1}</option>${C.map((c, j) => `<option value="${j}" ${c.name === r.name ? 'selected' : ''}>${esc(c.dot)}</option>`).join('')}</select>` : i + 1}${r.fin ? '<div class="small fin-tag">Hoàn thiện</div>' : ''}</td><td>${C.length ? `<textarea data-k="name" rows="${pol ? 3 : 2}" placeholder="Chọn đợt để gợi ý hoặc tự ghi nội dung">${esc(r.name || '')}</textarea>` : `<input data-k="name" value="${esc(r.name || '')}">`}</td>${pol ? '' : `<td><input data-k="due_on" value="${esc(dmy(r.due_on) || r.due_on || '')}" placeholder="dd/mm/yyyy" style="width:120px"${d1 && !i ? ' readonly title="Tự theo ngày ký hợp đồng mua bán"' : r.bg && bgB?.on ? ` readonly title="Theo thông báo bàn giao ${esc(bgB.doc || '')}: ngày bàn giao ${dmy(bgB.on)} + ${r.bg_days ?? bgB.days ?? 0} ngày"` : ''}></td>`}<td><input data-k="pct" value="${r.pct ?? ''}" style="width:70px;text-align:right"></td>${pol ? '' : `<td><input data-k="amount" value="${r.amount && !pol ? fm(r.amount) : ''}" placeholder="${pol ? 'theo giá từng căn' : r.pct && tot ? fm(pa(r)) : ''}"${pol ? ' readonly title="Số tiền = tỷ lệ % × tiền sau thuế của từng căn — tính khi lập HĐMB"' : ''} style="width:150px;text-align:right"></td>`}${on && SBG ? bgCell(r, `data-bg="${i}"`) : ''}<td><div class="sched-acts"><button type="button" class="btn ghost sm" data-del="${i}" title="Xóa đợt">${ico('fa-trash')}</button></div></td></tr>`).join('')}<tr class="sched-add"><td colspan="${(on && SBG ? 7 : 6) - (pol ? 2 : 0)}"><button type="button" class="btn sm" data-add>${ico('fa-plus')} Thêm đợt</button></td></tr>${mRow}
+      ${R.map((r, i) => `<tr data-i="${i}"><td>${C.length ? `<select data-sug="${i}" title="Chọn đợt để gợi ý nội dung, tỷ lệ, hạn"><option value="">Đợt ${i + 1}</option>${C.map((c, j) => `<option value="${j}" ${c.name === r.name ? 'selected' : ''}>${esc(c.dot)}</option>`).join('')}</select>` : i + 1}${r.fin ? '<div class="small fin-tag">Hoàn thiện</div>' : ''}</td><td>${C.length ? `<textarea data-k="name" rows="${pol ? 3 : 2}" placeholder="Chọn đợt để gợi ý hoặc tự ghi nội dung">${esc(r.name || '')}</textarea>` : `<input data-k="name" value="${esc(r.name || '')}">`}</td>${pol ? '' : `<td><input data-k="due_on" value="${esc(dmy(r.due_on) || r.due_on || '')}" placeholder="dd/mm/yyyy" style="width:120px"${d1 && !i ? ' readonly title="Tự theo ngày ký hợp đồng mua bán"' : r.bg && bgB?.on ? ` readonly title="Theo thông báo bàn giao ${esc(bgB.doc || '')}: ngày bàn giao ${dmy(bgB.on)} + ${r.bg_days ?? bgB.days ?? 0} ngày"` : r._lock ? ` readonly title="${esc(r._lock)}"` : r._wait ? ` title="${esc(r._wait)}"${r.due_on ? '' : ' placeholder="ngày dự kiến"'}` : ''}>${r._lock ? `<div class="small hs-ok sched-ev" title="${esc(r._lock)}">${ico('fa-lock')} theo thông báo</div>` : r._wait ? `<div class="small muted sched-ev" title="${esc(r._wait)}">${r.due_on ? 'ngày dự kiến' : 'chờ thông báo'}</div>` : ''}</td>`}<td><input data-k="pct" value="${r.pct ?? ''}" style="width:70px;text-align:right"></td>${pol ? '' : `<td><input data-k="amount" value="${r.amount && !pol ? fm(r.amount) : ''}" placeholder="${pol ? 'theo giá từng căn' : r.pct && tot ? fm(pa(r)) : ''}"${pol ? ' readonly title="Số tiền = tỷ lệ % × tiền sau thuế của từng căn — tính khi lập HĐMB"' : ''} style="width:150px;text-align:right"></td>`}${on && SBG ? bgCell(r, `data-bg="${i}"`) : ''}<td><div class="sched-acts"><button type="button" class="btn ghost sm" data-del="${i}" title="Xóa đợt">${ico('fa-trash')}</button></div></td></tr>`).join('')}<tr class="sched-add"><td colspan="${(on && SBG ? 7 : 6) - (pol ? 2 : 0)}"><button type="button" class="btn sm" data-add>${ico('fa-plus')} Thêm đợt</button></td></tr>${mRow}
       </tbody><tfoot><tr><td colspan="${pol ? 2 : 3}"><b>Tổng</b></td><td class="num">${pctSum(R)}</td>${pol ? '' : `<td class="num ${tot && Math.abs(sum - tot) > 1000 * (R.length + 1) ? 'neg' : 'pos'}">${fm(sum)}</td>`}${on && SBG ? '<td></td>' : ''}<td></td></tr></tfoot></table>
       ${pol && fin ? `<div class="small muted mt">Tổng tỷ lệ các đợt phải đủ 100% — tính trên <b>giá trị hoàn thiện</b> của từng căn. Chỉ căn có giá trị hoàn thiện (nội thất) mới có các đợt này trong HĐMB; căn không có hoàn thiện bỏ qua. Đợt 1 mặc định thu khi ký HĐMB; nội dung «Sau / Trong (vòng) N ngày…» = N ngày sau ngày ký.</div>` : pol ? `<div class="small muted mt">Tổng tỷ lệ các đợt phải đủ 100% (tính trên tiền sau thuế của từng căn); phí bảo trì thu ở dòng riêng${R[mi] ? `, mặc định cùng hạn đợt ${mi + 1}` : ''}. Không nhập ngày đến hạn / số tiền ở chính sách: HĐMB tự tính — đợt 1 = ngày ký HĐMB, nội dung «Sau / Trong (vòng) N ngày…» = N ngày sau ngày ký; đợt theo sự kiện khác (VD thông báo bàn giao) nhập hạn ở HĐ hoặc theo thông báo bàn giao. Số tiền = tỷ lệ % × tiền sau thuế của từng căn.<br>Chính sách được duyệt phát hành → HĐMB <b>dự thảo / bị từ chối</b> của các căn đã tích tự cập nhật Lần thanh toán; lập HĐMB mới, chọn mã căn → Lần thanh toán tự điền theo chính sách (vẫn sửa được). HĐ đã trình duyệt / đã ký giữ nguyên.</div>` : `<div class="small muted mt">Phải khớp nghĩa vụ phải thu: <b>${fm(tot)}</b> đ.${hasM ? ` Tỷ lệ % các đợt tính trên tiền sau thuế <b>${fm(base)}</b> đ; phí bảo trì <b>${fm(mt)}</b> đ thu ở dòng riêng${R[mi] ? `, cùng hạn đợt ${mi + 1}` : ''}.` : ''} Nhập tỷ lệ % hoặc số tiền; chênh lệch làm tròn (≤ 1.000đ/đợt) dồn vào đợt cuối.</div>`}`;
     $$('input[data-k=due_on], input[data-mk=due_on]', el).forEach(addPicker);   // 15/11/2026: hạn các đợt có nút lịch
@@ -567,7 +583,7 @@ function schedEditor(el, rows, { total, base, first, maint, mdot, bgBase, pol, f
     if (d.bg !== undefined) { sync(); R.forEach(r => delete r._bgAuto); const r = R[+d.bg]; r.bg = e.target.checked; r.bg_days = r.bg ? r.bg_days ?? bgDaysIn(r.name) : null; draw(); }   // nhiều đợt gắn bàn giao
     if (d.bgm !== undefined) { sync(); R.forEach(r => delete r._bgAuto); MR.bg = e.target.checked; if (MR.bg) MR.auto = false; else { MR.bg_days = null; MR.auto = true; } draw(); }   // phí bảo trì nộp theo ngày bàn giao
     if (d.k === 'bg_days' || d.mk === 'bg_days') { sync(); draw(); }
-    if (d.k === 'due_on') { sync(); delete R[+e.target.closest('tr').dataset.i]._days; }   // sửa tay hạn đợt thì không còn tự theo ngày ký
+    if (d.k === 'due_on') { sync(); const i = +e.target.closest('tr').dataset.i; delete R[i]._days; maintFollow(i); }   // sửa tay hạn đợt thì không còn tự theo ngày ký; phí bảo trì theo đợt thu phí bảo trì
     if (d.k === 'pct') {   // sửa ô Tỷ lệ → số % trong nội dung đổi theo (nội dung có ghi tỷ lệ)
       const i = +e.target.closest('tr').dataset.i, old = R[i]?.name; sync();
       const f = pctIn(old), v = R[i].pct; if (f && v != null && v !== f.v) R[i].name = old.slice(0, f.at) + fnum(v) + old.slice(f.at + f.len);
@@ -575,8 +591,19 @@ function schedEditor(el, rows, { total, base, first, maint, mdot, bgBase, pol, f
     }
     if (d.k === 'amount') { sync(); draw(); }
   });
+  // 17/11/2026: sửa hạn đợt thu phí bảo trì (VD đợt 3 — đợt bàn giao) → ngày thu phí bảo trì đổi ngay cùng ngày (trừ phí bảo trì gắn bàn giao riêng)
+  const maintFollow = i => {
+    if (!MR || MR.bg || i !== mIdx()) return;
+    MR.auto = true; MR.due_on = R[i]?.due_on || '';
+    const mi = $('tbody tr[data-m] [data-mk="due_on"]', el); if (mi) mi.value = dmy(MR.due_on) || '';
+  };
   // sửa «Sau 60 ngày» thành «Sau 65 ngày» trong nội dung → hạn đổi ngay theo ngày ký
   el.addEventListener('input', e => {
+    if (e.target.dataset.k === 'due_on') {   // đang gõ hạn đợt: đủ ngày hợp lệ thì phí bảo trì theo ngay
+      const i = +e.target.closest('tr').dataset.i, v = parseDmy(e.target.value);
+      if (v && R[i]) { R[i].due_on = v; maintFollow(i); }
+      return;
+    }
     if (e.target.dataset.k === 'name') {   // «… thanh toán 30% …» → sửa thành 100% thì Tỷ lệ = 100, Số tiền tính lại
       const tr = e.target.closest('tr'), r = R[+tr.dataset.i], f = pctIn(e.target.value);
       if (r && f && f.v !== r.pct) {
@@ -603,7 +630,7 @@ function schedEditor(el, rows, { total, base, first, maint, mdot, bgBase, pol, f
     draw();
   };   // điền sẵn các đợt (HĐ thuê tự chia kỳ)
   el._get = () => {
-    sync(); const out = R.filter(r => r.name || r.due_on || r.pct || r.amount).map(r => ({ name: r.name, due_on: r.due_on, pct: r.pct, amount: r.amount, ...(r.bg ? { bg: true, bg_days: r.bg_days ?? null } : {}), ...(r.fin ? { fin: true } : {}) }));
+    sync(); const out = R.filter(r => r.name || r.due_on || r.pct || r.amount).map(r => ({ name: r.name, due_on: r.due_on, pct: r.pct, amount: r.amount, ...(r.bg ? { bg: true, bg_days: r.bg_days ?? null } : {}), ...(r.gcn ? { gcn: true, gcn_days: r.gcn_days ?? null } : {}), ...(r.fin ? { fin: true } : {}) }));
     if (MR && (pol || +(maint?.() || 0) > 0)) {
       if (MR.auto) MR.due_on = R[mIdx()]?.due_on || '';
       out.push({ name: MR.name, due_on: MR.due_on, pct: null, amount: null, maint: true, ...(MR.bg ? { bg: true, bg_days: MR.bg_days ?? null } : {}) });   // máy chủ tự xếp dòng này theo ngày đến hạn
@@ -903,7 +930,7 @@ async function copyCustomer(id) {
   const preset = {};
   for (const f of E.fields) if (f.k !== 'code' && !f.hide && r[f.k] != null && !(f.pii && r._masked)) { preset[f.k] = r[f.k]; if (r[f.k + '__l'] != null) preset[f.k + '__l'] = r[f.k + '__l']; }
   preset.code = (await api('GET', `/api/customer-code?copy_of=${id}`)).code;
-  return openForm('customer', { preset, copyOf: id, title: `Bản sao của ${r.code} · ${r.full_name}`, onSaved: row => { toast(`Đã tạo khách hàng ${row.code}`); openDetail('customer', row.id); } });
+  return openForm('customer', { preset, copyOf: id, title: `Bản sao của ${r.full_name}`, onSaved: row => { toast(`Đã tạo khách hàng ${row.full_name}`); openDetail('customer', row.id); } });
 }
 function rowMenu(ent, id, x, y) {   // chuột phải vào dòng danh sách
   $('.vt-ctx')?.remove();
@@ -936,21 +963,21 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   const lockKeep = perm?.locked ? new Set(perm.lockKeep || []) : null;
   // khách đã ở giai đoạn sau mở bán (02 Danh mục khách hàng): Tình trạng chỉ chọn các bước sau mở bán — chọn lại «Mới»… thì khách chuyển sang 03 Tiềm năng, mất khỏi danh mục (PROSPECT ở screens.js)
   const postSale = ent === 'customer' && rec.stage && !PROSPECT.has(rec.stage);
-  const fields = E.fields.filter(f => !skip.includes(f.k) && !f.noForm && !(f.ro && !id) && !(f.t === 'code' && !id && !f.manual) && !(f.t === 'json' && !['new_schedule', 'sale_sched', 'pay_sched', 'fin_sched', 'finish_vals'].includes(f.k) && !f.grid))
+  const fields = E.fields.filter(f => !skip.includes(f.k) && !f.noForm && !(f.ro && !id) && !(f.t === 'code' && !id && !f.manual) && !(f.t === 'json' && !f.pick && !['new_schedule', 'sale_sched', 'pay_sched', 'fin_sched', 'finish_vals'].includes(f.k) && !f.grid))
     .map(f => postSale && f.k === 'stage' ? { ...f, o: f.o.filter(o => !PROSPECT.has(o[0])) } : f);
   const wide = f => ['long', 'check', 'json'].includes(f.t) || !!f.pick || !!f.upload;
   const body = `${E.note ? `<div class="warnbar">${ico('fa-circle-info')}<span>${esc(E.note)}</span></div>` : ''}${lockKeep ? `<div class="lockbar">${ico('fa-lock')} Bản ghi đã chốt — chỉ sửa được: ${[...lockKeep].filter(k => { const f = E.fields.find(x => x.k === k), sh = d => isShown(E.fields.find(x => x.k === d) || {}, rec); return !f?.show || isShown(f, rec) || Object.keys(f.show).every(d => lockKeep.has(d) && sh(d)); }).map(k => k === 'new_schedule' ? 'Lần thanh toán' : E.fields.find(f => f.k === k)?.l).join(', ')}</div>` : ''}${perm?.softOpen ? `<div class="warnbar">${ico('fa-unlock')}<span>Hợp đồng đã trình duyệt: nhân viên đã bị khóa, chỉ sửa được Lần thanh toán. Quản lý vẫn sửa được toàn bộ.</span></div>` : ''}<div id="ferr"></div><form class="form" autocomplete="off">${fields.map(f => {
     const ro = f.ro || (f.t === 'code' && !f.manual) || (lockKeep && !lockKeep.has(f.k)) || (f.pii && id && !M.piiRoles.includes(M.me.role) && rec[f.k]);
     return `${f.sec ? `<div class="fsec">${esc(f.sec)}</div>` : ''}<div class="fld ${wide(f) ? 'wide' : ''}" data-f="${f.k}"><label for="f_${f.k}">${esc(f.l)}${f.req && !ro ? '<span class="req">*</span>' : ''}${f.pii ? ` <span class="tag" title="Dữ liệu cá nhân — chỉ người có quyền được xem">${ico('fa-shield-halved')} định danh</span>` : ''}${f.help ? ` <span class="hint" tabindex="0" role="note" data-tip="${esc(f.help)}" aria-label="Hướng dẫn: ${esc(f.help)}">${ico('fa-circle-info')}</span>` : ''}</label>${input(f, rec[f.k], rec, { ro })}${f.help ? `<div class="help">${esc(f.help)}</div>` : ''}</div>`;
   }).join('')}</form>`;
-  const canSubmit = E.flow && !E.flow.custom && !E.direct && !id && E.flow.submit.includes(E.fields.find(f => f.k === E.flow.field)?.def);
+  const canSubmit = E.flow && !E.flow.custom && !E.flow.saveOnly && !E.direct && !id && E.flow.submit.includes(E.fields.find(f => f.k === E.flow.field)?.def);
   const m = modal({ title: title || (id ? `Sửa ${E.one} ${esc(rec.code || rec.number || '')}` : `${E.code ? `<span class="tag">${E.code}</span> ` : ''}Tạo ${E.one}`), wide: fields.length > 8 || fields.some(wide),
-    body, foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="fSave">${ico('fa-floppy-disk')} ${id ? 'Lưu' : E.direct ? `Lưu ${E.one}` : 'Lưu nháp'}</button>${canSubmit ? `<button class="btn amb" id="fSub">${ico('fa-paper-plane')} Lưu và ${esc((E.flow.submitLabel || 'trình duyệt').toLowerCase())}</button>` : ''}` });
+    body, foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="fSave">${ico('fa-floppy-disk')} ${id ? 'Lưu' : E.direct ? `Lưu ${E.one}` : E.flow?.saveOnly ? 'Lưu dự thảo' : 'Lưu nháp'}</button>${canSubmit ? `<button class="btn amb" id="fSub">${ico('fa-paper-plane')} Lưu và ${esc((E.flow.submitLabel || 'trình duyệt').toLowerCase())}</button>` : ''}` });
   const form = $('form', m.el); if (id) form.dataset.id = id;   // id bản ghi cho bảng chọn căn (thông báo bàn giao)
   $('.mf', m.el).insertAdjacentHTML('afterend', traceLine(trace));
   for (const ev of ['click', 'focusin']) form.addEventListener(ev, e => { const d = e.target.closest('.fld[data-f]'); if (d) traceField($('.trace', m.el), trace, d.dataset.f, E.fields.find(f => f.k === d.dataset.f)?.l || ''); });
   let htp = null;
-  if (ent === 'handover_notice') $('.modal', m.el).classList.add('full');
+  if (ent === 'handover_notice' || ent === 'gcn_notice') $('.modal', m.el).classList.add('full');
   if (ent === 'price_policy') $('.modal', m.el).classList.add('full');   // bảng tiến độ thu tiền rộng như Lần thanh toán HĐMB   // bảng căn bàn giao nhiều cột
   if (ent === 'contract') { bravoLayout(form, HD_LAYOUT); $('.modal', m.el).classList.add('full'); if (rec.kind !== 'hoan_thien') htp = hdPair(form, { ht: htRec, locked: htLocked, tab, draft: htDraft, oldFinish: +rec.finish_value > 0, kind: rec.kind, debt: rec._debt, rec0: rec }); }
   const sch = $('[data-sched]', form);
@@ -1077,6 +1104,28 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     for (const [c, x] of Object.entries(v)) { const el = tr && $(`[data-gc="${c}"]`, tr); if (el && !el.value && x && !String(x).startsWith('•')) el.value = x; }
     const ba = form.elements.bank_account; if (ba && !ba.value && k.bank_account && !String(k.bank_account).startsWith('•')) ba.value = k.bank_account;
   };
+  // ô chữ có gợi ý từ danh mục (VD Mã khách hàng trên phiếu đăng ký): gõ mã / tên → sổ các mã đã có; chọn đúng 1 mã → điền thông tin theo sugFill
+  for (const f of fields.filter(f => f.sugRef)) {
+    const el = form.elements[f.k], dl = el && $('#dl_' + f.k, form); if (!el || !dl) continue;
+    let opts = [];
+    const code = o => String(o.label || '').split(' · ')[0];
+    const load = debounce(async () => {
+      opts = await api('GET', `/api/opts/${f.sugRef}?` + new URLSearchParams(el.value.trim() ? { q: el.value.trim() } : {}));
+      dl.innerHTML = opts.map(o => `<option value="${esc(code(o))}">${esc(o.label)}${o.sub ? ' · ' + esc(o.sub) : ''}</option>`).join('');
+    }, 200);
+    el.addEventListener('focus', load); el.addEventListener('input', load);
+    el.addEventListener('change', run(async () => {
+      const o = opts.find(x => code(x).toUpperCase() === el.value.trim().toUpperCase()); if (!o) return;   // mã mới → để máy chủ tự cấp / tự khớp
+      const src = (await api('GET', `/api/e/${f.sugRef}/${o.id}`)).row;
+      if (src._masked && M.piiRoles.includes(M.me.role)) Object.assign(src, await api('GET', `/api/pii/${f.sugRef}/${src.id}`));
+      el.value = src.code || el.value;
+      for (const [to, from] of Object.entries(f.sugFill || {})) {   // đã chọn khách → lấy thông tin theo hồ sơ khách
+        const t = form.elements[to], tf = fields.find(x => x.k === to), v = src[from];
+        if (!t || !tf || v == null || v === '' || String(v).startsWith('•')) continue;
+        t.value = tf.t === 'money' ? moneyStr(v) : tf.t === 'date' ? dmy(v) : v;
+      }
+    }));
+  }
   // hồ sơ NOXH (11/11/2026): chọn mã căn / đổi Hình thức → tìm phiếu Đăng ký mua / thuê đang hiệu lực của căn → điền phiếu, khách, chủ hộ, số tài khoản
   if (ent === 'noxh_check' && !id) {
     const setRef = (k, v, label) => { const h = form.elements[k]; if (!h) return; h.value = v ?? ''; const t = h.closest('.combo')?.querySelector('[data-combo]'); if (t) t.value = label || ''; };
@@ -1089,7 +1138,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
         .sort((a, b) => (a.status === 'nhap') - (b.status === 'nhap') || b.id - a.id);   // phiếu đã giữ chỗ / đặt cọc trước phiếu mới đăng ký
       const r = rs.find(x => (x.deal || 'mua') === want) || rs[0];
       if (!r) { toast('Căn này chưa có phiếu Đăng ký mua / thuê đang hiệu lực — nhập thông tin khách bằng tay'); return; }
-      if (last && last !== r.customer_id) $$('.gridin[name="head"] tr[data-gr] [data-gc]', form).forEach(el => { if (!el.readOnly) el.value = ''; });   // đổi sang căn của khách khác: xóa chủ hộ đã tự điền
+      if (last && last !== r.customer_id) $('.gridin[name="head"] tr[data-gr] [data-gc]', form).forEach(el => { if (!el.readOnly) el.value = ''; });   // đổi sang căn của khách khác: xóa chủ hộ đã tự điền
       setRef('reservation_id', r.id, [r.code, r.cust_name].filter(Boolean).join(' · '));
       setRef('customer_id', r.customer_id, r.customer_id__l || r.cust_name);
       if (form.elements.reg_kind && r.deal && form.elements.reg_kind.value !== r.deal) form.elements.reg_kind.value = r.deal;
@@ -1135,9 +1184,10 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
         const kd = form.elements.kind?.value; if (['vay', 'thue'].includes(kd) && form.elements.sale_price) { form.elements.sale_price.value = form.elements.value.value; if (kd === 'vay') form.elements.value.value = ''; }
         htp?.rentValue();
       }
-      if (ent === 'reservation' && f.ref === 'unit' && form.elements.unit_value) {   // giá trị căn hộ = sau thuế + bảo trì; hoàn thiện theo căn
+      if (ent === 'reservation' && f.ref === 'unit' && form.elements.unit_value) {   // giá trị căn hộ = sau thuế + bảo trì; hoàn thiện theo chính sách được duyệt gần nhất (không có thì theo căn)
         const uv = src.price_net != null ? +src.price_net + (+src.maint_fee || 0) : src.total_price != null ? +src.total_price - (+src.finish_value || 0) : null;
         form.elements.unit_value.value = moneyStr(uv); form.elements.finish_value.value = moneyStr(src.finish_value); sumRes();
+        await resPol(src.id);
       }
     } catch (er) { toast(er.message, true); }
   });
@@ -1191,7 +1241,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   }
   const contractPrefill = async unit => {
     const d = await api('GET', `/api/contract-prefill/${unit}`);
-    pickRef('customer_id', d.customer_id, d.customer_label);
+    if ((form.elements.kind?.value ?? rec.kind) !== 'hdmb') pickRef('customer_id', d.customer_id, d.customer_label);   // HĐMB (15/11/2026): không tự điền khách — chọn ở ô Mã khách hàng (khách gắn với căn + tình trạng hồ sơ)
     if (d.request_on && form.elements.request_on && !form.elements.request_on.value) form.elements.request_on.value = dmy(d.request_on);
     if (form.elements.finish_value) form.elements.finish_value.value = +d.finish_value > 0 ? moneyStr(d.finish_value) : '';   // hoàn thiện (nội thất) chỉ theo chính sách — căn không khai = không có nội thất
     const o = form.elements.owner_id; if (d.owner_id && o?.tagName === 'SELECT' && [...o.options].some(x => x.value === String(d.owner_id))) o.value = d.owner_id;
@@ -1251,18 +1301,43 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     const setRef = (k, v, label) => { const h = form.elements[k]; if (!h) return; h.value = v ?? ''; const t = h.closest('.combo')?.querySelector('[data-combo]'); if (t) t.value = v ? label : ''; };
     const set = (k, v) => { const el = form.elements[k]; if (el && v != null) el.value = v; };
     const empty = k => !form.elements[k] || !String(form.elements[k].value || '').trim();
+    const clr = k => { const el = form.elements[k]; if (el) el.value = ''; };
+    const liqKind = () => ent === 'payment' && ['thanh_ly', 'hoan_tien'].includes(form.elements.kind?.value);
+    // 17/11/2026: chọn / đổi mã căn → bỏ hợp đồng (đợt, phiếu thanh lý) đang chọn, mở danh sách hợp đồng của căn để người dùng chọn — không tự điền 1 hợp đồng bất kỳ
     form.addEventListener('change', async e => {
-      const k = e.target.name; if (!['contract_id', 'unit_id', inst].includes(k) || !e.target.value) return;
+      if (e.target.name !== 'unit_id' || e._init) return;
+      setRef('contract_id', null, ''); setRef(inst, null, ''); setRef('cancel_req_id', null, ''); ['cust_code', 'cust_name', 'project_name', 'ct_kind'].forEach(clr);
+      if (!e.target.value) return;
       try {
-        const q = new URLSearchParams({ [k]: e.target.value }); if (k === inst && form.elements.contract_id.value) q.set('contract_id', form.elements.contract_id.value);
+        const d = await api('GET', '/api/voucher-prefill?' + new URLSearchParams({ unit_id: e.target.value }));
+        if (!d.n) return toast('Căn chưa có hợp đồng (trừ HĐ đã hủy)', true);
+        toast(`Căn ${d.unit_label} có ${d.n} hợp đồng — chọn hợp đồng trong danh sách ô «Mã hợp đồng»`);
+        const t = form.elements.contract_id?.closest('.combo')?.querySelector('[data-combo]'); if (t) setTimeout(() => { t.focus(); t.dispatchEvent(new Event('focus')); }, 50);   // mở danh sách hợp đồng của căn
+      } catch (er) { toast(er.message, true); }
+    });
+    // phiếu chi: đổi nhóm chi sang hoàn tiền thanh lý → gợi ý phiếu thanh lý của hợp đồng đang chọn
+    if (ent === 'payment') form.addEventListener('change', async e => {
+      if (e.target.name !== 'kind' || !liqKind() || !form.elements.contract_id.value || form.elements.cancel_req_id?.value) return;
+      try { const d = await api('GET', '/api/voucher-prefill?' + new URLSearchParams({ contract_id: form.elements.contract_id.value })); if (d.slip_id) { setRef('cancel_req_id', d.slip_id, d.slip_label); if (empty('amount') && d.slip_rem > 0) form.elements.amount.value = moneyStr(d.slip_rem); } } catch (er) { toast(er.message, true); }
+    });
+    form.addEventListener('change', async e => {
+      const k = e.target.name; if (!['contract_id', 'cancel_req_id', inst].includes(k) || !e.target.value) return;
+      try {
+        const q = new URLSearchParams({ [k]: e.target.value }); if ((k === inst || k === 'cancel_req_id') && form.elements.contract_id.value) q.set('contract_id', form.elements.contract_id.value);
         const d = await api('GET', '/api/voucher-prefill?' + q);
         if (k !== inst) {
-          if (k === 'unit_id') { if (!d.contract_id) return toast('Căn chưa có hợp đồng', true); setRef('contract_id', d.contract_id, d.contract_label); if (d.n > 1) toast(`Căn có ${d.n} hợp đồng — đã chọn ${d.contract_label}, kiểm tra lại ô Mã hợp đồng`); }
-          else setRef('unit_id', d.unit_id, d.unit_label);
+          const ctChanged = k === 'cancel_req_id' && String(d.contract_id) !== String(form.elements.contract_id.value);
+          if (k === 'cancel_req_id') setRef('contract_id', d.contract_id, d.contract_label);   // phiếu thanh lý (chung) → hợp đồng của phiếu
+          setRef('unit_id', d.unit_id, d.unit_label);
           set('cust_code', d.cust_code); set('cust_name', d.cust_name); set('project_name', d.project_name); set('ct_kind', d.ct_kind);
           if (ent === 'receipt') set('grp', d.grp);
           if (ent === 'payment' && empty('receiver')) set('receiver', d.cust_name);
-          if (!e._init) setRef(inst, null, '');   // đổi hợp đồng: bỏ đợt của hợp đồng cũ
+          if (!e._init && (k === 'contract_id' || ctChanged)) setRef(inst, null, '');   // đổi hợp đồng: bỏ đợt của hợp đồng cũ
+          if (ent === 'payment') {   // HĐ đã thanh lý / thuộc phiếu thanh lý: nhóm chi hoàn tiền thanh lý + phiếu thanh lý + số còn phải trả
+            if (k === 'contract_id' && d.status === 'thanh_ly' && !form.elements.kind.value) { form.elements.kind.value = 'thanh_ly'; form.elements.kind.dispatchEvent(new Event('change', { bubbles: true })); }
+            if (k === 'contract_id') setRef('cancel_req_id', liqKind() && d.slip_id ? d.slip_id : null, d.slip_label || '');
+            if (liqKind() && d.slip_id) { if (empty('amount') && d.slip_rem > 0) form.elements.amount.value = moneyStr(d.slip_rem); if (empty('content')) set('content', `Chi trả hoàn tiền thanh lý theo phiếu ${d.slip_code}`); }
+          }
         } else {
           if (ent === 'receipt' && d.grp) set('grp', d.grp);
           const rem = ent === 'receipt' ? d.inst_rem : d.lp_rem; if (rem > 0 && empty('amount')) form.elements.amount.value = moneyStr(rem); else if (rem === 0) toast(ent === 'receipt' ? 'Đợt này đã thu đủ' : 'Kỳ này đã trả đủ');
@@ -1289,6 +1364,31 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   // phiếu đăng ký: Tổng giá bán = Giá trị căn hộ + Giá trị hoàn thiện nội thất
   const sumRes = () => { const rd = k => readField(form, fields.find(f => f.k === k) || {}), uv = rd('unit_value'); if (uv != null && form.elements.price) form.elements.price.value = moneyStr(uv + (rd('finish_value') || 0)); };
   if (ent === 'reservation') form.addEventListener('input', e => { if (['unit_value', 'finish_value'].includes(e.target.name)) sumRes(); });
+  // 16/11/2026: phiếu hủy / thanh lý — Ngày dự kiến chi trả = Ngày thanh lý + Số ngày chi trả tiền, tính lại ngay khi đổi 1 trong 2 ô (máy chủ cũng tính khi lưu)
+  if (ent === 'cancel_req') {
+    const payDue = () => { const lo = parseDmy(form.elements.liquidate_on?.value || ''), w = String(form.elements.wait_days?.value ?? '').replace(/\D/g, ''); if (!lo || !form.elements.pay_due) return; form.elements.pay_due.value = dmy(addDays(lo, w === '' ? 0 : +w)); };
+    for (const ev of ['input', 'change']) form.addEventListener(ev, e => { if (['wait_days', 'liquidate_on'].includes(e.target.name)) payDue(); });
+  }
+  // HĐMB (15/11/2026): chọn khách chưa có hồ sơ NOXH đủ điều kiện tại căn → báo ngay (vẫn lưu dự thảo; máy chủ chặn gửi trình duyệt / duyệt)
+  if (ent === 'contract') form.addEventListener('change', async e => {
+    if (e.target.name !== 'customer_id' || !e.target.value || (form.elements.kind?.value ?? rec.kind) !== 'hdmb' || !form.elements.unit_id?.value) return;
+    try { const it = (await api('GET', `/api/opts/customer?unit=${form.elements.unit_id.value}`)).find(x => x.id === +e.target.value);
+      if (it && !it.ok) toast(`Khách hàng ${it.label} chưa được Sở Xây dựng xét duyệt đủ điều kiện mua nhà ở xã hội tại căn này (${it.sub.replace(/^[✓✗]\s*/, '')}) — vẫn lưu dự thảo được, nhưng chưa gửi trình duyệt hợp đồng được`, true); } catch { }
+  });
+  // phiếu đăng ký (14/11/2026): chọn căn / đổi nguồn bán / đại lý → chính sách được duyệt gần nhất cho căn + người bán, giá trị hoàn thiện theo danh sách của chính sách
+  const resPol = async uid => {
+    uid = uid || form.elements.unit_id?.value; if (!uid || !form.elements.unit_value || form.elements.deal?.value === 'thue') return;
+    const d = await api('GET', '/api/res-policy?' + new URLSearchParams({ unit: uid, source: form.elements.source?.value || '', agent: form.elements.agent_id?.value || '' }));
+    if (d.unit_value != null) form.elements.unit_value.value = moneyStr(d.unit_value);
+    if (form.elements.finish_value) form.elements.finish_value.value = d.finish_value != null ? moneyStr(d.finish_value) : '';
+    const h = form.elements.policy_id; if (h) { h.value = d.policy?.id ?? ''; const t = h.parentElement.querySelector('input[type=text]'); if (t) t.value = d.policy?.label || 'Không có chính sách được duyệt cho căn này';
+      let w = h.parentElement.querySelector('.pol-wait'); if (!w) { w = document.createElement('div'); w.className = 'small pol-wait'; w.style.cssText = 'color:var(--amber-d, #a15c00);margin-top:4px'; h.parentElement.append(w); }
+      w.innerHTML = d.wait?.length ? `${ico('fa-hourglass-half')} ${esc(d.wait.join(', '))} đang chờ duyệt — duyệt xong phiếu tự đổi sang chính sách này` : ''; }
+    sumRes();
+  };
+  if (ent === 'reservation') form.addEventListener('change', e => { if (['source', 'agent_id', 'deal'].includes(e.target.name)) resPol().catch(er => toast(er.message, true)); });
+  // mở form đã có căn (tạo từ Bảng hàng / sửa phiếu còn hiệu lực) → lấy ngay chính sách được duyệt gần nhất (máy chủ cũng tự cập nhật khi lưu)
+  if (ent === 'reservation' && form.elements.unit_id?.value && (!id || ['nhap', 'cho_duyet', 'giu_cho', 'qua_han', 'da_coc'].includes(rec.status))) resPol().catch(er => toast(er.message, true));
   // căn hộ: sửa đơn giá nền / diện tích / % thuế / giá trị hoàn thiện → tự tính lại giá theo công thức Danh mục sản phẩm (máy chủ tính lại khi lưu)
   if (ent === 'unit') form.addEventListener('input', e => {
     if (!['base_price', 'area_tt', 'vat_pct', 'finish_value'].includes(e.target.name)) return;
@@ -1300,6 +1400,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   });
   $$('[data-pick-units]', form).forEach(el => unitPicker(el, form, ent === 'price_policy' ? { policy: true, self: id || 0 } : {}).catch(e => toast(e.message, true)));
   $$('[data-pick-fin]', form).forEach(el => finishPicker(el, form, { self: id || 0 }));
+  $$('[data-pick-liq]', form).forEach(el => liqPicker(el, form, { self: id || 0 }));   // phiếu thanh lý chung (16/11/2026)
   if (ent === 'price_policy') policyTabs(form);
   $$('[data-pick-bg]', form).forEach(el => bgPicker(el, form).catch(e => toast(e.message, true)));
   if (ckF && !id) { fillCheck(); form.addEventListener('change', e => { if (e.target.name === ckF.srcBy || e.target.name === 'reg_kind') fillCheck(); }); }
@@ -1359,33 +1460,85 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
 // ---------- bảng chọn căn áp dụng (chính sách giá): giá trị = '*' | mã tòa (cả tòa) | mã căn, cách nhau dấu phẩy ----------
 // policy (chính sách bán hàng, 16/11/2026): chỉ căn còn trong bảng hàng, chưa giữ chỗ / ký HĐMB / vay / thuê; lọc nhanh theo tòa (14/11/2026 bỏ lọc loại căn, HĐMB dự thảo);
 // mỗi căn ghi chính sách đang áp + HĐMB dự thảo sẽ đổi Lần thanh toán khi chính sách phát hành
-// tab «2. Hoàn thiện căn hộ» của chính sách (14/11/2026): trong các căn đã chọn ở tab 1, TÍCH căn có hoàn thiện (nội thất), nhập giá trị từng căn
-// hoặc 1 lần cho các căn đã tích. Căn không tích = không khai (giữ hoàn thiện đang có trong bảng hàng). Ghi vào ô ẩn finish_vals { MÃ CĂN: số tiền }
+// tab «2. Hoàn thiện căn hộ» của chính sách (14/11/2026): trong các căn đã chọn ở tab 1, nhập giá trị hoàn thiện (nội thất) từng căn, hoặc TÍCH chọn nhiều căn
+// rồi nhập 1 lần → «Áp cho căn đã tích». Căn CÓ SỐ = có hoàn thiện (lưu); ô trống = không khai (giữ hoàn thiện đang có trong bảng hàng). Ghi vào ô ẩn finish_vals { MÃ CĂN: số tiền }
+// 14/11/2026 (sửa lỗi mất giá trị): ô tích chỉ để CHỌN căn áp giá — bỏ tích không xóa giá trị đã nhập; áp xong tự bỏ tích để lần tích sau không đè căn vừa áp;
+// bỏ hoàn thiện của căn = xóa số ở ô của căn, hoặc tích rồi bấm «Bỏ hoàn thiện căn đã tích»
+// ===== phiếu thanh lý chung (16/11/2026): nhiều hợp đồng cùng căn, cùng khách (HĐ mua bán + HĐ hoàn thiện…) — từng HĐ + tổng chung =====
+const ctOpt = (k, v) => M.ents.contract.fields.find(f => f.k === k)?.o?.find(o => o[0] === v) || null;
+function liqTable(items) {
+  const t = k => items.reduce((s, x) => s + (+x[k] || 0), 0);
+  return `<div class="tbl-wrap"><table class="t compact noclick"><thead><tr><th>Loại hợp đồng</th><th>Số hợp đồng</th><th>Tình trạng</th><th class="num">Tiền đã thu</th><th class="num">Khấu trừ</th><th class="num">Phải hoàn trả</th><th>Ghi chú</th></tr></thead><tbody>
+    ${items.map(x => { const st = ctOpt('status', x.status); return `<tr><td>${esc(ctOpt('kind', x.kind)?.[1] || x.kind || '')}</td><td><a href="#" data-open-ct="${x.contract_id}">${esc(x.number || '#' + x.contract_id)}</a></td><td>${st ? pill(st[1], st[2]) : ''}</td><td class="num">${fm(x.collected || 0)}</td><td class="num">${fm(x.deduct || 0)}</td><td class="num"><b>${fm(x.refund || 0)}</b></td><td>${esc(x.note || '')}</td></tr>`; }).join('')}</tbody>
+    <tfoot><tr><td colspan="3"><b>Tổng ${items.length} hợp đồng</b></td><td class="num"><b>${fm(t('collected'))}</b></td><td class="num"><b>${fm(t('deduct'))}</b></td><td class="num"><b>${fm(t('refund'))}</b></td><td></td></tr></tfoot></table></div>`;
+}
+document.addEventListener('click', e => { const a = e.target.closest('[data-open-ct]'); if (a) { e.preventDefault(); openDetail('contract', +a.dataset.openCt); } });
+// form phiếu thanh lý: tích các hợp đồng của căn / khách — tiền đã thu theo phiếu thu, khấu trừ, phải hoàn trả (= đã thu − khấu trừ, gõ số thì giữ số đã gõ), ghi chú;
+// hợp đồng đã nằm trong phiếu khác không tích được. Ghi vào ô ẩn items [{ contract_id, deduct, refund?, refund_edited?, note }] — máy chủ tính lại tiền đã thu
+function liqPicker(el, root, { self } = {}) {
+  const hid = $('input[type=hidden]', el), box = $('.upick-bd', el);
+  let val = []; try { val = JSON.parse(hid.value || '[]') || []; } catch { val = []; }
+  const sel = new Map(val.map(x => [+x.contract_id, { deduct: x.deduct ? fm(x.deduct) : '', refund: x.refund_edited && x.refund != null ? fm(x.refund) : '', ed: !!x.refund_edited, note: x.note || '' }]));
+  let rows = [], key = null;
+  const nm = s => Math.max(0, Math.round(num(s, true)) || 0);
+  hid._get = () => [...sel].map(([id, x]) => ({ contract_id: id, deduct: nm(x.deduct), ...(x.ed && x.refund !== '' ? { refund: nm(x.refund), refund_edited: true } : {}), ...(x.note ? { note: x.note } : {}) }));
+  const refundOf = (r, x) => x.ed && x.refund !== '' ? nm(x.refund) : Math.max(0, (+r.collected || 0) - nm(x.deduct));
+  const totals = () => { const on = rows.filter(r => sel.has(r.id)), t = f => on.reduce((s, r) => s + f(r, sel.get(r.id)), 0);
+    return `<b>Tổng ${on.length} hợp đồng</b> · đã thu ${fm(t(r => +r.collected || 0))} · khấu trừ ${fm(t((r, x) => nm(x.deduct)))} · <b>phải hoàn trả ${fm(t(refundOf))}</b>`; };
+  const draw = () => {
+    if (!rows.length) { box.innerHTML = `<div class="muted small">${root.elements.unit_id?.value || root.elements.contract_id?.value ? 'Căn / khách hàng chưa có hợp đồng' : 'Chọn mã căn hộ hoặc mã hợp đồng ở trên — các hợp đồng của căn hiện ở đây để tích gộp chung 1 phiếu'}</div>`; return; }
+    box.innerHTML = `<div class="tbl-wrap"><table class="t compact noclick"><thead><tr><th style="width:30px"></th><th>Loại hợp đồng</th><th>Số hợp đồng</th><th>Khách hàng</th><th>Tình trạng</th><th class="num">Tiền đã thu</th><th class="num">Khấu trừ</th><th class="num">Phải hoàn trả</th><th>Ghi chú</th></tr></thead><tbody>
+      ${rows.map(r => { const on = sel.has(r.id), x = sel.get(r.id) || {}, st = ctOpt('status', r.status), dis = !!r.other && !on;
+        return `<tr class="${on ? 'sel' : ''}" data-lr="${r.id}"><td><input type="checkbox" data-lt="${r.id}" ${on ? 'checked' : ''} ${dis ? 'disabled' : ''}></td><td>${esc(ctOpt('kind', r.kind)?.[1] || r.kind)}</td><td>${esc(r.number || '#' + r.id)}${r.other ? ` <span class="tag" title="Hợp đồng đã nằm trong phiếu ${esc(r.other)} — không đưa vào phiếu khác">Đã ở phiếu ${esc(r.other)}</span>` : ''}</td><td class="small">${esc((r.cust_code ? r.cust_code + ' · ' : '') + (r.customer || ''))}</td><td>${st ? pill(st[1], st[2]) : ''}</td><td class="num">${fm(r.collected || 0)}</td>
+          <td class="num"><input class="inp" data-lk="deduct" data-id="${r.id}" inputmode="numeric" value="${esc(x.deduct || '')}" placeholder="0" style="width:120px;text-align:right" ${on ? '' : 'disabled'}></td>
+          <td class="num"><input class="inp" data-lk="refund" data-id="${r.id}" inputmode="numeric" value="${esc(x.ed ? x.refund : '')}" placeholder="${on ? fm(refundOf(r, x)) : ''}" title="Để trống = đã thu − khấu trừ; gõ số = giữ số đã gõ" style="width:130px;text-align:right" ${on ? '' : 'disabled'}></td>
+          <td><input class="inp" data-lk="note" data-id="${r.id}" value="${esc(x.note || '')}" style="min-width:140px" ${on ? '' : 'disabled'}></td></tr>`; }).join('')}</tbody></table></div>
+      <div class="small mt liq-tot">${totals()}</div>`;
+  };
+  const load = async () => {
+    const cid = root.elements.contract_id?.value || [...sel.keys()][0], uid = root.elements.unit_id?.value, qs = new URLSearchParams({ self: self || 0 });
+    if (cid) { const c = (await api('GET', `/api/e/contract/${cid}`)).row; qs.set('unit', c.unit_id); qs.set('customer', c.customer_id); if (!sel.size && !self) sel.set(+cid, { deduct: '', refund: '', ed: false, note: '' }); }
+    else if (uid) qs.set('unit', uid);
+    else { rows = []; key = null; return draw(); }
+    const k = qs.toString(); if (k !== key) { key = k; rows = (await api('GET', '/api/liq-contracts?' + k)).rows; }
+    draw();
+  };
+  box.addEventListener('change', e => { const t = e.target; if (!t.dataset.lt) return; e.stopPropagation(); const id = +t.dataset.lt; t.checked ? sel.set(id, { deduct: '', refund: '', ed: false, note: '' }) : sel.delete(id); draw(); }, true);
+  box.addEventListener('input', e => {
+    const t = e.target, k = t.dataset.lk; if (!k) return; e.stopPropagation(); const x = sel.get(+t.dataset.id); if (!x) return;
+    if (k === 'refund') { x.refund = t.value.trim(); x.ed = x.refund !== ''; } else x[k] = t.value;
+    const r = rows.find(y => y.id === +t.dataset.id), rf = $(`[data-lk="refund"][data-id="${t.dataset.id}"]`, box); if (r && rf && !x.ed) rf.placeholder = fm(refundOf(r, x));
+    const tt = $('.liq-tot', box); if (tt) tt.innerHTML = totals();
+  }, true);
+  root.addEventListener('change', e => { if (['unit_id', 'contract_id', 'kind'].includes(e.target.name)) load().catch(er => toast(er.message, true)); });
+  load().catch(er => toast(er.message, true));
+}
 function finishPicker(el, root, { self } = {}) {
   const hid = $('input[type=hidden]', el), box = $('.upick-bd', el), projEl = $('[name="project_ids"]', root), ugEl = $('[name="unit_group"]', root);
   let val = {}; try { val = JSON.parse(hid.value || '{}') || {}; } catch { val = {}; }
-  const on = new Set(Object.keys(val)); let units = [], loadedFor = null, bf = '', q = '', bulk = '';
-  hid._get = () => { const o = {}; for (const k of on) o[k] = val[k] ?? ''; return Object.keys(o).length ? o : null; };   // căn đã tích chưa nhập giá vẫn gửi → máy chủ báo lỗi, không lặng lẽ bỏ căn (15/11/2026)
+  const sel = new Set(), auto = new Set();   // sel: căn đang tích để áp giá (không lưu); auto: giá trị tự điền lúc tích (bỏ tích thì gỡ lại)
+  let units = [], loadedFor = null, bf = '', q = '', bulk = '';
+  hid._get = () => { const o = {}; for (const [k, v] of Object.entries(val)) if (v != null && v !== '') o[k] = v; return Object.keys(o).length ? o : null; };
   const KIND = Object.fromEntries(M.ents.unit.fields.find(f => f.k === 'kind').o), K = u => u.code.toUpperCase();
   const gv = u => u.price_net != null ? +u.price_net + (+u.maint_fee || 0) : (+u.total_price || 0) - (+u.finish_value || 0);   // giá căn hộ chưa gồm hoàn thiện
-  const fvOf = u => on.has(K(u)) ? +(val[K(u)] || 0) : 0;
+  const has = u => val[K(u)] != null, fvOf = u => +(val[K(u)] || 0), numOf = s => Math.max(0, Math.round(num(s, true)) || 0);
   const inPol = () => { const s = new Set(String(ugEl?.value || '').toUpperCase().split(/[,;\s]+/).filter(Boolean)); return units.filter(u => s.has('*') || s.has(u.b) || s.has(K(u))); };
   const hit = u => !q || `${u.code} tòa ${u.b} tầng ${u.floor ?? ''} ${KIND[u.kind] || u.kind || ''}`.toLowerCase().includes(q);
-  const sumTxt = list => { const t = list.filter(u => on.has(K(u))); const miss = t.filter(u => val[K(u)] == null).length; return `<b>Có hoàn thiện ${t.length}/${list.length} căn</b> · tổng hoàn thiện ${fm(t.reduce((s, u) => s + fvOf(u), 0))} đ${miss ? ` · <span class="neg">${miss} căn đã tích chưa nhập giá trị (không lưu)</span>` : ''}`; };
+  const sumTxt = list => { const t = list.filter(has); return `<b>Có hoàn thiện ${t.length}/${list.length} căn</b> · tổng hoàn thiện ${fm(t.reduce((s, u) => s + fvOf(u), 0))} đ`; };
   const draw = () => {
     if (!projEl?.value) { box.innerHTML = '<div class="muted small">Chọn dự án trước.</div>'; return; }
     const list = inPol();
     if (!list.length) { box.innerHTML = '<div class="muted small">Chưa chọn căn hộ áp dụng — tích căn ở tab «1. Căn hộ áp dụng & tiến độ thu tiền HĐMB» trước.</div>'; return; }
     const blds = [...new Set(list.map(u => u.b))]; if (bf && !blds.includes(bf)) bf = '';
-    const view = list.filter(u => !bf || u.b === bf), nOn = view.filter(u => on.has(K(u))).length;
-    const chip = (v, l, n, sub) => `<button type="button" class="upick-c${bf === v ? ' on' : ''}" data-fb="${esc(v)}">${l} <b>${n}</b>${sub ? ` <span class="muted">· tích ${sub}</span>` : ''}</button>`;
-    box.innerHTML = `<div class="upick-f"><span class="upick-l">${ico('fa-building')} Tòa</span>${chip('', 'Tất cả', list.length)}${blds.map(b => chip(b, 'Tòa ' + esc(b), list.filter(u => u.b === b).length, list.filter(u => u.b === b && on.has(K(u))).length)).join('')}</div>
+    const view = list.filter(u => !bf || u.b === bf), nSel = view.filter(u => sel.has(K(u))).length;
+    const chip = (v, l, n, sub) => `<button type="button" class="upick-c${bf === v ? ' on' : ''}" data-fb="${esc(v)}">${l} <b>${n}</b>${sub ? ` <span class="muted">· có HT ${sub}</span>` : ''}</button>`;
+    box.innerHTML = `<div class="upick-f"><span class="upick-l">${ico('fa-building')} Tòa</span>${chip('', 'Tất cả', list.length)}${blds.map(b => chip(b, 'Tòa ' + esc(b), list.filter(u => u.b === b).length, list.filter(u => u.b === b && has(u)).length)).join('')}</div>
       <div class="upick-sum"><span class="fin-sum">${sumTxt(list)}</span> <span class="grow"></span><div class="search upick-s"><i class="fa-solid fa-magnifying-glass"></i><input type="text" class="fin-q" placeholder="Tìm mã căn, tầng, loại…" value="${esc(q)}"></div>
         <button type="button" class="btn sm" data-ft="1">${bf ? `Tích tất cả tòa ${esc(bf)}` : 'Tích tất cả'}</button><button type="button" class="btn sm ghost" data-ft="0">${bf ? `Bỏ tích tòa ${esc(bf)}` : 'Bỏ tích hết'}</button></div>
-      <div class="upick-fall row">${ico('fa-couch')} <span>Giá trị hoàn thiện cho ${nOn} căn đã tích${bf ? ` của tòa ${esc(bf)}` : ''}</span><input class="inp fin-all" inputmode="numeric" placeholder="VD 120.000.000" value="${esc(bulk)}" style="width:160px;text-align:right"><button type="button" class="btn sm" data-fall>Áp cho căn đã tích</button></div>
-      <div class="tbl-wrap upick-t"><table class="t compact noclick"><thead><tr><th style="width:30px"><input type="checkbox" data-fv-all ${nOn && nOn === view.length ? 'checked' : ''} title="Tích / bỏ tích các căn đang xem"></th><th>Mã căn</th><th>Tòa</th><th class="num">Tầng</th><th>Loại</th><th class="num">DT thông thủy</th><th class="num">Tổng giá căn hộ</th><th class="num">Giá trị hoàn thiện</th><th class="num">Tổng cộng</th></tr></thead><tbody>
-      ${view.map(u => { const k = K(u), t = on.has(k); return `<tr data-row="${esc(k)}" class="${t ? 'sel' : ''}"${hit(u) ? '' : ' hidden'}><td><input type="checkbox" data-fv-t="${esc(k)}" ${t ? 'checked' : ''}></td><td>${esc(u.code)}</td><td>${esc(u.b)}</td><td class="num">${u.floor ?? ''}</td><td>${esc(KIND[u.kind] || u.kind || '')}</td><td class="num">${fnum(u.area_tt)}</td><td class="num">${fm(gv(u))}</td>
-        <td class="num"><input class="inp fin-v" data-fv="${esc(k)}" inputmode="numeric" value="${val[k] != null ? fm(val[k]) : ''}" placeholder="${t ? 'nhập giá trị' : '—'}" title="${t ? '' : 'Căn chưa tích — số này không lưu vào chính sách; gõ số hoặc tích để áp'}" style="width:140px;height:30px;text-align:right${t ? '' : ';opacity:.55'}"></td><td class="num fin-tc"><b>${fm(gv(u) + fvOf(u))}</b></td></tr>`; }).join('')}
+      <div class="upick-fall row">${ico('fa-couch')} <span>Giá trị hoàn thiện cho ${nSel} căn đã tích${bf ? ` của tòa ${esc(bf)}` : ''}</span><input class="inp fin-all" inputmode="numeric" placeholder="VD 120.000.000" value="${esc(bulk)}" style="width:160px;text-align:right"><button type="button" class="btn sm" data-fall>Áp cho căn đã tích</button>${nSel ? `<button type="button" class="btn sm ghost" data-fclr>Bỏ hoàn thiện căn đã tích</button>` : ''}<span class="small muted">Bỏ tích không xóa giá trị đã nhập — muốn bỏ hoàn thiện của căn thì xóa số ở ô của căn</span></div>
+      <div class="tbl-wrap upick-t"><table class="t compact noclick"><thead><tr><th style="width:30px"><input type="checkbox" data-fv-all ${nSel && nSel === view.length ? 'checked' : ''} title="Tích / bỏ tích các căn đang xem"></th><th>Mã căn</th><th>Tòa</th><th class="num">Tầng</th><th>Loại</th><th class="num">DT thông thủy</th><th class="num">Tổng giá căn hộ</th><th class="num">Giá trị hoàn thiện</th><th class="num">Tổng cộng</th></tr></thead><tbody>
+      ${view.map(u => { const k = K(u), t = sel.has(k); return `<tr data-row="${esc(k)}" class="${has(u) ? 'sel' : ''}"${hit(u) ? '' : ' hidden'}><td><input type="checkbox" data-fv-t="${esc(k)}" ${t ? 'checked' : ''}></td><td>${esc(u.code)}</td><td>${esc(u.b)}</td><td class="num">${u.floor ?? ''}</td><td>${esc(KIND[u.kind] || u.kind || '')}</td><td class="num">${fnum(u.area_tt)}</td><td class="num">${fm(gv(u))}</td>
+        <td class="num"><input class="inp fin-v" data-fv="${esc(k)}" inputmode="numeric" value="${val[k] != null ? fm(val[k]) : ''}" placeholder="—" title="Gõ số = căn có hoàn thiện; xóa số = bỏ hoàn thiện của căn" style="width:140px;height:30px;text-align:right"></td><td class="num fin-tc"><b>${fm(gv(u) + fvOf(u))}</b></td></tr>`; }).join('')}
       </tbody></table></div>`;
   };
   const load = async () => {
@@ -1394,33 +1547,45 @@ function finishPicker(el, root, { self } = {}) {
     if (!pid) { loadedFor = null; units = []; }
     draw();
   };
-  const tick = (list, yes) => { for (const u of list) { const k = K(u); if (yes) { on.add(k); if (val[k] == null) { if (bulk) val[k] = Math.max(0, Math.round(num(bulk, true)) || 0); else if (+u.finish_value > 0) val[k] = +u.finish_value; } } else on.delete(k); } draw(); };
+  // tích: chọn căn để áp giá; căn chưa có giá trị thì tự điền số đang nhập ở ô «Giá trị hoàn thiện cho … căn» (hoặc hoàn thiện của bảng hàng) — bỏ tích thì gỡ số tự điền đó
+  const tick = (list, yes) => { for (const u of list) { const k = K(u);
+    if (yes) { sel.add(k); if (val[k] == null) { const v = bulk ? numOf(bulk) : +u.finish_value > 0 ? +u.finish_value : null; if (v != null) { val[k] = v; auto.add(k); } } }
+    else { sel.delete(k); if (auto.has(k)) { delete val[k]; auto.delete(k); } } } draw(); };
   const viewList = () => inPol().filter(u => (!bf || u.b === bf) && hit(u));
   box.addEventListener('change', e => {
     e.stopPropagation(); const t = e.target;
     if (t.dataset.fvT) { const u = units.find(x => K(x) === t.dataset.fvT); if (u) tick([u], t.checked); }
     else if (t.dataset.fvAll !== undefined) tick(viewList(), t.checked);
     else if (t.matches('.fin-v')) t.value = val[t.dataset.fv] != null ? fm(val[t.dataset.fv]) : '';
-    else if (t.matches('.fin-all') && bulk) { bulk = fm(Math.max(0, Math.round(num(bulk, true)) || 0)); t.value = bulk; }
+    else if (t.matches('.fin-all') && bulk) { bulk = fm(numOf(bulk)); t.value = bulk; }
   }, true);
   box.addEventListener('input', e => {
     e.stopPropagation(); const t = e.target;
     if (t.matches('.fin-all')) { bulk = t.value.trim(); return; }   // giữ số khi bảng vẽ lại; tích căn mới tự nhận số này
     if (t.matches('.fin-q')) { q = t.value.trim().toLowerCase(); $$('tbody tr[data-row]', box).forEach(tr => { const u = units.find(x => K(x) === tr.dataset.row); tr.hidden = !(u && hit(u)); }); return; }
     if (!t.matches('.fin-v')) return;
-    const k = t.dataset.fv, s = t.value.trim(); if (s) val[k] = Math.max(0, Math.round(num(s, true)) || 0); else delete val[k];
-    if (s && !on.has(k)) { on.add(k); const tr = t.closest('tr'), cb = $('[data-fv-t]', tr); tr.classList.add('sel'); if (cb) cb.checked = true; t.style.opacity = ''; t.title = ''; }   // gõ số vào căn chưa tích → tự tích
-    const u = units.find(x => K(x) === k), tc = $('.fin-tc', t.closest('tr')); if (u && tc) tc.innerHTML = `<b>${fm(gv(u) + fvOf(u))}</b>`;
+    const k = t.dataset.fv, s = t.value.trim(); if (s) val[k] = numOf(s); else delete val[k];
+    auto.delete(k);   // số gõ tay → bỏ tích không gỡ
+    const tr = t.closest('tr'); tr.classList.toggle('sel', !!s);
+    const u = units.find(x => K(x) === k), tc = $('.fin-tc', tr); if (u && tc) tc.innerHTML = `<b>${fm(gv(u) + fvOf(u))}</b>`;
     const sm = $('.fin-sum', box); if (sm) sm.innerHTML = sumTxt(inPol());
   }, true);
   box.addEventListener('keydown', e => { if (e.target.matches('.fin-v, .fin-all, .fin-q') && e.key === 'Enter') { e.preventDefault(); if (e.target.matches('.fin-all')) $('[data-fall]', box)?.click(); } });
   box.addEventListener('click', e => {
     const c = e.target.closest('[data-fb]'); if (c) { bf = c.dataset.fb; return draw(); }
     const ft = e.target.closest('[data-ft]'); if (ft) return tick(inPol().filter(u => !bf || u.b === bf), ft.dataset.ft === '1');
-    if (e.target.closest('[data-fall]')) {
-      const s = bulk; if (!s) return toast('Nhập giá trị hoàn thiện', true);
-      const list = inPol().filter(u => (!bf || u.b === bf) && on.has(K(u))); if (!list.length) return toast('Chưa tích căn nào có hoàn thiện', true);
-      const n = Math.max(0, Math.round(num(s, true)) || 0); for (const u of list) val[K(u)] = n; draw();
+    const picked = () => inPol().filter(u => (!bf || u.b === bf) && sel.has(K(u)));
+    if (e.target.closest('[data-fall]')) {   // áp cho đúng các căn đang tích, xong bỏ tích — căn không tích giữ nguyên giá trị
+      if (!bulk) return toast('Nhập giá trị hoàn thiện', true);
+      const list = picked(); if (!list.length) return toast('Tích chọn các căn cần áp giá trị hoàn thiện', true);
+      const n = numOf(bulk); for (const u of list) { val[K(u)] = n; auto.delete(K(u)); sel.delete(K(u)); }
+      draw(); return toast(`Đã áp ${fm(n)} đ cho ${list.length} căn — các căn khác giữ nguyên giá trị`);
+    }
+    if (e.target.closest('[data-fclr]')) {
+      const list = picked(); if (!list.length) return;
+      if (list.some(has) && !confirm(`Bỏ hoàn thiện (xóa giá trị) của ${list.length} căn đã tích?`)) return;
+      for (const u of list) { delete val[K(u)]; auto.delete(K(u)); sel.delete(K(u)); }
+      draw(); return toast(`Đã bỏ hoàn thiện ${list.length} căn`);
     }
   });
   projEl?.addEventListener('change', () => { if (el.offsetParent) load().catch(e => toast(e.message, true)); });
@@ -1515,7 +1680,7 @@ const tplPlaces = () => M.ents.template?.fields.find(f => f.k === 'ent')?.o || [
 const tplOn = ent => tplPlaces().some(o => o[0] === ent);
 const tplPlace = ent => tplPlaces().find(o => o[0] === ent)?.[1] || ent;
 // loại mẫu mặc định khi tạo trong module (loại = bộ in riêng cũ của hợp đồng, đơn đăng ký, biên bản giao nhận, thông báo mở bán)
-const TPL_KIND0 = { contract: 'hop_dong', contract_change: 'phu_luc', handover: 'bien_ban', defect: 'bien_ban', reservation: 'de_nghi', noxh_check: 'bien_ban_giao_nhan', sale_notice: 'thong_bao', handover_notice: 'thong_bao', notice: 'thong_bao', report: 'bao_cao', target: 'bao_cao', receipt: 'de_nghi', payment: 'de_nghi', pinkbook: 'de_nghi' };
+const TPL_KIND0 = { contract: 'hop_dong', contract_change: 'phu_luc', handover: 'bien_ban', defect: 'bien_ban', reservation: 'de_nghi', noxh_check: 'bien_ban_giao_nhan', sale_notice: 'thong_bao', handover_notice: 'thong_bao', gcn_notice: 'thong_bao', notice: 'thong_bao', report: 'bao_cao', target: 'bao_cao', receipt: 'de_nghi', payment: 'de_nghi', pinkbook: 'de_nghi' };
 // mẫu dùng bộ in riêng (trường trộn riêng, xem chú thích ô Nội dung mẫu) — còn lại in bằng bộ in chung
 const tplSpecial = t => (t.ent === 'reservation' && ['dang_ky_can', 'dang_ky_noi_that'].includes(t.kind)) || (['reservation', 'noxh_check'].includes(t.ent) && t.kind === 'bien_ban_giao_nhan') || (t.ent === 'sale_notice' && t.kind === 'thong_bao' && /^TB-MOBAN/i.test(t.code || ''));
 function tplUrl(ent, id, t) {
@@ -1727,11 +1892,11 @@ async function openDetail(ent, id, tab, plain) {   // plain: chỉ xem (mở t�
   const body = $('#dBody', el);
   const T = {
     info: () => {
-      const fs = E.fields.filter(f => f.t !== 'json' || f.k === 'reviews' || f.k === 'new_schedule' || f.k === 'pay_sched' || f.k === 'fin_sched');
+      const fs = E.fields.filter(f => f.t !== 'json' || f.k === 'reviews' || f.k === 'new_schedule' || f.k === 'pay_sched' || f.k === 'fin_sched' || f.pick === 'liq');   // liq: bảng hợp đồng của phiếu thanh lý chung (16/11/2026)
       let h = !plain && p.locked ? `<div class="lockbar">${ico('fa-lock')} ${E.one[0].toUpperCase() + E.one.slice(1)} đã chốt / đang trình duyệt — ${ent === 'contract' && E.softLock?.st.includes(r.status) ? 'nhân viên chỉ sửa được Lần thanh toán, nội dung khác do quản lý sửa.' : `không sửa trực tiếp${ent === 'contract' ? '. Thay đổi qua «Điều chỉnh – phụ lục hợp đồng».' : '.'}`}</div>` : '';
       if (E.note) h += `<div class="warnbar">${ico('fa-circle-info')}<span>${esc(E.note)}</span></div>`;
       if (String(r.sale_check || '').startsWith('⚠')) h += `<div class="warnbar">${ico('fa-triangle-exclamation')} <div><b>Cảnh báo mở bán:</b> ${esc(r.sale_check.slice(2))}</div></div>`;   // căn ngoài thông báo mở bán đã duyệt gần nhất
-      h += `<dl class="kv">${fs.filter(f => f.t !== 'check' && (f.t !== 'json' || f.grid || f.k === 'pay_sched' || f.k === 'fin_sched') && isShown(f, r) && (!plain || (r[f.k] != null && r[f.k] !== '' && r[f.k] !== false && !(Array.isArray(r[f.k]) && !r[f.k].length)))).map(f => `<div data-fk="${f.k}" class="${f.t === 'long' || f.grid || f.k === 'pay_sched' || f.k === 'fin_sched' || (f.pick && r._units) ? 'wide' : ''}"><dt>${esc(f.l)}</dt><dd>${show(f, r)}${(f.pii || f.grid?.some(c => c.pii)) && r._masked && M.piiRoles.includes(M.me.role) ? ` <button class="btn ghost sm" data-do="pii">${ico('fa-eye')} Hiện</button>` : ''}</dd></div>`).join('')}</dl>`;
+      h += `<dl class="kv">${fs.filter(f => f.t !== 'check' && (f.t !== 'json' || f.grid || f.k === 'pay_sched' || f.k === 'fin_sched' || f.pick === 'liq') && isShown(f, r) && (!plain || (r[f.k] != null && r[f.k] !== '' && r[f.k] !== false && !(Array.isArray(r[f.k]) && !r[f.k].length)))).map(f => `<div data-fk="${f.k}" class="${f.t === 'long' || f.grid || f.k === 'pay_sched' || f.k === 'fin_sched' || f.pick === 'liq' || (f.pick && r._units) ? 'wide' : ''}"><dt>${esc(f.l)}</dt><dd>${show(f, r)}${(f.pii || f.grid?.some(c => c.pii)) && r._masked && M.piiRoles.includes(M.me.role) ? ` <button class="btn ghost sm" data-do="pii">${ico('fa-eye')} Hiện</button>` : ''}</dd></div>`).join('')}</dl>`;
       for (const f of fs.filter(f => f.t === 'check')) h += `<div class="sec-title">${esc(f.l)}</div><table class="t compact noclick"><thead><tr><th>Giấy tờ</th><th>Tình trạng</th><th>Ghi chú</th></tr></thead><tbody>${(r[f.k] || []).map(x => `<tr><td>${esc(x.n)}</td><td>${x.st ? pill(CK.find(o => o[0] === x.st)[1], x.st === 'da_nhan' ? 'g' : 'r') : '<span class="muted">chưa</span>'}</td><td>${esc(x.note)}</td></tr>`).join('')}</tbody></table>`;
       if (r.reviews?.length) h += `<div class="sec-title">Các bước xét duyệt nội bộ</div><div class="tl">${r.reviews.map(x => `<div><b>${esc({ kiem_tra_1: 'Kiểm tra lần 1', kiem_tra_cheo: 'Kiểm tra chéo', doi_chieu_goc: 'Đối chiếu bản gốc' }[x.step] || x.step)}</b> — ${x.conclusion === 'dat' ? pill('Đạt', 'g') : pill('Cần bổ sung', 'a')}<br><small>${esc(x.by)} · ${dmyhm(x.at)}${x.note ? ' · ' + esc(x.note) : ''}</small></div>`).join('')}</div>`;
       if (r.new_schedule?.length) h += `<div class="sec-title">Tiến độ thanh toán mới</div>${schedTable(r.new_schedule)}`;
@@ -1798,14 +1963,16 @@ async function saleTrackInto(el, r) {
 }
 function debtTiles(d) {
   if (!d) return '';
+  if (d.closed) return `<div class="card mb" style="border-left:4px solid #d4a72c;padding:10px 14px">${ico('fa-box-archive')} <b>Hợp đồng đã thanh lý ngày ${dmy(d.closed_on)} — đã đóng theo dõi công nợ.</b> Lịch thu / đã thu chỉ để tra cứu, không tính vào công nợ phải thu, không nhắc thu. Khoản hoàn trả theo dõi tại <a href="#/v/payouts">Theo dõi thanh lý &amp; chi trả</a>.</div>
+    <div class="grid g4">${[['Phải thu theo lịch', d.total], ['Đã thu', d.paid, `${fnum(d.paid_pct)}%`], ['Còn phải thu', 0, `đã đóng${d.left_at_close ? ' · chưa thu lúc thanh lý ' + fm(d.left_at_close) : ''}`], ['Quá hạn', 0, 'đã đóng']].map(([l, v, s]) => `<div class="card kpi" style="cursor:default"><div class="l">${l}</div><div class="v" style="font-size:18px">${fm(v)}</div><div class="s">${s || '&nbsp;'}</div></div>`).join('')}</div>`;   // 17/11/2026
   return `<div class="grid g4">${[['Phải thu theo lịch', d.total], ['Đã thu (Bravo)', d.paid, `${fnum(d.paid_pct)}%`], ['Còn phải thu', d.left], ['Quá hạn', d.overdue, d.overdue_days ? `${d.overdue_days} ngày` : '', d.overdue > 0]].map(([l, v, s, red]) => `<div class="card kpi ${red ? 'red' : ''}" style="cursor:default"><div class="l">${l}</div><div class="v" style="font-size:18px">${fm(v)}</div><div class="s">${s || '&nbsp;'}</div></div>`).join('')}</div>
     ${d.next ? `<div class="small muted mt">${ico('fa-clock')} Kỳ tới: ${esc(d.next.name)} — ${fm(d.next.rem)}đ, hạn ${dmy(d.next.due_on)}</div>` : ''}`;
 }
-const PAYST = { da_thu: ['Đã thu đủ', 'g'], qua_han: ['Quá hạn', 'r'], den_han: ['Đến hạn hôm nay', 'a'], sap_den_han: ['Sắp đến hạn', 'a'], mot_phan: ['Thu một phần', 'b'], chua_den_han: ['Chưa đến hạn', 's'] };
+const PAYST = { da_thu: ['Đã thu đủ', 'g'], qua_han: ['Quá hạn', 'r'], den_han: ['Đến hạn hôm nay', 'a'], sap_den_han: ['Sắp đến hạn', 'a'], mot_phan: ['Thu một phần', 'b'], chua_den_han: ['Chưa đến hạn', 's'], dong: ['Đã đóng (HĐ thanh lý)', 's'] };
 function schedTable(rows, withPaid) {
   return `<table class="t compact noclick"><thead><tr><th>Đợt</th><th>Nội dung</th><th>Hạn</th><th class="num">Tỷ lệ</th><th class="num">Số tiền</th>${withPaid ? '<th class="num">Đã thu</th><th>Tình trạng</th>' : ''}</tr></thead><tbody>${rows.map((i, k) => `<tr><td>${i.seq || k + 1}</td><td>${esc(i.name)}${i.src === 'phu_luc' ? ' <span class="tag">phụ lục</span>' : ''}</td><td>${dmy(i.due_on)}</td><td class="num">${i.pct != null ? fnum(i.pct) + '%' : ''}</td><td class="num">${fm(i.amount)}</td>${withPaid ? `<td class="num">${fm(i.paid)}</td><td>${pill(...(PAYST[i.st] || ['', 's']))}</td>` : ''}</tr>`).join('')}</tbody></table>`;
 }
-const ACT_L = { chuyen_hdmb: 'Chuyển tiếp sang HĐMB', tao: 'Tạo mới', sua: 'Sửa', xoa: 'Xóa', khoi_phuc: 'Khôi phục', trinh_duyet: 'Trình duyệt', phe_duyet: 'Phê duyệt', tu_choi: 'Từ chối', tai_tep: 'Tải tệp', xoa_tep: 'Xóa tệp', khoi_phuc_tep: 'Khôi phục tệp', cap_nhat_trang_thai: 'Hệ thống cập nhật trạng thái', cap_nhat_dieu_kien: 'Hệ thống cập nhật điều kiện', lich_thanh_toan: 'Lập lịch thanh toán', xem_dinh_danh: 'Xem dữ liệu định danh', in_hop_dong: 'In hợp đồng', qua_han_giu_cho: 'Hệ thống: quá hạn giữ chỗ', kich_hoat: 'Kích hoạt mở bán', phu_luc: 'Cập nhật theo phụ lục', nhap_lich_su: 'Nhập dữ liệu lịch sử', nhap_excel: 'Cập nhật từ tệp Excel', thay_the: 'Bị thay thế', huy: 'Hủy', doi_can: 'Đổi căn', doi_kh: 'Đổi khách hàng', hoan_tac: 'Hoàn tác', xuat_du_lieu: 'Xuất dữ liệu', dang_nhap: 'Đăng nhập', dang_nhap_sai: 'Đăng nhập sai', doi_mat_khau: 'Đổi mật khẩu', cap_nhat_ho_so: 'Cập nhật hồ sơ cá nhân', chuyen_tt: 'Chuyển trạng thái' };
+const ACT_L = { chuyen_hdmb: 'Chuyển tiếp sang HĐMB', tao: 'Tạo mới', sua: 'Sửa', xoa: 'Xóa', khoi_phuc: 'Khôi phục', trinh_duyet: 'Trình duyệt', phe_duyet: 'Phê duyệt', tu_choi: 'Từ chối', tai_tep: 'Tải tệp', xoa_tep: 'Xóa tệp', khoi_phuc_tep: 'Khôi phục tệp', cap_nhat_trang_thai: 'Hệ thống cập nhật trạng thái', cap_nhat_dieu_kien: 'Hệ thống cập nhật điều kiện', lich_thanh_toan: 'Lập lịch thanh toán', han_dot_ban_giao: 'Hạn đợt theo thông báo bàn giao', dot_ban_giao: 'Gắn đợt thu với bàn giao', han_dot_gcn: 'Hạn đợt theo thông báo bàn giao Giấy chứng nhận', dot_gcn: 'Gắn đợt thu với Giấy chứng nhận', han_theo_ngay_ky: 'Hạn đợt theo ngày ký', dong_cong_no: 'Đóng theo dõi công nợ (thanh lý)', xem_dinh_danh: 'Xem dữ liệu định danh', in_hop_dong: 'In hợp đồng', qua_han_giu_cho: 'Hệ thống: quá hạn giữ chỗ', kich_hoat: 'Kích hoạt mở bán', phu_luc: 'Cập nhật theo phụ lục', nhap_lich_su: 'Nhập dữ liệu lịch sử', nhap_excel: 'Cập nhật từ tệp Excel', thay_the: 'Bị thay thế', huy: 'Hủy', doi_can: 'Đổi căn', doi_kh: 'Đổi khách hàng', hoan_tac: 'Hoàn tác', xuat_du_lieu: 'Xuất dữ liệu', dang_nhap: 'Đăng nhập', dang_nhap_sai: 'Đăng nhập sai', doi_mat_khau: 'Đổi mật khẩu', cap_nhat_ho_so: 'Cập nhật hồ sơ cá nhân', chuyen_tt: 'Chuyển trạng thái' };
 function actLabel(a, ent) { if (a.startsWith('tt:')) { const k = a.slice(3); return M.ents[ent]?.acts?.find(x => x.k === k)?.l || k; } return ACT_L[a] || a; }
 function fmtVal(ent, k, v) {
   const f = M.ents[ent]?.fields.find(x => x.k === k); if (v == null || v === '') return '∅';
