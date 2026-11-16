@@ -582,7 +582,7 @@ R('GET', '/api/rent-prices', async (req, res, u, p, qs) => { if (!can(u, M.E.sal
 R('GET', '/api/sale-notice/:id/units-xlsx', async (req, res, u, p) => {
   const { row: n } = await C.get('sale_notice', p.id, u), thue = n.deal === 'thue';
   const us = await B.noticeUnits({ q, one }, n), rows = thue ? await B.noticeRent({ q, one }, n.project_id, n.policy_id, us) : us;
-  const sn = thue ? await B.saleNotes({ q, one }, n.project_id) : null; if (sn) for (const x of rows) x.note = sn.get(x.id) || '';   // căn đang mở bán: «Đang mở bán – Thông báo số …»
+  const sn = thue ? await B.unitNotes({ q, one }, n.project_id, us, n.id) : null; if (sn) for (const x of rows) x.note = (sn.get(x.id) || []).map(t => t.t).join('; ');   // ghi chú: trạng thái hiện tại của căn
   const KIND = Object.fromEntries(M.E.unit.fields.find(f => f.k === 'kind').o.map(o => [o[0], o[1]])), ST = Object.fromEntries(M.E.unit.fields.find(f => f.k === 'status').o.map(o => [o[0], o[1]]));
   for (const x of rows) { x.kind_l = KIND[x.kind] || x.kind || ''; x.st_l = thue && x.status === 'con_ban' ? 'Còn cho thuê' : ST[x.status] || x.status || ''; if (thue && !x.rent_house) { x.rent_house = 'Chưa thiết lập'; x.rent_total = ''; x.rent_unit = ''; } }
   const cols = [['code', 'Mã căn'], ['b', 'Tòa'], ['floor', 'Tầng', 'int'], ['kind_l', 'Loại căn'], ['area_tt', 'DT thông thủy (m²)', 'num'], ['area_xd', 'DT xây dựng (m²)', 'num'],

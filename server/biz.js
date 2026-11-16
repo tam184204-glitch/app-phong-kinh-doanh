@@ -1424,15 +1424,53 @@ async function liveDeals(db, unitIds) {
 }
 const DEAL_L = { hdmb: 'HĐ mua bán', thue_mua: 'HĐ thuê mua', thue: 'HĐ thuê', vay: 'HĐ vay' };
 // căn cho thuê được không: lý do không được (null = được) — căn đang có hợp đồng còn hiệu lực / ngừng kinh doanh.
-// 16/11/2026: căn đang thuộc thông báo mở bán VẪN cho thuê được (không ẩn, không khóa) — chỉ ghi chú «Đang mở bán – Thông báo số …» (saleNotes)
+// 16/11/2026: căn đang thuộc thông báo mở bán VẪN cho thuê được (không ẩn, không khóa) — chỉ ghi chú «Đang mở bán – Thông báo số …» (unitNotes)
 async function rentBlock(db, units) {
   const live = await liveDeals(db, units.map(u => u.id)), out = new Map();
   for (const u of units) out.set(u.id, live.has(u.id) ? `Đang có ${DEAL_L[live.get(u.id).kind] || 'hợp đồng'} ${live.get(u.id).number || ''}`.trim() : u.lock === 'ngung_kd' ? 'Ngừng kinh doanh' : null);
   return out;
 }
-// ghi chú căn đang thuộc thông báo mở bán còn hiệu lực (đã trình / đã phát hành, chưa hết hạn nhận hồ sơ): id căn → «Đang mở bán – Thông báo số TB-…»
-async function saleNotes(db, projectId) {
-  return new Map([...(await noticeBusy(db, projectId, 'ban'))].map(([id, n]) => [id, `Đang mở bán – Thông báo số ${n.code}`]));
+// 16/11/2026: cột «Ghi chú» của thông báo cho thuê — trạng thái hiện tại của từng căn, lấy trực tiếp từ hệ thống mỗi lần mở (nhiều trạng thái thì liệt kê đủ):
+// thông báo mở bán / cho thuê còn hiệu lực (trừ chính thông báo đang lập), phiếu đăng ký / giữ chỗ, hồ sơ mua / thuê đang xét duyệt, hợp đồng (đang lập / đã ký / đã thanh lý);
+// không có giao dịch, không thuộc thông báo nào = «Còn trống / Chưa mở bán, cho thuê». Trả id căn → [{ k: loại, t: nội dung }]
+const NOTE_HD = { hdmb: 'HĐMB', thue_mua: 'HĐ thuê mua', thue: 'Hợp đồng thuê', vay: 'HĐ vay' };
+const NOTE_HD_ST = { du_thao: 'dự thảo', cho_duyet: 'đang rà soát', cho_ky: 'chờ ký', tu_choi: 'trả lại dự thảo' };
+const NOTE_RES_ST = { cho_duyet: 'chờ duyệt', giu_cho: 'đang giữ chỗ', qua_han: 'quá hạn giữ chỗ', da_coc: 'đã đặt cọc' };
+async function unitNotes(db, projectId, units, selfId) {
+  const out = new Map(units.map(u => [u.id, []])), ids = units.map(u => u.id), T = today(), dm = v => v ? d10(v).split('-').reverse().join('/') : '';
+  if (!ids.length) return out;
+  const add = (id, k, t) => out.get(id)?.push({ k, t }), nt = new Map(), busy = new Set();
+  // thông báo còn hiệu lực: đã phát hành = «Đang …», đã trình chưa duyệt = «… chờ phát hành»
+  const ns = await db.q("SELECT * FROM kd_sale_notice WHERE project_id = $1 AND status IN ('cho_duyet', 'da_duyet') AND (close_on IS NULL OR close_on >= $2) AND id <> $3 ORDER BY id DESC", [+projectId, T, +selfId || 0]);
+  for (const n of ns) for (const u of await noticeUnits(db, n)) if (out.has(u.id)) {
+    const key = u.id + ':' + (n.deal === 'thue' ? 'thue' : 'ban') + ':' + n.status; if (!nt.has(key)) nt.set(key, []); nt.get(key).push(n.code);
+  }
+  for (const u of units) for (const [d, l] of [['ban', 'mở bán'], ['thue', 'cho thuê']]) {
+    const pub = nt.get(`${u.id}:${d}:da_duyet`), wait = nt.get(`${u.id}:${d}:cho_duyet`);
+    if (pub) add(u.id, d, `${d === 'ban' ? 'Đang mở bán' : 'Đang thông báo cho thuê'} – Thông báo số ${pub.join(', ')}`);
+    if (wait) add(u.id, d, `Thông báo ${l} số ${wait.join(', ')} – chờ phát hành`);
+  }
+  // phiếu đăng ký / giữ chỗ còn hiệu lực (đã chuyển hợp đồng thì theo hợp đồng)
+  const rs = await db.q("SELECT id, code, unit_id, deal, status, progress FROM kd_reservation WHERE unit_id = ANY($1) AND status IN ('cho_duyet', 'giu_cho', 'qua_han', 'da_coc') ORDER BY id DESC", [ids]);
+  for (const r of rs) { busy.add(r.unit_id); add(r.unit_id, 'res', `Đã đăng ký ${r.deal === 'thue' ? 'thuê' : 'mua'} / Giữ chỗ – ${r.code || '#' + r.id} (${NOTE_RES_ST[r.status] || r.status})`); }
+  // hồ sơ mua / thuê đang xét duyệt: hồ sơ NOXH «Chờ xét duyệt», hoặc phiếu đăng ký ở tiến trình «Đã nộp hồ sơ chờ xét duyệt»
+  const hs = await db.q("SELECT id, unit_id, reg_kind, reservation_id FROM kd_noxh_check WHERE unit_id = ANY($1) AND status = 'cho_duyet' ORDER BY id DESC", [ids]), hsU = new Set();
+  for (const h of hs) { busy.add(h.unit_id); hsU.add(h.unit_id); add(h.unit_id, 'hs', `Đang xét duyệt hồ sơ ${h.reg_kind === 'thue' ? 'thuê' : 'mua'} – NOXH #${h.id}`); }
+  for (const r of rs) if (r.progress === 'cho_xet_duyet' && !hsU.has(r.unit_id)) add(r.unit_id, 'hs', `Đang xét duyệt hồ sơ ${r.deal === 'thue' ? 'thuê' : 'mua'} – ${r.code || '#' + r.id}`);
+  // hợp đồng: đang lập / đã ký (HĐ thuê ghi thời hạn) / đã thanh lý
+  const cs = await db.q("SELECT id, unit_id, number, kind, status, nature, exp_on, liquidated_on FROM kd_contract WHERE unit_id = ANY($1) AND kind IN ('hdmb', 'thue_mua', 'thue', 'vay') AND status <> 'huy' ORDER BY id DESC", [ids]);
+  for (const c of cs) {
+    const l = `${NOTE_HD[c.kind]} ${c.number || '#' + c.id}`, exp = c.kind === 'thue' && c.nature !== 'ban' && c.exp_on && d10(c.exp_on) < T;
+    if (c.status === 'thanh_ly') { add(c.unit_id, 'tl', `Đã thanh lý ${l}${c.liquidated_on ? ` (${dm(c.liquidated_on)})` : ''}`); continue; }
+    if (!exp) busy.add(c.unit_id);
+    if (c.status === 'da_ky') add(c.unit_id, exp ? 'tl' : 'hd', `Đã ký ${l}${c.kind === 'thue' && c.exp_on ? ` (${exp ? 'hết hạn' : 'đến'} ${dm(c.exp_on)})` : ''}`);
+    else add(c.unit_id, 'hd', `Đang lập ${l} (${NOTE_HD_ST[c.status] || c.status})`);
+  }
+  for (const u of units) {
+    if (u.lock === 'ngung_kd') add(u.id, 'tl', 'Ngừng kinh doanh');
+    if (!busy.has(u.id) && !out.get(u.id).some(x => x.k === 'ban' || x.k === 'thue') && u.lock !== 'ngung_kd') add(u.id, 'free', 'Còn trống / Chưa mở bán, cho thuê');
+  }
+  return out;
 }
 // lưu / trình / phát hành thông báo cho thuê: chặn căn đang có hợp đồng còn hiệu lực / ngừng kinh doanh (căn đang mở bán vẫn cho thuê được; thông báo mở bán giữ nguyên)
 async function noticeConflict(db, r) {
@@ -1445,8 +1483,8 @@ async function noticeConflict(db, r) {
 async function rentPrices(db, qs) {
   if (!+qs.project) return { rows: [] };
   const us = await db.q('SELECT u.id, u.code, u.position, u.area_tt, u.lock, upper(b.code) b FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = $1', [+qs.project]);
-  const why = await rentBlock(db, us), note = await saleNotes(db, +qs.project);   // không gợi ý: đang có hợp đồng còn hiệu lực; đang mở bán: vẫn gợi ý + ghi chú
-  return { rows: (await noticeRent(db, +qs.project, +qs.policy || null, us)).map(x => ({ id: x.id, ok: !why.get(x.id), why: why.get(x.id) || null, note: note.get(x.id) || null, house: x.rent_house, furn: x.rent_furn, total: x.rent_total, price: x.rent_price, unit: x.rent_unit, pol: x.rent_pol })) };
+  const why = await rentBlock(db, us), notes = await unitNotes(db, +qs.project, us, +qs.self || 0);   // không chọn được: đang có hợp đồng còn hiệu lực; đang mở bán: vẫn chọn được + ghi chú
+  return { rows: (await noticeRent(db, +qs.project, +qs.policy || null, us)).map(x => ({ id: x.id, ok: !why.get(x.id), why: why.get(x.id) || null, notes: notes.get(x.id) || [], house: x.rent_house, furn: x.rent_furn, total: x.rent_total, price: x.rent_price, unit: x.rent_unit, pol: x.rent_pol })) };
 }
 H.sale_notice = {
   where(qs) { if (qs.group === 'thue') return { sql: "t.deal = 'thue'" }; if (qs.group === 'ban') return { sql: "coalesce(t.deal, 'ban') <> 'thue'" }; },   // tab Mở bán / Cho thuê (17/11/2026)
@@ -1490,8 +1528,8 @@ H.sale_notice = {
   async decorate(rows, { db, one }) {
     for (const r of rows) {
       const us = await noticeUnits(db, r);
-      const sn = one && r.deal === 'thue' ? await saleNotes(db, r.project_id) : null;   // 16/11/2026: căn đang mở bán → ghi chú «Đang mở bán – Thông báo số …»
-      if (one) r._units = r.deal === 'thue' ? (await noticeRent(db, r.project_id, r.policy_id, us)).map(u => ({ code: u.code, area_tt: u.area_tt, area_xd: u.area_xd, rent_house: u.rent_house, rent_furn: u.rent_furn, rent_total: u.rent_total, note: sn.get(u.id) || '' }))   // thông báo cho thuê: giá thuê nhà / nội thất / tổng cộng theo tháng
+      const sn = one && r.deal === 'thue' ? await unitNotes(db, r.project_id, us, r.id) : null;   // 16/11/2026: ghi chú trạng thái hiện tại của từng căn
+      if (one) r._units = r.deal === 'thue' ? (await noticeRent(db, r.project_id, r.policy_id, us)).map(u => ({ code: u.code, area_tt: u.area_tt, area_xd: u.area_xd, rent_house: u.rent_house, rent_furn: u.rent_furn, rent_total: u.rent_total, notes: sn.get(u.id) || [] }))   // thông báo cho thuê: giá thuê nhà / nội thất / tổng cộng theo tháng
         : us.map(u => ({ code: u.code, area_tt: u.area_tt, area_xd: u.area_xd }));   // màn chi tiết: bảng căn mở bán như «DS mở bán» Excel
       r.n_units = us.length; r.n_free = us.filter(u => u.status === 'con_ban').length;
       r.n_reg = us.filter(u => !['con_ban', 'chua_mo_ban', 'tam_khoa', 'ngung_kd'].includes(u.status)).length;
@@ -2851,4 +2889,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, noticeHist, noticeUnits, noticeRent, rentPrices, noticeConflict, saleNotes,rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, noticeHist, noticeUnits, noticeRent, rentPrices, noticeConflict, unitNotes,rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

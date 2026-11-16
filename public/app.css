@@ -986,8 +986,13 @@ table.t tr.clk { cursor: pointer; }
 [data-ssched] .sched-add td { padding-top: 4px; padding-bottom: 4px; }
 [data-ssched] .sched tfoot td { line-height: 20px; vertical-align: middle; }
 [data-ssched] > .mt { margin-top: 8px; }
-/* thông báo cho thuê: ghi chú căn đang mở bán */
-table.t td.sn-note { color: var(--amber-d); font-weight: 600; white-space: normal; min-width: 150px; line-height: 1.3; }
+/* thông báo cho thuê: cột Ghi chú = trạng thái hiện tại của căn (mỗi trạng thái một dòng, màu theo loại) */
+table.t td.sn-note { white-space: normal; min-width: 200px; line-height: 1.3; }
+table.t.upick-rn th { white-space: normal; } table.t.upick-rn th.num { min-width: 92px; } table.t.upick-rn td.sn-note { min-width: 210px; overflow-wrap: anywhere; } table.t.upick-rn td .neg { white-space: normal; }
+.sn-note > div + div { margin-top: 2px; }
+.sn-ban { color: var(--amber-d); font-weight: 600; } .sn-thue { color: var(--cobalt-l); font-weight: 600; }
+.sn-res { color: var(--v); } .sn-hs { color: var(--a); } .sn-hd { color: var(--g); font-weight: 600; } .sn-tl, .sn-free { color: var(--muted); }
+.upick-t tr.off td { background: #fafbfc; } .upick-t tr.off td:nth-child(-n+6) { color: var(--muted2); }
 
 /* CN-08 bảng tổng hợp công nợ: 2 tầng tiêu đề dính cùng nhau, dòng mục / tòa / tổng như file Excel */
 .main .card .tbl-wrap table.dsum thead { position: sticky; top: 0; z-index: 3; }
