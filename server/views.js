@@ -206,6 +206,8 @@ const ALERT_CAT = {
   no_qua_han: 'Khách hàng chậm thanh toán', den_han: 'Kỳ thu đến hạn ≤ 7 ngày', cam_ket: 'Cam kết thanh toán đến hẹn / thất hẹn', lien_he: 'Lịch liên hệ lại',
   ban_giao: 'Căn chưa bàn giao', ton_tai: 'Tồn tại quá hạn khắc phục', so_hong: 'Hồ sơ cấp sổ tồn đọng', cskh: 'Phản ánh, khiếu nại chưa giải quyết', ke_hoach: 'Kế hoạch thu chưa lập / chưa duyệt',
   chi_tra: 'Đến hạn chi trả thanh lý (báo trước 30 ngày)',
+  // 17/11/2026: nhắc TRƯỚC khi quá hạn
+  ho_so: 'Hồ sơ sắp / đã tới hạn hoàn thiện', thue_het_han: 'HĐ thuê sắp hết hạn (báo trước 60 ngày)', chinh_sach: 'Chính sách bán / cho thuê sắp hết hiệu lực',
 };
 async function alerts(db, user, f = {}) {
   const t = today(), out = [];
@@ -215,9 +217,33 @@ async function alerts(db, user, f = {}) {
   const push = (...a) => { const [cat, lvl, text, ent, id, due, who, unit_id] = a; if (mineOnly && a.length > 8 && a[8] !== me) return; out.push({ cat, lvl, text, ent, id, due, who, unit_id }); };
   const p = []; const w = uf(f, p);
   for (const a of await approvalsFor(db, user)) push('phe_duyet', 'a', a.title, a.ent, a.rec_id, String(a.requested_at).slice(0, 10), a.requested_by_l);
-  for (const r of await db.q(`SELECT r.id, r.code, r.status, r.hold_until, r.owner_id, u.code unit, u.id unit_id, k.full_name, own.full_name who FROM kd_reservation r JOIN kd_unit u ON u.id = r.unit_id JOIN kd_customer k ON k.id = r.customer_id LEFT JOIN kd_user own ON own.id = r.owner_id
-    WHERE (r.status = 'qua_han' OR (r.status IN ('giu_cho','da_coc') AND r.hold_until < now() + interval '24 hours')) ${w}`, p))
-    push('giu_cho', r.status === 'qua_han' ? 'r' : 'a', `${r.unit} · ${r.full_name} — ${r.status === 'qua_han' ? 'đã quá hạn giữ chỗ, cần gia hạn / giải phóng / lập HĐ' : 'hết hạn giữ chỗ trong 24h'}`, 'reservation', r.id, new Date(Date.parse(r.hold_until) + 7 * 3600e3).toISOString().slice(0, 10), r.who, r.unit_id, r.owner_id);
+  // giữ chỗ: quá hạn (tình trạng phiếu hoặc trạng thái căn) · còn ≤ 24h (cả phiếu nháp / chờ duyệt đang giữ căn) · đã cọc mà qua hạn giữ chỗ chưa lập HĐ
+  // 17/11/2026: bỏ qua phiếu đã lập hợp đồng; mốc «còn ≤ 24h» chỉ tính hạn chưa qua (trước gộp cả hạn đã qua nên ghi sai «hết hạn trong 24h»)
+  for (const r of await db.q(`SELECT r.id, r.code, r.status, r.reg_state, r.hold_until, r.hold_until < now() past, r.owner_id, u.code unit, u.id unit_id, k.full_name, own.full_name who FROM kd_reservation r JOIN kd_unit u ON u.id = r.unit_id JOIN kd_customer k ON k.id = r.customer_id LEFT JOIN kd_user own ON own.id = r.owner_id
+    WHERE r.status IN ('nhap','cho_duyet','giu_cho','qua_han','da_coc') AND coalesce(r.reg_state, '') NOT IN ('huy','ky_hdmb')
+      AND (r.status = 'qua_han' OR r.reg_state = 'qua_han' OR (r.hold_until < now() + interval '24 hours' AND (r.status IN ('giu_cho','da_coc') OR r.reg_state = 'giu_cho')))
+      AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.reservation_id = r.id AND c.status NOT IN ('huy','thanh_ly')) ${w}`, p)) {
+    const late = r.status === 'qua_han' || r.reg_state === 'qua_han';
+    if (!late && r.past && r.status !== 'da_coc') continue;   // chưa cọc đã qua hạn: việc nền sẽ chuyển «Quá hạn» ở lượt tới
+    const vn = r.hold_until ? new Date(Date.parse(r.hold_until) + 7 * 3600e3).toISOString() : '', hh = vn ? `${vn.slice(11, 16)} ngày ${vn.slice(8, 10)}/${vn.slice(5, 7)}` : '';   // giờ Việt Nam
+    push('giu_cho', late ? 'r' : 'a', `${r.unit} · ${r.full_name} — ${late ? 'đã quá hạn giữ chỗ, cần gia hạn / giải phóng / lập HĐ' : r.past ? `đã đặt cọc, qua hạn giữ chỗ ${hh} — cần lập HĐ / gia hạn` : `hết hạn giữ chỗ lúc ${hh} (còn dưới 24h)`}`, 'reservation', r.id, r.hold_until ? new Date(Date.parse(r.hold_until) + 7 * 3600e3).toISOString().slice(0, 10) : null, r.who, r.unit_id, r.owner_id);
+  }
+  // 17/11/2026: phiếu đăng ký chưa nộp hồ sơ (tiến trình «Đã tiếp nhận hồ sơ», chưa có hồ sơ NOXH chờ xét / đã duyệt) mà «Hạn hoàn thiện hồ sơ» còn ≤ 3 ngày hoặc đã qua
+  for (const r of await db.q(`SELECT r.id, r.docs_deadline, r.owner_id, u.code unit, u.id unit_id, k.full_name, own.full_name who FROM kd_reservation r JOIN kd_unit u ON u.id = r.unit_id JOIN kd_customer k ON k.id = r.customer_id LEFT JOIN kd_user own ON own.id = r.owner_id
+    WHERE r.status IN ('nhap','cho_duyet','giu_cho','qua_han','da_coc') AND coalesce(r.reg_state, '') NOT IN ('huy','ky_hdmb') AND coalesce(r.progress, 'tiep_nhan') = 'tiep_nhan'
+      AND r.docs_deadline <= $${p.length + 1}::date + 3
+      AND NOT EXISTS (SELECT 1 FROM kd_noxh_check n WHERE n.status IN ('cho_duyet','da_duyet') AND (n.reservation_id = r.id OR (n.customer_id = r.customer_id AND n.unit_id = r.unit_id)))
+      AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.reservation_id = r.id AND c.status NOT IN ('huy','thanh_ly')) ${w}`, [...p, t])) {
+    const left = dayDiff(t, r.docs_deadline);
+    push('ho_so', left < 0 ? 'r' : 'a', `${r.unit} · ${r.full_name} — ${left < 0 ? `quá hạn hoàn thiện hồ sơ ${-left} ngày` : left === 0 ? 'hôm nay hết hạn hoàn thiện hồ sơ' : `còn ${left} ngày tới hạn hoàn thiện hồ sơ`} (${C.dmy(r.docs_deadline)}), chưa nộp hồ sơ`, 'reservation', r.id, r.docs_deadline, r.who, r.unit_id, r.owner_id);
+  }
+  // 17/11/2026: HĐ thuê đã ký sắp hết hạn (≤ 60 ngày) hoặc đã hết hạn ≤ 30 ngày mà chưa gia hạn / thanh lý — bỏ qua HĐ đã chuyển sang HĐMB hoặc đã có HĐ thuê tiếp theo của cùng khách, cùng căn
+  for (const c of await db.q(`SELECT c.id, c.number, c.exp_on, c.owner_id, u.code unit, u.id unit_id, k.full_name, own.full_name who FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id LEFT JOIN kd_user own ON own.id = c.owner_id
+    WHERE c.kind = 'thue' AND c.status = 'da_ky' AND c.next_id IS NULL AND c.exp_on BETWEEN $${p.length + 1}::date - 30 AND $${p.length + 1}::date + 60
+      AND NOT EXISTS (SELECT 1 FROM kd_contract x WHERE x.id <> c.id AND x.kind = 'thue' AND x.unit_id = c.unit_id AND x.customer_id = c.customer_id AND x.status NOT IN ('huy','tu_choi','thanh_ly') AND x.eff_on > c.eff_on) ${w}`, [...p, t])) {
+    const left = dayDiff(t, c.exp_on);
+    push('thue_het_han', left < 0 ? 'r' : left <= 30 ? 'a' : 'b', `${c.number || 'HĐ thuê'} · ${c.unit} · ${c.full_name} — ${left < 0 ? `đã hết hạn thuê ${-left} ngày (${C.dmy(c.exp_on)}), chưa gia hạn / thanh lý` : `hết hạn thuê ${C.dmy(c.exp_on)} (còn ${left} ngày) — liên hệ khách gia hạn hoặc chuẩn bị thanh lý`}`, 'contract', c.id, c.exp_on, c.who, c.unit_id, c.owner_id);
+  }
   // hủy giao dịch / thanh lý: chưa chi tiền mà ngày dự kiến chi trả còn ≤ 30 ngày hoặc đã qua
   for (const r of await db.q(`SELECT t.id, t.code, t.pay_due, t.pay_amount, u.code unit, u.id unit_id, coalesce(k.full_name, rs.cust_name) full_name, own.full_name who, t.created_by
     FROM kd_cancel_req t LEFT JOIN kd_reservation rs ON rs.id = t.reservation_id LEFT JOIN kd_contract c ON c.id = t.contract_id LEFT JOIN kd_unit u ON u.id = coalesce(c.unit_id, rs.unit_id)
@@ -264,8 +290,22 @@ async function alerts(db, user, f = {}) {
     const late = Date.parse(k.due_at) < Date.now();
     push('cskh', late ? 'r' : 'a', `${k.code} · ${k.full_name}${k.unit ? ' · ' + k.unit : ''} — ${late ? 'quá hạn phản hồi (SLA)' : k.kind === 'khieu_nai' ? 'khiếu nại đang xử lý' : 'sắp hết hạn phản hồi'}`, 'ticket', k.id, new Date(k.due_at).toISOString().slice(0, 10), k.who, k.unit_id, k.assignee_id);
   }
+  // 17/11/2026: chính sách bán / cho thuê đã phát hành còn ≤ 15 ngày hết hiệu lực mà dự án chưa có chính sách cùng loại đã phát hành nối tiếp → hết hạn thì căn không còn giá / tiền thuê.
+  // Đã có chính sách thay đang soạn / chờ duyệt → nhắc nhẹ (trình / duyệt cho kịp). Chỉ Trưởng phòng / Lãnh đạo / quản trị (người lập, duyệt chính sách)
+  if ([...MGR, 'admin'].includes(user.role) || f.all) {
+    const pp = []; if (f.project) { if (!/^\d+$/.test(f.project)) bad('Bộ lọc không hợp lệ'); pp.push(+f.project); }
+    for (const x of await db.q(`SELECT p.id, p.code, p.version, p.name, p.end_on, coalesce(p.pkind, 'ban') pkind,
+        (SELECT string_agg(DISTINCT q.code || ' v' || q.version || ' (' || CASE q.status WHEN 'nhap' THEN 'dự thảo' WHEN 'cho_duyet' THEN 'chờ duyệt' ELSE q.status END || ')', ', ') FROM kd_price_policy q
+          WHERE q.id <> p.id AND coalesce(q.pkind, 'ban') = coalesce(p.pkind, 'ban') AND q.project_ids && p.project_ids AND q.end_on > p.end_on AND q.status IN ('nhap','cho_duyet')) pending
+      FROM kd_price_policy p WHERE p.status = 'phat_hanh' AND p.end_on BETWEEN $1::date AND $1::date + 15 ${pp.length ? 'AND $2 = ANY(p.project_ids)' : ''}
+        AND NOT EXISTS (SELECT 1 FROM kd_price_policy q WHERE q.id <> p.id AND q.status = 'phat_hanh' AND coalesce(q.pkind, 'ban') = coalesce(p.pkind, 'ban') AND q.project_ids && p.project_ids AND q.start_on <= p.end_on + 1 AND q.end_on > p.end_on)
+      ORDER BY p.end_on`, [t, ...pp])) {
+      const left = dayDiff(t, x.end_on), loai = x.pkind === 'thue' ? 'cho thuê' : 'bán hàng';
+      push('chinh_sach', x.pending ? 'b' : left <= 7 ? 'r' : 'a', `Chính sách ${loai} ${x.code} v${x.version}${x.name ? ' · ' + x.name : ''} — hết hiệu lực ${C.dmy(x.end_on)} (${left ? 'còn ' + left + ' ngày' : 'hôm nay'}), ${x.pending ? 'chính sách thay thế ' + x.pending + ' chưa phát hành' : `chưa có chính sách ${loai} thay thế — hết hạn căn sẽ không có ${x.pkind === 'thue' ? 'tiền thuê' : 'giá'}`}`, 'price_policy', x.id, x.end_on, null);
+    }
+  }
   if (['cong_no', 'truong_phong', 'admin'].includes(user.role) || f.all) {
-    const next = addDays(t.slice(0, 7) + '-01', 32).slice(0, 7), m = t.slice(0, 7);
+    const next =addDays(t.slice(0, 7) + '-01', 32).slice(0, 7), m = t.slice(0, 7);
     for (const mm of [m, next]) {
       const st = await db.one("SELECT count(*) n, count(*) FILTER (WHERE status='da_duyet') ok, count(*) FILTER (WHERE status IN ('nhap','tu_choi')) draft FROM kd_collect_plan WHERE month = $1", [mm]);
       if (!st.n && (mm === m || t.slice(8) >= '20')) push('ke_hoach', mm === m ? 'r' : 'a', `Chưa lập kế hoạch thu tháng ${mm.split('-').reverse().join('/')}`, null, null, null, null);
