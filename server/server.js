@@ -284,6 +284,8 @@ R('POST', '/api/bulk/:ent/:op', async (req, res, u, p) => {
 R('GET', '/api/opts/:ent', async (req, res, u, p, qs) => {
   const e = M.E[p.ent] || bad('Loại dữ liệu không hợp lệ'); if (!can(u, e, 'r')) return send(res, 200, []);
   if (p.ent === 'customer' && qs.unit && !qs.id) return send(res, 200, await B.unitCustomers({ q, one }, +qs.unit, qs.q));   // HĐMB: khách gắn với căn + tình trạng hồ sơ NOXH (15/11/2026)
+  if (p.ent === 'contract' && qs.unit && !qs.id) return send(res, 200, await B.unitContracts({ q, one }, u, +qs.unit, qs.q));   // phiếu thu / chi: các HĐ của căn đã chọn (17/11/2026)
+  if (p.ent === 'cancel_req' && qs.liq) return send(res, 200, await B.liqSlipOpts({ q, one }, qs.unit ? +qs.unit : null, qs.q, qs.id));   // phiếu chi hoàn tiền thanh lý: phiếu thanh lý
   const w = [], params = [];
   if (qs.q) { params.push(`%${qs.q}%`); w.push(`(${e.disp}) ILIKE $${params.length}`); }
   if (qs.id) { params.push(+qs.id); w.push(`t.id = $${params.length}`); }
@@ -570,9 +572,12 @@ R('GET', '/print/reservation/:id', async (req, res, u, p, qs) => send(res, 200, 
 R('GET', '/api/handover-templates', async (req, res, u, p, qs) => send(res, 200, await M4.handoverTemplates(qs)));
 R('GET', '/print/handover/:kind/:id', async (req, res, u, p, qs) => send(res, 200, await M4.printHandover(p.kind, p.id, u, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 // phiếu đề nghị hủy / đổi: tự điền theo hợp đồng / phiếu giữ chỗ
-R('GET', '/api/voucher-prefill', async (req, res, u, p, qs) => { if (!can(u, M.E.receipt, 'c') && !can(u, M.E.payment, 'c')) C.deny(); send(res, 200, await B.voucherPrefill({ q, one }, qs)); });
+R('GET', '/api/voucher-prefill', async (req, res, u, p, qs) => { if (!can(u, M.E.receipt, 'c') && !can(u, M.E.payment, 'c')) C.deny(); send(res, 200, await B.voucherPrefill({ q, one }, qs, u)); });
 R('POST', '/api/handover-notice/set-bg', async (req, res, u) => { if (!can(u, M.E.contract, 'u')) C.deny('Bạn không được sửa hợp đồng'); const b = await readJson(req); send(res, 200, await tx(db => B.bgSet(db, u, b))); });   // chọn đợt bàn giao / số ngày cho 1 HĐMB ngay ở thông báo
 R('GET', '/api/handover-notice/suggest', async (req, res, u, p, qs) => { if (!can(u, M.E.handover_notice, 'c') && !can(u, M.E.handover_notice, 'u') && !can(u, M.E.handover_notice, 'r')) C.deny(); send(res, 200, await B.bgSuggest({ q, one }, qs)); });   // thông báo bàn giao: gợi ý căn có HĐMB đã ký + hạn thu đợt bàn giao
+// 17/11/2026: Thông báo bàn giao Giấy chứng nhận — bảng căn (gợi ý hạn mới) + gắn đợt thu với GCN
+R('POST', '/api/gcn-notice/set', async (req, res, u) => { if (!can(u, M.E.contract, 'u')) C.deny('Bạn không được sửa hợp đồng'); const b = await readJson(req); send(res, 200, await tx(db => B.gcnSet(db, u, b))); });
+R('GET', '/api/gcn-notice/suggest', async (req, res, u, p, qs) => { if (!can(u, M.E.gcn_notice, 'c') && !can(u, M.E.gcn_notice, 'u') && !can(u, M.E.gcn_notice, 'r')) C.deny(); send(res, 200, await B.gcnSuggest({ q, one }, qs)); });
 R('GET', '/api/cancel_prefill', async (req, res, u, p, qs) => { if (!can(u, M.E.cancel_req, 'c') && !can(u, M.E.cancel_req, 'u')) C.deny(); send(res, 200, await B.cancelPrefill({ q, one }, qs)); });
 // bên bán theo tên (Bên A): thông tin mặc định + ô đã ghi ở hợp đồng gần nhất cùng Bên A
 // thông tin bên bán: ghi nhớ theo từng Bên A ngay khi nhập (kd_setting.seller_info_v2), không phụ thuộc hợp đồng có lưu được hay không; chưa nhập thì lấy giá trị gần nhất trên hợp đồng
