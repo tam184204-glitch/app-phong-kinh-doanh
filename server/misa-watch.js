@@ -28,6 +28,7 @@ async function scan(dir) {
       let buf; try { buf = fs.readFileSync(full); } catch { continue; }   // đang bị khóa (Excel đang mở) → lần sau
       try {
         const r = await IO.importFile('misa', { name: `[tự nhập từ thư mục] ${f}`, buffer: buf }, user);
+        if (r.them) require('./biz').markDirty();   // phiếu thu mới → lượt việc nền tới cập nhật điều kiện bàn giao, tình trạng khách
         const to = moveTo(dir, DONE, f);
         report(to, [`Nhập lúc ${new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })} — ${r.total} dòng: thêm ${r.them}, trùng bỏ qua ${r.trung}, dòng cộng/tổng bỏ qua ${r.bo_qua}, lỗi ${r.loi}`, '',
           ...(r.errors.length ? ['CHƯA NHẬP ĐƯỢC (sửa trong MISA — ghi số hợp đồng hoặc mã căn vào diễn giải — rồi xuất lại; phiếu đã nhập sẽ tự bỏ qua):', ...r.errors.map(x => `  Dòng ${x.line}: ${x.msg}`)] : ['Tất cả phiếu đã nhập.'])]);

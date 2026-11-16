@@ -2872,30 +2872,49 @@ async function expireHolds(db) {   // chỉ đổi 2 cột trạng thái (không
       AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.reservation_id = kd_reservation.id AND c.status NOT IN ('huy','thanh_ly')) RETURNING id, status, is_demo`);   // đã lập HĐ từ phiếu → không quá hạn
   for (const r of rows) await C.audit(db, 'reservation', r.id, 'qua_han_giu_cho', null, { reg_state: 'qua_han', status: r.status }, null, 'Qua hạn giữ chỗ', r.is_demo);
 }
-async function jobs(db) {
-  const t0 = Date.now();
-  await expireHolds(db);
-  // chính sách bán hàng tới ngày bắt đầu (đã phát hành, chưa áp) → tự áp cho căn chưa bán
-  for (const p of await db.q("SELECT * FROM kd_price_policy WHERE status = 'phat_hanh' AND rolled_at IS NULL AND start_on <= $1 AND end_on >= $1", [today()])) await safely(db, () => policyRoll(db, p, null), 'policyRoll');
-  // 16/11/2026: hợp đồng đã thanh lý chưa có dòng «Theo dõi thanh lý & chi trả» (thanh lý trước khi có tính năng / nhập file) → lập (1 dòng / hợp đồng)
-  for (const c of await db.q("SELECT c.* FROM kd_contract c WHERE c.status = 'thanh_ly' AND NOT EXISTS (SELECT 1 FROM kd_cancel_req t WHERE t.contract_id = c.id OR c.id = ANY(t.ct_ids)) ORDER BY c.id LIMIT 200")) await safely(db, () => liqTrack(db, c, null, c.is_demo), 'liqTrack ' + c.id);
-  // 17/11/2026: HĐ đã thanh lý còn dòng kế hoạch thu chưa đóng (từ tháng thanh lý trở đi) → đóng công nợ
-  for (const c of await db.q("SELECT c.* FROM kd_contract c WHERE c.status = 'thanh_ly' AND EXISTS (SELECT 1 FROM kd_collect_plan p WHERE p.contract_id = c.id AND p.status IN ('nhap', 'cho_duyet', 'da_duyet', 'tu_choi') AND p.month >= to_char(coalesce(c.liquidated_on, c.updated_at::date), 'YYYY-MM')) LIMIT 200")) await safely(db, () => debtClose(db, c, null), 'debtClose ' + c.id);
-  for (const c of await db.q(`SELECT c.* FROM kd_contract c WHERE c.status = 'da_ky' AND c.kind <> 'hoan_thien' AND EXISTS (SELECT 1 FROM kd_reservation s WHERE (s.id = c.reservation_id OR (c.reservation_id IS NULL AND s.unit_id = c.unit_id AND s.customer_id = c.customer_id))
-      AND s.status IN ${ACTIVE_RES} AND (s.status <> 'chuyen_hd' OR (c.kind IN ('hdmb','thue_mua') AND (s.reg_state IS DISTINCT FROM 'ky_hdmb' OR s.progress IS DISTINCT FROM 'da_ky'))))`)) await safely(db, () => resFromContract(db, c, null), 'resFromContract ' + c.id);
-  // HĐ thuê (cho thuê) hết hạn: phiếu đăng ký của HĐ đó hết hiệu lực → căn đăng ký mới được
-  await db.q(`UPDATE kd_reservation s SET status = 'het_han', updated_at = now() FROM kd_contract c WHERE c.reservation_id = s.id AND s.status = 'chuyen_hd' AND c.kind = 'thue' AND coalesce(c.nature, 'thue') <> 'ban' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on < $1`, [today()]);
-  // HĐ thuê hết hạn: căn trở lại trống (Còn bán / Chưa mở bán) — HĐ thuê vẫn giữ để theo dõi thu tiền / thanh lý
-  for (const x of await db.q(`SELECT DISTINCT c.unit_id FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id WHERE c.kind = 'thue' AND coalesce(c.nature, 'thue') <> 'ban' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on < $1 AND u.status NOT IN ('con_ban','chua_mo_ban')`, [today()])) await recomputeUnit(db, x.unit_id, null);
-  // điều kiện bàn giao cập nhật theo thu tiền
-  for (const h of await db.q("SELECT id, unit_id, cond_tech, cond_contract, cond_pay, status FROM kd_handover WHERE status IN ('chua_du_dk','du_dk')")) {
-    const k = await handoverCond(db, h.unit_id);
-    const st = k.cond_contract && k.cond_pay && h.cond_tech ? 'du_dk' : 'chua_du_dk';
-    if (k.cond_contract !== h.cond_contract || k.cond_pay !== h.cond_pay || st !== h.status) await sys(db, 'handover', h.id, { cond_contract: k.cond_contract, cond_pay: k.cond_pay, status: st }, null, 'cap_nhat_dieu_kien');
-  }
-  for (const c of await db.q("SELECT c.id FROM kd_contract c JOIN kd_reservation r ON r.id = c.reservation_id WHERE r.agent_id IS NOT NULL")) await refreshCommission(db, c.id, null);
-  await syncStages(db);
-  return Date.now() - t0;
+// 17/11/2026: chia việc nền theo mức cần thiết (trước: mọi việc chạy toàn bộ mỗi 2 phút + đồng bộ tình trạng khách sau MỖI lần lưu)
+//  · mỗi 2 phút (theo giờ / ngày, nhẹ): giữ chỗ quá hạn, chính sách tới ngày bắt đầu, HĐ thuê hết hạn → phiếu hết hiệu lực + căn trống lại
+//  · chỉ khi có thay đổi (có ai lưu / nhập phiếu thu MISA kể từ lượt trước — cờ markDirty): điều kiện bàn giao, tình trạng khách
+//  · mỗi đêm (lượt đầu tiên sau 1h sáng) + 1 lần khi khởi động: tính lại hoa hồng mọi HĐ có đại lý (đã tự tính khi lưu phiếu thu / đổi trạng thái HĐ),
+//    các bước vá dữ liệu cũ (dòng theo dõi thanh lý, đóng kế hoạch thu HĐ thanh lý, phiếu đăng ký theo HĐ đã ký) + chạy lại đủ các việc «khi có thay đổi»
+let dirtyStage = true, dirtyHand = true, lastNight = null;
+const markDirty = () => { dirtyStage = dirtyHand = true; };
+const vnNow = () => new Date(Date.now() + 7 * 3600e3).toISOString();   // giờ Việt Nam
+async function jobs(db, { full } = {}) {
+  const t0 = Date.now(), vn = vnNow(), day = vn.slice(0, 10);
+  const night = !!full || (lastNight !== day && (lastNight === null || +vn.slice(11, 13) >= 1));
+  const hand = night || dirtyHand; dirtyHand = false;
+  try {
+    // ---- mỗi 2 phút ----
+    await expireHolds(db);
+    // chính sách bán hàng tới ngày bắt đầu (đã phát hành, chưa áp) → tự áp cho căn chưa bán
+    for (const p of await db.q("SELECT * FROM kd_price_policy WHERE status = 'phat_hanh' AND rolled_at IS NULL AND start_on <= $1 AND end_on >= $1", [today()])) { await safely(db, () => policyRoll(db, p, null), 'policyRoll'); markDirty(); }
+    // HĐ thuê (cho thuê) hết hạn: phiếu đăng ký của HĐ đó hết hiệu lực → căn đăng ký mới được
+    await db.q(`UPDATE kd_reservation s SET status = 'het_han', updated_at = now() FROM kd_contract c WHERE c.reservation_id = s.id AND s.status = 'chuyen_hd' AND c.kind = 'thue' AND coalesce(c.nature, 'thue') <> 'ban' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on < $1`, [today()]);
+    // HĐ thuê hết hạn: căn trở lại trống (Còn bán / Chưa mở bán) — HĐ thuê vẫn giữ để theo dõi thu tiền / thanh lý
+    for (const x of await db.q(`SELECT DISTINCT c.unit_id FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id WHERE c.kind = 'thue' AND coalesce(c.nature, 'thue') <> 'ban' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on < $1 AND u.status NOT IN ('con_ban','chua_mo_ban')`, [today()])) await recomputeUnit(db, x.unit_id, null);
+    // ---- mỗi đêm ----
+    if (night) {
+      // 16/11/2026: hợp đồng đã thanh lý chưa có dòng «Theo dõi thanh lý & chi trả» (thanh lý trước khi có tính năng / nhập file) → lập (1 dòng / hợp đồng)
+      for (const c of await db.q("SELECT c.* FROM kd_contract c WHERE c.status = 'thanh_ly' AND NOT EXISTS (SELECT 1 FROM kd_cancel_req t WHERE t.contract_id = c.id OR c.id = ANY(t.ct_ids)) ORDER BY c.id LIMIT 200")) await safely(db, () => liqTrack(db, c, null, c.is_demo), 'liqTrack ' + c.id);
+      // 17/11/2026: HĐ đã thanh lý còn dòng kế hoạch thu chưa đóng (từ tháng thanh lý trở đi) → đóng công nợ
+      for (const c of await db.q("SELECT c.* FROM kd_contract c WHERE c.status = 'thanh_ly' AND EXISTS (SELECT 1 FROM kd_collect_plan p WHERE p.contract_id = c.id AND p.status IN ('nhap', 'cho_duyet', 'da_duyet', 'tu_choi') AND p.month >= to_char(coalesce(c.liquidated_on, c.updated_at::date), 'YYYY-MM')) LIMIT 200")) await safely(db, () => debtClose(db, c, null), 'debtClose ' + c.id);
+      // phiếu đăng ký chưa theo kịp HĐ đã ký (HĐ ký trước khi có tính năng / nhập file) — HĐ ký mới đã tự cập nhật lúc duyệt
+      for (const c of await db.q(`SELECT c.* FROM kd_contract c WHERE c.status = 'da_ky' AND c.kind <> 'hoan_thien' AND EXISTS (SELECT 1 FROM kd_reservation s WHERE (s.id = c.reservation_id OR (c.reservation_id IS NULL AND s.unit_id = c.unit_id AND s.customer_id = c.customer_id))
+          AND s.status IN ${ACTIVE_RES} AND (s.status <> 'chuyen_hd' OR (c.kind IN ('hdmb','thue_mua') AND (s.reg_state IS DISTINCT FROM 'ky_hdmb' OR s.progress IS DISTINCT FROM 'da_ky'))))`)) await safely(db, () => resFromContract(db, c, null), 'resFromContract ' + c.id);
+      // hoa hồng đại lý: tự tính khi lưu phiếu thu / đổi trạng thái HĐ; đêm chạy lại toàn bộ cho chắc (đổi chính sách hoa hồng, đại lý…). Tính ngay: nút «Tính hoa hồng»
+      for (const c of await db.q("SELECT c.id FROM kd_contract c JOIN kd_reservation r ON r.id = c.reservation_id WHERE r.agent_id IS NOT NULL")) await refreshCommission(db, c.id, null);
+    }
+    // ---- khi có thay đổi: điều kiện bàn giao cập nhật theo thu tiền ----
+    if (hand) for (const h of await db.q("SELECT id, unit_id, cond_tech, cond_contract, cond_pay, status FROM kd_handover WHERE status IN ('chua_du_dk','du_dk')")) {
+      const k = await handoverCond(db, h.unit_id);
+      const st = k.cond_contract && k.cond_pay && h.cond_tech ? 'du_dk' : 'chua_du_dk';
+      if (k.cond_contract !== h.cond_contract || k.cond_pay !== h.cond_pay || st !== h.status) await sys(db, 'handover', h.id, { cond_contract: k.cond_contract, cond_pay: k.cond_pay, status: st }, null, 'cap_nhat_dieu_kien');
+    }
+  } catch (e) { if (hand) dirtyHand = true; throw e; }   // lượt lỗi (cả lượt được hoàn tác) → lượt sau chạy lại
+  if (night) { dirtyStage = true; lastNight = day; }
+  await syncIfDirty(db);
+  return { ms: Date.now() - t0, night, hand };
 }
 
 // ======================= TÌNH TRẠNG KHÁCH HÀNG (tự đồng bộ theo giao dịch) =======================
@@ -2904,6 +2923,13 @@ async function jobs(db) {
 const STAGE_RANK = ['da_nop_hsmn', 'sxd_duyet', 'cho_ky_hdmb', 'da_ky_hdmb', 'tt_dot_2', 'tt_dot_3', 'cho_ban_giao', 'da_ban_giao', 'lam_don_thanh_ly', 'da_thanh_ly', 'da_nop_hs_so', 'da_ra_so'];
 let syncing = null;
 function syncStages(db) { return syncing ||= doSyncStages(db).finally(() => { syncing = null; }); }
+// chỉ đồng bộ khi có thay đổi kể từ lần trước (mở danh sách khách / lượt việc nền); đang có lượt chạy thì đợi xong rồi xét lại cờ
+async function syncIfDirty(db) {
+  if (syncing) await syncing.catch(() => {});
+  if (!dirtyStage) return 0;
+  dirtyStage = false;
+  try { return await syncStages(db); } catch (e) { dirtyStage = true; throw e; }
+}
 async function doSyncStages(db) {
   const best = new Map(), bump = (cid, st) => { if (cid && STAGE_RANK.indexOf(st) > STAGE_RANK.indexOf(best.get(cid) ?? '')) best.set(cid, st); };
   for (const r of await db.q("SELECT customer_id FROM kd_reservation WHERE status IN ('giu_cho','qua_han','da_coc','chuyen_hd')")) bump(r.customer_id, 'da_nop_hsmn');
@@ -2927,4 +2953,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { buyerCarry, noxhSpouse, spouseCo, polFinish, saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs, noticeHist, noticeUnits, noticeRent, rentPrices, noticeConflict, saleNotes, rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan };
+module.exports = { markDirty, syncIfDirty, buyerCarry, noxhSpouse, spouseCo, polFinish, saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs, noticeHist, noticeUnits, noticeRent, rentPrices, noticeConflict, saleNotes, rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan };
