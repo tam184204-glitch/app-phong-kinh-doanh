@@ -1107,12 +1107,26 @@ async function noxhAutoContract(db, n, user, warn = [], demo) {
     warn.push(`Chưa tự lập được ${HD_L[kind]} cho hồ sơ #${n.id}: ${e.message}`);
   }
 }
-// kết quả xét duyệt hồ sơ đổi → hợp đồng dự thảo của hồ sơ: đủ điều kiện → bỏ «Chờ duyệt hồ sơ» (được hoàn thiện, trình duyệt, ký); chưa / không đủ → về chờ
+// 16/11/2026: hồ sơ được Sở Xây dựng xét duyệt KHÔNG đủ điều kiện → HĐ của hồ sơ «Dự thảo – Hồ sơ không đủ điều kiện» (noxh_fail + lý do / số văn bản / ngày xét duyệt),
+// chặn trình duyệt / duyệt / ký (kể cả hàng loạt) cho tới khi hồ sơ được cập nhật «đủ điều kiện»
+const NOXH_HD = { hdmb: 'Hợp đồng mua bán', thue_mua: 'Hợp đồng thuê mua', thue: 'Hợp đồng thuê', hoan_thien: 'Hợp đồng hoàn thiện căn hộ', vay: 'Hợp đồng vay' };
+const noxhFailMsg = kind => { const w = kind === 'thue' ? 'thuê' : kind === 'thue_mua' ? 'thuê mua' : 'mua';
+  return `Hồ sơ ${w} của khách hàng đã được Sở Xây dựng xét duyệt không đủ điều kiện ${w} nhà ở xã hội. Không thể trình duyệt, duyệt hoặc ký ${NOXH_HD[kind] || 'hợp đồng'}.`; };
+const noxhFailTxt = n => ['Sở Xây dựng xét duyệt KHÔNG đủ điều kiện', String(n.sxd_note || '').trim() ? `Lý do: ${String(n.sxd_note).trim()}` : '', n.sxd_doc_no ? `Số văn bản: ${n.sxd_doc_no}` : '',
+  n.sxd_approved_on ? `Ngày xét duyệt: ${d10(n.sxd_approved_on).split('-').reverse().join('/')}` : '', `Hồ sơ NOXH #${n.id}`].filter(Boolean).join(' · ');
+// lúc khởi động: hợp đồng chưa ký của mọi hồ sơ theo đúng kết quả xét duyệt hiện tại (hồ sơ đổi kết quả trước khi có đồng bộ «không đủ điều kiện»)
+async function noxhSyncAll(db) {
+  const ns = await db.q("SELECT * FROM kd_noxh_check WHERE id IN (SELECT noxh_id FROM kd_contract WHERE noxh_id IS NOT NULL AND status IN ('du_thao','tu_choi','cho_duyet','cho_ky'))");
+  for (const n of ns) await noxhSyncWait(db, n, null);
+  return ns.length;
+}
+// kết quả xét duyệt hồ sơ đổi → hợp đồng của hồ sơ (chưa ký): đủ điều kiện → bỏ «Chờ duyệt hồ sơ» (được hoàn thiện, trình duyệt, ký); chưa duyệt → về chờ; KHÔNG đủ → «Hồ sơ không đủ điều kiện»
 async function noxhSyncWait(db, n, user) {
-  const ok = noxhOk(n);
-  for (const c of await db.q("SELECT id, noxh_wait FROM kd_contract WHERE noxh_id = $1 AND status IN ('du_thao','tu_choi')", [n.id])) {
-    if (!c.noxh_wait === ok) continue;
-    await sys(db, 'contract', c.id, { noxh_wait: !ok }, user, ok ? 'ho_so_du_dk' : 'cho_ho_so',
+  const ok = noxhOk(n), fail = n.status === 'da_duyet' && n.sxd_result === 'khong_duyet', txt = fail ? noxhFailTxt(n) : null;
+  for (const c of await db.q("SELECT id, noxh_wait, noxh_fail, noxh_fail_txt FROM kd_contract WHERE noxh_id = $1 AND status IN ('du_thao','tu_choi','cho_duyet','cho_ky')", [n.id])) {
+    if (!c.noxh_wait === ok && !!c.noxh_fail === fail && (c.noxh_fail_txt || null) === txt) continue;
+    if (fail) { await sys(db, 'contract', c.id, { noxh_wait: true, noxh_fail: true, noxh_fail_txt: txt }, user, 'ho_so_khong_du_dk', `${txt} — chặn trình duyệt, duyệt và ký hợp đồng`); continue; }
+    await sys(db, 'contract', c.id, { noxh_wait: !ok, noxh_fail: false, noxh_fail_txt: null }, user, ok ? 'ho_so_du_dk' : 'cho_ho_so',
       ok ? `Hồ sơ NOXH #${n.id} được Sở Xây dựng duyệt đủ điều kiện — hợp đồng được hoàn thiện, trình duyệt và ký` : `Hồ sơ NOXH #${n.id} chưa được duyệt đủ điều kiện — hợp đồng về «Dự thảo – Chờ duyệt hồ sơ»`);
   }
 }
@@ -1410,12 +1424,13 @@ H.noxh_check = {
   async afterSave(r, old, { db, user, warn, demo }) {
     // lịch ký nhập ở hồ sơ → sang hợp đồng chưa duyệt của khách (cùng căn nếu hồ sơ đã chọn căn)
     if (['plan_sign', 'sign_place', 'sign_status'].some(k => String(old?.[k] ?? '') !== String(r[k] ?? '')))
-      await db.q(`UPDATE kd_contract SET plan_sign = $1, sign_place = $2, sign_status = coalesce($3, sign_status), updated_at = now() WHERE customer_id = $4 AND ($5::int IS NULL OR unit_id = $5) AND status IN ('du_thao', 'cho_duyet', 'tu_choi')`,
+      await db.q(`UPDATE kd_contract SET plan_sign = $1, sign_place = $2, sign_status = CASE WHEN coalesce(noxh_fail, false) AND $3::text = 'da_ky' THEN sign_status ELSE coalesce($3, sign_status) END, updated_at = now() WHERE customer_id = $4 AND ($5::int IS NULL OR unit_id = $5) AND status IN ('du_thao', 'cho_duyet', 'tu_choi')`,
         [r.plan_sign ?? null, r.sign_place ?? null, r.sign_status ?? null, r.customer_id, r.unit_id ?? null]);
     // 15/11/2026: hồ sơ chuyển «Chờ xét duyệt» (hoặc thẳng «Đã duyệt SXD» đủ điều kiện) → tự lập hợp đồng «Dự thảo – Chờ duyệt hồ sơ» (mỗi hồ sơ 1 HĐ);
     // kết quả xét duyệt đổi → hợp đồng của hồ sơ bỏ / về «Chờ duyệt hồ sơ»
     if (old && old.status !== r.status && (r.status === 'cho_duyet' || noxhOk(r))) await noxhAutoContract(db, r, user, warn, demo);
-    if (old && (old.status !== r.status || (old.sxd_result ?? null) !== (r.sxd_result ?? null))) await noxhSyncWait(db, r, user);
+    { const v = (x, k) => k === 'sxd_approved_on' ? d10(x[k]) ?? '' : String(x[k] ?? '');   // + lý do / số văn bản / ngày xét duyệt
+      if (old && ['status', 'sxd_result', 'sxd_note', 'sxd_doc_no', 'sxd_approved_on'].some(k => v(old, k) !== v(r, k))) await noxhSyncWait(db, r, user); }
     // tiến trình giao dịch của phiếu đăng ký theo hồ sơ NOXH: Chờ xét duyệt → «Đã nộp hồ sơ chờ xét duyệt»; Đã duyệt SXD → «Đủ điều kiện ký HĐMB»,
     // 15/11/2026: SXD xét duyệt KHÔNG đủ điều kiện → «Không đủ điều kiện» (kể cả khi chỉ sửa lại kết quả xét duyệt); phiếu đã ký HĐMB giữ nguyên
     if (!r.reservation_id || (old?.status === r.status && (old?.sxd_result ?? null) === (r.sxd_result ?? null))) return;
@@ -2202,6 +2217,7 @@ function rentMonths(a, b) {
 H.contract = {
   async onApprove(r, ok, { db, user }) {
     if (!ok) return;
+    if (r.noxh_fail) bad(noxhFailMsg(r.kind));   // 16/11/2026: hồ sơ SXD duyệt không đủ điều kiện
     if (r.noxh_wait) bad('Hợp đồng đang «Dự thảo – Chờ duyệt hồ sơ» — chờ Sở Xây dựng duyệt hồ sơ NOXH đủ điều kiện mới duyệt / ký được. Bấm «Từ chối» để trả về dự thảo.');
     await noxhGate(db, r.kind, r.customer_id, r.unit_id, 'duyệt');
     return { patch: { ...signedPatch(r), appr_by: user?.id ?? null, appr_at: new Date().toISOString() } };   // 16/11/2026: ghi người duyệt, thời gian duyệt
@@ -2246,6 +2262,7 @@ H.contract = {
   },
   async beforeSave(r, old, ctx) {
     const { db, opts } = ctx;
+    if (!opts?.system && r.noxh_fail && r.sign_status === 'da_ky' && old?.sign_status !== 'da_ky') bad(noxhFailMsg(r.kind), { fields: ['sign_status'] });   // 16/11/2026: không xác nhận ký khi hồ sơ không đủ điều kiện
     // HĐMB căn hộ NOXH: khách chưa có hồ sơ được Sở Xây dựng xét duyệt đủ điều kiện tại căn → vẫn lưu dự thảo, chỉ cảnh báo (chặn ở bước trình / duyệt)
     if (!opts?.system && ['hdmb', 'thue', 'thue_mua'].includes(r.kind) && (!old || old.customer_id !== r.customer_id || old.unit_id !== r.unit_id)) {
       const x = await noxhIssue(db, r.kind, r.customer_id, r.unit_id);
@@ -2438,8 +2455,9 @@ H.contract = {
     } else r.prev_id = null;
   },
   // «Dự thảo – Chờ duyệt hồ sơ» (HĐ tự lập từ hồ sơ NOXH, 15/11/2026): ẩn nút Gửi trình duyệt / Duyệt cho tới khi SXD duyệt hồ sơ đủ điều kiện
-  perms(row, user, db, out) { if (row.noxh_wait) return { submit: false, approve: false, acts: (out?.acts || []).filter(k => k !== 'approve_direct') }; },
+  perms(row, user, db, out) { if (row.noxh_wait || row.noxh_fail) return { submit: false, approve: false, acts: (out?.acts || []).filter(k => k !== 'approve_direct') }; },
   async onSubmit(r, { db }) {
+    if (r.noxh_fail) bad(noxhFailMsg(r.kind));   // 16/11/2026: hồ sơ SXD duyệt không đủ điều kiện
     if (r.noxh_wait) bad(`${HD_L[r.kind] ? HD_L[r.kind][0].toUpperCase() + HD_L[r.kind].slice(1) : 'Hợp đồng'} đang «Dự thảo – Chờ duyệt hồ sơ» — chờ Sở Xây dựng duyệt hồ sơ NOXH đủ điều kiện mới gửi trình duyệt được`);
     await noxhGate(db, r.kind, r.customer_id, r.unit_id, 'gửi trình duyệt');   // HĐMB căn hộ NOXH: khách phải được Sở Xây dựng xét duyệt đủ điều kiện tại căn (15/11/2026)
     const n = await db.one('SELECT count(*) n, coalesce(sum(amount),0) s FROM kd_installment WHERE contract_id = $1 AND active', [r.id]);
@@ -2589,9 +2607,9 @@ async function unitContracts(db, user, unitId, q0) {
   if (q0) { p.push(`%${q0}%`); w.push(`(c.number ILIKE $${p.length} OR k.full_name ILIKE $${p.length})`); }
   if (own) { p.push(user.id); w.push(`(c.owner_id = $${p.length} OR c.created_by = $${p.length})`); }
   const KL = Object.fromEntries(C.F.contract.kind.o.map(o => [o[0], o[1]])), SL = Object.fromEntries(C.F.contract.status.o.map(o => [o[0], o[1]]));
-  const cs = await db.q(`SELECT c.id, c.number, c.kind, c.status, c.noxh_wait, k.full_name FROM kd_contract c LEFT JOIN kd_customer k ON k.id = c.customer_id
+  const cs = await db.q(`SELECT c.id, c.number, c.kind, c.status, c.noxh_wait, c.noxh_fail, k.full_name FROM kd_contract c LEFT JOIN kd_customer k ON k.id = c.customer_id
     WHERE c.unit_id = $1 AND c.status <> 'huy' ${w.map(x => 'AND ' + x).join(' ')} ORDER BY (c.status = 'da_ky') DESC, (c.status = 'thanh_ly') DESC, c.id DESC LIMIT 50`, p);
-  return cs.map(c => ({ id: c.id, label: [c.number || '(chưa có số)', KL[c.kind] || c.kind, c.full_name || '', c.noxh_wait && c.status === 'du_thao' ? 'Dự thảo – Chờ duyệt hồ sơ' : SL[c.status] || c.status].filter(Boolean).join(' – '), status: c.status }));
+  return cs.map(c => ({ id: c.id, label: [c.number || '(chưa có số)', KL[c.kind] || c.kind, c.full_name || '', c.noxh_fail && c.status === 'du_thao' ? 'Dự thảo – Hồ sơ không đủ điều kiện' : c.noxh_wait && c.status === 'du_thao' ? 'Dự thảo – Chờ duyệt hồ sơ' : SL[c.status] || c.status].filter(Boolean).join(' – '), status: c.status }));
 }
 // phiếu thanh lý (kind thanh_ly, kể cả phiếu chung nhiều HĐ) để chọn ở phiếu chi hoàn tiền thanh lý: «Số phiếu – các HĐ – khách hàng – phải trả / còn phải trả»
 async function liqSlipOpts(db, unitId, q0, id) {
@@ -3008,4 +3026,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, noticeHist, noticeUnits, noticeRent, rentPrices, noticeConflict, unitNotes, saleSchedPolicy, saleSchedRows, rentBackfill, rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, noticeHist, noticeUnits, noticeRent, rentPrices, noticeConflict, unitNotes, saleSchedPolicy, saleSchedRows, rentBackfill, noxhSyncAll, rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
