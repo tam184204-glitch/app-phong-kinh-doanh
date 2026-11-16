@@ -1044,14 +1044,14 @@ const pgLit = s => `'${String(s).replace(/'/g, "''")}'`;
 
 // ======================= BẢNG TỔNG HỢP CÔNG NỢ (CN-08) =======================
 // Theo file «Bảng tổng hợp công nợ - kinh doanh» của phòng KD: mỗi dòng 1 căn (HĐMB / HĐ thuê mua), nhóm theo dự án → tòa có dòng cộng.
-// Tách khoản: Tiền nhà (sau thuế, không gồm hệ số góc) · Hệ số lô góc (sau thuế) · Phát sinh (hoàn thiện gộp HĐMB + HĐ hoàn thiện riêng) · Bảo trì.
+// Tách khoản: Tiền nhà (sau thuế, không gồm hệ số góc) · Hệ số lô góc (sau thuế) · Hoàn thiện căn hộ (gộp HĐMB + HĐ hoàn thiện riêng) · Bảo trì.
 // Thu không ghi theo khoản → mỗi kỳ thu chia theo cơ cấu của kỳ: kỳ «Đợt thu phí bảo trì» gánh trọn phí bảo trì, phần còn lại chia theo tỷ lệ tiền nhà / góc / hoàn thiện.
 const DS_HEAD = [
   ['', [['stt', 'Stt', 'int'], ['unit', 'Mã căn hộ'], ['customer', 'Họ và tên'], ['address', 'Địa chỉ'], ['contract_on', 'Ngày ký hợp đồng', 'date'], ['vbtt_on', 'Ngày ký VBTT', 'date'], ['phone', 'SĐT'],
     ['area_floor', 'DT sàn', 'num'], ['area_tt', 'DT nền', 'num'], ['base_price', 'Giá nền', 'money'], ['build_price', 'Giá xây dựng', 'money']]],
   ['Tiền nhà', [['n_total', 'Tổng phải thu', 'money'], ['n_due', 'Phải thu theo tiến độ', 'money'], ['n_paid', 'Tổng đã thu', 'money'], ['n_left', 'Còn lại', 'money'], ['n_left_due', 'Còn lại theo tiến độ', 'money']]],
   ['Hệ số lô góc', [['g_total', 'Tổng phải thu', 'money'], ['g_due', 'Phải thu theo tiến độ', 'money'], ['g_paid', 'Tổng đã thu', 'money'], ['g_left', 'Còn lại', 'money']]],
-  ['Phát sinh', [['p_total', 'Tổng phải thu', 'money'], ['p_due', 'Phải thu theo tiến độ', 'money'], ['p_paid', 'Tổng đã thu', 'money'], ['p_left', 'Còn lại', 'money'], ['p_left_due', 'Còn lại theo tiến độ', 'money']]],
+  ['Hoàn thiện căn hộ', [['p_total', 'Tổng phải thu', 'money'], ['p_due', 'Phải thu theo tiến độ', 'money'], ['p_paid', 'Tổng đã thu', 'money'], ['p_left', 'Còn lại', 'money'], ['p_left_due', 'Còn lại theo tiến độ', 'money']]],
   ['Bảo trì', [['b_total', 'Tổng phải thu', 'money'], ['b_due', 'Phải thu theo tiến độ', 'money'], ['b_paid', 'Tổng đã thu', 'money'], ['b_left', 'Còn lại', 'money']]],
   ['Tổng hợp', [['value', 'Giá trị hợp đồng', 'money'], ['t_total', 'Tổng phải thu', 'money'], ['t_due', 'Tổng phải thu theo tiến độ', 'money'], ['t_paid', 'Tổng đã thu', 'money'], ['t_left_due', 'Số còn lại theo tiến độ', 'money'], ['t_left', 'Còn lại theo hợp đồng', 'money'], ['pct5', '5 % theo hợp đồng', 'money']]],
   ['', [['sign_l', 'Ký hợp đồng'], ['hdv_left', 'Số dư còn lại HĐV', 'money']]],
@@ -1120,7 +1120,7 @@ async function debtSummary(db, user, f = {}) {
     }
     return o;
   };
-  // gom theo căn: HĐMB / thuê mua là dòng chính, HĐ hoàn thiện riêng cộng vào «Phát sinh»
+  // gom theo căn: HĐMB / thuê mua là dòng chính, HĐ hoàn thiện riêng cộng vào «Hoàn thiện căn hộ»
   const byU = new Map();
   // HĐ thuê / vay bán căn chỉ lên bảng khi căn chưa có HĐMB / thuê mua còn hiệu lực (ký HĐMB thật thì thanh lý HĐ thuê / vay)
   for (const c of cs) { if (['thue', 'vay'].includes(c.kind) && hasMain.has(c.unit_id)) continue; if (c.kind === 'vay' && pairU.has(c.unit_id)) continue; /* HĐ vay của căn đã có HĐ thuê: gộp vào dòng HĐ thuê */ const g = byU.get(c.unit_id) || byU.set(c.unit_id, { main: null, fin: [] }).get(c.unit_id); if (c.kind === 'hoan_thien') g.fin.push(c); else if (!g.main) g.main = c; else g.fin.push(c); }
