@@ -2031,3 +2031,18 @@ table.t tfoot td { background: #F6F8FB; }
 .floor .fl { width: 48px; border-radius: 8px; }
 /* cột nội dung dài: rộng hơn để bớt xuống dòng (bảng thấp, dễ dò) */
 table.t td.wrap { min-width: 260px; }
+
+/* 17/11/2026 rà soát UX: ô tìm thông minh, nút đang xử lý, khung tải */
+.gres .gs-h { padding: 8px 14px 4px; font-size: 11px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; color: var(--muted2); background: #FAFBFD; border-bottom: 1px solid var(--line2); }
+.gres a em { margin-left: auto; align-self: center; font-style: normal; font-size: 11px; color: var(--muted); border: 1px solid var(--line2); border-radius: 6px; padding: 1px 6px; white-space: nowrap; }
+.gres a.gs-ask { background: #FFF8EC; } .gres a.gs-ask i { color: var(--amber-d, #C98210); }
+.gres a > div { min-width: 0; } .gres a small { display: block; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.btn.is-busy, button.is-busy { position: relative; color: transparent !important; pointer-events: none; }
+.btn.is-busy::after, button.is-busy::after { content: ""; position: absolute; left: 50%; top: 50%; width: 15px; height: 15px; margin: -8px 0 0 -8px; border-radius: 50%; border: 2px solid currentColor; border-color: var(--md-primary) transparent var(--md-primary) transparent; animation: spin .7s linear infinite; }
+.btn.pri.is-busy::after { border-color: #fff transparent #fff transparent; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.empty.sk { color: transparent; position: relative; min-height: 120px; padding: 22px 24px; text-align: left; }
+.empty.sk::before { content: ""; position: absolute; inset: 22px 24px; border-radius: 8px;
+  background: repeating-linear-gradient(180deg, #EDF1F6 0 14px, transparent 14px 30px); -webkit-mask: linear-gradient(90deg, #000 0 70%, rgba(0,0,0,.4)); }
+.empty.sk::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.65), transparent); animation: skm 1.2s linear infinite; }
+@keyframes skm { from { transform: translateX(-100%); } to { transform: translateX(100%); } }

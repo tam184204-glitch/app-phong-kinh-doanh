@@ -45,11 +45,30 @@ async function download(url, body, name) {
   } catch (e) { toast(e.message, true); }
 }
 let toastT;
+// 17/11/2026 (rà soát UX): nút chỉ có biểu tượng → tên đọc được (aria-label = title); «Đang tải…» → khung tải (skeleton);
+// cột sắp xếp → aria-sort. Chạy tự động cho mọi màn, không phải sửa từng màn
+(() => {
+  if (typeof MutationObserver === 'undefined' || typeof document === 'undefined') return;
+  const fix = root => {
+    if (!root.querySelectorAll) return;
+    for (const b of root.querySelectorAll('button[title]:not([aria-label]), a[title]:not([aria-label])')) if (!b.textContent.trim()) b.setAttribute('aria-label', b.title);
+    for (const e of root.querySelectorAll('.empty')) if (/^\s*Đang tải/.test(e.textContent) && !e.classList.contains('sk')) e.classList.add('sk');
+  };
+  const go = () => { fix(document.body); new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1) fix(n.parentNode || n); }).observe(document.body, { childList: true, subtree: true }); };
+  document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', go) : go();
+})();
 function toast(msg, err) {
-  let t = $('.toast'); if (!t) { t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status'); document.body.append(t); }
+  let t = $('.toast'); if (!t) { t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status'); t.setAttribute('aria-live', 'polite'); document.body.append(t); }
   t.textContent = msg; t.classList.toggle('err', !!err); t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, err ? 6000 : 3500);
 }
-const run = fn => async (...a) => { try { return await fn(...a); } catch (e) { toast(e.message, true); } };
+// 17/11/2026: nút được bấm bị khóa + hiện «đang xử lý» tới khi việc xong (chống bấm 2 lần → lưu / duyệt / lập HĐ 2 lần)
+const run = fn => async (...a) => {
+  const t = a[0]?.target, b = t?.closest?.('button:not([data-nolock]), .btn'), lock = b && !b.disabled && b.isConnected;
+  let done = false; const tm = lock ? setTimeout(() => { if (!done && b.isConnected && !document.querySelector('.ov')) {   // đang chờ người dùng trả lời hộp thoại → không quay
+       b.disabled = true; b.classList.add('is-busy'); b.setAttribute('aria-busy', 'true'); } }, 120) : 0;   // việc tức thời (đổi tab…) không nháy
+  try { return await fn(...a); } catch (e) { toast(e.message, true); }
+  finally { done = true; clearTimeout(tm); if (lock && b.classList.contains('is-busy')) { b.disabled = false; b.classList.remove('is-busy'); b.removeAttribute('aria-busy'); } }
+};
 
 // ---------- hộp thoại ----------
 function modal({ title, body = '', wide, narrow, foot = '', onClose }) {
@@ -1918,6 +1937,7 @@ async function openDetail(ent, id, tab, plain) {   // plain: chỉ xem (mở t�
   const E = M.ents[ent]; if (!E) return;
   let g; try { g = await api('GET', `/api/e/${ent}/${id}`); } catch (e) { return toast(e.message, true); }
   closeDetail();
+  try { const r0 = g.row || g; if (typeof recentAdd === 'function') recentAdd({ k: 'rec', type: ent, id, title: `${E.one ? E.one[0].toUpperCase() + E.one.slice(1) : E.title} ${r0.number || r0.code || r0.full_name || r0.voucher_no || '#' + id}`, sub: E.title }); } catch { }   // 17/11/2026: «Gần đây»
   const ov = document.createElement('div'); ov.className = 'drawer-ov'; ov.onclick = closeDetail;
   const el = document.createElement('aside'); el.className = `drawer ${plain ? 'plain' : ''}`; el.setAttribute('role', 'dialog');
   document.body.append(ov, el);

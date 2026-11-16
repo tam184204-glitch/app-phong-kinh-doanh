@@ -109,19 +109,66 @@ async function updateBadges() {
     $('#nAl').textContent = n2 > 99 ? '99+' : n2; $('#nAl').classList.toggle('hidden', !n2);
   } catch { }
 }
+// 17/11/2026: ô tìm thông minh — gõ tên MÀN (đi thẳng tới màn), mã / tên / SĐT / số HĐ (hồ sơ), hoặc CÂU HỎI (hỏi Trợ lý tra cứu);
+// bấm vào ô khi chưa gõ: «Gần đây» (hồ sơ + màn vừa mở); phím «/» hoặc Ctrl+K nhảy vào ô tìm từ bất kỳ đâu (quy tắc search-accessible, keyboard-shortcuts)
+const RECENT_KEY = 'ctg-kd-gan-day';
+const recentGet = () => { try { return JSON.parse(lsGet(RECENT_KEY) || '[]'); } catch { return []; } };
+function recentAdd(x) {   // x: { k: 'rec', type, id, title, sub } | { k: 'nav', hash, title, sub }
+  const key = y => y.k === 'nav' ? 'n:' + y.hash : `r:${y.type}:${y.id}`;
+  const L = [x, ...recentGet().filter(y => key(y) !== key(x))].slice(0, 12);
+  lsSet(RECENT_KEY, JSON.stringify(L));
+}
+const navList = () => M.menu.flatMap(([no, mt, , items]) => items.map(([id, l]) => ({ k: 'nav', hash: id.startsWith('e:') ? '#/e/' + id.slice(2) : '#/v/' + id, title: l, sub: `Phân hệ ${no} · ${mt}`, id })));
 function globalSearch() {
   const inp = $('#gs'), box = $('#gr');
-  let res = [], cur = -1;
-  const open = r => { box.classList.add('hidden'); inp.value = ''; if (r.type === 'unit') location.hash = `#/v/unit360?id=${r.id}`; else if (r.type === 'customer') location.hash = `#/v/cust360?id=${r.id}`; else openDetail(r.type, r.id); };
+  const fold = v => String(v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd').toLowerCase();
+  const I = { unit: 'fa-door-open', customer: 'fa-user', contract: 'fa-file-contract', ticket: 'fa-headset', reservation: 'fa-hand-holding-hand' };
+  let items = [], cur = -1, seq = 0;
+  inp.placeholder = 'Tìm căn, khách, SĐT, số HĐ, tên màn… hoặc gõ câu hỏi  ( / )';
+  const go = x => {
+    box.classList.add('hidden'); inp.value = ''; inp.blur();
+    if (x.k === 'nav') return void (location.hash = x.hash);
+    if (x.k === 'ask') return void (location.hash = '#/v/ai?q=' + encodeURIComponent(x.q));
+    recentAdd({ k: 'rec', type: x.type, id: x.id, title: x.title, sub: x.sub });
+    if (x.type === 'unit') location.hash = `#/v/unit360?id=${x.id}`; else if (x.type === 'customer') location.hash = `#/v/cust360?id=${x.id}`; else openDetail(x.type, x.id);
+  };
+  const row = (x, i) => x.h ? `<div class="gs-h">${esc(x.h)}</div>` : `<a href="#" data-i="${i}" class="${x.k === 'ask' ? 'gs-ask' : ''}">${ico(x.k === 'nav' ? 'fa-compass' : x.k === 'ask' ? 'fa-wand-magic-sparkles' : I[x.type] || 'fa-file')}<div><b>${esc(x.title)}</b><small>${esc(x.sub || '')}</small></div>${x.k === 'nav' ? '<em>Mở màn</em>' : ''}</a>`;
+  const draw = () => { cur = items.findIndex(x => !x.h); box.innerHTML = items.length ? items.map(row).join('') : '<div class="empty" style="padding:16px">Không tìm thấy — thử gõ ít chữ hơn, hoặc gõ câu hỏi để hỏi trợ lý</div>'; mark(); box.classList.remove('hidden'); };
+  const mark = () => $$('[data-i]', box).forEach(a => a.classList.toggle('on', +a.dataset.i === cur));
+  const showRecent = () => {
+    const R = recentGet(), quick = ['myday', 'board', 'duedebt', 'ai'].map(id => navList().find(n => n.id === id)).filter(Boolean);
+    items = [...(R.length ? [{ h: 'Gần đây' }, ...R] : []), { h: 'Mở nhanh' }, ...quick.filter(q => !R.some(r => r.k === 'nav' && r.hash === q.hash))];
+    draw();
+  };
+  inp.onfocus = () => { if (!inp.value.trim()) showRecent(); };
   inp.oninput = debounce(async () => {
-    if (inp.value.trim().length < 2) return box.classList.add('hidden');
-    res = await api('GET', '/api/search?q=' + encodeURIComponent(inp.value.trim())); cur = -1;
-    const I = { unit: 'fa-door-open', customer: 'fa-user', contract: 'fa-file-contract', ticket: 'fa-headset', reservation: 'fa-hand-holding-hand' };
-    box.innerHTML = res.length ? res.map((r, i) => `<a href="#" data-i="${i}">${ico(I[r.type])}<div><b>${esc(r.title)}</b><small>${esc(r.sub)}</small></div></a>`).join('') : '<div class="empty" style="padding:16px">Không tìm thấy</div>';
-    box.classList.remove('hidden');
-  }, 250);
-  box.onclick = e => { const a = e.target.closest('[data-i]'); if (a) { e.preventDefault(); open(res[+a.dataset.i]); } };
-  inp.onkeydown = e => { const as = $$('[data-i]', box); if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); cur = Math.max(0, Math.min(as.length - 1, cur + (e.key === 'ArrowDown' ? 1 : -1))); as.forEach((a, i) => a.classList.toggle('on', i === cur)); } if (e.key === 'Enter') { e.preventDefault(); if (res[Math.max(cur, 0)]) open(res[Math.max(cur, 0)]); } if (e.key === 'Escape') box.classList.add('hidden'); };
+    const v = inp.value.trim(), my = ++seq;
+    if (!v) return showRecent();
+    const f = fold(v), words = f.split(/\s+/).filter(Boolean);
+    const navs = v.length >= 2 ? navList().filter(n => { const t = fold(n.title + ' ' + n.sub); return words.every(w => t.includes(w)); }).slice(0, 5) : [];
+    const question = /[?]$/.test(v) || /^(bao nhieu|co bao|nhung|liet ke|tong|top|can nao|khach nao|hop dong nao|viec cua|hom nay)/.test(f) || /\b(bao nhieu|top \d+|nao)\b/.test(f) || (words.length >= 4 && !navs.length);   // khớp tên màn → màn lên đầu
+    const ask = v.length >= 4 ? [{ k: 'ask', q: v, title: `Hỏi trợ lý: «${v}»`, sub: 'Trả lời bằng số liệu trong app (công nợ, doanh số, giỏ hàng, bàn giao, việc cần làm…)' }] : [];
+    items = [...(question ? ask : []), ...(navs.length ? [{ h: 'Màn hình' }, ...navs] : [])];
+    if (v.length >= 2) {
+      let res = []; try { res = await api('GET', '/api/search?q=' + encodeURIComponent(v)); } catch { }
+      if (my !== seq) return;   // đã gõ tiếp
+      if (res.length) items.push({ h: 'Hồ sơ' }, ...res.map(r => ({ k: 'rec', ...r })));
+    }
+    if (!question) items.push(...ask);
+    draw();
+  }, 200);
+  box.onclick = e => { const a = e.target.closest('[data-i]'); if (a) { e.preventDefault(); go(items[+a.dataset.i]); } };
+  inp.onkeydown = e => {
+    const idx = items.map((x, i) => x.h ? -1 : i).filter(i => i >= 0);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const k = idx.indexOf(cur); cur = idx[Math.max(0, Math.min(idx.length - 1, k + (e.key === 'ArrowDown' ? 1 : -1)))] ?? -1; mark(); $('[data-i].on', box)?.scrollIntoView({ block: 'nearest' }); }
+    if (e.key === 'Enter') { e.preventDefault(); const x = items[cur] && !items[cur].h ? items[cur] : items.find(y => !y.h); if (x) go(x); }
+    if (e.key === 'Escape') { box.classList.add('hidden'); inp.blur(); }
+  };
+  // phím tắt: «/» hoặc Ctrl+K → ô tìm (không bắt khi đang gõ trong ô nhập khác)
+  document.addEventListener('keydown', e => {
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
+    if ((e.key === '/' && !typing && !e.ctrlKey && !e.metaKey) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) { e.preventDefault(); inp.focus(); inp.select(); }
+  });
 }
 async function route() {
   closeDetail(); document.body.classList.remove('nav-open'); ST.reload = null; checkVer();
@@ -133,6 +180,7 @@ async function route() {
   main.onclick = main.onchange = main.onkeydown = null; main.innerHTML = '<div class="empty">Đang tải…</div>';
   const navId = kind === 'e' ? ({ project: 'projects', building: 'projects', unit: 'products', cancel_req: 'payouts', receipt: 'vouchers', payment: 'vouchers' }[name] || 'e:' + name + (params.group ? '?group=' + params.group : '')) : name === 'unit360' || name === 'cust360' ? 'lookup' : name === 'pricesheet' ? 'e:price_policy' : name === 'hoso' ? 'vault' : name === 'debtsum' || name === 'ctdebt' ? 'loantrack' : name === 'debtunit' ? 'unitstatus' : name;
   $$('[data-nav]').forEach(a => a.classList.toggle('on', a.dataset.nav === navId));
+  { const n = navList().find(x => x.id === navId); if (n && !params.id) recentAdd({ k: 'nav', hash: n.hash, title: n.title, sub: n.sub }); }   // 17/11/2026: «Gần đây» ở ô tìm
   const on = $(`[data-nav="${navId}"]`); $$('.mod').forEach(m => m.classList.remove('cur'));
   if (on) { on.closest('.mod').classList.add('open', 'cur'); }
   try {

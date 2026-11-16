@@ -46,11 +46,30 @@ async function download(url, body, name) {
   } catch (e) { toast(e.message, true); }
 }
 let toastT;
+// 17/11/2026 (rà soát UX): nút chỉ có biểu tượng → tên đọc được (aria-label = title); «Đang tải…» → khung tải (skeleton);
+// cột sắp xếp → aria-sort. Chạy tự động cho mọi màn, không phải sửa từng màn
+(() => {
+  if (typeof MutationObserver === 'undefined' || typeof document === 'undefined') return;
+  const fix = root => {
+    if (!root.querySelectorAll) return;
+    for (const b of root.querySelectorAll('button[title]:not([aria-label]), a[title]:not([aria-label])')) if (!b.textContent.trim()) b.setAttribute('aria-label', b.title);
+    for (const e of root.querySelectorAll('.empty')) if (/^\s*Đang tải/.test(e.textContent) && !e.classList.contains('sk')) e.classList.add('sk');
+  };
+  const go = () => { fix(document.body); new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1) fix(n.parentNode || n); }).observe(document.body, { childList: true, subtree: true }); };
+  document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', go) : go();
+})();
 function toast(msg, err) {
-  let t = $('.toast'); if (!t) { t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status'); document.body.append(t); }
+  let t = $('.toast'); if (!t) { t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status'); t.setAttribute('aria-live', 'polite'); document.body.append(t); }
   t.textContent = msg; t.classList.toggle('err', !!err); t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, err ? 6000 : 3500);
 }
-const run = fn => async (...a) => { try { return await fn(...a); } catch (e) { toast(e.message, true); } };
+// 17/11/2026: nút được bấm bị khóa + hiện «đang xử lý» tới khi việc xong (chống bấm 2 lần → lưu / duyệt / lập HĐ 2 lần)
+const run = fn => async (...a) => {
+  const t = a[0]?.target, b = t?.closest?.('button:not([data-nolock]), .btn'), lock = b && !b.disabled && b.isConnected;
+  let done = false; const tm = lock ? setTimeout(() => { if (!done && b.isConnected && !document.querySelector('.ov')) {   // đang chờ người dùng trả lời hộp thoại → không quay
+       b.disabled = true; b.classList.add('is-busy'); b.setAttribute('aria-busy', 'true'); } }, 120) : 0;   // việc tức thời (đổi tab…) không nháy
+  try { return await fn(...a); } catch (e) { toast(e.message, true); }
+  finally { done = true; clearTimeout(tm); if (lock && b.classList.contains('is-busy')) { b.disabled = false; b.classList.remove('is-busy'); b.removeAttribute('aria-busy'); } }
+};
 
 // ---------- hộp thoại ----------
 function modal({ title, body = '', wide, narrow, foot = '', onClose }) {
@@ -1919,6 +1938,7 @@ async function openDetail(ent, id, tab, plain) {   // plain: chỉ xem (mở t�
   const E = M.ents[ent]; if (!E) return;
   let g; try { g = await api('GET', `/api/e/${ent}/${id}`); } catch (e) { return toast(e.message, true); }
   closeDetail();
+  try { const r0 = g.row || g; if (typeof recentAdd === 'function') recentAdd({ k: 'rec', type: ent, id, title: `${E.one ? E.one[0].toUpperCase() + E.one.slice(1) : E.title} ${r0.number || r0.code || r0.full_name || r0.voucher_no || '#' + id}`, sub: E.title }); } catch { }   // 17/11/2026: «Gần đây»
   const ov = document.createElement('div'); ov.className = 'drawer-ov'; ov.onclick = closeDetail;
   const el = document.createElement('aside'); el.className = `drawer ${plain ? 'plain' : ''}`; el.setAttribute('role', 'dialog');
   document.body.append(ov, el);
@@ -2411,19 +2431,66 @@ async function updateBadges() {
     $('#nAl').textContent = n2 > 99 ? '99+' : n2; $('#nAl').classList.toggle('hidden', !n2);
   } catch { }
 }
+// 17/11/2026: ô tìm thông minh — gõ tên MÀN (đi thẳng tới màn), mã / tên / SĐT / số HĐ (hồ sơ), hoặc CÂU HỎI (hỏi Trợ lý tra cứu);
+// bấm vào ô khi chưa gõ: «Gần đây» (hồ sơ + màn vừa mở); phím «/» hoặc Ctrl+K nhảy vào ô tìm từ bất kỳ đâu (quy tắc search-accessible, keyboard-shortcuts)
+const RECENT_KEY = 'ctg-kd-gan-day';
+const recentGet = () => { try { return JSON.parse(lsGet(RECENT_KEY) || '[]'); } catch { return []; } };
+function recentAdd(x) {   // x: { k: 'rec', type, id, title, sub } | { k: 'nav', hash, title, sub }
+  const key = y => y.k === 'nav' ? 'n:' + y.hash : `r:${y.type}:${y.id}`;
+  const L = [x, ...recentGet().filter(y => key(y) !== key(x))].slice(0, 12);
+  lsSet(RECENT_KEY, JSON.stringify(L));
+}
+const navList = () => M.menu.flatMap(([no, mt, , items]) => items.map(([id, l]) => ({ k: 'nav', hash: id.startsWith('e:') ? '#/e/' + id.slice(2) : '#/v/' + id, title: l, sub: `Phân hệ ${no} · ${mt}`, id })));
 function globalSearch() {
   const inp = $('#gs'), box = $('#gr');
-  let res = [], cur = -1;
-  const open = r => { box.classList.add('hidden'); inp.value = ''; if (r.type === 'unit') location.hash = `#/v/unit360?id=${r.id}`; else if (r.type === 'customer') location.hash = `#/v/cust360?id=${r.id}`; else openDetail(r.type, r.id); };
+  const fold = v => String(v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd').toLowerCase();
+  const I = { unit: 'fa-door-open', customer: 'fa-user', contract: 'fa-file-contract', ticket: 'fa-headset', reservation: 'fa-hand-holding-hand' };
+  let items = [], cur = -1, seq = 0;
+  inp.placeholder = 'Tìm căn, khách, SĐT, số HĐ, tên màn… hoặc gõ câu hỏi  ( / )';
+  const go = x => {
+    box.classList.add('hidden'); inp.value = ''; inp.blur();
+    if (x.k === 'nav') return void (location.hash = x.hash);
+    if (x.k === 'ask') return void (location.hash = '#/v/ai?q=' + encodeURIComponent(x.q));
+    recentAdd({ k: 'rec', type: x.type, id: x.id, title: x.title, sub: x.sub });
+    if (x.type === 'unit') location.hash = `#/v/unit360?id=${x.id}`; else if (x.type === 'customer') location.hash = `#/v/cust360?id=${x.id}`; else openDetail(x.type, x.id);
+  };
+  const row = (x, i) => x.h ? `<div class="gs-h">${esc(x.h)}</div>` : `<a href="#" data-i="${i}" class="${x.k === 'ask' ? 'gs-ask' : ''}">${ico(x.k === 'nav' ? 'fa-compass' : x.k === 'ask' ? 'fa-wand-magic-sparkles' : I[x.type] || 'fa-file')}<div><b>${esc(x.title)}</b><small>${esc(x.sub || '')}</small></div>${x.k === 'nav' ? '<em>Mở màn</em>' : ''}</a>`;
+  const draw = () => { cur = items.findIndex(x => !x.h); box.innerHTML = items.length ? items.map(row).join('') : '<div class="empty" style="padding:16px">Không tìm thấy — thử gõ ít chữ hơn, hoặc gõ câu hỏi để hỏi trợ lý</div>'; mark(); box.classList.remove('hidden'); };
+  const mark = () => $$('[data-i]', box).forEach(a => a.classList.toggle('on', +a.dataset.i === cur));
+  const showRecent = () => {
+    const R = recentGet(), quick = ['myday', 'board', 'duedebt', 'ai'].map(id => navList().find(n => n.id === id)).filter(Boolean);
+    items = [...(R.length ? [{ h: 'Gần đây' }, ...R] : []), { h: 'Mở nhanh' }, ...quick.filter(q => !R.some(r => r.k === 'nav' && r.hash === q.hash))];
+    draw();
+  };
+  inp.onfocus = () => { if (!inp.value.trim()) showRecent(); };
   inp.oninput = debounce(async () => {
-    if (inp.value.trim().length < 2) return box.classList.add('hidden');
-    res = await api('GET', '/api/search?q=' + encodeURIComponent(inp.value.trim())); cur = -1;
-    const I = { unit: 'fa-door-open', customer: 'fa-user', contract: 'fa-file-contract', ticket: 'fa-headset', reservation: 'fa-hand-holding-hand' };
-    box.innerHTML = res.length ? res.map((r, i) => `<a href="#" data-i="${i}">${ico(I[r.type])}<div><b>${esc(r.title)}</b><small>${esc(r.sub)}</small></div></a>`).join('') : '<div class="empty" style="padding:16px">Không tìm thấy</div>';
-    box.classList.remove('hidden');
-  }, 250);
-  box.onclick = e => { const a = e.target.closest('[data-i]'); if (a) { e.preventDefault(); open(res[+a.dataset.i]); } };
-  inp.onkeydown = e => { const as = $$('[data-i]', box); if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); cur = Math.max(0, Math.min(as.length - 1, cur + (e.key === 'ArrowDown' ? 1 : -1))); as.forEach((a, i) => a.classList.toggle('on', i === cur)); } if (e.key === 'Enter') { e.preventDefault(); if (res[Math.max(cur, 0)]) open(res[Math.max(cur, 0)]); } if (e.key === 'Escape') box.classList.add('hidden'); };
+    const v = inp.value.trim(), my = ++seq;
+    if (!v) return showRecent();
+    const f = fold(v), words = f.split(/\s+/).filter(Boolean);
+    const navs = v.length >= 2 ? navList().filter(n => { const t = fold(n.title + ' ' + n.sub); return words.every(w => t.includes(w)); }).slice(0, 5) : [];
+    const question = /[?]$/.test(v) || /^(bao nhieu|co bao|nhung|liet ke|tong|top|can nao|khach nao|hop dong nao|viec cua|hom nay)/.test(f) || /\b(bao nhieu|top \d+|nao)\b/.test(f) || (words.length >= 4 && !navs.length);   // khớp tên màn → màn lên đầu
+    const ask = v.length >= 4 ? [{ k: 'ask', q: v, title: `Hỏi trợ lý: «${v}»`, sub: 'Trả lời bằng số liệu trong app (công nợ, doanh số, giỏ hàng, bàn giao, việc cần làm…)' }] : [];
+    items = [...(question ? ask : []), ...(navs.length ? [{ h: 'Màn hình' }, ...navs] : [])];
+    if (v.length >= 2) {
+      let res = []; try { res = await api('GET', '/api/search?q=' + encodeURIComponent(v)); } catch { }
+      if (my !== seq) return;   // đã gõ tiếp
+      if (res.length) items.push({ h: 'Hồ sơ' }, ...res.map(r => ({ k: 'rec', ...r })));
+    }
+    if (!question) items.push(...ask);
+    draw();
+  }, 200);
+  box.onclick = e => { const a = e.target.closest('[data-i]'); if (a) { e.preventDefault(); go(items[+a.dataset.i]); } };
+  inp.onkeydown = e => {
+    const idx = items.map((x, i) => x.h ? -1 : i).filter(i => i >= 0);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const k = idx.indexOf(cur); cur = idx[Math.max(0, Math.min(idx.length - 1, k + (e.key === 'ArrowDown' ? 1 : -1)))] ?? -1; mark(); $('[data-i].on', box)?.scrollIntoView({ block: 'nearest' }); }
+    if (e.key === 'Enter') { e.preventDefault(); const x = items[cur] && !items[cur].h ? items[cur] : items.find(y => !y.h); if (x) go(x); }
+    if (e.key === 'Escape') { box.classList.add('hidden'); inp.blur(); }
+  };
+  // phím tắt: «/» hoặc Ctrl+K → ô tìm (không bắt khi đang gõ trong ô nhập khác)
+  document.addEventListener('keydown', e => {
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
+    if ((e.key === '/' && !typing && !e.ctrlKey && !e.metaKey) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) { e.preventDefault(); inp.focus(); inp.select(); }
+  });
 }
 async function route() {
   closeDetail(); document.body.classList.remove('nav-open'); ST.reload = null; checkVer();
@@ -2435,6 +2502,7 @@ async function route() {
   main.onclick = main.onchange = main.onkeydown = null; main.innerHTML = '<div class="empty">Đang tải…</div>';
   const navId = kind === 'e' ? ({ project: 'projects', building: 'projects', unit: 'products', cancel_req: 'payouts', receipt: 'vouchers', payment: 'vouchers' }[name] || 'e:' + name + (params.group ? '?group=' + params.group : '')) : name === 'unit360' || name === 'cust360' ? 'lookup' : name === 'pricesheet' ? 'e:price_policy' : name === 'hoso' ? 'vault' : name === 'debtsum' || name === 'ctdebt' ? 'loantrack' : name === 'debtunit' ? 'unitstatus' : name;
   $$('[data-nav]').forEach(a => a.classList.toggle('on', a.dataset.nav === navId));
+  { const n = navList().find(x => x.id === navId); if (n && !params.id) recentAdd({ k: 'nav', hash: n.hash, title: n.title, sub: n.sub }); }   // 17/11/2026: «Gần đây» ở ô tìm
   const on = $(`[data-nav="${navId}"]`); $$('.mod').forEach(m => m.classList.remove('cur'));
   if (on) { on.closest('.mod').classList.add('open', 'cur'); }
   try {
@@ -5059,11 +5127,12 @@ function aiOpen() {
 function aiClose() { $('.ai-panel')?.remove(); }
 
 // màn toàn trang
-V.ai = async main => {
+V.ai = async (main, params = {}) => {
   aiClose();
   main.innerHTML = `<div class="page">${head('01', 'Trợ lý AI tra cứu', 'fa-wand-magic-sparkles', `<button class="btn" id="aiNew2">${ico('fa-rotate-right')} Cuộc trò chuyện mới</button>`)}
     <div class="card ai-page"><div class="ai-box" data-full="1"></div></div></div>`;
   $('#aiNew2', main).onclick = aiNew;
   aiWire($('.ai-box', main)); aiRender();
   $('textarea', main).focus();
+  if (params.q) { history.replaceState(null, '', '#/v/ai'); aiSend(params.q); }   // 17/11/2026: câu hỏi gõ ở ô tìm trên cùng
 };

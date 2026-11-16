@@ -104,11 +104,12 @@ function aiOpen() {
 function aiClose() { $('.ai-panel')?.remove(); }
 
 // màn toàn trang
-V.ai = async main => {
+V.ai = async (main, params = {}) => {
   aiClose();
   main.innerHTML = `<div class="page">${head('01', 'Trợ lý AI tra cứu', 'fa-wand-magic-sparkles', `<button class="btn" id="aiNew2">${ico('fa-rotate-right')} Cuộc trò chuyện mới</button>`)}
     <div class="card ai-page"><div class="ai-box" data-full="1"></div></div></div>`;
   $('#aiNew2', main).onclick = aiNew;
   aiWire($('.ai-box', main)); aiRender();
   $('textarea', main).focus();
+  if (params.q) { history.replaceState(null, '', '#/v/ai'); aiSend(params.q); }   // 17/11/2026: câu hỏi gõ ở ô tìm trên cùng
 };
