@@ -1417,17 +1417,29 @@ async function noticeBusy(db, projectId, deal, selfId) {
   const ns = await db.q("SELECT * FROM kd_sale_notice WHERE project_id = $1 AND coalesce(deal, 'ban') = $2 AND status IN ('cho_duyet', 'da_duyet') AND (close_on IS NULL OR close_on >= $3) AND id <> $4 ORDER BY id DESC", [+projectId, deal, today(), +selfId || 0]);
   const m = new Map(); for (const n of ns) for (const u of await noticeUnits(db, n)) if (!m.has(u.id)) m.set(u.id, n); return m;
 }
-// căn đang có hợp đồng mua bán / thuê mua / thuê / vay còn hiệu lực (HĐ thuê đã hết hạn thì không tính)
-async function liveDeals(db, unitIds) {
-  if (!unitIds.length) return new Map();
-  return new Map((await db.q(`SELECT DISTINCT ON (c.unit_id) c.unit_id, c.number, c.kind FROM kd_contract c WHERE c.unit_id = ANY($1) AND c.kind IN ('hdmb', 'thue_mua', 'thue', 'vay') AND ${LIVE_CT('c', '$2::date')} ORDER BY c.unit_id, c.id DESC`, [unitIds, today()])).map(c => [c.unit_id, c]));
+// 16/11/2026: điều kiện hiện / chọn căn khi lập thông báo — theo hợp đồng CÒN HIỆU LỰC (đã ký, chưa thanh lý / hủy; HĐ đã thanh lý không khóa căn):
+//  • HĐ bán đã ký (HĐMB, HĐ thuê mua, HĐ vay, HĐ thuê bản chất «Bán căn hộ»): thông báo mở bán và cho thuê đều KHÔNG hiện trong gợi ý, không chọn được
+//  • HĐ thuê đã ký, chưa hết hạn: thông báo mở bán vẫn hiện, chọn được (ghi chú «Đang cho thuê – HĐ số …»);
+//    thông báo cho thuê: không lập trùng đợt trong thời hạn HĐ (ngày bắt đầu nhận hồ sơ ≤ ngày kết thúc thuê) — hiện mờ, khóa ô chọn
+//  • căn đang mở bán, chưa ký HĐMB: thông báo mở bán theo luồng hiện có; thông báo cho thuê vẫn hiện, chọn được (ghi chú «Đang mở bán – Thông báo số …»)
+const SALE_CT = c => ['hdmb', 'thue_mua'].includes(c.kind) || (c.kind === 'vay' && c.nature !== 'thue') || (c.kind === 'thue' && c.nature === 'ban');
+async function signedDeals(db, unitIds) {
+  const sale = new Map(), rent = new Map(); if (!unitIds.length) return { sale, rent };
+  for (const c of await db.q("SELECT id, unit_id, number, kind, nature, eff_on, exp_on FROM kd_contract WHERE unit_id = ANY($1) AND kind IN ('hdmb', 'thue_mua', 'thue', 'vay') AND status = 'da_ky' ORDER BY id DESC", [unitIds])) {
+    if (SALE_CT(c)) { if (!sale.has(c.unit_id)) sale.set(c.unit_id, c); }
+    else if ((!c.exp_on || d10(c.exp_on) >= today()) && !rent.has(c.unit_id)) rent.set(c.unit_id, c);   // HĐ thuê hết hạn: không còn hiệu lực
+  }
+  return { sale, rent };
 }
-const DEAL_L = { hdmb: 'HĐ mua bán', thue_mua: 'HĐ thuê mua', thue: 'HĐ thuê', vay: 'HĐ vay' };
-// căn cho thuê được không: lý do không được (null = được) — căn đang có hợp đồng còn hiệu lực / ngừng kinh doanh.
-// 16/11/2026: căn đang thuộc thông báo mở bán VẪN cho thuê được (không ẩn, không khóa) — chỉ ghi chú «Đang mở bán – Thông báo số …» (unitNotes)
-async function rentBlock(db, units) {
-  const live = await liveDeals(db, units.map(u => u.id)), out = new Map();
-  for (const u of units) out.set(u.id, live.has(u.id) ? `Đang có ${DEAL_L[live.get(u.id).kind] || 'hợp đồng'} ${live.get(u.id).number || ''}`.trim() : u.lock === 'ngung_kd' ? 'Ngừng kinh doanh' : null);
+// id căn → { hide: không hiện trong gợi ý, why: lý do không chọn được } (không có = chọn được); openOn: ngày bắt đầu nhận hồ sơ của thông báo
+async function noticeGate(db, deal, units, openOn) {
+  const { sale, rent } = await signedDeals(db, units.map(u => u.id)), d0 = d10(openOn) || today(), out = new Map(), dm = v => d10(v).split('-').reverse().join('/');
+  for (const u of units) {
+    const s = sale.get(u.id), t = rent.get(u.id);
+    if (s) out.set(u.id, { hide: true, why: `Đã ký ${NOTE_HD[s.kind]} ${s.number || '#' + s.id} còn hiệu lực` });
+    else if (deal === 'thue' && t && (!t.exp_on || d10(t.exp_on) >= d0)) out.set(u.id, { hide: false, why: `Đang cho thuê – HĐ số ${t.number || '#' + t.id}${t.exp_on ? ` (đến ${dm(t.exp_on)})` : ''} — không lập trùng đợt cho thuê trong thời hạn hợp đồng` });
+    else if (deal === 'thue' && u.lock === 'ngung_kd') out.set(u.id, { hide: false, why: 'Ngừng kinh doanh' });
+  }
   return out;
 }
 // 16/11/2026: cột «Ghi chú» của thông báo cho thuê — trạng thái hiện tại của từng căn, lấy trực tiếp từ hệ thống mỗi lần mở (nhiều trạng thái thì liệt kê đủ):
@@ -1463,28 +1475,34 @@ async function unitNotes(db, projectId, units, selfId) {
     const l = `${NOTE_HD[c.kind]} ${c.number || '#' + c.id}`, exp = c.kind === 'thue' && c.nature !== 'ban' && c.exp_on && d10(c.exp_on) < T;
     if (c.status === 'thanh_ly') { add(c.unit_id, 'tl', `Đã thanh lý ${l}${c.liquidated_on ? ` (${dm(c.liquidated_on)})` : ''}`); continue; }
     if (!exp) busy.add(c.unit_id);
-    if (c.status === 'da_ky') add(c.unit_id, exp ? 'tl' : 'hd', `Đã ký ${l}${c.kind === 'thue' && c.exp_on ? ` (${exp ? 'hết hạn' : 'đến'} ${dm(c.exp_on)})` : ''}`);
+    if (c.status === 'da_ky' && !SALE_CT(c) && !exp) add(c.unit_id, 'thue', `Đang cho thuê – HĐ số ${c.number || '#' + c.id}${c.exp_on ? ` (đến ${dm(c.exp_on)})` : ''}`);   // HĐ thuê còn hiệu lực
+    else if (c.status === 'da_ky') add(c.unit_id, exp ? 'tl' : 'hd', `Đã ký ${l}${c.kind === 'thue' && c.exp_on ? ` (${exp ? 'hết hạn' : 'đến'} ${dm(c.exp_on)})` : ''}`);
     else add(c.unit_id, 'hd', `Đang lập ${l} (${NOTE_HD_ST[c.status] || c.status})`);
   }
   for (const u of units) {
     if (u.lock === 'ngung_kd') add(u.id, 'tl', 'Ngừng kinh doanh');
-    if (!busy.has(u.id) && !out.get(u.id).some(x => x.k === 'ban' || x.k === 'thue') && u.lock !== 'ngung_kd') add(u.id, 'free', 'Còn trống / Chưa mở bán, cho thuê');
+    if (!busy.has(u.id) && !out.get(u.id).some(x => x.k === 'ban' || x.k === 'thue' || x.k === 'hd') && u.lock !== 'ngung_kd') add(u.id, 'free', 'Còn trống / Chưa mở bán, cho thuê');
   }
   return out;
 }
-// lưu / trình / phát hành thông báo cho thuê: chặn căn đang có hợp đồng còn hiệu lực / ngừng kinh doanh (căn đang mở bán vẫn cho thuê được; thông báo mở bán giữ nguyên)
+// lưu / trình / phát hành thông báo: kiểm tra lại theo hợp đồng còn hiệu lực (noticeGate). Thông báo mở bán chỉ xét căn ghi đích danh mã
+// (thông báo cũ chọn «cả dự án / cả tòa» không bị chặn vì căn đã bán trong đó — form mới luôn ghi đích danh khi tòa có căn đã bán)
 async function noticeConflict(db, r) {
-  if (r.deal !== 'thue') return;
-  const us = await noticeUnits(db, r); if (!us.length) return;
-  const why = await rentBlock(db, us), bad1 = us.filter(u => why.get(u.id)).map(u => `${u.code} (${why.get(u.id)})`);
-  if (bad1.length) bad(`Căn không cho thuê được: ${bad1.slice(0, 8).join('; ')}${bad1.length > 8 ? ` … (${bad1.length} căn)` : ''} — bỏ tích các căn này`, { fields: ['unit_group'] });
+  const deal = r.deal === 'thue' ? 'thue' : 'ban', g0 = String(r.unit_group || '').split(/[,;\s]+/).map(s => s.trim().toUpperCase());
+  const us = (await noticeUnits(db, r)).filter(u => deal === 'thue' || g0.includes(u.code.toUpperCase())); if (!us.length) return;
+  const g = await noticeGate(db, deal, us, r.open_on), bad1 = us.filter(u => g.get(u.id)).map(u => `${u.code} (${g.get(u.id).why})`);
+  if (bad1.length) bad(`Căn không ${SN_L(r)} được: ${bad1.slice(0, 8).join('; ')}${bad1.length > 8 ? ` … (${bad1.length} căn)` : ''} — bỏ tích các căn này`, { fields: ['unit_group'] });
 }
-// form thông báo cho thuê: đơn giá thuê mọi căn của dự án (theo chính sách đang chọn trên form)
+// form thông báo mở bán / cho thuê: mọi căn của dự án — hiện / chọn được không (noticeGate), ghi chú trạng thái hiện tại (unitNotes);
+// cho thuê kèm giá thuê nhà / nội thất / tổng cộng theo chính sách đang chọn trên form
 async function rentPrices(db, qs) {
   if (!+qs.project) return { rows: [] };
+  const deal = qs.deal === 'ban' ? 'ban' : 'thue';
   const us = await db.q('SELECT u.id, u.code, u.position, u.area_tt, u.lock, upper(b.code) b FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = $1', [+qs.project]);
-  const why = await rentBlock(db, us), notes = await unitNotes(db, +qs.project, us, +qs.self || 0);   // không chọn được: đang có hợp đồng còn hiệu lực; đang mở bán: vẫn chọn được + ghi chú
-  return { rows: (await noticeRent(db, +qs.project, +qs.policy || null, us)).map(x => ({ id: x.id, ok: !why.get(x.id), why: why.get(x.id) || null, notes: notes.get(x.id) || [], house: x.rent_house, furn: x.rent_furn, total: x.rent_total, price: x.rent_price, unit: x.rent_unit, pol: x.rent_pol })) };
+  const g = await noticeGate(db, deal, us, qs.open), notes = await unitNotes(db, +qs.project, us, +qs.self || 0);
+  const base = x => { const z = g.get(x.id); return { id: x.id, ok: !z, hide: !!z?.hide, why: z?.why || null, notes: notes.get(x.id) || [] }; };
+  if (deal === 'ban') return { rows: us.map(base) };
+  return { rows: (await noticeRent(db, +qs.project, +qs.policy || null, us)).map(x => ({ ...base(x), house: x.rent_house, furn: x.rent_furn, total: x.rent_total, price: x.rent_price, unit: x.rent_unit, pol: x.rent_pol })) };
 }
 H.sale_notice = {
   where(qs) { if (qs.group === 'thue') return { sql: "t.deal = 'thue'" }; if (qs.group === 'ban') return { sql: "coalesce(t.deal, 'ban') <> 'thue'" }; },   // tab Mở bán / Cho thuê (17/11/2026)
@@ -1494,7 +1512,7 @@ H.sale_notice = {
     if (!['ban', 'thue'].includes(r.deal)) bad('Chọn loại giao dịch: Bán hoặc Cho thuê', { fields: ['deal'] });
     if (r.close_on && r.open_on && r.close_on < r.open_on) bad('Ngày kết thúc nhận hồ sơ phải sau ngày bắt đầu');
     if (!String(r.unit_group || '').trim()) bad(`Tích chọn căn hộ ${SN_L(r)}`);
-    await noticeConflict(db, r);   // thông báo cho thuê: căn đang có hợp đồng còn hiệu lực thì không cho thuê (16/11/2026: căn đang mở bán vẫn cho thuê được)
+    await noticeConflict(db, r);   // 16/11/2026: căn đã ký HĐ bán → không mở bán / cho thuê; HĐ thuê còn hiệu lực → không lập trùng đợt cho thuê (mở bán vẫn được)
     if (r.deal !== 'thue') r.policy_id = null;
     else if (r.policy_id) {   // chính sách cho thuê áp dụng: loại «Cho thuê», đã phát hành, đúng dự án
       const p = await raw(db, 'price_policy', r.policy_id);
