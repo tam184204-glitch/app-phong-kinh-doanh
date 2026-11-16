@@ -189,6 +189,20 @@ function rentPlan(c, T) {
   return rows.map((r, i) => [r, i]).sort((x, y) => String(x[0].due_on).localeCompare(String(y[0].due_on)) || x[1] - y[1]).map(x => x[0]);
 }
 const rentPlanTotal = c => (rentPlan(c, c.rent_terms) || []).reduce((s, r) => s + r.amount, 0);
+// 17/11/2026: mốc bắt đầu tính tiền thuê theo chính sách (bản lưu rent_terms.start): «Ngày ký hợp đồng» → khi HĐ thuê ký; «Ngày bàn giao căn hộ» → khi bàn giao thực tế.
+// Dời ngày bắt đầu / kết thúc thuê và hạn các kỳ thu theo mốc mới (số tiền giữ nguyên; phiếu thu đã gắn kỳ chuyển theo kỳ tương ứng), ghi lịch sử
+async function rentRebase(db, c, start, user, why) {
+  if (!c?.rent_terms || !start || c.kind !== 'thue' || ['huy', 'thanh_ly'].includes(c.status) || d10(c.eff_on) === start) return false;
+  const n = +c.term_months; if (!(n > 0)) return false;
+  const c2 = { ...c, eff_on: start, exp_on: addDays(addMonths(start, n), -1) };
+  const rows0 = rentPlan(c2, c.rent_terms); if (!rows0?.length) return false;
+  const total = rows0.reduce((s, r) => s + r.amount, 0), rows = await normSchedule(db, rows0, total, 'Tiến độ thu tiền thuê');
+  await db.q('UPDATE kd_contract SET eff_on = $2, exp_on = $3, value = $4, updated_at = now() WHERE id = $1', [c.id, c2.eff_on, c2.exp_on, total]);
+  await writeSchedule(db, c.id, rows, 'hop_dong', user, c.is_demo);
+  await C.audit(db, 'contract', c.id, 'moc_tinh_tien_thue', { eff_on: d10(c.eff_on), exp_on: d10(c.exp_on) }, { eff_on: c2.eff_on, exp_on: c2.exp_on }, user,
+    `${why}: tiền thuê tính từ ${c2.eff_on.split('-').reverse().join('/')} đến ${c2.exp_on.split('-').reverse().join('/')} — hạn các kỳ thu dời theo`, c.is_demo);
+  return true;
+}
 // HĐ thuê: Lần thanh toán theo bản lưu điều khoản cho thuê của HĐ (chưa có thì lấy từ chính sách cho thuê ghi trên HĐ / áp cho căn); tiền cọc mặc định theo chính sách
 async function rentApply(db, c, user, demo) {
   let T = c.rent_terms || null;
@@ -678,7 +692,15 @@ async function refreshCommission(db, contractId, user, demo) {
   if (!['du_kien', 'nhap'].includes(row.status)) return;
   const pol = await raw(db, 'commission_policy', row.policy_id);
   const d = (await debtOf(db, [c.id])).get(c.id);
-  const base = c.value, amount = Math.round(base * (pol.rate || 0) / 100) + (pol.fixed || 0);
+  let base = c.value, amount = Math.round(base * (pol.rate || 0) / 100) + (pol.fixed || 0);
+  // 17/11/2026: HĐ thuê theo chính sách cho thuê có «Phí giới thiệu / phân phối» → hoa hồng theo mức của chính sách (số tháng tiền thuê / % giá trị HĐ / số tiền cố định),
+  // chỉ khi nguồn bán của phiếu thuộc đối tượng hưởng (để trống = mọi đối tượng có đối tác)
+  const rf = c.kind === 'thue' ? c.rent_terms?.ref_fee : null;
+  if (rf && +rf.val > 0) {
+    const t = SRC_T[r?.source], ty = String(rf.types || '').split(',').filter(Boolean);
+    if (!ty.length || ty.includes(t)) amount = Math.round(rf.mode === 'thang' ? +rf.val * +c.rent : rf.mode === 'pct' ? +c.value * +rf.val / 100 : +rf.val);
+    else amount = 0;
+  }
   const condC = c.status === 'da_ky', condP = d.total > 0 && d.paid_pct >= (pol.pay_pct ?? 0);
   const st = condC && condP ? 'nhap' : 'du_kien';
   await sys(db, 'commission', row.id, { base, amount, cond_contract: condC, cond_pay: condP, status: st }, user, 'cap_nhat_dieu_kien');
@@ -686,10 +708,13 @@ async function refreshCommission(db, contractId, user, demo) {
 
 // ======================= BÀN GIAO =======================
 async function handoverCond(db, unitId) {
-  const c = await db.one("SELECT * FROM kd_contract WHERE unit_id = $1 AND kind IN ('hdmb','thue_mua') AND status NOT IN ('huy','thanh_ly') ORDER BY id DESC LIMIT 1", [unitId]);
+  // 17/11/2026: căn cho thuê — bàn giao theo HĐ thuê (cho thuê) khi căn không có HĐ mua bán / thuê mua
+  const c = await db.one("SELECT * FROM kd_contract WHERE unit_id = $1 AND (kind IN ('hdmb','thue_mua') OR (kind = 'thue' AND coalesce(nature, 'thue') <> 'ban')) AND status NOT IN ('huy','thanh_ly') ORDER BY (kind = 'thue'), id DESC LIMIT 1", [unitId]);
   const pct = (await setting('handover_pay_pct', db)) ?? 95;
   const d = c ? (await debtOf(db, [c.id])).get(c.id) : null;
-  return { contract: c, cond_contract: c?.status === 'da_ky', cond_pay: !!d && d.total > 0 && d.paid_pct >= pct && d.overdue === 0, debt: d, pct };
+  // HĐ thuê: đủ điều kiện thanh toán = không còn nợ quá hạn + đã thu đủ kỳ đầu (thuê / cọc theo tiến độ); HĐ mua bán: đã thu tối thiểu % giá trị
+  const rentPay = c?.kind === 'thue' && !!d && d.total > 0 && d.overdue === 0 && d.inst.length > 0 && d.inst[0].rem <= 0;
+  return { contract: c, cond_contract: c?.status === 'da_ky', cond_pay: c?.kind === 'thue' ? rentPay : !!d && d.total > 0 && d.paid_pct >= pct && d.overdue === 0, debt: d, pct };
 }
 const isReq = n => /bắt buộc/i.test(n);
 // dòng danh mục «Tên giấy tờ | 2» → { n, qty }
@@ -2247,7 +2272,9 @@ H.contract = {
     }
     // 15/11/2026: có / đổi ngày ký chính thức (Ngày ký HĐ, hoặc ngày ký khi duyệt nếu chưa ghi) mà lần lưu này không gửi Lần thanh toán → hạn các đợt tính theo ngày ký = ngày ký + số ngày
     const ky = d10(r.contract_on || r.signed_on), ky0 = old ? d10(old.contract_on || old.signed_on) : null;
-    if (old && !sched?.length && ky && ky !== ky0 && !['huy', 'thanh_ly'].includes(r.status)) {
+    if (old && old.status !== 'da_ky' && r.status === 'da_ky' && r.kind === 'thue' && r.rent_terms?.start === 'ngay_ky' && ky && d10(r.eff_on) !== ky) {   // 17/11/2026
+      if (await rentRebase(db, r, ky, user, 'HĐ thuê ký (mốc tính tiền thuê theo chính sách: ngày ký hợp đồng)')) warn.push(`Mốc tính tiền thuê = ngày ký ${ky.split('-').reverse().join('/')} — đã dời ngày bắt đầu thuê và hạn các kỳ thu`);
+    } else if (old && !sched?.length && ky && ky !== ky0 && !['huy', 'thanh_ly'].includes(r.status) && !(r.kind === 'thue' && r.rent_terms)) {   // HĐ thuê theo chính sách: hạn theo mốc tính tiền thuê, không theo số ngày sau ngày ký
       const xs = await db.q(`UPDATE kd_installment SET due_on = $2::date + sign_days, updated_at = now(), updated_by = $3
         WHERE contract_id = $1 AND active AND sign_days IS NOT NULL AND NOT coalesce(is_bg, false) AND NOT coalesce(is_gcn, false) AND due_on IS DISTINCT FROM $2::date + sign_days RETURNING seq`, [r.id, ky, user?.id ?? null]);
       if (xs.length) await C.audit(db, 'contract', r.id, 'han_theo_ngay_ky', null, { ngay_ky: ky, dot: xs.map(x => x.seq) }, user, `Ngày ký ${ky.split('-').reverse().join('/')} → cập nhật hạn ${xs.length} đợt tính theo ngày ký`, r.is_demo);
@@ -2540,12 +2567,20 @@ H.refund = {
 H.handover = {
   async beforeSave(r, old, { db }) {
     const k = await handoverCond(db, r.unit_id);
-    if (!k.contract) bad('Căn chưa có hợp đồng mua bán / thuê mua');
+    if (!k.contract) bad('Căn chưa có hợp đồng mua bán / thuê mua / thuê');
     r.contract_id = k.contract.id; r.cond_contract = k.cond_contract; r.cond_pay = k.cond_pay;
     if (!r.docs || !r.docs.length) r.docs = await defaultList(db, 'checklist_ban_giao');
     if (!old || ['chua_du_dk', 'du_dk'].includes(r.status)) r.status = r.cond_contract && r.cond_pay && r.cond_tech ? 'du_dk' : 'chua_du_dk';
   },
-  async afterSave(r, old, { db, user }) { if (!old || old.status !== r.status) await recomputeUnit(db, r.unit_id, user); },
+  async afterSave(r, old, { db, user, warn = [] }) {
+    if (!old || old.status !== r.status) await recomputeUnit(db, r.unit_id, user);
+    // 17/11/2026: bàn giao thực tế căn cho thuê — HĐ thuê có mốc tính tiền thuê «Ngày bàn giao căn hộ» → tiền thuê tính từ ngày bàn giao
+    if (r.actual_on && r.contract_id && String(old?.actual_on ?? '') !== String(r.actual_on)) {
+      const c = await raw(db, 'contract', r.contract_id);
+      if (c?.kind === 'thue' && c.rent_terms?.start === 'ban_giao' && await rentRebase(db, c, d10(r.actual_on), user, `Bàn giao căn ${(await raw(db, 'unit', r.unit_id))?.code || ''} (mốc tính tiền thuê theo chính sách: ngày bàn giao)`))
+        warn.push(`HĐ thuê ${c.number}: tiền thuê tính từ ngày bàn giao ${d10(r.actual_on).split('-').reverse().join('/')} — đã dời hạn các kỳ thu`);
+    }
+  },
   async decorate(rows, { db }) {
     if (!rows.length) return;
     const m = new Map((await db.q("SELECT unit_id, count(*) n FROM kd_defect WHERE unit_id = ANY($1) AND status <> 'da_nghiem_thu' GROUP BY 1", [rows.map(r => r.unit_id)])).map(x => [x.unit_id, x.n]));
