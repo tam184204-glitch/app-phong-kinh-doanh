@@ -551,7 +551,7 @@ async function batchPlan(units, bo, user, keys) {
 // quét cả dự án (13/11/2026): mỗi căn → khách đang giao dịch, bước hồ sơ đang làm, ngày ký HĐMB, lần in gần nhất của bước đó — để gợi ý «căn cần in»
 async function batchScan(pid, user) {
   if (!can(user, E.unit, 'r')) deny();
-  const us = await q(`SELECT u.id, u.code, u.status, b.code bcode, b.name bname, p.code pcode FROM kd_unit u JOIN kd_building b ON b.id = u.building_id JOIN kd_project p ON p.id = u.project_id WHERE u.project_id = $1 ORDER BY u.code`, [+pid]);
+  const us = await q(`SELECT u.id, u.code, u.status, u.floor, b.code bcode, b.name bname, p.code pcode FROM kd_unit u JOIN kd_building b ON b.id = u.building_id JOIN kd_project p ON p.id = u.project_id WHERE u.project_id = $1 ORDER BY u.code`, [+pid]);
   if (!us.length) return { units: [] };
   const ids = us.map(u => u.id);
   const cts = await q(`SELECT id, unit_id, customer_id, kind, status, closed, contract_on, signed_on, created_at FROM kd_contract WHERE unit_id = ANY($1) AND customer_id IS NOT NULL ORDER BY (status IN ('huy', 'thanh_ly')), coalesce(contract_on, created_at::date) DESC, id DESC`, [ids]);
@@ -567,7 +567,7 @@ async function batchScan(pid, user) {
     const hdmb = pick(mine, 'hdmb') || pick(mine, 'thue_mua'), ht = pick(mine, 'hoan_thien'), vay = pick(mine, 'vay');
     const step = kid ? stepOf({ hdmb, vay, ht, cts: mine }) : '';
     const tag = `-${BO_PFX[step]}-`, last = step && pr.find(a => a.rec_id === u.id && String(a.note || '').toUpperCase().includes(tag));
-    return { code: u.code, tower: `${u.pcode}-${u.bcode}`, tname: u.bname || 'Tòa ' + u.bcode, cust: k ? k.full_name : '', kcode: k?.code || '', step, current: !!(liveC || liveR),
+    return { code: u.code, floor: u.floor, tower: `${u.pcode}-${u.bcode}`, tname: u.bname || 'Tòa ' + u.bcode, cust: k ? k.full_name : '', kcode: k?.code || '', step, current: !!(liveC || liveR),
       hdmb: hdmb ? hdmb.status : '', signed: d10(hdmb?.signed_on || (hdmb?.status === 'da_ky' ? hdmb.contract_on : '')), printed: last ? d10(last.at) : '' };
   }) };
 }
@@ -579,11 +579,11 @@ async function batchKeys(units, bo, user) {   // danh sách loại hồ sơ củ
     try { const f = await findUnit(code); await autoProjectTemplates(f.id, user);
       const ts = await unitTemplates(f.id);
       for (const s of steps) { const all = ts.filter(t => t.bo === s), hd = all.some(t => tplKey(t.code) === 'MB-02');
-        for (const t of all.filter(t => !(hd && ANNEX(tplKey(t.code))))) if (!keys.has(tplKey(t.code))) keys.set(tplKey(t.code), { name: shortName(t.name), bo: s }); }
+        for (const t of all.filter(t => !(hd && ANNEX(tplKey(t.code))))) { const k = tplKey(t.code); if (!keys.has(k)) keys.set(k, { name: shortName(t.name), bo: s, ids: [] }); if (t.id && !keys.get(k).ids.includes(t.id)) keys.get(k).ids.push(t.id); } }
     } catch (e) { seen.delete(g); }
   }
   const ord = Object.keys(BO_PFX);
-  return { keys: [...keys].map(([key, x]) => ({ key, name: x.name, bo: x.bo, bo_l: BO_L[x.bo] })).sort((a, b) => ord.indexOf(a.bo) - ord.indexOf(b.bo) || a.key.localeCompare(b.key)) };
+  return { keys: [...keys].map(([key, x]) => ({ key, name: x.name, bo: x.bo, bo_l: BO_L[x.bo], ids: x.ids || [] })).sort((a, b) => ord.indexOf(a.bo) - ord.indexOf(b.bo) || a.key.localeCompare(b.key)) };
 }
 // căn + mẫu sẽ in (dùng chung cho In / Word / Lưu vào kho)
 async function batchPick(units, bo, keys, user) {

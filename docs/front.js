@@ -3200,6 +3200,7 @@ V.vault = async (main, params = {}) => {
   };
   const draw = () => {
     $('#vtM', main).classList.toggle('vt-bo', s.tab === 'bo');
+    for (const id of ['vtN', 'vtUp', 'vtU']) { const el = $('#' + id, main); if (el) el.style.display = s.tab === 'bo' ? 'none' : ''; }   // 17/11/2026: màn in không dùng nút của Kho tệp
     $$('#vtNav button', main).forEach(b => b.classList.toggle('on', b.dataset.tab === s.tab));
     if (s.tab === 'bo') {   // in bộ hồ sơ theo căn → lưu vào kho
       $('#vtC', main).innerHTML = `<button>In bộ hồ sơ</button>`;
@@ -3515,9 +3516,14 @@ const HSB_STEPS = [['mua_ban', 'Mua bán', '#2563eb'], ['vay', 'HĐ vay', '#7c3a
 const HSB_PART = 30;
 async function batchPanel(main, { openOne } = {}) {
   let saved0 = {}; try { saved0 = JSON.parse(lsGet(HSB_KEY) || '{}'); } catch { }
-  const S = ST.hsb ||= { pid: +filt().project || saved0.pid || M.projects[0]?.id || 0, bo: saved0.bo || 'auto', sel: new Set(), cp: new Map(), off: new Set(saved0.off || []), tw: '', info: new Map(), scanned: new Set(), done: new Set() };
-  const keep = () => lsSet(HSB_KEY, JSON.stringify({ pid: S.pid, bo: S.bo, off: [...S.off] }));
-  let units = [], keys = null, plan = null, kq = 0, pq = 0, tk = 0, tp = 0;
+  const S = ST.hsb ||= { pid: +filt().project || saved0.pid || M.projects[0]?.id || 0, bo: saved0.bo || 'auto', sel: new Set(), cp: new Map(), off: new Set(saved0.off || []), tw: '', info: new Map(), scanned: new Set(), done: new Set(), view: saved0.view || 'khach', q: '' };
+  const keep = () => lsSet(HSB_KEY, JSON.stringify({ pid: S.pid, bo: S.bo, off: [...S.off], view: S.view }));
+  const canTpl = !!M.ents.template?.perm?.u;   // 17/11/2026: luồng sửa mẫu in ngay từ màn in
+  const fold = v => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase();   // tìm không dấu
+  let units = [], keys = null, plan = null, kq = 0, pq = 0, tk = 0, tp = 0, tplEdit = false;
+  // quay lại tab sau khi sửa mẫu → danh sách hồ sơ + kiểm tra dữ liệu theo mẫu mới
+  const onBack = () => { if (document.visibilityState !== 'visible' || !tplEdit || !main.isConnected) return; tplEdit = false; keys = null; drawSide(); loadKeys().then(() => toast('Đã cập nhật theo mẫu in mới')).catch(e => toast(e.message, true)); };
+  document.removeEventListener('visibilitychange', window.__ctgHsbBack || (() => {})); window.__ctgHsbBack = onBack; document.addEventListener('visibilitychange', onBack);
   const stepL = k => HSB_STEPS.find(s => s[0] === k)?.[1] || '', stepC = k => HSB_STEPS.find(s => s[0] === k)?.[2] || '#94a3b8';
   const dayAgo = n => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
   main.innerHTML = `<div class="hsb">
@@ -3542,20 +3548,39 @@ async function batchPanel(main, { openOne } = {}) {
       ...HSB_STEPS.map(([k, l]) => ['st:' + k, 'fa-circle', l, `Căn đang ở bước ${l}`, live.filter(u => u.step === k)]).filter(g => g[4].length) ];
   };
   const drawSug = () => { const gs = groups();
-    $('#hbSug', main).innerHTML = `<span class="hsb-lbl">${ico('fa-wand-magic-sparkles')} Chọn nhanh:</span>${gs.map(([k, i, l, t, us]) => `<button class="hsb-chip${k === 'need' ? ' hot' : ''}" data-g="${k}" title="${esc(t)} — bấm để chọn ${us.length} căn" ${us.length ? '' : 'disabled'}>${k.startsWith('st:') ? `<span class="dot" style="background:${stepC(k.slice(3))}"></span>` : ico(i)} ${esc(l)} <b>${us.length}</b></button>`).join('')}
+    $('#hbSug', main).innerHTML = `<span class="hsb-lbl">${ico('fa-wand-magic-sparkles')} Chọn nhanh:</span>${gs.filter(g => g[4].length || g[0] === 'need').map(([k, i, l, t, us]) => !us.length ? `<span class="hsb-chip done">${ico('fa-circle-check')} Đã in đủ bộ của bước đang làm</span>` : `<button class="hsb-chip${k === 'need' ? ' hot' : ''}" data-g="${k}" title="${esc(t)} — bấm để chọn ${us.length} căn">${k.startsWith('st:') ? `<span class="dot" style="background:${stepC(k.slice(3))}"></span>` : ico(i)} ${esc(l)} <b>${us.length}</b></button>`).join('')}
       ${S.sel.size ? `<button class="hsb-chip ghost" data-g="clr">${ico('fa-xmark')} Bỏ chọn hết (${S.sel.size})</button>` : ''}`; };
   // ---- lưới căn theo tòa
+  // 17/11/2026: lưới gọn — mặc định chỉ căn có khách (căn trống làm rối mắt), xếp theo tầng, gõ ở ô tìm là lọc ngay (mã căn / tên khách / mã KH, không dấu)
+  const need = u => u.cust && u.current && !u.printed;
+  const hit = u => { const k = fold(S.q).trim(); if (!k) return true; return fold(`${u.code} ${u.cust} ${u.kcode}`).includes(k) || fold(u.code.split('-').pop()).startsWith(k); };
+  const inView = u => (S.view === 'all' || (S.view === 'can_in' ? need(u) : !!u.cust)) && hit(u);
+  const cell = u => `<button class="hsb-u${S.sel.has(u.code) ? ' on' : ''}${u.cust ? '' : ' off'}${need(u) ? ' need' : ''}" data-u="${esc(u.code)}" style="--c:${stepC(u.step)}" title="${esc(u.code)}${u.cust ? ` · ${u.cust}${u.kcode ? ' (' + u.kcode + ')' : ''} · bước ${stepL(u.step)}${u.printed ? ' · đã in ' + dmy(u.printed) : ' · chưa in'}` : ' · chưa có khách'}"><span class="c">${esc(u.code.split('-').pop())}${u.printed ? ico('fa-check', 'pr') : ''}${(S.cp.get(u.code) || 1) > 1 ? `<em>×${S.cp.get(u.code)}</em>` : ''}</span><span class="n">${esc(u.cust ? u.cust.split(' ').slice(-2).join(' ') : '—')}</span>${u.cust ? `<span class="s">${esc(stepL(u.step) || '')}${u.printed ? '' : ' · chưa in'}</span>` : ''}</button>`;
   const drawUnits = () => {
     if (!units.length) { U.innerHTML = '<div class="empty">Dự án chưa có căn hộ.</div>'; return; }
     const tws = [...new Map(units.map(u => [u.tower, u.tname]))];
     if (S.tw && !tws.some(t => t[0] === S.tw)) S.tw = '';
-    const show = units.filter(u => !S.tw || u.tower === S.tw), byT = new Map(); for (const u of show) (byT.get(u.tower) || byT.set(u.tower, []).get(u.tower)).push(u);
-    U.innerHTML = `<div class="hsb-tws"><button class="${S.tw ? '' : 'on'}" data-tw="">Tất cả tòa</button>${tws.map(([k, n]) => { const c = units.filter(u => u.tower === k && S.sel.has(u.code)).length; return `<button class="${S.tw === k ? 'on' : ''}" data-tw="${esc(k)}">${esc(n)}${c ? ` <b>${c}</b>` : ''}</button>`; }).join('')}</div>
-      <div class="hsb-leg">${HSB_STEPS.map(([, l, c]) => `<span><i style="background:${c}"></i>${l}</span>`).join('')}<span><i style="background:#cbd5e1"></i>Chưa có khách</span><span>${ico('fa-check')} đã in bộ của bước</span></div>
-      ${[...byT].map(([t, us]) => { const ok = us.filter(u => u.cust), k = ok.filter(u => S.sel.has(u.code)).length;
-        return `<div class="hsb-tg"><div class="hsb-th"><b>${esc(us[0].tname)}</b><span class="muted small">${us.length} căn · ${ok.length} có khách</span><label class="chk small"><input type="checkbox" data-twall="${esc(t)}" ${ok.length && k === ok.length ? 'checked' : ''}> Chọn cả tòa</label>${k ? `<span class="small hs-ok">đã chọn ${k}</span>` : ''}</div>
-          <div class="hsb-grid">${us.map(u => `<button class="hsb-u${S.sel.has(u.code) ? ' on' : ''}${u.cust ? '' : ' off'}" data-u="${esc(u.code)}" style="--c:${stepC(u.step)}" title="${esc(u.code)}${u.cust ? ` · ${u.cust}${u.kcode ? ' (' + u.kcode + ')' : ''} · bước ${stepL(u.step)}${u.printed ? ' · đã in ' + dmy(u.printed) : ' · chưa in'}` : ' · chưa có khách'}"><span class="c">${esc(u.code.split('-').pop())}${u.printed ? ico('fa-check', 'pr') : ''}${(S.cp.get(u.code) || 1) > 1 ? `<em>×${S.cp.get(u.code)}</em>` : ''}</span><span class="n">${esc(u.cust ? u.cust.split(' ').slice(-2).join(' ') : '—')}</span></button>`).join('')}</div></div>`; }).join('')}`;
+    const inTw = units.filter(u => !S.tw || u.tower === S.tw), show = inTw.filter(inView), byT = new Map(); for (const u of show) (byT.get(u.tower) || byT.set(u.tower, []).get(u.tower)).push(u);
+    const nK = inTw.filter(u => u.cust).length, nN = inTw.filter(need).length;
+    const stepN = k => inTw.filter(u => u.cust && u.step === k).length;
+    U.innerHTML = `<div class="hsb-bar"><div class="hsb-tws"><button class="${S.tw ? '' : 'on'}" data-tw="">Tất cả tòa</button>${tws.map(([k, n]) => { const c = units.filter(u => u.tower === k && S.sel.has(u.code)).length; return `<button class="${S.tw === k ? 'on' : ''}" data-tw="${esc(k)}">${esc(n)}${c ? ` <b>${c}</b>` : ''}</button>`; }).join('')}</div>
+        <div class="hsb-view">${[['khach', 'Có khách', nK], ['can_in', 'Cần in', nN], ['all', 'Tất cả căn', inTw.length]].map(([k, l, n]) => `<button class="${S.view === k ? 'on' : ''}" data-vw="${k}">${l} <b>${n}</b></button>`).join('')}</div></div>
+      <div class="hsb-leg">${HSB_STEPS.filter(([k]) => stepN(k)).map(([k, l, c]) => `<span><i style="background:${c}"></i>${l} ${stepN(k)}</span>`).join('')}${S.view === 'all' ? '<span><i style="background:#cbd5e1"></i>Chưa có khách</span>' : ''}<span>${ico('fa-check')} đã in bộ của bước</span><span><i class="need-i"></i>chưa in</span></div>
+      ${!show.length ? `<div class="hsb-none">${S.q ? `Không có căn khớp «${esc(S.q)}»${S.view !== 'all' ? ` trong «${S.view === 'can_in' ? 'Cần in' : 'Có khách'}» — <button class="lnk" data-vw="all">tìm trong tất cả căn</button>` : ''}`
+          : S.view === 'can_in' ? `${ico('fa-circle-check')} Không còn căn nào cần in — mọi căn có khách đã in bộ của bước đang làm.` : `Chưa có căn nào có khách. <button class="lnk" data-vw="all">Xem tất cả căn</button>`}</div>` : ''}
+      ${[...byT].map(([t, us]) => { const all = units.filter(u => u.tower === t), ok = all.filter(u => u.cust), k = ok.filter(u => S.sel.has(u.code)).length, fl = new Map();
+        for (const u of us) { const f = u.floor ?? (/(\d{2})\d{2}$/.exec(u.code)?.[1] | 0); (fl.get(f) || fl.set(f, []).get(f)).push(u); }
+        return `<div class="hsb-tg"><div class="hsb-th"><b>${esc(us[0].tname)}</b><span class="muted small">${all.length} căn · ${ok.length} có khách${S.view !== 'all' || S.q ? ` · đang hiện ${us.length}` : ''}</span><label class="chk small"><input type="checkbox" data-twall="${esc(t)}" ${ok.length && k === ok.length ? 'checked' : ''}> Chọn cả tòa (${ok.length} căn có khách)</label>${k ? `<span class="small hs-ok">đã chọn ${k}</span>` : ''}</div>
+          ${[...fl].sort((x, y) => x[0] - y[0]).map(([f, xs]) => `<div class="hsb-fl"><span class="hsb-fn" title="Tầng ${f}">T${f}</span><div class="hsb-grid">${xs.map(cell).join('')}</div></div>`).join('')}</div>`; }).join('')}`;
   };
+  // khung phải lúc chưa chọn: danh sách căn cần in (việc cần làm) — chọn từng căn hoặc cả loạt
+  const todo = () => { const xs = units.filter(need), by = new Map(); for (const u of xs) by.set(u.step, (by.get(u.step) || 0) + 1);
+    return !xs.length ? `<div class="hsb-empty">${ico('fa-circle-check')}<b>Không có căn nào cần in</b><span>Mọi căn có khách đã in bộ hồ sơ của bước đang làm. Bấm căn trong lưới, hoặc gõ mã căn / tên khách ở ô tìm để in lại.</span></div>`
+      : `<div class="hsb-todo"><div class="hsb-fh"><b>${ico('fa-bolt')} Cần in · ${xs.length} căn</b></div>
+        <div class="small muted">Có khách đang giao dịch, chưa in bộ hồ sơ của bước đang làm${by.size > 1 ? ' — ' + [...by].map(([k, n]) => `${stepL(k)} ${n}`).join(', ') : ''}.</div>
+        <div class="hsb-tl">${xs.slice(0, 12).map(u => `<button data-u="${esc(u.code)}" style="--c:${stepC(u.step)}"><b>${esc(u.code)}</b><span>${esc(u.cust)}</span><em>${esc(stepL(u.step))}</em></button>`).join('')}${xs.length > 12 ? `<div class="small muted">… và ${xs.length - 12} căn nữa</div>` : ''}</div>
+        <button class="btn pri" data-g="need">${ico('fa-check-double')} Chọn cả ${xs.length} căn cần in</button>
+        <div class="small muted">Hoặc bấm từng căn trong lưới / gõ mã căn, tên khách ở ô tìm.</div></div>`; };
   // ---- khung phải: bước, hồ sơ, kiểm tra, in
   const drawSide = () => {
     const L = list(), by = new Map(), pb = new Map((plan?.units || []).map(u => [u.code, u.bo])); for (const c of L) { const s = S.bo !== 'auto' ? S.bo : info(c)?.step || pb.get(c) || '?'; by.set(s, (by.get(s) || 0) + 1); }
@@ -3563,12 +3588,12 @@ async function batchPanel(main, { openOne } = {}) {
     const other = L.filter(c => !units.some(u => u.code === c));
     const P = plan, ok = P ? P.units.filter(u => !u.error && u.n) : [], miss = ok.filter(u => u.missing.length), skip = P ? P.units.filter(u => u.error || !u.n) : [];
     const kOn = keys ? keys.filter(k => !S.off.has(k.key)) : [];
-    SD.innerHTML = !L.length ? `<div class="hsb-empty">${ico('fa-hand-pointer')}<b>Chưa chọn căn nào</b><span>Bấm một nút <b>Chọn nhanh</b> ở trên (ví dụ «Cần in»), bấm từng căn trong lưới, hoặc dán danh sách mã căn.</span></div>` : `
+    SD.innerHTML = !L.length ? todo() : `
       <div class="hsb-sum"><b>${L.length}</b> căn${nb > L.length ? ` · <b>${nb}</b> bản` : ''}<div class="small muted">${[...by].map(([s, n]) => `<span class="hsb-st" style="--c:${stepC(s)}">${esc(stepL(s) || 'chưa rõ bước')} ${n}</span>`).join(' ')}${other.length ? ` · ${other.length} căn dự án khác` : ''}</div></div>
       <label class="hsb-f">Bước hồ sơ<select id="hbBo"><option value="auto" ${S.bo === 'auto' ? 'selected' : ''}>⚡ Tự động — mỗi căn in bộ của bước đang làm</option>${HSB_STEPS.map(([k, l]) => `<option value="${k}" ${S.bo === k ? 'selected' : ''}>Bộ ${l} cho tất cả căn</option>`).join('')}</select></label>
-      <div class="hsb-f"><div class="hsb-fh">Hồ sơ sẽ in ${keys ? `<span class="muted small">${kOn.length}/${keys.length}</span><button class="lnk" id="hbKAll">${kOn.length === keys.length ? 'Bỏ hết' : 'Chọn hết'}</button>` : ''}</div>
+      <div class="hsb-f"><div class="hsb-fh">Hồ sơ sẽ in ${keys ? `<span class="muted small">${kOn.length}/${keys.length}</span><button class="lnk" id="hbKAll">${kOn.length === keys.length ? 'Bỏ hết' : 'Chọn hết'}</button>` : ''}${canTpl ? `<button class="lnk" data-tpl="" title="Mở Mẫu biểu (tab mới) — sửa xong quay lại, màn in tự cập nhật">${ico('fa-pen-ruler')} Mẫu in</button>` : ''}</div>
         <div class="hsb-keys">${!keys ? '<div class="small muted">Đang lấy danh sách…</div>' : !keys.length ? '<div class="small muted">Chưa có mẫu cho bước này.</div>'
-          : keys.map((k, i) => `${S.bo === 'auto' && k.bo !== keys[i - 1]?.bo ? `<div class="hsb-kg" style="--c:${stepC(k.bo)}">${esc(stepL(k.bo))}</div>` : ''}<label class="chk"><input type="checkbox" data-k="${esc(k.key)}" ${S.off.has(k.key) ? '' : 'checked'}> ${esc(k.name)}</label>`).join('')}</div></div>
+          : keys.map((k, i) => `${S.bo === 'auto' && k.bo !== keys[i - 1]?.bo ? `<div class="hsb-kg" style="--c:${stepC(k.bo)}">${esc(stepL(k.bo))}</div>` : ''}<div class="hsb-kr"><label class="chk"><input type="checkbox" data-k="${esc(k.key)}" ${S.off.has(k.key) ? '' : 'checked'}> ${esc(k.name)}</label>${canTpl && k.ids?.length ? `<button class="hsb-ke" data-tpl="${k.ids[0]}" data-tq="${esc(k.key)}" title="Sửa mẫu «${esc(k.name)}»${k.ids.length > 1 ? ` (${k.ids.length} mẫu theo dự án / tòa)` : ''} — mở tab mới, sửa xong quay lại màn in tự cập nhật">${ico('fa-pen')}</button>` : ''}</div>`).join('')}</div></div>
       <div class="hsb-f"><div class="hsb-fh">Kiểm tra dữ liệu <span class="small muted">tự chạy</span></div><div id="hbK">${!P ? `<div class="small muted">${ico('fa-spinner fa-spin')} Đang kiểm tra từng căn…</div>`
         : `<div class="hsb-chk"><span class="hs-ok">${ico('fa-circle-check')} ${ok.length - miss.length} đủ</span>${miss.length ? `<span class="hs-miss">${ico('fa-triangle-exclamation')} ${miss.length} thiếu</span>` : ''}${skip.length ? `<span class="muted" title="${esc(skip.map(u => u.code + (u.error ? ': ' + u.error : ': không có mẫu')).join('\n'))}">${ico('fa-ban')} ${skip.length} bỏ qua</span>` : ''}</div>
           ${miss.length ? `<div class="hsb-miss">${miss.slice(0, 80).map(u => `<div><b>${esc(u.code)}</b> <span class="muted">${esc((u.customer || '').split(' · ')[0])}</span><div class="small hs-miss">${esc(u.missing.slice(0, 4).join(', '))}${u.missing.length > 4 ? ` +${u.missing.length - 4}` : ''}</div>
@@ -3602,12 +3627,20 @@ async function batchPanel(main, { openOne } = {}) {
       S.sel.add(code); if (n) S.cp.set(code, Math.min(50, +n)); }
     $('#hbQ', main).value = ''; changed(); if (bad.length) toast(`Không tìm thấy: ${bad.slice(0, 8).join(', ')}${bad.length > 8 ? '…' : ''}`, true);
   });
-  $('#hbQ', main).onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); addCodes(e.target.value); } };
+  $('#hbQ', main).oninput = e => { const v = e.target.value; S.q = /[\s,;*]/.test(v.trim()) ? '' : v; drawUnits(); };   // 1 từ khóa → lọc lưới ngay; danh sách mã → chờ Enter
+  $('#hbQ', main).onkeydown = e => { if (e.key !== 'Enter') return; e.preventDefault(); const v = e.target.value.trim(); if (!v) return;
+    const X = v.toUpperCase(), exact = !/[\s,;*]/.test(v) && !units.some(u => u.code.toUpperCase() === X || u.code.toUpperCase().endsWith('-' + X) || (u.kcode || '').toUpperCase() === X);
+    const m = exact ? units.filter(u => u.cust && hit(u)) : [];
+    if (m.length) { m.forEach(u => S.sel.add(u.code)); e.target.value = ''; S.q = ''; toast(`Đã chọn ${m.length} căn khớp «${v}»`); return changed(); }
+    const tail = !/[\s,;]/.test(v) && units.filter(u => u.code.toUpperCase().endsWith('-' + X.replace(/\*\d+$/, '')));   // gõ đuôi mã (0201) → căn đúng 1 tòa
+    S.q = ''; addCodes(tail && tail.length === 1 ? tail[0].code + (/\*\d+$/.exec(v)?.[0] || '') : v); };
   $('#hbQ', main).onpaste = e => { const t = e.clipboardData?.getData('text') || ''; if (/[\s,;]/.test(t.trim())) { e.preventDefault(); addCodes(t); } };
   $('#hbP', main).onchange = run(async e => { S.pid = +e.target.value; S.tw = ''; keep(); await scan(); drawSide(); });
   main.onclick = run(async e => { const x = e.target;
     const g = x.closest('[data-g]'); if (g) { if (g.dataset.g === 'clr') { S.sel.clear(); S.cp.clear(); } else { const gr = groups().find(y => y[0] === g.dataset.g); gr?.[4].forEach(u => S.sel.add(u.code)); toast(`Đã chọn ${gr?.[4].length || 0} căn «${gr?.[2]}»`); } return changed(); }
     const tw = x.closest('[data-tw]'); if (tw) { S.tw = tw.dataset.tw; return drawUnits(); }
+    const vw = x.closest('[data-vw]'); if (vw) { S.view = vw.dataset.vw; keep(); return drawUnits(); }
+    const tp = x.closest('[data-tpl]'); if (tp) { tplEdit = true; return window.open(`#/e/template${tp.dataset.tpl ? `?id=${tp.dataset.tpl}&q=${encodeURIComponent(tp.dataset.tq || '')}` : ''}`, '_blank'); }
     const u = x.closest('[data-u]'); if (u) { const c = u.dataset.u; S.sel.has(c) ? S.sel.delete(c) : S.sel.add(c); return changed(); }
     const fx = x.closest('[data-fix]'); if (fx) { const [ent, id] = fx.dataset.fix.split(':'); return openForm(ent, { id: +id, onSaved: () => { checkSoon(); rescan(); } }); }
     const one = x.closest('[data-one]'); if (one) return openOne?.(one.dataset.one);
@@ -3637,6 +3670,7 @@ async function batchPanel(main, { openOne } = {}) {
 V.tpltree = async (main, params = {}) => {
   const TE = M.ents.template, canC = !!TE.perm?.c, canU = !!TE.perm?.u, canD = !!TE.perm?.d;
   const S = ST.tpt ||= { open: new Set(), init: false, sel: +params.id || 0, q: '', empty: false, ck: new Set() };
+  if (+params.id) { S.sel = +params.id; if (params.q) S.q = String(params.q); }   // 17/11/2026: «Sửa mẫu» từ màn In bộ hồ sơ
   const kindL = Object.fromEntries(TE.fields.find(f => f.k === 'kind').o);
   // mẫu thuộc bộ hồ sơ (ô «Thuộc bộ hồ sơ») xếp ở 05 › Bộ hồ sơ theo căn › <bộ>
   const boL = TE.fields.find(f => f.k === 'bo')?.o || [], places = [...tplPlaces(), ...boL.map(([k, l]) => ['bo:' + k, `05 Hồ sơ & hợp đồng › Bộ hồ sơ theo căn › ${l}`])];
