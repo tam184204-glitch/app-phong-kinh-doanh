@@ -1246,9 +1246,49 @@ async function bgNoticeOf(db, unitId, skip) {   // skip: bỏ qua thông báo đ
 // ghi chú «Đã có trong thông báo số …» của 1 căn: các thông báo khác (nháp / chờ duyệt / đã phát hành) có căn, thông báo đang áp dụng ghi rõ — vẫn cho tích chọn
 const NT_ST = { nhap: 'nháp', cho_duyet: 'chờ duyệt', da_duyet: 'đã phát hành', tu_choi: 'từ chối', huy: 'đã hủy' };
 function noticeNote(all, selfId, code) {
-  const has = all.filter(n => bgCodes(n.unit_list).includes(code)), cur = has.find(n => n.status === 'da_duyet');   // all: đã xếp phát hành mới nhất trước
+  const has = all.filter(n => n.status !== 'huy' && bgCodes(n.unit_list).includes(code)), cur = has.find(n => n.status === 'da_duyet');   // all: đã xếp phát hành mới nhất trước
   const os = has.filter(n => n.id !== +selfId);
   return os.length ? os.map(n => `${n.doc_no || n.code} (${NT_ST[n.status] || n.status}${n === cur ? ', đang áp dụng' : ''})`).join('; ') : '';
+}
+// 17/11/2026: tóm tắt lịch sử thông báo của 1 căn cho cột Ghi chú — thông báo đang áp dụng (số, ngày phát hành, ngày bàn giao, hạn nộp), số lần đã phát hành, bản nháp / chờ duyệt (chưa áp dụng)
+const vnDay = v => v ? new Date(Date.parse(v instanceof Date ? v.toISOString() : v) + 7 * 3600e3).toISOString().slice(0, 10) : null;
+function unitHist(all, selfId, code) {
+  const has = all.filter(n => bgCodes(n.unit_list).includes(code)), pubs = has.filter(n => ['da_duyet', 'huy'].includes(n.status)), cur = pubs.find(n => n.status === 'da_duyet');
+  const due = n => (Array.isArray(n.applied) ? n.applied : []).filter(a => String(a.unit || '').toUpperCase() === code && a.new).map(a => a.new).sort()[0] || null;
+  return { n: pubs.length, cur: cur ? { id: cur.id, doc: cur.doc_no || cur.code, pub_on: vnDay(cur.pub_at), handover_on: d10(cur.handover_on), due: due(cur), self: cur.id === +selfId } : null,
+    drafts: has.filter(n => ['nhap', 'cho_duyet'].includes(n.status) && n.id !== +selfId).map(n => ({ doc: n.doc_no || n.code, st: NT_ST[n.status] })) };
+}
+// lịch sử đầy đủ các lần thông báo (bàn giao / bàn giao Giấy chứng nhận) của 1 căn — mới nhất trước: trạng thái (đang áp dụng / đã thay thế / đã hủy / nháp…),
+// ngày thông báo, ngày phát hành, ngày bàn giao, hạn nộp tiền và nội dung thay đổi từng đợt (hạn cũ → hạn mới), người lập / trình / phát hành / hủy
+async function noticeHist(db, ent, unitId) {
+  const T = ent === 'gcn_notice' ? 'kd_gcn_notice' : 'kd_handover_notice';
+  const u = await db.one('SELECT id, code, building_id FROM kd_unit WHERE id = $1', [+unitId]); if (!u) bad('Không tìm thấy căn hộ');
+  const code = u.code.toUpperCase();
+  const ns = (await db.q(`SELECT n.id, n.code, n.doc_no, n.unit_list, n.notice_on, n.handover_on, n.pay_from, n.pay_days, n.status, n.applied, n.created_at, cu.full_name cr_name,
+      ap.requested_at, ap.decided_at pub_at, rq.full_name rq_name, dc.full_name pub_name
+    FROM ${T} n LEFT JOIN kd_user cu ON cu.id = n.created_by
+      LEFT JOIN LATERAL (SELECT * FROM kd_approval a WHERE a.ent = $2 AND a.rec_id = n.id AND a.status = 'da_duyet' ORDER BY a.decided_at DESC LIMIT 1) ap ON true
+      LEFT JOIN kd_user rq ON rq.id = ap.requested_by LEFT JOIN kd_user dc ON dc.id = ap.decided_by
+    WHERE n.building_id = $1 AND n.status IN ('nhap', 'cho_duyet', 'da_duyet', 'huy') ORDER BY ap.decided_at DESC NULLS FIRST, n.id DESC`, [u.building_id, ent])).filter(n => bgCodes(n.unit_list).includes(code));
+  const rv = new Map((await db.q("SELECT a.rec_id, a.at, a.note, x.full_name FROM kd_audit a LEFT JOIN kd_user x ON x.id = a.user_id WHERE a.ent = $1 AND a.rec_id = ANY($2) AND a.action = 'tt:revoke' ORDER BY a.at", [ent, ns.map(n => n.id)])).map(x => [x.rec_id, x]));
+  const mine = n => (Array.isArray(n.applied) ? n.applied : []).filter(a => String(a.unit || '').toUpperCase() === code);
+  const cts = [...new Set(ns.flatMap(n => mine(n).map(a => a.ct)).filter(Boolean))];
+  const CN = new Map((await db.q('SELECT id, number FROM kd_contract WHERE id = ANY($1)', [cts])).map(c => [c.id, c.number]));
+  const act = await db.q('SELECT contract_id, seq, is_maint FROM kd_installment WHERE contract_id = ANY($1) AND active ORDER BY contract_id, seq', [cts]);
+  const IN = new Map((await db.q('SELECT id, name, is_maint FROM kd_installment WHERE id = ANY($1)', [ns.flatMap(n => mine(n).map(a => a.inst)).filter(Boolean)])).map(i => [i.id, i]));
+  const lbl = a => { const i = IN.get(a.inst); if (i?.is_maint) return 'Phí bảo trì'; const k = act.filter(x => x.contract_id === a.ct && !x.is_maint && x.seq <= a.seq).length; return k ? `Đợt ${k}` : `Đợt ${a.seq}`; };
+  const ts = v => v instanceof Date ? +v : Date.parse(String(v).replace(' ', 'T').replace(/([+-]\d\d)$/, '$1:00'));   // thời điểm phát hành (chuỗi / Date) → số
+  const pubs = ns.filter(n => n.status === 'da_duyet'), cur = pubs.find(n => n.pub_at) || pubs[0];
+  const items = ns.map(n => {
+    const nx = n.status === 'da_duyet' && n !== cur ? pubs.filter(p => p.pub_at && n.pub_at && ts(p.pub_at) > ts(n.pub_at)).sort((a, b) => ts(a.pub_at) - ts(b.pub_at))[0] : null, r = rv.get(n.id);
+    const st = n.status === 'huy' ? 'huy' : n.status !== 'da_duyet' ? n.status : n === cur ? 'dang' : 'thay';
+    return { id: n.id, doc: n.doc_no || n.code, code: n.code, st, st_l: { dang: 'Đang áp dụng', thay: `Đã thay thế${nx ? ' bởi ' + (nx.doc_no || nx.code) : ''}`, huy: 'Đã hủy', nhap: 'Nháp — chưa áp dụng', cho_duyet: 'Chờ duyệt — chưa áp dụng' }[st],
+      notice_on: d10(n.notice_on), pub_on: vnDay(n.pub_at), pub_at: n.pub_at, handover_on: d10(n.handover_on), base_l: n.pay_from === 'thong_bao' ? 'ngày thông báo' : 'ngày bàn giao', pay_days: +n.pay_days || 0,
+      cr_name: n.cr_name || '', created_on: vnDay(n.created_at), rq_name: n.rq_name || '', rq_on: vnDay(n.requested_at), pub_name: n.pub_name || '',
+      revoke: r ? { on: vnDay(r.at), by: r.full_name || '', reason: r.note || '' } : null,
+      changes: mine(n).map(a => ({ ct: CN.get(a.ct) || '', label: lbl(a), old: a.old || null, new: a.new || null })) };
+  });
+  return { unit: u.code, ent, items, n_pub: ns.filter(n => ['da_duyet', 'huy'].includes(n.status)).length };
 }
 const bgCodes = v => String(v || '').split(/[,;\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
 const bgDue = r => { const b = r.pay_from === 'thong_bao' ? r.notice_on : r.handover_on; return b ? C.addDays(String(b).slice(0, 10), +r.pay_days || 0) : null; };
@@ -1265,7 +1305,7 @@ async function bgRows(db, r) {
   const sales = await db.q(`SELECT DISTINCT ON (c.unit_id) c.id, c.unit_id, c.number, c.contract_on, c.sale_sched, k.full_name, k.code kcode FROM kd_contract c LEFT JOIN kd_customer k ON k.id = c.customer_id
     WHERE c.unit_id = ANY($1) AND c.kind IN ('thue', 'vay') AND c.status = 'da_ky' AND c.sale_on AND jsonb_array_length(coalesce(c.sale_sched, '[]'::jsonb)) > 0 ORDER BY c.unit_id, c.id DESC`, [us.filter(u => !cts.some(c => c.unit_id === u.id)).map(u => u.id)]);
   for (const c of sales) { c.sale = true; cts.push(c); (c.sale_sched || []).forEach((x, k) => ins.push({ id: null, contract_id: c.id, seq: k + 1, name: x.name, due_on: x.due_on, amount: +x.amount || 0, is_maint: !!x.maint, is_bg: !!x.bg, bg_days: x.bg_days ?? null, sale: true })); }
-  const allN = await db.q(`SELECT n.id, n.code, n.doc_no, n.unit_list, n.handover_on, n.status FROM kd_handover_notice n WHERE n.building_id = $1 AND n.status IN ('nhap', 'cho_duyet', 'da_duyet') ORDER BY ${PUB_AT('handover_notice')} DESC NULLS LAST, n.id DESC`, [+r.building_id]);
+  const allN = await db.q(`SELECT n.id, n.code, n.doc_no, n.unit_list, n.handover_on, n.status, n.applied, ${PUB_AT('handover_notice')} pub_at FROM kd_handover_notice n WHERE n.building_id = $1 AND n.status IN ('nhap', 'cho_duyet', 'da_duyet', 'huy') ORDER BY pub_at DESC NULLS LAST, n.id DESC`, [+r.building_id]);
   const ctOf = new Map(cts.map(c => [c.unit_id, c])), base = d10(bgBase(r)), def = +r.pay_days || 0;
   const lbl = x => x.is_maint ? `Phí bảo trì${x.name ? ' — ' + x.name : ''}` : x.name || `Đợt ${x.seq}`;
   return us.map(u => {
@@ -1280,7 +1320,7 @@ async function bgRows(db, r) {
     return { id: u.id, code: u.code, floor: u.floor, contract_id: c?.id || null, number: c ? `${c.number || ''}${c.sale ? ' (HĐ thuê / vay — tiến độ HĐMB)' : ''}` : '', sale: !!c?.sale, contract_on: c?.contract_on || null, customer: c ? `${c.full_name || ''}${c.kcode ? ' · ' + c.kcode : ''}` : '',
       items, how, inst_id: f?.id || null, inst_seq: f?.seq || null, inst_name: items.map(x => x.name).join(' + '), days: f?.days ?? def, days_own: f?.own ?? null,
       amount: items.length ? items.reduce((s, x) => s + x.amount, 0) : null, due_old: f?.due_old || null, due_new: f?.due_new || null,
-      dots: list.map(x => ({ seq: x.seq, name: lbl(x), maint: !!x.is_maint })), other: o };
+      dots: list.map(x => ({ seq: x.seq, name: lbl(x), maint: !!x.is_maint })), other: o, hist: unitHist(allN, r.id, u.code.toUpperCase()) };
   });
 }
 async function bgSuggest(db, qs) {
@@ -1423,7 +1463,7 @@ async function gcnRows(db, r) {
   const sales = await db.q(`SELECT DISTINCT ON (c.unit_id) c.id, c.unit_id, c.number, c.contract_on, c.sale_sched, k.full_name, k.code kcode FROM kd_contract c LEFT JOIN kd_customer k ON k.id = c.customer_id
     WHERE c.unit_id = ANY($1) AND c.kind IN ('thue', 'vay') AND c.status = 'da_ky' AND c.sale_on AND jsonb_array_length(coalesce(c.sale_sched, '[]'::jsonb)) > 0 ORDER BY c.unit_id, c.id DESC`, [us.filter(u => !cts.some(c => c.unit_id === u.id)).map(u => u.id)]);
   for (const c of sales) { c.sale = true; cts.push(c); (c.sale_sched || []).forEach((x, k) => ins.push({ id: null, contract_id: c.id, seq: k + 1, name: x.name, due_on: x.due_on, amount: +x.amount || 0, is_maint: !!x.maint, is_bg: !!x.bg, is_gcn: !!x.gcn, gcn_days: x.gcn_days ?? null, sale: true })); }
-  const allN = await db.q(`SELECT n.id, n.code, n.doc_no, n.unit_list, n.status FROM kd_gcn_notice n WHERE n.building_id = $1 AND n.status IN ('nhap', 'cho_duyet', 'da_duyet') ORDER BY ${PUB_AT('gcn_notice')} DESC NULLS LAST, n.id DESC`, [+r.building_id]);
+  const allN = await db.q(`SELECT n.id, n.code, n.doc_no, n.unit_list, n.handover_on, n.status, n.applied, ${PUB_AT('gcn_notice')} pub_at FROM kd_gcn_notice n WHERE n.building_id = $1 AND n.status IN ('nhap', 'cho_duyet', 'da_duyet', 'huy') ORDER BY pub_at DESC NULLS LAST, n.id DESC`, [+r.building_id]);
   const ctOf = new Map(cts.map(c => [c.unit_id, c])), base = d10(bgBase(r)), def = +r.pay_days || 0;
   const lbl = x => x.is_maint ? `Phí bảo trì${x.name ? ' — ' + x.name : ''}` : x.name || `Đợt ${x.seq}`;
   return us.map(u => {
@@ -1434,7 +1474,7 @@ async function gcnRows(db, r) {
     return { id: u.id, code: u.code, floor: u.floor, contract_id: c?.id || null, number: c ? `${c.number || ''}${c.sale ? ' (HĐ thuê / vay — tiến độ HĐMB)' : ''}` : '', sale: !!c?.sale, contract_on: c?.contract_on || null, customer: c ? `${c.full_name || ''}${c.kcode ? ' · ' + c.kcode : ''}` : '',
       items, how, inst_id: f?.id || null, inst_seq: f?.seq || null, inst_name: items.map(x => x.name).join(' + '), days: f?.days ?? def, days_own: f?.own ?? null,
       amount: items.length ? items.reduce((s, x) => s + x.amount, 0) : null, due_old: f?.due_old || null, due_new: f?.due_new || null,
-      dots: list.map(x => ({ seq: x.seq, name: lbl(x), maint: !!x.is_maint })), other: o };
+      dots: list.map(x => ({ seq: x.seq, name: lbl(x), maint: !!x.is_maint })), other: o, hist: unitHist(allN, r.id, u.code.toUpperCase()) };
   });
 }
 async function gcnSuggest(db, qs) {
@@ -2499,4 +2539,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, noticeHist, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

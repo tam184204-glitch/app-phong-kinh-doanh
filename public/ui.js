@@ -97,12 +97,33 @@ const bgTable = (rs, { pick, sel, mode } = {}) => {
         <span class="bg-a">${fm(i.amount)}</span><span class="bg-h">${d(i.due_old)}${i.due_new ? ` → <b${chg ? ' style="color:var(--cobalt)"' : ''}>${d(i.due_new)}</b>` : ''}</span></div>`; }).join('')}
     ${!x.items.length ? `<div class="hs-miss small">Chưa rõ đợt gắn ${W} — chọn ở dưới</div>` : x.how === 'text' ? '<div class="small muted">tự nhận theo nội dung đợt — kiểm tra lại</div>' : ''}
     ${pick ? (() => { const rest = x.dots.filter(o => !x.items.some(i => i.seq === o.seq)); return rest.length ? `<select data-bgadd="${x.contract_id}" class="${x.items.length ? '' : 'bg-none'}"><option value="">+ Thêm đợt gắn ${W}…</option>${rest.map(o => `<option value="${o.seq}">${esc(String(o.name).slice(0, 55))}</option>`).join('')}</select>` : ''; })() : ''}</div>`;
+  // 17/11/2026: cột Ghi chú = lịch sử thông báo của căn — thông báo đang áp dụng (số · ngày phát hành · Đang áp dụng, ngày bàn giao, hạn nộp), số lần đã thông báo + «Xem lịch sử», bản nháp chưa áp dụng
+  const noteOf = x => { const h = x.hist; if (!h) return x.other ? `<span class="hs-miss">Đã có trong thông báo số ${esc(x.other)}</span>` : '';
+    const L = [];
+    if (h.cur) L.push(`<div class="nowrap"><b>${esc(h.cur.doc)}</b> · ${dmy(h.cur.pub_on)} · <span class="hs-ok"><b>Đang áp dụng</b></span>${h.cur.self ? ' <span class="muted">(thông báo này)</span>' : ''}</div><div class="muted">bàn giao ${dmy(h.cur.handover_on)}${h.cur.due ? ` · hạn nộp ${dmy(h.cur.due)}` : ''}</div>`);
+    if (h.n) L.push(`<div>Đã có ${h.n} lần thông báo — <a href="#" data-bghist="${x.id}" data-mode="${mode || ''}">Xem lịch sử</a></div>`);
+    for (const dr of h.drafts || []) L.push(`<div class="muted">${esc(dr.doc)} · ${esc(dr.st)} — chưa áp dụng</div>`);
+    return L.join('');
+  };
   return `<div class="tbl-wrap bg-t"><table class="t compact noclick"><thead><tr>${pick ? '<th style="width:30px"></th>' : ''}<th>Mã căn</th><th>Khách hàng</th><th>Số HĐMB</th><th>Ngày ký</th><th>Các đợt gắn ${W} · số ngày · số tiền · hạn hiện tại → hạn mới</th><th>Ghi chú</th></tr></thead><tbody>
     ${rs.map(x => { const on = pick && sel.has(x.code.toUpperCase());
       return `<tr${on ? ' class="sel"' : ''}>${pick ? `<td><input type="checkbox" data-bgu="${esc(x.code)}" ${on ? 'checked' : ''}></td>` : ''}<td>${esc(x.code)}</td><td>${esc(x.customer || '')}</td><td>${esc(x.number || '')}</td><td>${d(x.contract_on)}</td>
-        <td>${items(x)}</td><td class="small">${x.other ? `<span class="hs-miss" title="Vẫn tích chọn được — phát hành thông báo này thì căn theo thông báo mới nhất (thông báo cũ giữ để tra cứu)">Đã có trong thông báo số ${esc(x.other)}</span>` : ''}</td></tr>`; }).join('')}
+        <td>${items(x)}</td><td class="small bg-note wrap" style="min-width:240px">${noteOf(x)}</td></tr>`; }).join('')}
     </tbody></table></div>`;
 };
+// «Xem lịch sử» (17/11/2026): mọi lần thông báo của 1 căn — mới nhất trước, trạng thái áp dụng, ngày phát hành, ngày bàn giao, hạn nộp, thay đổi từng đợt, người thực hiện
+async function bgHistory(unitId, mode) {
+  const d = await api('GET', `/api/notice-history?ent=${mode === 'gcn' ? 'gcn_notice' : 'handover_notice'}&unit=${unitId}`), W = mode === 'gcn' ? 'bàn giao Giấy chứng nhận' : 'bàn giao';
+  const C = { dang: 'g', thay: 's', huy: 'r', nhap: 's', cho_duyet: 'a' }, dd = v => v ? dmy(v) : '—';
+  const row = x => `<tr${x.st === 'dang' ? ' class="sel"' : ''}><td><b>${esc(x.doc)}</b><div class="small muted">${esc(x.code)}</div></td><td>${pill(x.st_l, C[x.st])}</td>
+    <td class="nowrap">TB ${dd(x.notice_on)}<div class="small">phát hành <b>${dd(x.pub_on)}</b></div></td><td class="wrap" style="min-width:150px">${dd(x.handover_on)}<div class="small muted">hạn = ${esc(x.base_l)} + số ngày (mặc định ${x.pay_days})</div></td>
+    <td class="wrap">${x.changes.length ? x.changes.map(c => `<div>${esc(c.label)}${c.ct ? ` <span class="muted small">${esc(c.ct)}</span>` : ''}: ${c.old ? dd(c.old) : '<span class="muted">trống</span>'} → <b>${dd(c.new)}</b></div>`).join('') : `<span class="muted">${['nhap', 'cho_duyet'].includes(x.st) ? 'chưa phát hành — chưa đổi hạn' : 'không đổi hạn'}</span>`}</td>
+    <td class="small wrap" style="min-width:200px">${x.cr_name ? `Lập: ${esc(x.cr_name)} ${dd(x.created_on)}<br>` : ''}${x.rq_name ? `Trình: ${esc(x.rq_name)} ${dd(x.rq_on)}<br>` : ''}${x.pub_name ? `Phát hành: <b>${esc(x.pub_name)}</b> ${dd(x.pub_on)}<br>` : ''}${x.revoke ? `<span class="neg">Hủy: ${esc(x.revoke.by)} ${dd(x.revoke.on)}${x.revoke.reason ? ' — ' + esc(x.revoke.reason) : ''}</span>` : ''}</td></tr>`;
+  modal({ title: `Lịch sử thông báo ${W} — căn ${esc(d.unit)}`, wide: true,
+    body: `<div class="small muted mb">${d.n_pub} lần phát hành · mới nhất trước. Thông báo phát hành sau cùng là thông báo <b>đang áp dụng</b> (hạn thu đợt ${W}${mode === 'gcn' ? '' : ' và phí bảo trì'} theo thông báo này); các thông báo trước <b>đã thay thế</b>, giữ để tra cứu. Bản nháp / chờ duyệt chưa thay đổi hạn đang áp dụng.</div>
+      ${d.items.length ? `<div class="tbl-wrap"><table class="t compact noclick"><thead><tr><th>Số thông báo</th><th>Trạng thái</th><th>Ngày thông báo / phát hành</th><th>Ngày ${W}</th><th>Hạn nộp tiền (hạn cũ → hạn mới)</th><th>Người thực hiện</th></tr></thead><tbody>${d.items.map(row).join('')}</tbody></table></div>` : '<div class="empty">Căn chưa có thông báo nào</div>'}` });
+}
+document.addEventListener('click', e => { const a = e.target.closest('[data-bghist]'); if (!a) return; e.preventDefault(); e.stopPropagation(); bgHistory(+a.dataset.bghist, a.dataset.mode).catch(er => toast(er.message, true)); }, true);
 async function bgPicker(el, form) {
   const G = el.dataset.mode === 'gcn', W = G ? 'Giấy chứng nhận' : 'bàn giao', AP = G ? '/api/gcn-notice/' : '/api/handover-notice/';
   const hid = $('input[type=hidden]', el), box = $('.upick-bd', el), F = k => M.ents[G ? 'gcn_notice' : 'handover_notice'].fields.find(f => f.k === k);
@@ -126,7 +147,7 @@ async function bgPicker(el, form) {
     if (qs.toString() === key) return; const bChanged = !key.includes(`building=${qs.get('building')}&`); key = qs.toString();
     if (!qs.get('building')) { rows = []; draw(); return; }
     const r = await api('GET', AP + 'suggest?' + qs); rows = r.rows; first = r.bg_from;
-    if (bChanged && (auto || !rows.some(x => sel.has(x.code.toUpperCase())))) { auto = true; setSel(new Set(rows.filter(x => x.inst_id && !x.other).map(x => x.code.toUpperCase()))); } else draw();
+    if (bChanged && (auto || !rows.some(x => sel.has(x.code.toUpperCase())))) { auto = true; setSel(new Set(rows.filter(x => x.inst_id && !x.hist?.cur && !x.hist?.drafts?.length).map(x => x.code.toUpperCase()))); } else draw();
   };
   let tm = 0; const soon = () => { clearTimeout(tm); tm = setTimeout(() => load().catch(e => toast(e.message, true)), 250); };
   form.addEventListener('change', e => { if (['project_id', 'building_id', 'handover_on', 'notice_on', 'pay_from', 'pay_days'].includes(e.target.name)) soon(); });
