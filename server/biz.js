@@ -406,7 +406,7 @@ const rollMsg = o => (o.res.length || o.hd.length || o.can?.length ? `Đã áp c
 async function policyUnits(db, qs) {
   const pids = String(qs.project || '').split(',').map(Number).filter(Boolean), self = +qs.self || 0;
   if (!pids.length) return { rows: [], hidden: 0 };
-  const all = await db.q(`SELECT u.id, u.code, u.floor, u.kind, u.area_tt, u.price_net, u.maint_fee, u.total_price, u.finish_value, u.status, u.lock, u.project_id, upper(b.code) b,
+  const all = await db.q(`SELECT u.id, u.code, u.floor, u.kind, u.position, u.area_tt, u.price_net, u.maint_fee, u.total_price, u.finish_value, u.status, u.lock, u.project_id, upper(b.code) b,
       EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.kind IN ('hdmb','thue_mua','vay','thue') AND c.status = 'da_ky') signed,
       (SELECT c.number FROM kd_contract c WHERE c.unit_id = u.id AND c.kind IN ('hdmb','thue_mua') AND c.status IN ('du_thao','tu_choi') ORDER BY c.id DESC LIMIT 1) draft
     FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = ANY($1)`, [pids]);
