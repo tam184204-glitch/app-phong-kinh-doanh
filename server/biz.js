@@ -2887,8 +2887,6 @@ async function jobs(db) {
   await db.q(`UPDATE kd_reservation s SET status = 'het_han', updated_at = now() FROM kd_contract c WHERE c.reservation_id = s.id AND s.status = 'chuyen_hd' AND c.kind = 'thue' AND coalesce(c.nature, 'thue') <> 'ban' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on < $1`, [today()]);
   // HĐ thuê hết hạn: căn trở lại trống (Còn bán / Chưa mở bán) — HĐ thuê vẫn giữ để theo dõi thu tiền / thanh lý
   for (const x of await db.q(`SELECT DISTINCT c.unit_id FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id WHERE c.kind = 'thue' AND coalesce(c.nature, 'thue') <> 'ban' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on < $1 AND u.status NOT IN ('con_ban','chua_mo_ban')`, [today()])) await recomputeUnit(db, x.unit_id, null);
-  // hợp đồng duyệt trước 31/10/2026 đang «Chờ ký» → chuyển Đã ký như quy trình mới
-  for (const c of await db.q("SELECT * FROM kd_contract WHERE status = 'cho_ky'")) await sys(db, 'contract', c.id, signedPatch(c), null, 'tu_dong_da_ky', 'Hợp đồng đã duyệt tự chuyển Đã ký');
   // điều kiện bàn giao cập nhật theo thu tiền
   for (const h of await db.q("SELECT id, unit_id, cond_tech, cond_contract, cond_pay, status FROM kd_handover WHERE status IN ('chua_du_dk','du_dk')")) {
     const k = await handoverCond(db, h.unit_id);
