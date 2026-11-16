@@ -1569,7 +1569,8 @@ H.contract = {
         if (res && res.customer_id !== r.customer_id) bad(`Căn ${u.code} đang được giữ chỗ cho khách khác (${res.code})`);
       }
     }
-    if (r.kind === 'hoan_thien') {
+    // 16/11/2026: chỉ xét khi lập / đổi căn HĐ hoàn thiện đang hiệu lực — thanh lý / hủy (VD tự thanh lý theo HĐ mua bán vừa thanh lý) thì không chặn
+    if (r.kind === 'hoan_thien' && !['huy', 'thanh_ly'].includes(r.status) && (!old || old.unit_id !== r.unit_id || ['huy', 'thanh_ly'].includes(old.status))) {
       const main = await db.one("SELECT id FROM kd_contract WHERE unit_id = $1 AND kind IN ('hdmb','vay','thue_mua','thue') AND status NOT IN ('huy','thanh_ly') AND id <> $2", [r.unit_id, old?.id || 0]);
       if (!main) bad('HĐ hoàn thiện cần căn đã có hợp đồng mua bán / thuê / thuê mua');
     }
