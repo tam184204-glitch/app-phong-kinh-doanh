@@ -1516,7 +1516,9 @@ H.sale_notice = {
     if (!['ban', 'thue'].includes(r.deal)) bad('Chọn loại giao dịch: Bán hoặc Cho thuê', { fields: ['deal'] });
     if (r.close_on && r.open_on && r.close_on < r.open_on) bad('Ngày kết thúc nhận hồ sơ phải sau ngày bắt đầu');
     if (!String(r.unit_group || '').trim()) bad(`Tích chọn căn hộ ${SN_L(r)}`);
-    await noticeConflict(db, r);   // thông báo cho thuê: căn đang có hợp đồng còn hiệu lực thì không cho thuê (16/11/2026: căn đang mở bán vẫn cho thuê được)
+    // thông báo cho thuê: căn đang có hợp đồng còn hiệu lực thì không cho thuê (16/11/2026: căn đang mở bán vẫn cho thuê được).
+    // Rà soát 17/11/2026: thông báo đã phát hành chỉ còn rút căn / hủy (không thêm căn) → không kiểm tra lại, vì căn đã cho thuê QUA chính thông báo này sẽ chặn cả hủy / rút căn
+    if (old?.status !== 'da_duyet' && r.status !== 'huy') await noticeConflict(db, r);
     if (r.deal !== 'thue') r.policy_id = null;
     else if (r.policy_id) {   // chính sách cho thuê áp dụng: loại «Cho thuê», đã phát hành, đúng dự án
       const p = await raw(db, 'price_policy', r.policy_id);
