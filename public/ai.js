@@ -53,9 +53,9 @@ function aiBody(full) {
       <div class="ai-sug">${aiSuggest().map(s => `<button data-sug="${esc(s)}">${esc(s)}</button>`).join('')}</div></div>`;
   const busy = AI.busy ? `<div class="ai-msg ai"><span class="ai-av">${ico('fa-wand-magic-sparkles')}</span><div class="bub ai-typing"><span></span><span></span><span></span> <small class="muted">Đang tra cứu dữ liệu…</small></div></div>` : '';
   return `<div class="ai-list">${list}${busy}</div>
-    <form class="ai-in"><textarea rows="1" placeholder="${M.ai ? 'Hỏi trợ lý… (Enter để gửi, Shift+Enter xuống dòng)' : 'Trợ lý AI đang tắt — chưa cấu hình ANTHROPIC_API_KEY'}" ${M.ai ? '' : 'disabled'}></textarea>
+    <form class="ai-in"><textarea rows="1" placeholder="${M.ai ? (M.aiLocal ? 'Hỏi về căn, khách, công nợ, doanh số, bàn giao… (Enter để gửi)' : 'Hỏi trợ lý… (Enter để gửi, Shift+Enter xuống dòng)') : 'Trợ lý đang tắt'}" ${M.ai ? '' : 'disabled'}></textarea>
     <button class="btn pri" ${M.ai && !AI.busy ? '' : 'disabled'} title="Gửi">${ico('fa-paper-plane')}</button></form>
-    <div class="ai-foot small muted">${full ? '' : `<a href="#/v/ai">${ico('fa-up-right-and-down-left-from-center')} Mở toàn màn hình</a> · `}AI có thể nhầm — đối chiếu số liệu ở hồ sơ gốc trước khi dùng.</div>`;
+    <div class="ai-foot small muted">${full ? '' : `<a href="#/v/ai">${ico('fa-up-right-and-down-left-from-center')} Mở toàn màn hình</a> · `}${M.aiLocal ? 'Trợ lý nội sinh — tra cứu thẳng dữ liệu trong app, không gửi ra ngoài. Bấm liên kết để mở hồ sơ.' : 'AI có thể nhầm — đối chiếu số liệu ở hồ sơ gốc trước khi dùng.'}</div>`;
 }
 function aiRender() {
   for (const box of $$('.ai-box')) {

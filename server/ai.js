@@ -183,7 +183,7 @@ const CONV = new Map();   // id → { user_id, messages, turns, at }
 setInterval(() => { const lim = Date.now() - 3 * 3600e3; for (const [k, c] of CONV) if (c.at < lim) CONV.delete(k); }, 10 * 60e3).unref?.();   // ?. — bản demo chạy trong trình duyệt không có unref
 
 async function ask(user, { conv, text }) {
-  if (!enabled()) bad('Chưa cấu hình ANTHROPIC_API_KEY trong file .env — Trợ lý AI đang tắt.');
+  if (!enabled()) return require('./ai-local').ask(user, { conv, text });   // 17/11/2026: chưa có khóa API → trợ lý tra cứu nội sinh (chạy trong app)
   text = String(text || '').trim();
   if (!text) bad('Nhập câu hỏi');
   if (text.length > 4000) bad('Câu hỏi quá dài (tối đa 4.000 ký tự)');

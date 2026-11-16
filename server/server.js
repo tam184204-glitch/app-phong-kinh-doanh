@@ -117,7 +117,7 @@ async function metaFor(user) {
     imports: Object.fromEntries(Object.entries(IO.IMPORTS).filter(([, i]) => user.role === 'admin' || i.roles.includes(user.role)).map(([k, i]) => [k, { title: i.title, note: i.note }])),
     users: await q('SELECT id, full_name, role, title, active FROM kd_user ORDER BY active DESC, full_name'),
     projects: await q('SELECT id, code, name FROM kd_project ORDER BY code'), buildings: await q('SELECT id, project_id, code, name FROM kd_building ORDER BY code'),
-    noLogin: NO_LOGIN, testTools: !!NO_LOGIN || process.env.TEST_TOOLS === '1', ai: AI.enabled(),   // 15/11/2026: nút dữ liệu thử chỉ hiện khi chạy thử
+    noLogin: NO_LOGIN, testTools: !!NO_LOGIN || process.env.TEST_TOOLS === '1', ai: true, aiLocal: !AI.enabled(),   // 15/11/2026: nút dữ liệu thử chỉ hiện khi chạy thử
  today: C.today(), demo: (await one("SELECT (SELECT count(*) FROM kd_contract WHERE is_demo) + (SELECT count(*) FROM kd_customer WHERE is_demo) AS n")).n,
   };
 }

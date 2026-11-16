@@ -2066,8 +2066,9 @@ async function listView(main, ent, params = {}) {
   const hdKinds = ent === 'contract' && S.group === 'can_ho';   // 2 loại hợp đồng, mỗi loại danh sách và trạng thái riêng
   const rsKinds = ent === 'reservation';   // phiếu đăng ký: Đăng ký mua / Đăng ký thuê
   // 17/11/2026: thông báo mở bán / cho thuê, chính sách bán / cho thuê, hồ sơ mua / thuê — tab lọc theo loại
-  const KN = { sale_notice: [['', 'Tất cả', 'fa-layer-group'], ['b', 'Mở bán', 'fa-bullhorn'], ['t', 'Cho thuê', 'fa-key']], price_policy: [['', 'Tất cả', 'fa-layer-group'], ['b', 'Chính sách bán', 'fa-tags'], ['t', 'Chính sách cho thuê', 'fa-key']],
+  const KN = { sale_notice: [['b', 'Mở bán', 'fa-bullhorn'], ['t', 'Cho thuê', 'fa-key']],   // 17/11/2026 (Tâm): bỏ tab «Tất cả» — mặc định Mở bán price_policy: [['', 'Tất cả', 'fa-layer-group'], ['b', 'Chính sách bán', 'fa-tags'], ['t', 'Chính sách cho thuê', 'fa-key']],
     noxh_check: [['', 'Tất cả', 'fa-layer-group'], ['m', 'Hồ sơ mua', 'fa-house'], ['t', 'Hồ sơ thuê', 'fa-key']] }[ent];
+  if (KN && !KN.some(k => k[0] === (S.ht || ''))) S.ht = KN[0][0];   // tab đang nhớ không còn (VD «Tất cả» đã bỏ) → tab đầu
   const grp = () => KN ? ({ b: 'ban', m: 'mua', t: 'thue' }[S.ht] || '') : rsKinds ? (S.ht === 't' ? 'thue' : 'mua') : hdKinds && S.ht ? ({ t: 'thue', v: 'vay' }[S.ht] || 'hoan_thien') : S.group;
   // Điều kiện lọc (như BRAVO) ở danh sách Hợp đồng căn hộ chung cư: lọc ngày theo ô chọn, dự án, phân loại (tòa); «Xem …» bật / tắt nhóm cột — theo từng loại HĐ
   const FV = 'ctg-kd-hd-cot';   // cột đang tick theo loại HĐ (localStorage)
@@ -5007,9 +5008,9 @@ function aiBody(full) {
       <div class="ai-sug">${aiSuggest().map(s => `<button data-sug="${esc(s)}">${esc(s)}</button>`).join('')}</div></div>`;
   const busy = AI.busy ? `<div class="ai-msg ai"><span class="ai-av">${ico('fa-wand-magic-sparkles')}</span><div class="bub ai-typing"><span></span><span></span><span></span> <small class="muted">Đang tra cứu dữ liệu…</small></div></div>` : '';
   return `<div class="ai-list">${list}${busy}</div>
-    <form class="ai-in"><textarea rows="1" placeholder="${M.ai ? 'Hỏi trợ lý… (Enter để gửi, Shift+Enter xuống dòng)' : 'Trợ lý AI đang tắt — chưa cấu hình ANTHROPIC_API_KEY'}" ${M.ai ? '' : 'disabled'}></textarea>
+    <form class="ai-in"><textarea rows="1" placeholder="${M.ai ? (M.aiLocal ? 'Hỏi về căn, khách, công nợ, doanh số, bàn giao… (Enter để gửi)' : 'Hỏi trợ lý… (Enter để gửi, Shift+Enter xuống dòng)') : 'Trợ lý đang tắt'}" ${M.ai ? '' : 'disabled'}></textarea>
     <button class="btn pri" ${M.ai && !AI.busy ? '' : 'disabled'} title="Gửi">${ico('fa-paper-plane')}</button></form>
-    <div class="ai-foot small muted">${full ? '' : `<a href="#/v/ai">${ico('fa-up-right-and-down-left-from-center')} Mở toàn màn hình</a> · `}AI có thể nhầm — đối chiếu số liệu ở hồ sơ gốc trước khi dùng.</div>`;
+    <div class="ai-foot small muted">${full ? '' : `<a href="#/v/ai">${ico('fa-up-right-and-down-left-from-center')} Mở toàn màn hình</a> · `}${M.aiLocal ? 'Trợ lý nội sinh — tra cứu thẳng dữ liệu trong app, không gửi ra ngoài. Bấm liên kết để mở hồ sơ.' : 'AI có thể nhầm — đối chiếu số liệu ở hồ sơ gốc trước khi dùng.'}</div>`;
 }
 function aiRender() {
   for (const box of $$('.ai-box')) {
