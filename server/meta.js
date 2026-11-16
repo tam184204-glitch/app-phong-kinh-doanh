@@ -280,7 +280,7 @@ def('sale_notice', {
   acts: [{ k: 'in_tb', l: 'In thông báo', icon: 'fa-print', from: '*', roles: ALL, url: '/print/sale_notice/:id?kind=thong_bao' },
     { k: 'in_ds', l: 'In danh sách căn', icon: 'fa-list-ol', from: '*', roles: ALL, url: '/print/sale_notice/:id?kind=danh_sach' },
     { k: 'xls_ds', l: 'Xuất file danh sách căn', icon: 'fa-file-excel', from: '*', roles: ALL, url: '/api/sale-notice/:id/units-xlsx' },
-    // 17/11/2026: rút căn / hủy thông báo đã phát hành — căn được gợi ý lại cho loại giao dịch kia (một căn không đồng thời mở bán và cho thuê)
+    // 17/11/2026: rút căn / hủy thông báo đã phát hành (16/11/2026: căn đang mở bán vẫn được lập thông báo cho thuê — không cần rút trước)
     { k: 'rut_can', l: 'Rút căn khỏi thông báo', icon: 'fa-right-from-bracket', from: ['da_duyet'], roles: MGR, ask: [{ k: 'codes', l: 'Mã căn rút khỏi thông báo', t: 'text', req: 1, help: 'Nhiều căn cách nhau dấu phẩy, VD CTS-K-103, CTS-K-104' }, { k: 'reason', l: 'Lý do', t: 'long', req: 1 }] },
     { k: 'huy_tb', l: 'Hủy thông báo', icon: 'fa-ban', from: ['da_duyet'], roles: MGR, danger: 1, ask: [{ k: 'reason', l: 'Lý do hủy', t: 'long', req: 1 }] }],   // 17/11/2026: thông báo cho thuê kèm đơn giá thuê
 });

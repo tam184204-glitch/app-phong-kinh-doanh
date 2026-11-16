@@ -582,10 +582,11 @@ R('GET', '/api/rent-prices', async (req, res, u, p, qs) => { if (!can(u, M.E.sal
 R('GET', '/api/sale-notice/:id/units-xlsx', async (req, res, u, p) => {
   const { row: n } = await C.get('sale_notice', p.id, u), thue = n.deal === 'thue';
   const us = await B.noticeUnits({ q, one }, n), rows = thue ? await B.noticeRent({ q, one }, n.project_id, n.policy_id, us) : us;
+  const sn = thue ? await B.saleNotes({ q, one }, n.project_id) : null; if (sn) for (const x of rows) x.note = sn.get(x.id) || '';   // căn đang mở bán: «Đang mở bán – Thông báo số …»
   const KIND = Object.fromEntries(M.E.unit.fields.find(f => f.k === 'kind').o.map(o => [o[0], o[1]])), ST = Object.fromEntries(M.E.unit.fields.find(f => f.k === 'status').o.map(o => [o[0], o[1]]));
   for (const x of rows) { x.kind_l = KIND[x.kind] || x.kind || ''; x.st_l = thue && x.status === 'con_ban' ? 'Còn cho thuê' : ST[x.status] || x.status || ''; if (thue && !x.rent_house) { x.rent_house = 'Chưa thiết lập'; x.rent_total = ''; x.rent_unit = ''; } }
   const cols = [['code', 'Mã căn'], ['b', 'Tòa'], ['floor', 'Tầng', 'int'], ['kind_l', 'Loại căn'], ['area_tt', 'DT thông thủy (m²)', 'num'], ['area_xd', 'DT xây dựng (m²)', 'num'],
-    ...(thue ? [['rent_house', 'Giá thuê nhà/tháng (đồng/căn)', 'money'], ['rent_furn', 'Giá thuê nội thất/tháng (đồng/căn)', 'money'], ['rent_total', 'Tổng cộng/tháng (đồng/căn)', 'money'], ['rent_price', 'Đơn giá theo chính sách', 'money'], ['rent_unit', 'Đơn vị đơn giá']] : []), ['st_l', 'Trạng thái']];
+    ...(thue ? [['rent_house', 'Giá thuê nhà/tháng (đồng/căn)', 'money'], ['rent_furn', 'Giá thuê nội thất/tháng (đồng/căn)', 'money'], ['rent_total', 'Tổng cộng/tháng (đồng/căn)', 'money'], ['rent_price', 'Đơn giá theo chính sách', 'money'], ['rent_unit', 'Đơn vị đơn giá']] : []), ['st_l', 'Trạng thái'], ...(thue ? [['note', 'Ghi chú']] : [])];
   const title = `DANH SÁCH CĂN ${thue ? 'CHO THUÊ' : 'MỞ BÁN'} — ${n.code}${n.title ? ' · ' + n.title : ''}`;
   sendFile(res, IO.sheet(title.slice(0, 120), cols, rows, { note: `${rows.length} căn${thue ? ' · đơn giá thuê theo chính sách cho thuê áp dụng cho từng căn' : ''}` }), `${safeName(n.code)}_danh_sach_can_${C.today()}.xlsx`, MIME['.xlsx']);
 });
