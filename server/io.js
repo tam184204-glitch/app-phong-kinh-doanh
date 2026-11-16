@@ -451,7 +451,21 @@ async function printContract(id, user, tplCode) {
     ma_can: c.unit, du_an: c.project, dia_diem: c.p_addr, chu_dau_tu: c.investor, toa: c.building, tang: c.floor, dien_tich: String(c.area_tt).replace('.', ','), huong: c.direction,
     gia_tri: fmtMoney(c.value), gia_tri_chu: moneyWords(c.value), ngay: dmy(c.signed_on || C.today()),
     lich_thanh_toan: `<table class="sch"><tr><th>Đợt</th><th>Nội dung</th><th>Hạn thanh toán</th><th>Tỷ lệ</th><th>Số tiền (đồng)</th></tr>${inst.map(i => `<tr><td>${i.seq}</td><td>${escH(i.name)}</td><td>${dmy(i.due_on)}</td><td>${i.pct ?? ''}${i.pct != null ? '%' : ''}</td><td style="text-align:right">${fmtMoney(i.amount)}</td></tr>`).join('')}</table>` };
-  const body = escH(tpl.content).replace(/\n/g, '<br>').replace(/\{(\w+)\}/g, (m, k) => k in map ? (k === 'lich_thanh_toan' ? map[k] : mergeVal(map, k)) : m);
+  // 16/11/2026: HĐ thuê — chi tiết giá thuê theo chính sách cho thuê áp dụng (bản lưu trên HĐ): trường trộn riêng + bảng {chi_tiet_thue};
+  // mẫu chưa có {chi_tiet_thue} thì bảng tự đứng trước bảng tiến độ thu ({lich_thanh_toan})
+  if (c.kind === 'thue') {
+    const m0 = v => v == null || v === '' ? '' : fmtMoney(v);
+    Object.assign(map, { chinh_sach_thue: c.rent_policy_txt || '', don_gia_thue: m0(c.rent_unit_price), don_vi_tinh: c.rent_unit_l || '', tien_thue_nha: m0(c.rent_house), tien_thue_noi_that: m0(c.rent_furn ?? (c.rent_house != null ? 0 : null)),
+      tong_tien_thue: m0(c.rent), tong_tien_thue_chu: c.rent ? moneyWords(c.rent) : '', tien_dat_coc: m0(c.deposit ?? 0), uu_dai: c.rent_promo_txt || '', chu_ky_thanh_toan: c.rent_cycle_txt || '', cac_khoan_phi: c.rent_fees_txt || '',
+      thoi_han_thue: c.term_months ? `${c.term_months} tháng` : '', ngay_bat_dau_thue: dmy(c.eff_on), ngay_ket_thuc_thue: dmy(c.exp_on) });
+    const row = (l, v) => v ? `<tr><td>${l}</td><td>${escH(v)}</td></tr>` : '';
+    map.chi_tiet_thue = `<table class="sch"><tr><th colspan="2" style="text-align:left">Chi tiết giá thuê${c.rent_policy_txt ? ` — theo chính sách ${escH(c.rent_policy_txt.split(' · ')[0])}` : ''}</th></tr>${
+      row('Đơn giá thuê nhà', map.don_gia_thue && `${map.don_gia_thue} ${map.don_vi_tinh}`)}${row('Tiền thuê nhà/tháng', map.tien_thue_nha && map.tien_thue_nha + ' đồng')}${row('Tiền thuê nội thất/tháng', map.tien_thue_noi_that && map.tien_thue_noi_that + ' đồng')}${
+      row('Tổng tiền thuê/tháng', map.tong_tien_thue && map.tong_tien_thue + ' đồng')}${row('Tiền đặt cọc', map.tien_dat_coc + ' đồng')}${row('Thời hạn thuê', map.thoi_han_thue && `${map.thoi_han_thue} (từ ${map.ngay_bat_dau_thue} đến ${map.ngay_ket_thuc_thue})`)}${
+      row('Chu kỳ thanh toán', map.chu_ky_thanh_toan)}${row('Ưu đãi', map.uu_dai)}${row('Các khoản phí', map.cac_khoan_phi)}</table>`;
+    if (!/\{chi_tiet_thue\}/.test(tpl.content)) map.lich_thanh_toan = map.chi_tiet_thue + map.lich_thanh_toan;
+  }
+  const body = escH(tpl.content).replace(/\n/g, '<br>').replace(/\{(\w+)\}/g, (m, k) => k in map ? (['lich_thanh_toan', 'chi_tiet_thue'].includes(k) ? map[k] : mergeVal(map, k)) : m);
   await C.audit({ q }, 'contract', c.id, 'in_hop_dong', null, null, user, tpl.code);
   return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${escH(c.number)}</title><style>
     @page{size:A4;margin:20mm 18mm 20mm 25mm} body{font:13pt/1.5 "Times New Roman",serif;color:#000;max-width:170mm;margin:auto}

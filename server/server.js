@@ -397,6 +397,10 @@ R('GET', '/api/sale-track/:id', async (req, res, u, p, qs) => {   // HĐ thuê /
   send(res, 200, await B.saleTrack({ q, one }, g.row, qs.to));
 });
 R('GET', '/api/contract-prefill/:unit', async (req, res, u, p, qs) => { if (!can(u, M.E.contract, 'c') && !can(u, M.E.contract, 'u')) C.deny(); send(res, 200, await B.contractPrefill({ q, one }, p.unit, qs.on)); });
+// 16/11/2026: HĐ thuê / vay — tiến độ thu tiền HĐMB theo chính sách bán đã ban hành áp cho căn (đã tính hạn theo ngày ký, đợt bàn giao / GCN theo thông báo đã phát hành)
+R('GET', '/api/sale-sched/:unit', async (req, res, u, p, qs) => { if (!can(u, M.E.contract, 'c') && !can(u, M.E.contract, 'u')) C.deny();
+  const D = { q, one }, on = /^\d{4}-\d{2}-\d{2}$/.test(qs.on || '') ? qs.on : C.today(), pol = await B.saleSchedPolicy(D, +p.unit, on, +qs.res || 0);
+  send(res, 200, pol ? { policy: `${pol.code} v${pol.version}`, rows: await B.saleSchedRows(D, pol, +p.unit, on) } : { policy: null, rows: [] }); });
 R('GET', '/api/res-policy', async (req, res, u, p, qs) => { if (!can(u, M.E.reservation, 'c') && !can(u, M.E.reservation, 'u')) C.deny(); send(res, 200, await B.resPolicy({ q, one }, qs)); });   // phiếu đăng ký: chính sách duyệt gần nhất + hoàn thiện theo chính sách (14/11/2026)
 R('GET', '/api/policy-units', async (req, res, u, p, qs) => { if (!can(u, M.E.price_policy, 'c') && !can(u, M.E.price_policy, 'u')) C.deny(); send(res, 200, await B.policyUnits({ q, one }, qs)); });
 R('GET', '/api/sale-check/:id', async (req, res, u, p, qs) => { const sc = await B.saleCheck({ q, one }, p.id, new Map(), qs.deal === 'thue' ? 'thue' : 'ban'); send(res, 200, sc ? { ok: sc.ok, text: sc.text } : {}); });   // đăng ký thuê / hồ sơ thuê: thông báo cho thuê

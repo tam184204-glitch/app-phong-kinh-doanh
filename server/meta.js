@@ -507,7 +507,8 @@ def('contract', {
   lists: {
     // HĐ thuê (tab riêng ở danh sách chung cư): cột theo BRAVO
     thue: secList([['Hợp đồng', ['number', 'contract_on', 'unit_id']], ['Bên thuê nhà', ['b_name', 'b_id_no', 'b_id_date', 'b_id_place', 'b_addr', 'b_phone', 'b_email'], 'Xem thông tin khách hàng'],
-      ['Thông tin căn hộ', ['area_floor', 'area_tt']], ['Thời hạn thuê', ['eff_on', 'exp_on', 'term_months', 'pay_times']], ['Tiền thuê', ['rent_house', 'rent_furn', 'rent'], 'Xem tiền thuê'], ['Giá trị HĐ thuê', ['value', 'deposit']],
+      ['Thông tin căn hộ', ['area_floor', 'area_tt']], ['Thời hạn thuê', ['eff_on', 'exp_on', 'term_months', 'pay_times']], ['Tiền thuê', ['rent_unit_price', 'rent_unit_l', 'rent_house', 'rent_furn', 'rent'], 'Xem tiền thuê'], ['Giá trị HĐ thuê', ['value', 'deposit']],
+      ['Chính sách cho thuê', ['rent_policy_txt', 'rent_promo_txt', 'rent_cycle_txt', 'rent_fees_txt'], 'Xem chính sách cho thuê', false],
       ['Giá trị HĐMB', ['unit_total', 'discount'], 'Xem giá trị HĐMB'], ['', ['nature', 'status']]],
       { dates: [['contract_on', 'Ngày ký'], ['eff_on', 'Ngày bắt đầu thuê'], ['exp_on', 'Ngày kết thúc thuê']], label: { contract_on: 'Ngày ký', unit_id: 'Mã căn hộ', b_name: 'Họ và tên', b_id_no: 'Số CMND / CCCD', b_id_date: 'Ngày cấp', b_id_place: 'Nơi cấp', b_addr: 'Địa chỉ', b_phone: 'Điện thoại', b_email: 'Email', area_floor: 'Diện tích sàn', area_tt: 'Diện tích nền (T.thủy)', value: 'Giá trị HĐ thuê', rent: 'Tổng giá thuê/tháng' } }),
     vay: secList([['Hợp đồng', ['number', 'contract_on', 'unit_id']], ['Bên cho vay (khách hàng)', ['b_name', 'b_id_no', 'b_phone'], 'Xem thông tin khách hàng'], ['Khoản vay', ['value', 'paid', 'loan_recv_on']],
@@ -609,6 +610,12 @@ def('contract', {
     { k: 'term_months', l: 'Thời hạn thuê (tháng)', t: 'int', show: RENT_VAY, help: 'Tự tính theo ngày bắt đầu – kết thúc' },
     { k: 'pay_times', l: 'Số kỳ thanh toán', t: 'int', show: RENT_ONLY, help: 'Mỗi kỳ thu = số tháng của kỳ × tiền thuê/tháng, hạn thanh toán là ngày đầu mỗi kỳ' },
     // HĐ thuê (04/11/2026): tiền thuê tách tiền thuê nhà + tiền thuê nội thất; Tổng giá thuê/tháng (rent) = 2 khoản cộng lại → tổng tiền thuê = rent × số tháng
+    // 16/11/2026: chi tiết giá thuê theo chính sách cho thuê áp dụng (bản lưu trên HĐ) — xem / sửa / in / xuất thống nhất
+    money('rent_unit_price', 'Đơn giá thuê nhà', { show: RENT_ONLY, ro: 1, help: 'Theo chính sách cho thuê áp dụng cho căn (bản lưu trên hợp đồng)' }),
+    { k: 'rent_unit_l', l: 'Đơn vị tính', t: 'text', ro: 1, show: RENT_ONLY },
+    { k: 'rent_promo_txt', l: 'Ưu đãi', t: 'text', ro: 1, show: RENT_ONLY },
+    { k: 'rent_cycle_txt', l: 'Chu kỳ thanh toán', t: 'text', ro: 1, show: RENT_ONLY },
+    { k: 'rent_fees_txt', l: 'Các khoản phí', t: 'text', ro: 1, show: RENT_ONLY },
     money('rent_house', 'Tiền thuê nhà/tháng', { show: RENT_ONLY }),
     money('rent_furn', 'Tiền thuê nội thất/tháng', { show: RENT_ONLY }),
     money('rent', 'Tiền thuê/tháng', { show: RENT_ONLY, help: 'Giá trị HĐ thuê = tổng giá thuê/tháng × thời hạn thuê' }),
@@ -635,6 +642,7 @@ def('contract', {
     // HĐ thuê / HĐ vay bản chất bán căn (07/11/2026): tiến độ khách trả tiền mua nhà theo Giá trị HĐMB → lên Bảng tổng hợp công nợ.
     //  Đã thu = phiếu thu của chính hợp đồng (HĐ vay: gốc khách đã chuyển tính là tiền mua nhà). Khi ký HĐMB thật: thanh lý HĐ thuê / vay, lập HĐMB mới.
     { k: 'sale_on', l: 'Có tiến độ thu tiền HĐMB', t: 'bool', show: RENT_VAY, help: 'Tick khi HĐ thuê / HĐ vay là để bán căn — sổ ra bảng tiến độ thu tiền HĐMB' },   // 07/11/2026
+    { k: 'sale_policy_txt', l: 'Chính sách bán hàng áp dụng (tiến độ HĐMB)', t: 'text', ro: 1, show: { kind: ['thue', 'vay'], sale_on: [true] } },   // 16/11/2026: mã + phiên bản chính sách bán của tiến độ HĐMB
     { k: 'sale_sched', l: 'Đợt · % · Giá trị VND (theo Giá trị HĐMB)', t: 'json', show: { kind: ['thue', 'vay'], sale_on: [true] }, help: 'Nhập tỷ lệ % → giá trị tự tính theo Giá trị HĐMB. Số phải thu lên Bảng tổng hợp ở Theo dõi công nợ; đã thu = phiếu thu của hợp đồng này (HĐ vay: gốc khách đã chuyển)' },
     { k: 'pay_method', l: 'Phương thức thanh toán', t: 'text' },
     { k: 'plan_sign', l: 'Ngày dự kiến ký', t: 'date', show: LK_ONLY },   // chung cư: nhập ở Hồ sơ mua NOXH, tự sang hợp đồng

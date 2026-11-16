@@ -157,6 +157,22 @@ const rentTxt = T => [`${T.code} v${T.version}`, T.cycle ? `thu ${RT_CYC[T.cycle
   T.dep_mode === 'thang' && +T.dep_months > 0 ? `cọc ${String(T.dep_months).replace('.', ',')} tháng` : T.dep_mode === 'so_tien' && +T.dep_amount > 0 ? `cọc ${fmtMoney(T.dep_amount)}đ` : '',
   T.free_months ? `miễn ${T.free_months} tháng đầu` : '', T.disc_pct ? `giảm ${String(T.disc_pct).replace('.', ',')}%${T.disc_months ? ' trong ' + T.disc_months + ' tháng' : ''}` : '',
   T.adj_pct && T.adj_from != null ? `điều chỉnh ${T.adj_pct > 0 ? '+' : ''}${String(T.adj_pct).replace('.', ',')}%/${T.adj_cycle || 12} tháng từ tháng ${+T.adj_from + 1}` : '', T.fees?.length ? `phí: ${T.fees.map(f => f.name).join(', ')}` : ''].filter(Boolean).join(' · ');
+// 16/11/2026: chi tiết giá thuê ghi trên HĐ thuê theo bản lưu chính sách (T) — đơn giá thuê nhà + đơn vị tính (theo vị trí căn), ưu đãi, chu kỳ thanh toán, các khoản phí
+const RT_FEE_B = { thang: '/tháng', m2: '/m²/tháng', mot_lan: ' (thu một lần)' };
+function rentDetail(T, u) {
+  if (!T) return {};
+  const fixed = T.rent_mode === 'co_dinh', vat = +T.vat || 0;
+  const price = fixed ? +T.rent_fixed || null : (u?.position === 'goc' && +T.rent_price_goc > 0 ? +T.rent_price_goc : u?.position === 'thang' && +T.rent_price_thang > 0 ? +T.rent_price_thang : +T.rent_price || null);
+  const n = v => String(v).replace('.', ',');
+  const promo = [T.free_months ? `Miễn tiền thuê ${T.free_months} tháng đầu` : '', T.disc_pct ? `Giảm ${n(T.disc_pct)}% tiền thuê${T.disc_months ? ` trong ${T.disc_months} tháng` : ''}` : '',
+    T.adj_pct && T.adj_from != null ? `Điều chỉnh giá ${T.adj_pct > 0 ? '+' : ''}${n(T.adj_pct)}%/${T.adj_cycle || 12} tháng từ tháng ${+T.adj_from + 1}` : '', String(T.promo_terms || '').trim()].filter(Boolean);
+  return {
+    rent_unit_price: price, rent_unit_l: price ? `${fixed ? 'đồng/căn/tháng' : 'đồng/m²/tháng (× DT thông thủy)'}${vat ? ` · chưa gồm thuế GTGT ${n(vat)}%` : ''}` : null,
+    rent_promo_txt: promo.length ? promo.join('; ') : 'Không có',
+    rent_cycle_txt: `${RT_CYC[T.cycle] || (T.cycle || 1) + ' tháng/kỳ'} · thu ${T.pay_when === 'cuoi_ky' ? 'cuối kỳ' : 'đầu kỳ'}${T.pay_days ? `, hạn nộp ${T.pay_days} ngày` : ''}`,
+    rent_fees_txt: T.fees?.length ? T.fees.map(f => `${String(f.name || 'Phí').trim()}: ${fmtMoney(f.amount)}đ${RT_FEE_B[f.basis] ?? '/tháng'}`).join('; ') : 'Không có',
+  };
+}
 // tiến độ thu tiền thuê theo bản lưu điều khoản (T; HĐ cũ không có T: theo Số kỳ thanh toán, không có nữa thì hàng tháng): mỗi kỳ = tiền thuê các tháng trong kỳ
 // (miễn → 0, giảm %, điều chỉnh giá theo chu kỳ) + phí hàng tháng; phí một lần ở kỳ đầu; đầu kỳ: mốc = ngày đầu kỳ, cuối kỳ: ngày cuối kỳ; hạn = mốc + số ngày; tiền cọc vào tiến độ khi chính sách chọn
 function rentPlan(c, T) {
@@ -489,13 +505,34 @@ async function contractPrefill(db, unitId, on = today()) {
     LEFT JOIN kd_customer k ON k.id = r.customer_id WHERE r.unit_id = $1 AND r.status IN ${ACTIVE_RES} ORDER BY r.id DESC LIMIT 1`, [unitId]);
   // chính sách: theo phiếu giữ chỗ; không có thì chính sách đang phát hành đã tích căn này. Tiến độ thu tiền: chính sách trên phiếu không khai thì lấy của chính sách đang áp cho căn
   const cur = (await pricing(db, u, on)).policy, p0 = res?.policy_id ? await raw(db, 'price_policy', res.policy_id) : null, pol = p0 || cur;
-  const sp = p0?.pay_sched?.length ? p0 : cur?.pay_sched?.length ? cur : null;
+  const sp = p0?.pkind !== 'thue' && p0?.pay_sched?.length ? p0 : cur?.pay_sched?.length ? cur : null;   // tiến độ HĐMB: chỉ chính sách BÁN (phiếu đăng ký thuê gắn chính sách cho thuê → theo chính sách bán áp cho căn)
   const fp = p0?.fin_sched?.length ? p0 : cur?.fin_sched?.length ? cur : null;   // tiến độ nội thất (HĐ hoàn thiện) lấy riêng — chính sách không khai tiến độ HĐMB vẫn có (14/11/2026)
   return { customer_id: res?.customer_id ?? null, customer_label: res?.customer_label ?? null, request_on: res?.reg_date ?? null, finish_value: res?.finish_value ?? null, owner_id: res?.owner_id ?? null,
     policy_id: pol?.id ?? null, policy_label: pol ? `${pol.code} v${pol.version}` : null, ...(sp ? { pay_sched: sp.pay_sched, pay_mdot: sp.pay_mdot ?? 3, sched_policy: `${sp.code} v${sp.version}` } : {}),
     ...(fp ? { fin_sched: fp.fin_sched.map(x => ({ ...x, name: finTxt(x.name) })), fin_policy: `${fp.code} v${fp.version}` } : {}) };
 }
 
+// 16/11/2026: «Tiến độ thu tiền HĐMB» của HĐ thuê / vay bán căn theo chính sách BÁN đã ban hành áp cho căn (phiếu đăng ký mua gắn chính sách bán thì theo phiếu;
+// không lấy chính sách cho thuê, không dùng mẫu mặc định). Hạn: đợt «Sau N ngày» = ngày ký + N; đợt nhắc Giấy chứng nhận / bàn giao = ngày của thông báo đã phát hành + số ngày
+// (chưa có thông báo thì để trống, phát hành thông báo là tự điền); phí bảo trì dòng riêng, cùng hạn đợt thu phí bảo trì của chính sách
+async function saleSchedPolicy(db, unitId, on, resId) {
+  const u = unitId && await raw(db, 'unit', unitId); if (!u) return null;
+  const s = resId ? await raw(db, 'reservation', resId) : null, p0 = s?.policy_id ? await raw(db, 'price_policy', s.policy_id) : null;
+  const pol = p0 && p0.pkind !== 'thue' && p0.status === 'phat_hanh' && p0.pay_sched?.length ? p0 : (await pricing(db, u, on)).policy;
+  return pol?.pay_sched?.length ? pol : null;
+}
+async function saleSchedRows(db, pol, unitId, first) {
+  const bn = await bgNoticeOf(db, unitId), gn = await gcnNoticeOf(db, unitId), b0 = bn && d10(bgBase(bn)), g0 = gn && d10(bgBase(gn));
+  const rows = pol.pay_sched.filter(x => !x.maint).map((x, i) => {
+    const nm = x.name || `Đợt ${i + 1}`, has = x.days != null && x.days !== '';
+    if (!has && GCN_RE.test(nm)) { const d = x.gcn_days ?? gcnDaysIn(nm); return { name: nm, pct: x.pct ?? null, amount: x.pct != null ? null : x.amount ?? null, gcn: true, gcn_days: d ?? null, due_on: g0 ? C.addDays(g0, d ?? (+gn.pay_days || 0)) : null }; }
+    if (!has && (x.bg || BG_RE.test(nm))) { const d = x.bg_days ?? bgDaysIn(nm); return { name: nm, pct: x.pct ?? null, amount: x.pct != null ? null : x.amount ?? null, bg: true, bg_days: d ?? null, due_on: b0 ? C.addDays(b0, d ?? (+bn.pay_days || 0)) : null }; }
+    return { name: nm, pct: x.pct ?? null, amount: x.pct != null ? null : x.amount ?? null, due_on: has ? C.addDays(first, +x.days) : i === 0 ? first : null, ...(has && +x.days ? { sign_days: +x.days } : {}) };
+  });
+  const m = pol.pay_sched.find(x => x.maint), mi = Math.min(Math.max(1, +pol.pay_mdot || 3), rows.length) - 1;
+  if (m) rows.push({ name: m.name || 'Thu phí bảo trì', maint: true, due_on: rows[mi]?.due_on || null });
+  return rows;
+}
 // giá trị hợp đồng căn hộ theo Danh mục sản phẩm (sau thuế + bảo trì): cập nhật các ô giá + tính lại từng đợt theo tỷ lệ / ngày đến hạn cũ.
 // Phiếu thu đã có giữ nguyên (công nợ tự tính lại theo lịch mới). Trả về true nếu có đổi.
 async function closeReservations(db, c, user) {
@@ -2218,7 +2255,8 @@ H.contract = {
     // HĐ thuê (BRAVO): số tháng theo ngày bắt đầu – kết thúc, tổng tiền = đơn giá thuê × số tháng
     if (r.kind !== 'thue') { r.rent_house = null; r.rent_furn = null; }
     if (!['thue', 'vay'].includes(r.kind)) r.unit_total = null;   // HĐ vay bán căn cũng có Giá trị HĐMB (07/11/2026)
-    if (['thue', 'vay'].includes(r.kind)) {
+    if (r.kind === 'thue' && r.nature !== 'ban' && !r.sale_on) r.unit_total = null;   // 16/11/2026: HĐ thuê thuần (không bán căn, không tiến độ HĐMB) — không mang giá bán của căn
+    else if (['thue', 'vay'].includes(r.kind)) {
       // Tổng tiền (giá trị hợp đồng, chỉ để thông tin) = Tổng giá căn hộ theo Danh mục sản phẩm − Tiền giảm giá (trừ thẳng, như HĐMB)
       const same = old && String(old.unit_total ?? '') === String(r.unit_total ?? '');
       if (r.unit_id && (r.unit_total == null || (old && old.unit_id !== r.unit_id && same))) {   // chưa có / đổi căn → lấy lại theo căn
@@ -2233,12 +2271,27 @@ H.contract = {
       let pol = null; for (const id of [r.price_policy_id, s?.policy_id]) if (!pol && id) { const p = await raw(db, 'price_policy', id); if (p?.pkind === 'thue') pol = p; }
       if (!pol && u) pol = (await rentPolicyFor(db, u, d10(r.contract_on) || today(), s ? { source: s.source, agent_id: s.agent_id } : undefined)).policy;
       if (pol) {
-        const T = rentTerms(pol); r.price_policy_id = pol.id; r.rent_terms = T; r.rent_policy_txt = rentTxt(T);
-        if (!(+r.rent > 0) && r.rent_house == null && r.rent_furn == null) { r.rent_house = rentOf(pol, u); const ff = polFin(pol, u.code); if (ff) r.rent_furn = ff; }
+        const T = { ...rentTerms(pol), furn: +polFin(pol, u?.code) || 0 }; r.price_policy_id = pol.id; r.rent_terms = T; r.rent_policy_txt = rentTxt(T);   // furn: tiền thuê nội thất/tháng của căn theo chính sách (bản lưu)
         if (!(+r.term_months > 0) && !r.exp_on && T.term) r.term_months = T.term;
         if (!r.eff_on) r.eff_on = d10(r.contract_on) || today();
         if (r.eff_on && +r.term_months > 0 && !r.exp_on) r.exp_on = addDays(addMonths(r.eff_on, +r.term_months), -1);
-      } else if (r.price_policy_id && (await raw(db, 'price_policy', r.price_policy_id))?.pkind !== 'thue') r.price_policy_id = null;
+      } else {
+        if (r.price_policy_id && (await raw(db, 'price_policy', r.price_policy_id))?.pkind !== 'thue') r.price_policy_id = null;
+        ctx.warn?.push(`Chưa xác định được chính sách cho thuê đã ban hành áp dụng cho căn ${u?.code || ''} — tiền thuê ${+r.rent > 0 ? 'đang theo phiếu đăng ký / nhập tay' : 'chưa có'}, kiểm tra trước khi trình duyệt`);
+      }
+    }
+    // 16/11/2026: HĐ thuê theo chính sách (bản lưu rent_terms) — tiền thuê nhà / nội thất / tổng tiền thuê theo chính sách khi chưa tách (VD HĐ tự lập chỉ có tổng tiền thuê theo phiếu);
+    // chính sách không có giá thuê cho căn → cảnh báo, KHÔNG lấy giá bán, không mặc định 0. Kèm đơn giá + đơn vị tính, ưu đãi, chu kỳ thanh toán, các khoản phí để xem / sửa / in / xuất
+    if (r.kind === 'thue' && r.rent_terms && (!old || ['du_thao', 'tu_choi'].includes(old.status))) {
+      const T = r.rent_terms, u = r.unit_id ? await raw(db, 'unit', r.unit_id) : null;
+      if (r.rent_house == null && r.rent_furn == null) {
+        const house = rentOf({ rent_mode: T.rent_mode, rent_fixed: T.rent_fixed, rent_price: T.rent_price, rent_price_goc: T.rent_price_goc, rent_price_thang: T.rent_price_thang, rent_vat_pct: T.vat }, u);
+        let furn = T.furn; if (furn == null) { const p = r.price_policy_id ? await raw(db, 'price_policy', r.price_policy_id) : null; furn = p?.pkind === 'thue' ? +polFin(p, u?.code) || 0 : 0; }
+        if (house > 0) { r.rent_house = house; r.rent_furn = +furn || 0; }
+        else ctx.warn?.push(`Chính sách cho thuê ${T.code} v${T.version} chưa có giá thuê cho căn ${u?.code || ''}${u && T.rent_mode !== 'co_dinh' && !(+u.area_tt > 0) ? ' (căn chưa có diện tích thông thủy)' : ''} — nhập tiền thuê nhà/tháng`);
+      }
+      Object.assign(r, rentDetail(T, u));
+      if (r.deposit == null) r.deposit = rentDep(T, (+r.rent_house || 0) + (+r.rent_furn || 0) || r.rent) ?? 0;   // không đặt cọc theo chính sách = 0
     }
     if (r.kind === 'thue') {
       if (r.area_tt == null || r.area_floor == null) { const u = await raw(db, 'unit', r.unit_id); r.area_tt ??= u?.area_tt ?? null; r.area_floor ??= u?.area_xd ?? null; }   // diện tích theo căn (sàn = diện tích xây dựng / tim tường)
@@ -2283,6 +2336,16 @@ H.contract = {
     r.new_schedule = null;
     // tiến độ thu tiền HĐMB của HĐ thuê / vay bán căn: tổng các đợt phải khớp Giá trị HĐMB
     if (!['thue', 'vay'].includes(r.kind)) r.sale_on = null;
+    // 16/11/2026: tick «Có tiến độ thu tiền HĐMB» mà chưa có đợt (HĐ tự lập, lưu ngay sau khi tick…) → tự lấy theo chính sách bán đã ban hành áp cho căn; ghi mã + phiên bản chính sách
+    if (['thue', 'vay'].includes(r.kind) && r.sale_on && r.unit_id && (!old || ['du_thao', 'tu_choi'].includes(old.status))) {
+      const sp = await saleSchedPolicy(db, r.unit_id, d10(r.contract_on) || today(), r.reservation_id);
+      if (!(Array.isArray(r.sale_sched) && r.sale_sched.some(x => !x.maint))) {
+        if (sp) { r.sale_sched = await saleSchedRows(db, sp, r.unit_id, d10(r.contract_on) || d10(r.eff_on) || today()); ctx.warn?.push(`Tiến độ thu tiền HĐMB lấy theo chính sách bán hàng ${sp.code} v${sp.version}`); }
+        else ctx.warn?.push('Chưa có chính sách bán hàng đã ban hành có tiến độ thu tiền áp dụng cho căn — chưa lập tiến độ thu tiền HĐMB (không dùng mẫu mặc định)');
+      }
+      r.sale_policy_txt = sp ? `${sp.code} v${sp.version}` : 'Chưa có chính sách bán hàng đã ban hành áp dụng cho căn';
+    }
+    if (!['thue', 'vay'].includes(r.kind) || !r.sale_on) r.sale_policy_txt = null;
     if (['thue', 'vay'].includes(r.kind) && r.sale_on && Array.isArray(r.sale_sched) && r.sale_sched.length) {   // tick «Có tiến độ thu tiền HĐMB»
       if (!(+r.unit_total > 0)) bad('Tiến độ thu tiền HĐMB: nhập Giá trị HĐMB trước', { fields: ['unit_total'] });
       // 16/11/2026: như Lần thanh toán HĐMB — phí bảo trì của căn ở dòng riêng (% các đợt tính trên Giá trị HĐMB − phí bảo trì), đánh dấu đợt bàn giao
@@ -2925,4 +2988,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, noticeHist, noticeUnits, noticeRent, rentPrices, noticeConflict, unitNotes,rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, noticeHist, noticeUnits, noticeRent, rentPrices, noticeConflict, unitNotes, saleSchedPolicy, saleSchedRows, rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

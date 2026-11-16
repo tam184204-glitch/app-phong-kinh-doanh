@@ -636,8 +636,8 @@ function schedEditor(el, rows, { total, base, first, maint, mdot, bgBase, pol, f
     else if (R[i]._days) { delete R[i]._days; R[i].due_on = ''; if (dI) dI.value = ''; }   // nội dung không còn theo ngày ký: bỏ hạn đã tự sổ
   });
   el._set = rows => {   // điền sẵn các đợt (HĐ thuê tự chia kỳ; HĐMB theo tiến độ chính sách — có dòng phí bảo trì thì lấy tên, hạn tự theo đợt)
-    R = rows.map(ntR);
-    if (maint) { const m = R.find(r => r.maint); R = R.filter(r => !r.maint); if (m) MR = { name: m.name, due_on: m.due_on || '', auto: !m.due_on }; }
+    R = rows.map(ntR); R.forEach(r => { if (+r.sign_days > 0) r._days = +r.sign_days; });   // đợt «Sau N ngày» (máy chủ ghi sign_days) đi theo ngày ký khi sửa ngày ký
+    if (maint) { const m = R.find(r => r.maint); R = R.filter(r => !r.maint); if (m) MR = { name: m.name, due_on: m.due_on || '', auto: !m.due_on || m.due_on === R[mIdx()]?.due_on }; }
     draw();
   };   // điền sẵn các đợt (HĐ thuê tự chia kỳ)
   el._get = () => {
@@ -666,9 +666,10 @@ const HD_LAYOUT = [
     ['loan_recv_on', 'loan_tranches', 'int_mode'],   // HĐ vay
     ['eff_on', 'exp_on', 'term_months', 'pay_times'],   // HĐ thuê (BRAVO) · HĐ vay: bắt đầu tính lãi / đáo hạn / thời hạn vay
     ['int_period', 'principal_method', 'loan_rate'], ['link_ids'],   // loan_rate = «Cách tính lãi theo hợp đồng (%/năm)»
+    ['rent_unit_price', 'rent_unit_l', 'rent_cycle_txt'], ['rent_promo_txt', 'rent_fees_txt'],   // 16/11/2026: HĐ thuê — chi tiết giá thuê theo chính sách cho thuê (chỉ xem)
     ['rent_house', 'rent_furn', 'rent', 'value', 'deposit', 'cn', 'vbtt_hold'], ['sale_price', 'plan_hdmb', 'prev_id', 'next_id']] },   // bán qua HĐ vay / HĐ thuê; HĐMB nối tiếp   // HĐ thuê: tiền thuê/tháng cạnh tổng tiền thuê; mua bán không có ô tiền thuê
   { t: 'Lần thanh toán', rows: [['new_schedule'], ['pay_method']] },
-  { t: 'Tiến độ thu tiền HĐMB', rows: [['sale_on'], ['sale_sched']] },   // tick «Có tiến độ thu tiền HĐMB» → sổ ra bảng   // HĐ thuê / vay bán căn (07/11/2026)
+  { t: 'Tiến độ thu tiền HĐMB', rows: [['sale_on', 'sale_policy_txt'], ['sale_sched']] },   // tick «Có tiến độ thu tiền HĐMB» → sổ ra bảng   // HĐ thuê / vay bán căn (07/11/2026)
   { t: 'Lịch ký', cols: 4, rows: [['plan_sign', 'sign_place', 'sign_status', 'signed_on']] },
   { t: 'Tình trạng vay vốn', cols: 4, rows: [['loan_status', 'loan_bank', 'loan_doc3']] },
 ];
@@ -996,8 +997,11 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   if (sch) schedEditor(sch, rec.new_schedule || [], { nt: rec.kind === 'hoan_thien' || preset.kind === 'hoan_thien', finish: () => ent === 'contract' ? (form.elements.finish_value ? readField(form, E.fields.find(f => f.k === 'finish_value')) : rec.finish_value) || 0 : 0, bgBase: () => rec._bg_base, mdot: () => form._mdot ?? rec.maint_dot ?? 3, maint: () => ent === 'contract' && ['hdmb', 'thue_mua'].includes(form.elements.kind?.value ?? rec.kind) ? (form.elements.maint_fee ? readField(form, E.fields.find(f => f.k === 'maint_fee')) : rec.maint_fee) || 0 : null, total: () => ent === 'contract' ? (form.elements.value ? readField(form, E.fields.find(f => f.k === 'value')) : rec.value) || 0 : readField(form, E.fields.find(f => f.k === 'value_after')) || rec.value_before || 0, first: ent === 'contract' ? () => { const kd = $('[name=kind]', form)?.value ?? rec.kind; const fk = kd === 'thue' ? 'eff_on' : kd === 'vay' && form.elements.loan_recv_on?.value ? 'loan_recv_on' : 'contract_on'; return form.elements[fk] ? readField(form, E.fields.find(f => f.k === fk)) : rec[fk]; } : null });
   const ssch = $('[data-ssched]', form);   // tiến độ thu tiền HĐMB của HĐ thuê / vay bán căn: % theo Giá trị HĐMB
   if (ssch) {   // 16/11/2026: như «Lần thanh toán» HĐMB — chọn đợt gợi ý nội dung, hạn theo ngày ký HĐ, dòng phí bảo trì (theo căn), cột đợt bàn giao
-    let sm = null;
-    const getM = async () => { const u = form.elements.unit_id?.value || rec.unit_id; sm = u ? +((await api('GET', `/api/e/unit/${u}`)).row?.maint_fee || 0) : 0; ssch._redraw?.(); };
+    let sm = null, ut = null;
+    const getM = async () => { const u = form.elements.unit_id?.value || rec.unit_id, row = u ? (await api('GET', `/api/e/unit/${u}`)).row : null; sm = +(row?.maint_fee || 0); ut = row?.total_price != null ? +row.total_price : null; utFill(); ssch._redraw?.(); };
+    // 16/11/2026: bật «Có tiến độ thu tiền HĐMB» mà Giá trị HĐMB còn trống (HĐ thuê thuần không mang giá bán) → điền theo Tổng giá căn hộ − tiền giảm giá
+    const utFill = () => { const on = form.elements.sale_on ? form.elements.sale_on.checked : rec.sale_on, el = form.elements.unit_total;
+      if (on && el && !el.value.trim() && ut > 0) { el.value = fm(ut - (+readField(form, { k: 'discount', t: 'money' }) || 0)); ssch._redraw?.(); } };
     // 16/11/2026: nút «Lấy tiến độ theo chính sách» nằm cùng hàng với các nút mẫu và «Ngày gốc», phía trên bảng (không tách sang cột trái)
     const bar = document.createElement('div'); bar.className = 'ss-pol'; bar.hidden = true;
     bar.innerHTML = `<button type="button" class="btn sm">${ico('fa-wand-magic-sparkles')} Lấy tiến độ theo chính sách</button><span class="small muted"></span>`;
@@ -1007,20 +1011,27 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     getM().catch(() => {});
     form.addEventListener('change', e => { if (e.target.name === 'unit_id') getM().catch(() => {}); else if (['contract_on', 'unit_total', 'discount'].includes(e.target.name)) ssch._redraw?.(); });
     form.addEventListener('input', e => { if (e.target.name === 'contract_on') ssch._redraw?.(); });
-    // 14/11/2026: HĐ thuê / vay bán căn — tiến độ thu tiền HĐMB sổ theo tiến độ của chính sách bán hàng áp cho căn (bảng trống thì tự điền; nút để lấy lại)
+    // 14/11/2026: HĐ thuê / vay bán căn — tiến độ thu tiền HĐMB sổ theo tiến độ của chính sách BÁN đã ban hành áp cho căn (bảng trống thì tự điền; nút để lấy lại).
+    // 16/11/2026: máy chủ trả sẵn các đợt (hạn theo ngày ký, đợt bàn giao / Giấy chứng nhận theo thông báo đã phát hành, phí bảo trì); không có chính sách → cảnh báo, không dùng mẫu mặc định
     let sp = null, auto = false;
-    const ssRows = d => { const has = x => x.days != null && x.days !== '', ns = d.pay_sched.filter(x => !x.maint), m = d.pay_sched.find(x => x.maint);
-      return [...ns.map(x => ({ name: x.name, pct: x.pct, amount: null, due_on: '', ...(has(x) && +x.days ? { _days: +x.days } : {}), ...(x.bg ? { bg: true, bg_days: x.bg_days ?? null } : {}) })), ...(m ? [{ name: m.name, maint: true }] : [])]; };
-    const ssFill = (force) => { if (!sp || (id && !['du_thao', 'tu_choi'].includes(rec.status))) return; ssch._set(ssRows(sp)); auto = true; toast(`Tiến độ thu tiền HĐMB sổ theo chính sách ${sp.sched_policy}`); };
+    const polBox = () => $('[data-f="sale_policy_txt"] .ro', form);
+    const ssFill = (force) => {
+      if (!sp?.rows?.length || (id && !['du_thao', 'tu_choi'].includes(rec.status))) return;
+      if (!force && ssch._get().some(x => !x.maint)) return;   // đã có đợt (đã lưu / đang nhập): giữ nguyên — muốn lấy lại thì bấm nút
+      ssch._set(sp.rows); auto = true; if (polBox()) polBox().textContent = sp.policy; toast(`Tiến độ thu tiền HĐMB lấy theo chính sách bán hàng ${sp.policy}`);
+    };
     const ssLoad = async () => {
-      const u = form.elements.unit_id?.value || rec.unit_id, k = form.elements.kind?.value ?? rec.kind; sp = null; bar.hidden = true;
-      if (!u || !['thue', 'vay'].includes(k)) return;
-      const d = await api('GET', `/api/contract-prefill/${u}`); if (!d.pay_sched?.length) return;
-      sp = d; $('span', bar).textContent = `Chính sách ${d.sched_policy}: ${d.pay_sched.filter(x => !x.maint).length} đợt`;
+      const u = form.elements.unit_id?.value || rec.unit_id, k = form.elements.kind?.value ?? rec.kind, span = $('span', bar), btn = $('button', bar); sp = null;
+      if (!u || !['thue', 'vay'].includes(k)) { span.textContent = ''; return; }
+      const on0 = form.elements.contract_on ? readField(form, E.fields.find(f => f.k === 'contract_on')) : rec.contract_on;
+      const d = await api('GET', `/api/sale-sched/${u}?on=${on0 || ''}&res=${form.elements.reservation_id?.value || rec.reservation_id || ''}`);
+      btn.disabled = !d.rows?.length; span.classList.toggle('neg', !d.rows?.length);
+      if (!d.rows?.length) { span.textContent = 'Chưa có chính sách bán hàng đã ban hành có tiến độ thu tiền cho căn — không tự dùng mẫu mặc định'; return; }
+      sp = d; span.textContent = `Chính sách bán hàng ${d.policy}: ${d.rows.filter(x => !x.maint).length} đợt`;
       const on = form.elements.sale_on ? form.elements.sale_on.checked : rec.sale_on; if (on) ssFill(false);
     };
     $('button', bar).onclick = () => { if (ssch._get().some(x => !x.maint) && !auto && !confirm('Thay các đợt đang nhập bằng tiến độ của chính sách?')) return; ssFill(true); };
-    form.addEventListener('change', e => { if (['unit_id', 'kind'].includes(e.target.name)) ssLoad().catch(() => {}); else if (e.target.name === 'sale_on' && e.target.checked) ssFill(false); });
+    form.addEventListener('change', e => { if (['unit_id', 'kind'].includes(e.target.name)) ssLoad().catch(() => {}); else if (e.target.name === 'sale_on' && e.target.checked) { utFill(); ssFill(false); } });
     ssLoad().catch(() => {});
   }
   htp?.rentDraw(); htp?.loanDraw?.();
