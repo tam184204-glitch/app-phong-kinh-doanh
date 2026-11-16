@@ -2092,7 +2092,7 @@ async function listView(main, ent, params = {}) {
   const grp = () => KN ? ({ b: 'ban', m: 'mua', t: 'thue' }[S.ht] || '') : rsKinds ? (S.ht === 't' ? 'thue' : 'mua') : hdKinds && S.ht ? ({ t: 'thue', v: 'vay' }[S.ht] || 'hoan_thien') : S.group;
   // Điều kiện lọc (như BRAVO) ở danh sách Hợp đồng căn hộ chung cư: lọc ngày theo ô chọn, dự án, phân loại (tòa); «Xem …» bật / tắt nhóm cột — theo từng loại HĐ
   const FV = 'ctg-kd-hd-cot';   // cột đang tick theo loại HĐ (localStorage)
-  if (hdKinds && !S.flt) { let view = {}; try { view = JSON.parse(localStorage.getItem(FV) || '{}') || {}; } catch { } S.flt = { v: {}, view, hide: false }; }   // v[loại HĐ] = { lk_/fr_/to_/mn_/mx_/f_<trường>: giá trị }
+  if (hdKinds && !S.flt) { let view = {}; try { view = JSON.parse(localStorage.getItem(FV) || '{}') || {}; } catch { } S.flt = { v: {}, view, hide: true }; }   // 17/11/2026 (Tâm): khung Điều kiện lọc mặc định thu gọn — bấm nút «Điều kiện lọc» mới mở   // v[loại HĐ] = { lk_/fr_/to_/mn_/mx_/f_<trường>: giá trị }
   const colOn = (k, sec) => { const v = S.flt?.view[grp()]?.[k]; return v == null ? sec.def : !!v; };
   const visSecs = () => { const L = E.lists?.[grp()]; return hdKinds && L?.secs ? L.secs.map(x => ({ ...x, cols: x.cols.filter(k => colOn(k, x)) })).filter(x => x.cols.length) : null; };
   const fltV = () => (S.flt.v[grp()] ||= {});
