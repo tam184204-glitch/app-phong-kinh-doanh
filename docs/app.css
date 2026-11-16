@@ -1951,3 +1951,6 @@ label.tplr { display: flex; gap: 8px; align-items: center; padding: 7px 0; }
 /* 15/11/2026: ô ngày chữ + nút lịch (addPicker) trong bảng / thanh lọc */
 .dwrap-in { display: inline-block; position: relative; width: 100%; } .sc-per .dwrap-in { width: 150px; } .dwrap-in > input[type=text] { padding-right: 34px !important; }
 .dwrap-in button { top: 50% !important; transform: translateY(-50%); height: 28px !important; }
+/* 17/11/2026: Hồ sơ & lưu trữ theo căn chỉ còn In bộ hồ sơ — bỏ menu trái của Kho */
+.vt.vt-one{grid-template-columns:minmax(0,1fr)} .vt.vt-one .vt-side{display:none}
+.hsb-u .s.ni{color:var(--amber-d,#C98210);font-weight:700}

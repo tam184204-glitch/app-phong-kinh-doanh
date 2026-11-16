@@ -3163,7 +3163,7 @@ const vtSort = (rows, sort) => [...rows].sort(sort === 'date' ? (a, b) => String
 
 V.vault = async (main, params = {}) => {
   const f = filt(), s = ST.vault ||= { tab: 'bo', ent: '', rec: '', sort: 'name', view: 'grid' };
-  if (params.tab) s.tab = params.tab;
+  s.tab = 'bo';   // 17/11/2026 (Tâm): màn chỉ còn «In bộ hồ sơ» — bỏ Hồ sơ dự án / Gần đây / Có gắn sao / Thùng rác (tệp đã lưu vẫn xem ở hợp đồng / khách gắn với tệp)
   let rows = [], q = '';
   const load = async () => { rows = await api('GET', '/api/vault?' + qsOf({ project: f.project, trash: s.tab === 'trash' ? 1 : '' })); };
   const hit = r => [r.name, r.unit, r.customer, r.label].some(x => String(x || '').toLowerCase().includes(q));
@@ -3272,6 +3272,7 @@ V.vault = async (main, params = {}) => {
     <section class="vt-main" id="vtM"><div class="vt-q">${ico('fa-magnifying-glass')}<input type="text" id="vtQ" aria-label="Tìm trong Kho hồ sơ" placeholder="Tìm tên tệp, mã căn, khách hàng…"></div>
     <div class="vt-top"><div class="vt-crumbs" id="vtC"></div><button class="btn pri" id="vtUp">${ico('fa-upload')} Tải lên</button><select id="vtS" aria-label="Sắp xếp"><option value="name">Tên</option><option value="date">Mới nhất</option><option value="size">Dung lượng</option></select><div class="vt-seg" id="vtV"><button data-v="grid" title="Dạng lưới" aria-label="Dạng lưới">${ico('fa-table-cells-large')}</button><button data-v="list" title="Dạng danh sách" aria-label="Dạng danh sách">${ico('fa-list')}</button></div></div>
     <div id="vtB"></div></section></div></div>`;
+  $('.vt', main).classList.add('vt-one'); $('#vtP', main).style.display = 'none';   // chỉ còn In bộ hồ sơ: ẩn menu Kho + ô lọc dự án của Kho (màn in có ô chọn dự án riêng)
   $('#vtP', main).onchange = run(async e => { f.project = e.target.value; Object.assign(s, { ent: '', rec: '' }); await refresh(); });
   $('#vtQ', main).oninput = debounce(e => { q = e.target.value.trim().toLowerCase(); draw(); }, 200);
   $('#vtS', main).onchange = e => { s.sort = e.target.value; draw(); };
@@ -3555,7 +3556,7 @@ async function batchPanel(main, { openOne } = {}) {
   const need = u => u.cust && u.current && !u.printed;
   const hit = u => { const k = fold(S.q).trim(); if (!k) return true; return fold(`${u.code} ${u.cust} ${u.kcode}`).includes(k) || fold(u.code.split('-').pop()).startsWith(k); };
   const inView = u => (S.view === 'all' || (S.view === 'can_in' ? need(u) : !!u.cust)) && hit(u);
-  const cell = u => `<button class="hsb-u${S.sel.has(u.code) ? ' on' : ''}${u.cust ? '' : ' off'}${need(u) ? ' need' : ''}" data-u="${esc(u.code)}" style="--c:${stepC(u.step)}" title="${esc(u.code)}${u.cust ? ` · ${u.cust}${u.kcode ? ' (' + u.kcode + ')' : ''} · bước ${stepL(u.step)}${u.printed ? ' · đã in ' + dmy(u.printed) : ' · chưa in'}` : ' · chưa có khách'}"><span class="c">${esc(u.code.split('-').pop())}${u.printed ? ico('fa-check', 'pr') : ''}${(S.cp.get(u.code) || 1) > 1 ? `<em>×${S.cp.get(u.code)}</em>` : ''}</span><span class="n">${esc(u.cust ? u.cust.split(' ').slice(-2).join(' ') : '—')}</span>${u.cust ? `<span class="s">${esc(stepL(u.step) || '')}${u.printed ? '' : ' · chưa in'}</span>` : ''}</button>`;
+  const cell = u => `<button class="hsb-u${S.sel.has(u.code) ? ' on' : ''}${u.cust ? '' : ' off'}${need(u) ? ' need' : ''}" data-u="${esc(u.code)}" style="--c:${stepC(u.step)}" title="${esc(u.code)}${u.cust ? ` · ${u.cust}${u.kcode ? ' (' + u.kcode + ')' : ''} · bước ${stepL(u.step)}${u.printed ? ' · đã in ' + dmy(u.printed) : ' · chưa in'}` : ' · chưa có khách'}"><span class="c">${esc(u.code.split('-').pop())}${u.printed ? ico('fa-check', 'pr') : ''}${(S.cp.get(u.code) || 1) > 1 ? `<em>×${S.cp.get(u.code)}</em>` : ''}</span><span class="n">${esc(u.cust ? u.cust.split(' ').slice(-2).join(' ') : '—')}</span>${u.cust ? (u.printed || !u.current ? `<span class="s">${esc(stepL(u.step) || '')}</span>` : '<span class="s ni">Chưa in</span>') : ''}</button>`;
   const drawUnits = () => {
     if (!units.length) { U.innerHTML = '<div class="empty">Dự án chưa có căn hộ.</div>'; return; }
     const tws = [...new Map(units.map(u => [u.tower, u.tname]))];
