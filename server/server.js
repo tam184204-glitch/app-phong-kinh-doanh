@@ -212,8 +212,13 @@ R('GET', '/api/e/:ent/:id', async (req, res, u, p) => send(res, 200, await C.get
 R('POST', '/api/e/:ent', async (req, res, u, p, qs) => { const b = await readJson(req);
   { const miss = (M.E[p.ent]?.fields || []).filter(f => f.reqForm && (b[f.k] == null || b[f.k] === ''));   // phiếu khách hàng: khai báo đủ thông tin (07/11/2026)
     if (miss.length) bad('Thiếu thông tin bắt buộc: ' + miss.map(f => f.l).join(', '), { fields: miss.map(f => f.k) }); }
+  if (qs.submit === '1' && qs.check !== '1') return send(res, 200, await saveSubmit(db => C.create(p.ent, b, u, { copyOf: +qs.copy_of || 0, db }), p.ent, u));
   send(res, 200, await C.create(p.ent, b, u, { check: qs.check === '1', copyOf: +qs.copy_of || 0 })); });
-R('PUT', '/api/e/:ent/:id', async (req, res, u, p, qs) => { const b = await readJson(req); send(res, 200, await C.update(p.ent, p.id, b, u, { check: qs.check === '1' })); });
+R('PUT', '/api/e/:ent/:id', async (req, res, u, p, qs) => { const b = await readJson(req);
+  if (qs.submit === '1' && qs.check !== '1') return send(res, 200, await saveSubmit(db => C.update(p.ent, p.id, b, u, { db }), p.ent, u));
+  send(res, 200, await C.update(p.ent, p.id, b, u, { check: qs.check === '1' })); });
+// 16/11/2026: «Lưu và trình duyệt» — lưu + tạo đề nghị duyệt trong CÙNG một giao dịch: trình không được (thiếu điều kiện) thì không lưu gì, form giữ nguyên để sửa
+async function saveSubmit(save, ent, u) { return tx(async db => { const r = await save(db), s = await C.submit(ent, r.row.id, u, { db }); return { ...r, row: s.row, submitted: true }; }); }
 R('DELETE', '/api/e/:ent/:id', async (req, res, u, p) => send(res, 200, await C.remove(p.ent, p.id, u)));
 R('POST', '/api/e/:ent/:id/submit', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await C.submit(p.ent, p.id, u, b)); });
 R('POST', '/api/e/:ent/:id/approve', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await C.approve(p.ent, p.id, u, { ok: !!b.ok, comment: b.comment })); });

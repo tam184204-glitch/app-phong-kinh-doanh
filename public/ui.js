@@ -1378,17 +1378,21 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   const errBox = $('#ferr', m.el);
   const showErr = (e) => { errBox.innerHTML = `<div class="errbar">${ico('fa-triangle-exclamation')} ${esc(e.message)}</div>`; $$('.fld.err', form).forEach(x => x.classList.remove('err')); (e.fields || []).forEach(k => $(`[data-f="${k}"]`, form)?.classList.add('err')); errBox.scrollIntoView({ block: 'nearest' }); };
   const showWarn = w => { if (w?.length) errBox.innerHTML = `<div class="warnbar">${ico('fa-circle-exclamation')}<div>${w.map(esc).join('<br>')}</div></div>`; };
-  const send = async (check) => {
+  const send = async (check, sub) => {   // sub: lưu + trình duyệt trong cùng 1 giao dịch (trình lỗi thì không lưu)
     const data = collect();
     for (const k of skip) if (rec[k] !== undefined && !(k in data)) data[k] = rec[k];
     for (const f of fields) if (!isShown(f, { ...rec, ...data }) && f.k in data && !f.ro) data[f.k] = null;
-    return id ? api('PUT', `/api/e/${ent}/${id}${check ? '?check=1' : ''}`, data) : api('POST', `/api/e/${ent}?${check ? 'check=1&' : ''}${copyOf ? 'copy_of=' + copyOf : ''}`, data);
+    const qp = [check && 'check=1', sub && 'submit=1', !id && copyOf && 'copy_of=' + copyOf].filter(Boolean).join('&');
+    return id ? api('PUT', `/api/e/${ent}/${id}${qp ? '?' + qp : ''}`, data) : api('POST', `/api/e/${ent}?${qp}`, data);
   };
   const save = async (andSubmit) => {
     if (htp?.filled() && +readField(form, fields.find(x => x.k === 'finish_value') || {}) > 0) { htp.show('mb'); return showErr(new Error('Giá trị hoàn thiện đã nhập ở tab Hoàn thiện căn hộ — để trống ô này ở hợp đồng mua bán')); }
     const btns = $$('.mf .btn', m.el); btns.forEach(b => b.disabled = true);
+    // 16/11/2026: «Lưu và trình duyệt» = lưu + tạo đề nghị duyệt cùng lúc (thiếu điều kiện trình thì báo lỗi, KHÔNG để lại bản nháp);
+    // hợp đồng có tab hoàn thiện / form có tệp đính kèm chọn ngay trên form thì vẫn lưu trước rồi mới trình (tệp phải có trước khi trình)
+    const atomic = andSubmit && !htp && !fields.some(f => f.upload && $(`[name="${f.k}"]`, form)?.files?.length);
     try {
-      const r = await send(false);
+      const r = await send(false, atomic);
       if (htp) try {   // hợp đồng mua bán đã lưu: hoàn thiện lỗi thì mở lại form đúng bản vừa lưu, giữ số vừa nhập
         const h = htp.snap(), c = r.row;
         let hid = htp.id;
@@ -1408,7 +1412,8 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
       }
       // tệp đính kèm chọn ngay trong form (vd. Tệp nguồn PDF) → lưu vào mục Tệp của bản ghi
       for (const f of fields.filter(x => x.upload)) for (const file of $(`[name="${f.k}"]`, form)?.files || []) { const fd = new FormData(); fd.append('kind', 'nguon'); fd.append('file', file, file.name); await api('POST', `/api/files/${ent}/${r.row.id}`, fd); }
-      if (andSubmit) await api('POST', `/api/e/${ent}/${r.row.id}/submit`, {});
+      if (andSubmit && !atomic) try { await api('POST', `/api/e/${ent}/${r.row.id}/submit`, {}); }
+        catch (e3) { m.close(); onSaved ? onSaved(r.row) : refresh(); toast(`Đã lưu ${E.one} (bản nháp) nhưng chưa trình duyệt được: ${e3.message}`, true); return r.row; }   // đã lưu rồi: đóng form để không bấm lại tạo trùng
       m.close(); toast((andSubmit ? 'Đã lưu và trình duyệt' : 'Đã lưu') + (r.warnings?.length ? ' — lưu ý: ' + r.warnings.join('; ') : ''), !!r.warnings?.some(w => /thông báo mở bán/.test(w)));
       onSaved ? onSaved(r.row) : refresh();
       return r.row;
@@ -2119,11 +2124,18 @@ async function listView(main, ent, params = {}) {
         toast(`Đã xóa ${ok}${errs.length ? ` · lỗi ${errs.length}: ${errs.slice(0, 2).join('; ')}` : ''}`, !!errs.length);
         S.sel.clear(); updateBadges(); return load();
       }
+      // 16/11/2026: theo trạng thái từng dòng — Duyệt / Từ chối chỉ cho bản đang chờ duyệt (bản nháp: báo «chưa được trình duyệt»), Trình duyệt chỉ cho bản nháp / bị trả lại
+      const One = E.one.charAt(0).toUpperCase() + E.one.slice(1), stOf = id => S.rowSt?.get(id), sub = bb.dataset.b === 'submit';
+      const direct = bb.dataset.b === 'ok' && (E.acts || []).some(a => a.k === 'approve_direct');   // hợp đồng: dự thảo được «Duyệt hợp đồng» trực tiếp
+      const okSt = s => s === undefined || (sub ? E.flow.submit.includes(s) : s === 'cho_duyet' || (direct && E.flow.submit.includes(s)));
+      const ids = [...S.sel].filter(id => okSt(stOf(id))), drafts = [...S.sel].filter(id => E.flow.submit.includes(stOf(id))).length, skip = S.sel.size - ids.length;
+      if (!ids.length) return toast(sub ? `${S.sel.size} ${E.one} đã chọn đều đã trình / đã duyệt — không cần trình lại` : drafts ? `${One} chưa được trình duyệt. Vui lòng trình duyệt trước.` : `Không có ${E.one} nào đang chờ duyệt trong các dòng đã chọn`, true);
+      const note = skip ? ` (bỏ qua ${skip} dòng ${sub ? 'đã trình / đã duyệt' : drafts ? 'chưa được trình duyệt' : 'không ở trạng thái chờ duyệt'})` : '';
       let comment = null;
-      if (bb.dataset.b === 'no') { comment = await ask('Từ chối', `Từ chối ${S.sel.size} bản ghi?`, { reason: 1, reasonReq: 1, danger: 1, okLabel: 'Từ chối' }); if (!comment) return; }
-      else if (!await ask(bb.dataset.b === 'ok' ? 'Duyệt hàng loạt' : 'Trình duyệt hàng loạt', `Thực hiện cho ${S.sel.size} bản ghi đã chọn?`)) return;
-      const r = await api('POST', `/api/bulk/${ent}/${bb.dataset.b === 'submit' ? 'submit' : 'approve'}`, { ids: [...S.sel], ok: bb.dataset.b === 'ok', comment: comment === true ? null : comment });
-      toast(`Thành công ${r.ok}${r.errors.length ? ` · lỗi ${r.errors.length}: ${r.errors.slice(0, 2).map(x => '#' + x.id + ' ' + x.msg).join('; ')}` : ''}`, !!r.errors.length);
+      if (bb.dataset.b === 'no') { comment = await ask('Từ chối', `Từ chối ${ids.length} bản ghi?${note}`, { reason: 1, reasonReq: 1, danger: 1, okLabel: 'Từ chối' }); if (!comment) return; }
+      else if (!await ask(bb.dataset.b === 'ok' ? 'Duyệt hàng loạt' : 'Trình duyệt hàng loạt', `Thực hiện cho ${ids.length} bản ghi${note}?`)) return;
+      const r = await api('POST', `/api/bulk/${ent}/${sub ? 'submit' : 'approve'}`, { ids, ok: bb.dataset.b === 'ok', comment: comment === true ? null : comment });
+      toast(`Thành công ${r.ok}${r.errors.length ? ` · lỗi ${r.errors.length}: ${r.errors.slice(0, 2).map(x => '#' + x.id + ' ' + x.msg).join('; ')}` : ''}${note}`, !!r.errors.length);
       S.sel.clear(); updateBadges(); return load();
     }
     if (t.closest('[data-ret], .ret-fi a')) return;
@@ -2149,7 +2161,7 @@ async function listView(main, ent, params = {}) {
   $('#mine', main) && ($('#mine', main).onchange = e => { S.mine = e.target.checked ? '1' : ''; load(); });
   await load();
 }
-function refresh(quiet) { if (ST.reload) ST.reload().catch(e => !quiet && toast(e.message, true)); }
+function refresh(quiet) { if (ST.reload) ST.reload().catch(e => !quiet && toast(e.message, true)); if (typeof updateBadges === 'function') Promise.resolve().then(updateBadges).catch(() => {}); }   // sau lưu / trình / duyệt: danh sách + số đếm tab + số chờ duyệt ở menu cập nhật ngay
 // khách gặp trực tiếp / gọi Hotline: số điện thoại đã có hồ sơ thì ghi nhật ký vào hồ sơ cũ, chưa có thì tự tạo khách
 async function leadModal(after) {
   const L = M.ents.contact_log.fields, lf = k => L.find(f => f.k === k);

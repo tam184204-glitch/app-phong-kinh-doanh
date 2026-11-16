@@ -1401,10 +1401,19 @@ const SN_L = r => r?.deal === 'thue' ? 'cho thuê' : 'mở bán';
 // 17/11/2026: đơn giá thuê từng căn của thông báo cho thuê — chính sách cho thuê của thông báo (nếu có căn), không có thì chính sách cho thuê đã phát hành, còn hạn, duyệt gần nhất có căn;
 // căn chưa có chính sách cho thuê = «Chưa thiết lập» (không lấy giá bán thay). rent_price = đơn giá (đ/m²/tháng theo vị trí căn, hoặc đ/căn/tháng), rent_month = tiền thuê/tháng (+ nội thất)
 const rentUnitPrice = (p, u) => !p ? null : p.rent_mode === 'co_dinh' ? (+p.rent_fixed || null) : (u.position === 'goc' && +p.rent_price_goc) || (u.position === 'thang' && +p.rent_price_thang) || +p.rent_price || null;
+// chính sách cho thuê đã phát hành, còn hạn của dự án — duyệt gần nhất trước
+const rentPolicies = (db, projectId) => db.q(`SELECT p.*, (SELECT max(a.decided_at) FROM kd_approval a WHERE a.ent = 'price_policy' AND a.rec_id = p.id AND a.status = 'da_duyet') appr_at FROM kd_price_policy p
+    WHERE p.status = 'phat_hanh' AND p.pkind = 'thue' AND $1 = ANY(p.project_ids) AND p.end_on >= $2 ORDER BY appr_at DESC NULLS LAST, p.start_on DESC, p.version DESC, p.id DESC`, [+projectId, today()]);
+// 16/11/2026: thông báo cho thuê chưa chọn chính sách → tự lấy chính sách cho thuê đã phát hành, còn hạn, áp dụng cho nhiều căn của thông báo nhất
+// (cũng là chính sách đang dùng để tính giá thuê trên thông báo); không có chính sách nào áp cho căn đã chọn → null
+async function autoRentPolicy(db, r) {
+  const us = await noticeUnits(db, r); let best = null, bn = 0;
+  for (const p of await rentPolicies(db, r.project_id)) { const n = us.filter(u => polHas(p, u.code, u.b)).length; if (n > bn) { best = p; bn = n; } }
+  return best && { p: best, n: bn, of: us.length };
+}
 async function noticeRent(db, projectId, policyId, units) {
   const p0 = policyId ? await raw(db, 'price_policy', +policyId) : null;
-  const ps = await db.q(`SELECT p.*, (SELECT max(a.decided_at) FROM kd_approval a WHERE a.ent = 'price_policy' AND a.rec_id = p.id AND a.status = 'da_duyet') appr_at FROM kd_price_policy p
-    WHERE p.status = 'phat_hanh' AND p.pkind = 'thue' AND $1 = ANY(p.project_ids) AND p.end_on >= $2 ORDER BY appr_at DESC NULLS LAST, p.start_on DESC, p.version DESC, p.id DESC`, [+projectId, today()]);
+  const ps = await rentPolicies(db, projectId);
   return units.map(u => {
     const p = (p0?.pkind === 'thue' && polHas(p0, u.code, u.b) ? p0 : null) || ps.find(x => polHas(x, u.code, u.b)) || null, v = rentUnitPrice(p, u);
     // giá thuê nhà/tháng (đồng/căn/tháng — chính sách theo m² thì quy đổi theo diện tích thông thủy), giá thuê nội thất/tháng (không thuê nội thất = 0), tổng cộng/tháng
@@ -1519,11 +1528,20 @@ H.sale_notice = {
       if (!p || p.pkind !== 'thue') bad('Chọn chính sách loại «Cho thuê»', { fields: ['policy_id'] });
       if (!(p.project_ids || []).map(Number).includes(+r.project_id)) bad('Chính sách cho thuê không áp dụng cho dự án đã chọn', { fields: ['policy_id'] });
       if (p.status !== 'phat_hanh') bad(`Chính sách cho thuê ${p.code} chưa phát hành`, { fields: ['policy_id'] });
-    } else warn?.push('Thông báo cho thuê chưa chọn chính sách cho thuê áp dụng — chọn trước khi trình duyệt');
+    } else {   // 16/11/2026: chưa chọn → tự lấy chính sách cho thuê đã phát hành áp dụng cho các căn đã chọn
+      const a = await autoRentPolicy(db, r);
+      if (a) { r.policy_id = a.p.id; warn?.push(`Tự chọn chính sách cho thuê ${a.p.code} v${a.p.version} (áp dụng cho ${a.n}/${a.of} căn)`); }
+      else warn?.push('Chưa có chính sách cho thuê đã phát hành áp dụng cho các căn đã chọn — phát hành chính sách cho thuê trước khi trình duyệt');
+    }
   },
-  async onSubmit(r, { db }) {
+  async onSubmit(r, { db, user }) {
     if (!(await noticeUnits(db, r)).length) bad(`Đợt ${SN_L(r)} chưa có căn nào`);
-    if (r.deal === 'thue' && !r.policy_id) bad('Thông báo cho thuê: chọn chính sách cho thuê áp dụng (đã phát hành) trước khi trình duyệt', { fields: ['policy_id'] });
+    if (r.deal === 'thue' && !r.policy_id) {   // thông báo lưu trước khi có tự chọn chính sách: chọn lúc trình
+      const a = await autoRentPolicy(db, r);
+      if (!a) bad('Thông báo cho thuê: chưa có chính sách cho thuê đã phát hành áp dụng cho các căn đã chọn — phát hành chính sách cho thuê (hoặc chọn chính sách) trước khi trình duyệt', { fields: ['policy_id'] });
+      await sys(db, 'sale_notice', r.id, { policy_id: a.p.id }, user, 'tu_chon_chinh_sach', `Tự chọn chính sách cho thuê ${a.p.code} v${a.p.version} khi trình duyệt (áp dụng cho ${a.n}/${a.of} căn)`);
+      r.policy_id = a.p.id;
+    }
     await noticeConflict(db, r);
   },
   async onApprove(r, ok, { db }) { if (ok) await noticeConflict(db, r); },   // phát hành: kiểm tra lại

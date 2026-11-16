@@ -510,7 +510,12 @@ async function approve(entKey, id, user, { ok, comment, db: outer } = {}) {
   const run = async db => {
     const rec = notFound(await raw(db, entKey, +id, true));
     const open = await db.one("SELECT * FROM kd_approval WHERE ent = $1 AND rec_id = $2 AND status = 'cho_duyet' FOR UPDATE", [entKey, rec.id]);
-    if (!open || rec[fl.field] !== 'cho_duyet') bad('Không có đề nghị nào đang chờ duyệt');
+    if (!open || rec[fl.field] !== 'cho_duyet') {   // 16/11/2026: báo rõ lý do — bản nháp chưa trình / đã duyệt rồi
+      const One = e.one.charAt(0).toUpperCase() + e.one.slice(1);
+      if (fl.submit.includes(rec[fl.field])) bad(`${One} chưa được trình duyệt. Vui lòng trình duyệt trước.`);
+      if (rec[fl.field] === fl.approve.ok) bad(`${One} đã được duyệt`);
+      bad('Không có đề nghị nào đang chờ duyệt');
+    }
     if (open.requested_by === user.id && user.role !== 'admin' && !SELF_OK && !apprOk(e, user)) deny('Không tự phê duyệt đề nghị do mình trình (tách nhiệm)');
     if (!canApprove(e, rec, user, open)) deny('Bạn không phải cấp phê duyệt của đề nghị này');
     if (!ok && !comment) bad('Từ chối cần ghi rõ lý do');
