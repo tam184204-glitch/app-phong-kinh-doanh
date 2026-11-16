@@ -1236,10 +1236,19 @@ const bgDaysIn = s => { const m = /(\d+)\s*(?:\([^)]*\)\s*)?ngày[^.;]{0,60}?(?:
 // 17/11/2026: đợt nhắc «bàn giao Giấy chứng nhận» thuộc Thông báo bàn giao GCN — không tự nhận là đợt bàn giao căn hộ
 const bgPickInst = list => { const m = list.filter(x => x.is_bg); if (m.length) return { items: m, how: 'mark' }; const t = list.find(x => !x.is_maint && !x.is_gcn && BG_RE.test(x.name || '') && !GCN_RE.test(x.name || '')); return t ? { items: [t], how: 'text' } : { items: [], how: '' }; };
 const bgBase = r => r.pay_from === 'thong_bao' ? r.notice_on : r.handover_on;
-// thông báo bàn giao đã phát hành (mới nhất) có căn này
-async function bgNoticeOf(db, unitId) {
+// thông báo bàn giao đang áp dụng cho căn = thông báo đã phát hành MỚI NHẤT có căn này (17/11/2026: theo thời điểm phát hành — trước theo ngày bàn giao lớn nhất);
+// căn được đưa vào thông báo mới (phát hành lại) thì theo thông báo mới, thông báo cũ giữ để tra cứu; bản nháp / chờ duyệt chưa thay thế
+const PUB_AT = ent => `(SELECT max(a.decided_at) FROM kd_approval a WHERE a.ent = '${ent}' AND a.rec_id = n.id AND a.status = 'da_duyet')`;
+async function bgNoticeOf(db, unitId, skip) {   // skip: bỏ qua thông báo đang hủy
   const u = await db.one('SELECT code, building_id FROM kd_unit WHERE id = $1', [+unitId]); if (!u) return null;
-  return (await db.q("SELECT * FROM kd_handover_notice WHERE building_id = $1 AND status = 'da_duyet' ORDER BY handover_on DESC, id DESC", [u.building_id])).find(n => bgCodes(n.unit_list).includes(u.code.toUpperCase())) || null;
+  return (await db.q(`SELECT n.* FROM kd_handover_notice n WHERE n.building_id = $1 AND n.status = 'da_duyet' AND n.id <> $2 ORDER BY ${PUB_AT('handover_notice')} DESC NULLS LAST, n.id DESC`, [u.building_id, +skip || 0])).find(n => bgCodes(n.unit_list).includes(u.code.toUpperCase())) || null;
+}
+// ghi chú «Đã có trong thông báo số …» của 1 căn: các thông báo khác (nháp / chờ duyệt / đã phát hành) có căn, thông báo đang áp dụng ghi rõ — vẫn cho tích chọn
+const NT_ST = { nhap: 'nháp', cho_duyet: 'chờ duyệt', da_duyet: 'đã phát hành', tu_choi: 'từ chối', huy: 'đã hủy' };
+function noticeNote(all, selfId, code) {
+  const has = all.filter(n => bgCodes(n.unit_list).includes(code)), cur = has.find(n => n.status === 'da_duyet');   // all: đã xếp phát hành mới nhất trước
+  const os = has.filter(n => n.id !== +selfId);
+  return os.length ? os.map(n => `${n.doc_no || n.code} (${NT_ST[n.status] || n.status}${n === cur ? ', đang áp dụng' : ''})`).join('; ') : '';
 }
 const bgCodes = v => String(v || '').split(/[,;\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
 const bgDue = r => { const b = r.pay_from === 'thong_bao' ? r.notice_on : r.handover_on; return b ? C.addDays(String(b).slice(0, 10), +r.pay_days || 0) : null; };
@@ -1256,11 +1265,11 @@ async function bgRows(db, r) {
   const sales = await db.q(`SELECT DISTINCT ON (c.unit_id) c.id, c.unit_id, c.number, c.contract_on, c.sale_sched, k.full_name, k.code kcode FROM kd_contract c LEFT JOIN kd_customer k ON k.id = c.customer_id
     WHERE c.unit_id = ANY($1) AND c.kind IN ('thue', 'vay') AND c.status = 'da_ky' AND c.sale_on AND jsonb_array_length(coalesce(c.sale_sched, '[]'::jsonb)) > 0 ORDER BY c.unit_id, c.id DESC`, [us.filter(u => !cts.some(c => c.unit_id === u.id)).map(u => u.id)]);
   for (const c of sales) { c.sale = true; cts.push(c); (c.sale_sched || []).forEach((x, k) => ins.push({ id: null, contract_id: c.id, seq: k + 1, name: x.name, due_on: x.due_on, amount: +x.amount || 0, is_maint: !!x.maint, is_bg: !!x.bg, bg_days: x.bg_days ?? null, sale: true })); }
-  const other = await db.q("SELECT id, code, doc_no, unit_list, handover_on FROM kd_handover_notice WHERE building_id = $1 AND status IN ('nhap', 'cho_duyet', 'da_duyet') AND id <> $2", [+r.building_id, +r.id || 0]);
+  const allN = await db.q(`SELECT n.id, n.code, n.doc_no, n.unit_list, n.handover_on, n.status FROM kd_handover_notice n WHERE n.building_id = $1 AND n.status IN ('nhap', 'cho_duyet', 'da_duyet') ORDER BY ${PUB_AT('handover_notice')} DESC NULLS LAST, n.id DESC`, [+r.building_id]);
   const ctOf = new Map(cts.map(c => [c.unit_id, c])), base = d10(bgBase(r)), def = +r.pay_days || 0;
   const lbl = x => x.is_maint ? `Phí bảo trì${x.name ? ' — ' + x.name : ''}` : x.name || `Đợt ${x.seq}`;
   return us.map(u => {
-    const c = ctOf.get(u.id), list = c ? ins.filter(x => x.contract_id === c.id) : [], { items: pk, how } = bgPickInst(list), o = other.find(n => bgCodes(n.unit_list).includes(u.code.toUpperCase()));
+    const c = ctOf.get(u.id), list = c ? ins.filter(x => x.contract_id === c.id) : [], { items: pk, how } = bgPickInst(list), o = noticeNote(allN, r.id, u.code.toUpperCase());
     const items = pk.map(i => { const own = i.bg_days != null ? +i.bg_days : how === 'text' ? bgDaysIn(i.name) : null, days = own ?? def;   // số ngày riêng của đợt → không có thì theo thông báo
       return { id: i.id, seq: i.seq, name: lbl(i), maint: !!i.is_maint, own, days, amount: +i.amount, due_old: d10(i.due_on), due_new: base ? C.addDays(base, days) : null, ...(i.sale ? { sale: true } : {}) }; });
     // 17/11/2026: phí bảo trì chưa gắn bàn giao riêng mà đang cùng hạn đợt bàn giao (hoặc là «Đợt thu phí bảo trì» của HĐ) → đổi hạn cùng đợt đó
@@ -1271,7 +1280,7 @@ async function bgRows(db, r) {
     return { id: u.id, code: u.code, floor: u.floor, contract_id: c?.id || null, number: c ? `${c.number || ''}${c.sale ? ' (HĐ thuê / vay — tiến độ HĐMB)' : ''}` : '', sale: !!c?.sale, contract_on: c?.contract_on || null, customer: c ? `${c.full_name || ''}${c.kcode ? ' · ' + c.kcode : ''}` : '',
       items, how, inst_id: f?.id || null, inst_seq: f?.seq || null, inst_name: items.map(x => x.name).join(' + '), days: f?.days ?? def, days_own: f?.own ?? null,
       amount: items.length ? items.reduce((s, x) => s + x.amount, 0) : null, due_old: f?.due_old || null, due_new: f?.due_new || null,
-      dots: list.map(x => ({ seq: x.seq, name: lbl(x), maint: !!x.is_maint })), other: o ? (o.doc_no || o.code) : '' };
+      dots: list.map(x => ({ seq: x.seq, name: lbl(x), maint: !!x.is_maint })), other: o };
   });
 }
 async function bgSuggest(db, qs) {
@@ -1309,9 +1318,9 @@ async function bgSet(db, user, b) {
   return { ok: true };
 }
 // HĐMB thuộc thông báo bàn giao đã phát hành: đổi đợt / số ngày → hạn các đợt gắn bàn giao tự tính lại; đợt bỏ đánh dấu (còn đúng hạn do thông báo đặt) trả về hạn trước đó
-async function bgReapply(db, contractId, user) {
+async function bgReapply(db, contractId, user, skip) {
   const c = await db.one('SELECT id, unit_id FROM kd_contract WHERE id = $1', [+contractId]); if (!c) return;
-  const n = await bgNoticeOf(db, c.unit_id); if (!n) return;
+  const n = await bgNoticeOf(db, c.unit_id, skip); if (!n) return;
   const x = (await bgRows(db, n)).find(y => y.contract_id === c.id), items = x?.items || [];
   const applied = Array.isArray(n.applied) ? n.applied : [], mine = applied.filter(a => a.ct === c.id), next = applied.filter(a => a.ct !== c.id);
   for (const a of mine) if (a.seq && !items.some(i => i.seq === a.seq) && a.old) {
@@ -1339,8 +1348,8 @@ H.handover_notice = {
     if (r.pay_days != null && +r.pay_days < 0) bad('Số ngày được nộp tiền không được âm');
     if (r.unit_list != null) r.unit_list = bgCodes(r.unit_list).join(',');
     if (!r.unit_list) bad('Tích chọn ít nhất 1 căn hộ bàn giao');
-    const rows = await bgRows(db, r), pick = new Set(bgCodes(r.unit_list)), dup = rows.filter(x => pick.has(x.code.toUpperCase()) && x.other);
-    if (dup.length) bad(`Căn đã có trong thông báo bàn giao khác: ${dup.slice(0, 8).map(x => `${x.code} (${x.other})`).join(', ')}`);
+    // 17/11/2026: căn đã có trong thông báo trước vẫn đưa vào thông báo mới được — phát hành thông báo mới thì căn theo thông báo mới (thông báo cũ giữ để tra cứu)
+    const rows = await bgRows(db, r), pick = new Set(bgCodes(r.unit_list));
     const bad1 = [...pick].filter(c => !rows.some(x => x.code.toUpperCase() === c));
     if (bad1.length) bad(`Căn không thuộc tòa đã chọn: ${bad1.slice(0, 8).join(', ')}`);
   },
@@ -1375,7 +1384,9 @@ H.handover_notice = {
         await db.q('UPDATE kd_installment SET due_on = $1 WHERE id = $2', [a.old, i.id]); back++;
         await C.audit(db, 'contract', a.ct, 'han_dot_ban_giao', { due_on: a.new }, { due_on: a.old }, user, `Hủy thông báo bàn giao ${r.doc_no || r.code}: trả hạn thu đợt ${a.seq || ''} gắn bàn giao`);
       }
-      return { patch: { status: 'huy' }, msg: `Đã hủy thông báo — trả lại hạn của ${back} đợt thu gắn bàn giao` };
+      // 17/11/2026: căn còn trong thông báo khác đã phát hành → hạn theo thông báo đó (thông báo mới nhất còn hiệu lực)
+      let re = 0; for (const ct of [...new Set((r.applied || []).map(a => a.ct).filter(Boolean))]) { const c = await db.one('SELECT unit_id FROM kd_contract WHERE id = $1', [ct]); if (c && await bgNoticeOf(db, c.unit_id, r.id)) { await bgReapply(db, ct, user, r.id); re++; } }
+      return { patch: { status: 'huy' }, msg: `Đã hủy thông báo — trả lại hạn của ${back} đợt thu gắn bàn giao${re ? ` · ${re} HĐ theo thông báo bàn giao khác đang hiệu lực` : ''}` };
     },
   },
   async decorate(rows, { db, one }) {
@@ -1397,9 +1408,9 @@ H.handover_notice = {
 const GCN_RE = /gi[ấa]y\s*ch[ứu]ng\s*nh[ậa]n|\bGCN\b|s[ổo]\s*h[ồo]ng/i;
 const gcnDaysIn = s => { const m = /(\d+)\s*(?:\([^)]*\)\s*)?ngày[^.;]{0,120}?(?:gi[ấa]y\s*ch[ứu]ng\s*nh[ậa]n|\bGCN\b|s[ổo]\s*h[ồo]ng)/i.exec(s || ''); return m ? +m[1] : null; };
 const gcnPickInst = list => { const m = list.filter(x => x.is_gcn); if (m.length) return { items: m, how: 'mark' }; const t = list.find(x => !x.is_maint && !x.is_bg && GCN_RE.test(x.name || '')); return t ? { items: [t], how: 'text' } : { items: [], how: '' }; };
-async function gcnNoticeOf(db, unitId) {
+async function gcnNoticeOf(db, unitId, skip) {
   const u = unitId && await db.one('SELECT code, building_id FROM kd_unit WHERE id = $1', [+unitId]); if (!u) return null;
-  return (await db.q("SELECT * FROM kd_gcn_notice WHERE building_id = $1 AND status = 'da_duyet' ORDER BY handover_on DESC, id DESC", [u.building_id])).find(n => bgCodes(n.unit_list).includes(u.code.toUpperCase())) || null;
+  return (await db.q(`SELECT n.* FROM kd_gcn_notice n WHERE n.building_id = $1 AND n.status = 'da_duyet' AND n.id <> $2 ORDER BY ${PUB_AT('gcn_notice')} DESC NULLS LAST, n.id DESC`, [u.building_id, +skip || 0])).find(n => bgCodes(n.unit_list).includes(u.code.toUpperCase())) || null;   // thông báo phát hành mới nhất có căn
 }
 // mọi căn của tòa + HĐMB đã ký (căn chưa có HĐMB: HĐ thuê / vay bán căn có tiến độ HĐMB) + các đợt gắn GCN (hạn hiện tại / hạn mới) + căn đã thuộc thông báo GCN khác
 async function gcnRows(db, r) {
@@ -1412,18 +1423,18 @@ async function gcnRows(db, r) {
   const sales = await db.q(`SELECT DISTINCT ON (c.unit_id) c.id, c.unit_id, c.number, c.contract_on, c.sale_sched, k.full_name, k.code kcode FROM kd_contract c LEFT JOIN kd_customer k ON k.id = c.customer_id
     WHERE c.unit_id = ANY($1) AND c.kind IN ('thue', 'vay') AND c.status = 'da_ky' AND c.sale_on AND jsonb_array_length(coalesce(c.sale_sched, '[]'::jsonb)) > 0 ORDER BY c.unit_id, c.id DESC`, [us.filter(u => !cts.some(c => c.unit_id === u.id)).map(u => u.id)]);
   for (const c of sales) { c.sale = true; cts.push(c); (c.sale_sched || []).forEach((x, k) => ins.push({ id: null, contract_id: c.id, seq: k + 1, name: x.name, due_on: x.due_on, amount: +x.amount || 0, is_maint: !!x.maint, is_bg: !!x.bg, is_gcn: !!x.gcn, gcn_days: x.gcn_days ?? null, sale: true })); }
-  const other = await db.q("SELECT id, code, doc_no, unit_list FROM kd_gcn_notice WHERE building_id = $1 AND status IN ('nhap', 'cho_duyet', 'da_duyet') AND id <> $2", [+r.building_id, +r.id || 0]);
+  const allN = await db.q(`SELECT n.id, n.code, n.doc_no, n.unit_list, n.status FROM kd_gcn_notice n WHERE n.building_id = $1 AND n.status IN ('nhap', 'cho_duyet', 'da_duyet') ORDER BY ${PUB_AT('gcn_notice')} DESC NULLS LAST, n.id DESC`, [+r.building_id]);
   const ctOf = new Map(cts.map(c => [c.unit_id, c])), base = d10(bgBase(r)), def = +r.pay_days || 0;
   const lbl = x => x.is_maint ? `Phí bảo trì${x.name ? ' — ' + x.name : ''}` : x.name || `Đợt ${x.seq}`;
   return us.map(u => {
-    const c = ctOf.get(u.id), list = c ? ins.filter(x => x.contract_id === c.id) : [], { items: pk, how } = gcnPickInst(list), o = other.find(n => bgCodes(n.unit_list).includes(u.code.toUpperCase()));
+    const c = ctOf.get(u.id), list = c ? ins.filter(x => x.contract_id === c.id) : [], { items: pk, how } = gcnPickInst(list), o = noticeNote(allN, r.id, u.code.toUpperCase());
     const items = pk.map(i => { const own = i.gcn_days != null ? +i.gcn_days : how === 'text' ? gcnDaysIn(i.name) : null, days = own ?? def;   // số ngày riêng của đợt (HĐ / chính sách) → không có thì theo thông báo
       return { id: i.id, seq: i.seq, name: lbl(i), maint: !!i.is_maint, own, days, amount: +i.amount, due_old: d10(i.due_on), due_new: base ? C.addDays(base, days) : null, ...(i.sale ? { sale: true } : {}) }; });
     const f = items[0];
     return { id: u.id, code: u.code, floor: u.floor, contract_id: c?.id || null, number: c ? `${c.number || ''}${c.sale ? ' (HĐ thuê / vay — tiến độ HĐMB)' : ''}` : '', sale: !!c?.sale, contract_on: c?.contract_on || null, customer: c ? `${c.full_name || ''}${c.kcode ? ' · ' + c.kcode : ''}` : '',
       items, how, inst_id: f?.id || null, inst_seq: f?.seq || null, inst_name: items.map(x => x.name).join(' + '), days: f?.days ?? def, days_own: f?.own ?? null,
       amount: items.length ? items.reduce((s, x) => s + x.amount, 0) : null, due_old: f?.due_old || null, due_new: f?.due_new || null,
-      dots: list.map(x => ({ seq: x.seq, name: lbl(x), maint: !!x.is_maint })), other: o ? (o.doc_no || o.code) : '' };
+      dots: list.map(x => ({ seq: x.seq, name: lbl(x), maint: !!x.is_maint })), other: o };
   });
 }
 async function gcnSuggest(db, qs) {
@@ -1454,9 +1465,9 @@ async function gcnSet(db, user, b) {
   return { ok: true };
 }
 // HĐ thuộc thông báo GCN đã phát hành: đổi đợt / số ngày / lịch thu, hoặc HĐ vừa ký → hạn đợt gắn GCN tự tính lại; đợt không còn gắn (còn đúng hạn do thông báo đặt) trả hạn trước đó
-async function gcnReapply(db, contractId, user) {
+async function gcnReapply(db, contractId, user, skip) {
   const c = await db.one('SELECT id, unit_id FROM kd_contract WHERE id = $1', [+contractId]); if (!c) return;
-  const n = await gcnNoticeOf(db, c.unit_id); if (!n) return;
+  const n = await gcnNoticeOf(db, c.unit_id, skip); if (!n) return;
   const x = (await gcnRows(db, n)).find(y => y.contract_id === c.id), items = x?.items || [];
   const applied = Array.isArray(n.applied) ? n.applied : [], mine = applied.filter(a => a.ct === c.id), next = applied.filter(a => a.ct !== c.id);
   for (const a of mine) if (a.seq && !items.some(i => i.seq === a.seq)) {
@@ -1485,8 +1496,7 @@ H.gcn_notice = {
     if (r.pay_days != null && +r.pay_days < 0) bad('Số ngày được nộp tiền không được âm');
     if (r.unit_list != null) r.unit_list = bgCodes(r.unit_list).join(',');
     if (!r.unit_list) bad('Tích chọn ít nhất 1 căn hộ được bàn giao Giấy chứng nhận');
-    const rows = await gcnRows(db, r), pick = new Set(bgCodes(r.unit_list)), dup = rows.filter(x => pick.has(x.code.toUpperCase()) && x.other);
-    if (dup.length) bad(`Căn đã có trong thông báo bàn giao Giấy chứng nhận khác: ${dup.slice(0, 8).map(x => `${x.code} (${x.other})`).join(', ')}`);
+    const rows = await gcnRows(db, r), pick = new Set(bgCodes(r.unit_list));   // căn đã có trong thông báo trước vẫn chọn được — phát hành thì theo thông báo mới nhất
     const bad1 = [...pick].filter(c => !rows.some(x => x.code.toUpperCase() === c));
     if (bad1.length) bad(`Căn không thuộc tòa đã chọn: ${bad1.slice(0, 8).join(', ')}`);
   },
@@ -1521,7 +1531,8 @@ H.gcn_notice = {
         await db.q('UPDATE kd_installment SET due_on = $1 WHERE id = $2', [a.old || null, i.id]); back++;   // trước thông báo chưa có hạn → trả về trống (chờ ngày chính thức)
         await C.audit(db, 'contract', a.ct, 'han_dot_gcn', { due_on: a.new }, { due_on: a.old || null }, user, `Hủy thông báo bàn giao Giấy chứng nhận ${r.doc_no || r.code}: trả hạn đợt ${a.seq || ''} ${a.old ? 'về ' + a.old.split('-').reverse().join('/') : 'về trống (chưa có ngày)'}`);
       }
-      return { patch: { status: 'huy' }, msg: `Đã hủy thông báo — trả lại hạn của ${back} đợt thu gắn Giấy chứng nhận` };
+      let re = 0; for (const ct of [...new Set((r.applied || []).map(a => a.ct).filter(Boolean))]) { const c = await db.one('SELECT unit_id FROM kd_contract WHERE id = $1', [ct]); if (c && await gcnNoticeOf(db, c.unit_id, r.id)) { await gcnReapply(db, ct, user, r.id); re++; } }   // căn còn trong thông báo GCN khác đã phát hành
+      return { patch: { status: 'huy' }, msg: `Đã hủy thông báo — trả lại hạn của ${back} đợt thu gắn Giấy chứng nhận${re ? ` · ${re} HĐ theo thông báo GCN khác đang hiệu lực` : ''}` };
     },
   },
   async decorate(rows, { db, one }) {

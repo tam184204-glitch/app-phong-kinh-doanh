@@ -99,8 +99,8 @@ const bgTable = (rs, { pick, sel, mode } = {}) => {
     ${pick ? (() => { const rest = x.dots.filter(o => !x.items.some(i => i.seq === o.seq)); return rest.length ? `<select data-bgadd="${x.contract_id}" class="${x.items.length ? '' : 'bg-none'}"><option value="">+ Thêm đợt gắn ${W}…</option>${rest.map(o => `<option value="${o.seq}">${esc(String(o.name).slice(0, 55))}</option>`).join('')}</select>` : ''; })() : ''}</div>`;
   return `<div class="tbl-wrap bg-t"><table class="t compact noclick"><thead><tr>${pick ? '<th style="width:30px"></th>' : ''}<th>Mã căn</th><th>Khách hàng</th><th>Số HĐMB</th><th>Ngày ký</th><th>Các đợt gắn ${W} · số ngày · số tiền · hạn hiện tại → hạn mới</th><th>Ghi chú</th></tr></thead><tbody>
     ${rs.map(x => { const on = pick && sel.has(x.code.toUpperCase());
-      return `<tr${on ? ' class="sel"' : ''}>${pick ? `<td><input type="checkbox" data-bgu="${esc(x.code)}" ${on ? 'checked' : ''} ${x.other ? 'disabled' : ''}></td>` : ''}<td>${esc(x.code)}</td><td>${esc(x.customer || '')}</td><td>${esc(x.number || '')}</td><td>${d(x.contract_on)}</td>
-        <td>${items(x)}</td><td class="small">${x.other ? `<span class="hs-miss">Đã có trong TB ${esc(x.other)}</span>` : ''}</td></tr>`; }).join('')}
+      return `<tr${on ? ' class="sel"' : ''}>${pick ? `<td><input type="checkbox" data-bgu="${esc(x.code)}" ${on ? 'checked' : ''}></td>` : ''}<td>${esc(x.code)}</td><td>${esc(x.customer || '')}</td><td>${esc(x.number || '')}</td><td>${d(x.contract_on)}</td>
+        <td>${items(x)}</td><td class="small">${x.other ? `<span class="hs-miss" title="Vẫn tích chọn được — phát hành thông báo này thì căn theo thông báo mới nhất (thông báo cũ giữ để tra cứu)">Đã có trong thông báo số ${esc(x.other)}</span>` : ''}</td></tr>`; }).join('')}
     </tbody></table></div>`;
 };
 async function bgPicker(el, form) {
@@ -144,7 +144,7 @@ async function bgPicker(el, form) {
   box.addEventListener('click', run(async e => { const b = e.target.closest('[data-bgx]'); if (!b) return; e.preventDefault();
     await saveBg(+b.dataset.bgx, its => its.filter(i => i.seq !== +b.dataset.seq), `Đã bỏ gắn đợt với ${W} (lưu vào HĐMB)`); }));
   box.addEventListener('click', e => { const b = e.target.closest('[data-bga]'); if (!b) return; auto = false;
-    setSel(new Set(rows.filter(x => !x.other && (b.dataset.bga === '1' || (b.dataset.bga === 'hd' && x.inst_id))).map(x => x.code.toUpperCase()))); });
+    setSel(new Set(rows.filter(x => b.dataset.bga === '1' || (b.dataset.bga === 'hd' && x.inst_id)).map(x => x.code.toUpperCase()))); });   // 17/11/2026: kể cả căn đã có trong thông báo trước
   await load();
 }
 function show(f, row, { plain } = {}) {
