@@ -683,7 +683,7 @@ async function printCancelReq(id, user) {
 <p class="h">2. Nội dung đề nghị</p>
 <p>Loại đề nghị: ${kind}</p><p>Phương án xử lý: ${plan}</p>
 ${liqLinesHtml(r)}<p>${r.kind === 'thanh_ly' ? 'Tổng số tiền phải hoàn trả' : 'Số tiền đề nghị xử lý'}: <b>${r.pay_amount ? fmtMoney(r.pay_amount) : D}</b> đồng${r.pay_amount ? ` <i>(${moneyWords(r.pay_amount)})</i>` : ''}</p>
-<p>Ngày ký thanh lý HĐMB (nếu có): ${r.liquidate_on ? dmy(r.liquidate_on) : '....../....../......'}</p><p>Ngày đề nghị chi trả: ${r.pay_due ? dmy(r.pay_due) : '....../....../......'}</p>
+<p>Ngày thanh lý: ${r.liquidate_on ? dmy(r.liquidate_on) : '....../....../......'}</p><p>Ngày đề nghị chi trả: ${r.pay_due ? dmy(r.pay_due) : '....../....../......'}</p>
 ${r.reason ? `<p>Lý do: ${escH(r.reason)}</p>` : ''}
 <p class="h">3. Chuyển xử lý</p>
 <p>Bộ phận tiếp nhận xử lý: ${v(r.handler_dept)}</p><p>Hồ sơ kèm theo: ${v(r.attachments)}</p><p>Ghi chú: ${v(r.note)}</p>

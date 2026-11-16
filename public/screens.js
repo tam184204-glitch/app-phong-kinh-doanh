@@ -1647,12 +1647,13 @@ V.mau4 = async (main, params) => {
 // theo file «Bang_theo_doi_thanh_ly_va_chi_tra.xlsx»; mỗi dòng = 1 đề nghị hủy / đổi căn / đổi tên; tô màu khi còn ≤ 30 ngày đến hạn chi trả
 // 16/11/2026: hợp đồng chuyển «Thanh lý» tự vào bảng (1 dòng / hợp đồng); tổng đã thu, khấu trừ, phải hoàn trả, đã chi trả, còn phải trả, trạng thái chi trả tự cập nhật theo phiếu thu / phiếu chi
 const PAY_COLS = [['project', 'Dự án'], ['unit', 'Mã căn hộ'], ['cust_code', 'Mã khách hàng'], ['customer', 'Họ tên khách hàng'], ['phone', 'Số điện thoại'], ['kind_l', 'Loại đề nghị'],
-  ['ct_kind_l', 'Loại hợp đồng'], ['contract_no', 'Số hợp đồng'], ['contract_status_l', 'Tình trạng hợp đồng'], ['liquidate_on', 'Ngày thanh lý', 'date'],
+  ['ct_kind_l', 'Loại hợp đồng'], ['contract_no', 'Số hợp đồng'], ['liquidate_on', 'Ngày thanh lý', 'date'], ['contract_status_l', 'Tình trạng hợp đồng'],
   ['collected', 'Tổng tiền đã thu', 'money'], ['deduct_amount', 'Các khoản khấu trừ', 'money'], ['pay_amount', 'Số tiền phải hoàn trả', 'money'], ['paid_amount', 'Số tiền đã chi trả', 'money'], ['remain', 'Số tiền còn phải trả', 'money'],
   ['pay_status_l', 'Trạng thái chi trả'], ['wait_days', 'Thời gian chờ chi trả (ngày)', 'int'], ['pay_due', 'Ngày dự kiến chi trả', 'date'], ['money_plan_l', 'Phương án xử lý tiền đã nộp'],
   ['acct_status_l', 'Tình trạng bàn giao hồ sơ cho kế toán'], ['acct_on', 'Ngày bàn giao hồ sơ', 'date'], ['paid_on', 'Ngày chi tiền thực tế', 'date'], ['note', 'Ghi chú']];
 V.payouts = async (main, params) => {
   const s = ST.pay ||= { project: '', q: '', st: '' };
+  s.lf ??= ''; s.lt ??= ''; s.sort ??= '';   // 16/11/2026: lọc «Thanh lý từ ngày … đến ngày …»; sắp xếp theo cột (bấm tiêu đề, bấm lại đảo chiều)
   if (params.project) s.project = params.project;
   const L = (ent, k, v) => M.ents[ent].fields.find(f => f.k === k)?.o?.find(o => o[0] === v)?.[1] || v || '';
   const canNew = M.ents.cancel_req.perm.c;
@@ -1660,6 +1661,7 @@ V.payouts = async (main, params) => {
     <div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="pyQ" placeholder="Tìm mã căn, khách hàng, SĐT, số HĐ…" value="${esc(s.q)}"></div>
       <select id="pyP"><option value="">Tất cả dự án</option>${M.projects.map(p => `<option value="${p.id}" ${+s.project === p.id ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select>
       <select id="pyS"><option value="">Mọi tình trạng chi</option><option value="sap">Đến hạn ≤ 30 ngày / quá hạn</option>${M.ents.cancel_req.fields.find(f => f.k === 'pay_status').o.map(o => `<option value="${o[0]}" ${s.st === o[0] ? 'selected' : ''}>${o[1]}</option>`).join('')}</select>
+      <span class="small muted">Thanh lý từ</span>${segDate('pyLF', s.lf)}<span class="small muted">đến</span>${segDate('pyLT', s.lt)}
       <span class="grow"></span><span class="small muted" id="pyN"></span></div><div class="tbl-wrap" id="pyT"><div class="empty">Đang tải…</div></div></div></div>`;
   if (s.st) $('#pyS', main).value = s.st;
   let rows = [];
@@ -1670,12 +1672,19 @@ V.payouts = async (main, params) => {
       money_plan_l: L('cancel_req', 'money_plan', r.money_plan), acct_status_l: L('cancel_req', 'acct_status', r.acct_status), pay_status_l: L('cancel_req', 'pay_status', r.pay_status) }));
     draw();
   };
-  const shown = () => { const q = s.q.trim().toLowerCase();
-    return rows.filter(r => (!s.st || (s.st === 'sap' ? !!dueCls(r) : r.pay_status === s.st)) && (!q || [r.unit, r.customer, r.phone, r.contract_no, r.code].some(x => String(x ?? '').toLowerCase().includes(q)))); };
+  const shown = () => { const q = s.q.trim().toLowerCase(), lo = d => String(d || '').slice(0, 10);
+    const xs = rows.filter(r => (!s.st || (s.st === 'sap' ? !!dueCls(r) : r.pay_status === s.st)) && (!q || [r.unit, r.customer, r.phone, r.contract_no, r.code].some(x => String(x ?? '').toLowerCase().includes(q)))
+      && (!s.lf || (r.liquidate_on && lo(r.liquidate_on) >= s.lf)) && (!s.lt || (r.liquidate_on && lo(r.liquidate_on) <= s.lt)));
+    if (s.sort) {   // sắp xếp theo cột; ô trống luôn xuống cuối
+      const k = s.sort.replace(/^-/, ''), dir = s.sort.startsWith('-') ? -1 : 1, c = PAY_COLS.find(x => x[0] === k), isN = ['money', 'int'].includes(c?.[2]);
+      xs.sort((a, b) => { const va = a[k], vb = b[k], ea = va == null || va === '', eb = vb == null || vb === ''; if (ea || eb) return ea - eb;
+        return (isN ? (+va - +vb) : String(va).localeCompare(String(vb), 'vi', { numeric: true })) * dir; });
+    }
+    return xs; };
   const draw = () => {
     const rs = shown();
     $('#pyN', main).textContent = `${rs.length} dòng · phải hoàn trả ${fm(rs.reduce((a, r) => a + (+r.pay_amount || 0), 0))}đ · đã chi ${fm(rs.reduce((a, r) => a + (+r.paid_amount || 0), 0))}đ · còn phải trả ${fm(rs.reduce((a, r) => a + (+r.remain || 0), 0))}đ`;
-    $('#pyT', main).innerHTML = rs.length ? `<table class="t pyt"><thead><tr><th>STT</th>${PAY_COLS.map(c => `<th class="${c[2] === 'money' ? 'num' : ''}">${c[1]}</th>`).join('')}</tr></thead><tbody>${rs.map((r, i) => `<tr data-id="${r.id}" class="${dueCls(r)}"><td class="center">${i + 1}</td>${PAY_COLS.map(c => {
+    $('#pyT', main).innerHTML = rs.length ? `<table class="t pyt"><thead><tr><th>STT</th>${PAY_COLS.map(c => `<th class="${c[2] === 'money' ? 'num' : ''}" data-sk="${c[0]}" style="cursor:pointer" title="Bấm để sắp xếp">${c[1]}${s.sort.replace(/^-/, '') === c[0] ? ` ${ico(s.sort.startsWith('-') ? 'fa-arrow-down-wide-short' : 'fa-arrow-up-short-wide')}` : ''}</th>`).join('')}</tr></thead><tbody>${rs.map((r, i) => `<tr data-id="${r.id}" class="${dueCls(r)}"><td class="center">${i + 1}</td>${PAY_COLS.map(c => {
       const v = r[c[0]];
       const html = c[2] === 'money' ? (v != null && v !== '' && (+v || ['collected', 'paid_amount', 'remain'].includes(c[0])) ? fm(v) : '') : c[2] === 'date' ? dmy(v) : c[0] === 'pay_due' ? dmy(v) : esc(v ?? '');
       return `<td class="${c[2] === 'money' ? 'num' : ''} ${c[0] === 'pay_due' ? 'due' : ''} ${c[0] === 'note' || c[0] === 'money_plan_l' ? 'wrap' : ''}">${html}${(r.edited || []).includes(c[0] === 'pay_status_l' ? 'pay_status' : c[0]) ? ' <span class="tag" title="Đã sửa tay — đồng bộ từ hợp đồng / phiếu thu chi không ghi đè (bấm «Tính lại tự động» trong dòng để bỏ)">sửa tay</span>' : ''}${c[0] === 'pay_due' && dueCls(r) ? ` <span class="tag">${r.pay_due < t ? 'quá hạn' : 'còn ' + Math.round((Date.parse(r.pay_due) - Date.parse(t)) / 864e5) + ' ngày'}</span>` : ''}</td>`; }).join('')}</tr>`).join('')}</tbody></table>`
@@ -1687,7 +1696,11 @@ V.payouts = async (main, params) => {
   $('#pyS', main).onchange = e => { s.st = e.target.value; draw(); };
   $('#pyX', main).onclick = () => download('/api/export-rows', { title: 'BẢNG THEO DÕI HỦY GIAO DỊCH, THANH LÝ HỢP ĐỒNG VÀ CHI TRẢ TIỀN', cols: PAY_COLS, rows: shown(), sum: ['collected', 'deduct_amount', 'pay_amount', 'paid_amount', 'remain'], file: 'theo_doi_thanh_ly_chi_tra' });
   $('#pyNew', main) && ($('#pyNew', main).onclick = () => openForm('cancel_req', { onSaved: () => load() }));
-  $('#pyT', main).onclick = e => { const tr = e.target.closest('tr[data-id]'); if (tr) openDetail('cancel_req', +tr.dataset.id); };
+  $('#pyT', main).onclick = e => {
+    const th = e.target.closest('th[data-sk]'); if (th) { const k = th.dataset.sk; s.sort = s.sort === k ? '-' + k : s.sort === '-' + k ? '' : k; return draw(); }   // tăng → giảm → bỏ sắp xếp
+    const tr = e.target.closest('tr[data-id]'); if (tr) openDetail('cancel_req', +tr.dataset.id); };
+  wireSegDate(main);
+  main.addEventListener('sdchange', e => { if (!['pyLF', 'pyLT'].includes(e.target.id)) return; const v = segVal(e.target); if (v === null) return; if (e.target.id === 'pyLF') s.lf = v; else s.lt = v; draw(); });
   await load();
 };
 

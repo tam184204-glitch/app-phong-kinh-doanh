@@ -409,7 +409,7 @@ def('cancel_req', {
     money('pay_amount', 'Số tiền phải hoàn trả (đồng)', { show: { kind: ['huy', 'doi_can', 'doi_kh'] }, help: 'Thanh lý hợp đồng: tự tính = tổng đã thu − khấu trừ. Đề nghị hủy / đổi: để trống = số khách đã nộp — sửa được' }),
     money('paid_amount', 'Số tiền đã chi trả (đồng)', { help: 'Tự cộng các phiếu chi hoàn tiền / hoàn cọc / thanh lý của hợp đồng — sửa tay thì giữ số đã sửa' }),
     { k: 'edited', l: 'Ô đã sửa tay', t: 'json', ro: 1, hide: 1 },   // 16/11/2026: đồng bộ lại từ hợp đồng / phiếu thu chi không ghi đè các ô này
-    { k: 'liquidate_on', l: 'Ngày ký thanh lý HĐMB (nếu có)', t: 'date' },
+    { k: 'liquidate_on', l: 'Ngày thanh lý', t: 'date', help: 'Tự lấy theo ngày thanh lý của hợp đồng / phiếu thanh lý — sửa được (phiếu gộp nhiều hợp đồng: ngày thanh lý chung của phiếu)' },
     { k: 'pay_due', l: 'Ngày đề nghị chi trả', t: 'date', help: 'Để trống → ngày ký thanh lý + thời gian chờ chi trả' },
     { k: 'reason', l: 'Lý do', t: 'long' },
     { k: 'handler_dept', l: 'Bộ phận tiếp nhận xử lý', t: 'text', def: 'Phòng Kế toán', sug: ['Phòng Kế toán', 'Phòng Kinh doanh', 'Phòng Pháp chế', 'Ban Giám đốc'], sec: '3. Chuyển xử lý' },
