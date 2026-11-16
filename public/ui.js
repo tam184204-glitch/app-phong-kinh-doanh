@@ -565,7 +565,7 @@ function schedEditor(el, rows, { total, base, first, maint, mdot, bgBase, pol, f
     if (d.bg !== undefined) { sync(); R.forEach(r => delete r._bgAuto); const r = R[+d.bg]; r.bg = e.target.checked; r.bg_days = r.bg ? r.bg_days ?? bgDaysIn(r.name) : null; draw(); }   // nhiều đợt gắn bàn giao
     if (d.bgm !== undefined) { sync(); R.forEach(r => delete r._bgAuto); MR.bg = e.target.checked; if (MR.bg) MR.auto = false; else { MR.bg_days = null; MR.auto = true; } draw(); }   // phí bảo trì nộp theo ngày bàn giao
     if (d.k === 'bg_days' || d.mk === 'bg_days') { sync(); draw(); }
-    if (d.k === 'due_on') { sync(); delete R[+e.target.closest('tr').dataset.i]._days; }   // sửa tay hạn đợt thì không còn tự theo ngày ký
+    if (d.k === 'due_on') { sync(); const i = +e.target.closest('tr').dataset.i; delete R[i]._days; maintFollow(i); }   // sửa tay hạn đợt thì không còn tự theo ngày ký; phí bảo trì theo đợt thu phí bảo trì
     if (d.k === 'pct') {   // sửa ô Tỷ lệ → số % trong nội dung đổi theo (nội dung có ghi tỷ lệ)
       const i = +e.target.closest('tr').dataset.i, old = R[i]?.name; sync();
       const f = pctIn(old), v = R[i].pct; if (f && v != null && v !== f.v) R[i].name = old.slice(0, f.at) + fnum(v) + old.slice(f.at + f.len);
@@ -573,8 +573,19 @@ function schedEditor(el, rows, { total, base, first, maint, mdot, bgBase, pol, f
     }
     if (d.k === 'amount') { sync(); draw(); }
   });
+  // 17/11/2026: sửa hạn đợt thu phí bảo trì (VD đợt 3 — đợt bàn giao) → ngày thu phí bảo trì đổi ngay cùng ngày (trừ phí bảo trì gắn bàn giao riêng)
+  const maintFollow = i => {
+    if (!MR || MR.bg || i !== mIdx()) return;
+    MR.auto = true; MR.due_on = R[i]?.due_on || '';
+    const mi = $('tbody tr[data-m] [data-mk="due_on"]', el); if (mi) mi.value = dmy(MR.due_on) || '';
+  };
   // sửa «Sau 60 ngày» thành «Sau 65 ngày» trong nội dung → hạn đổi ngay theo ngày ký
   el.addEventListener('input', e => {
+    if (e.target.dataset.k === 'due_on') {   // đang gõ hạn đợt: đủ ngày hợp lệ thì phí bảo trì theo ngay
+      const i = +e.target.closest('tr').dataset.i, v = parseDmy(e.target.value);
+      if (v && R[i]) { R[i].due_on = v; maintFollow(i); }
+      return;
+    }
     if (e.target.dataset.k === 'name') {   // «… thanh toán 30% …» → sửa thành 100% thì Tỷ lệ = 100, Số tiền tính lại
       const tr = e.target.closest('tr'), r = R[+tr.dataset.i], f = pctIn(e.target.value);
       if (r && f && f.v !== r.pct) {

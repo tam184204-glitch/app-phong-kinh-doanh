@@ -154,7 +154,9 @@ async function normSchedule(db, rows, value, label = 'Lịch thanh toán', maint
       if (r.due_on === f0 && (i === 0 || r.is_maint)) { r.sign_days = 0; return; }
       const nd = schedDays(r.name); if (nd && C.addDays(f0, nd) === String(r.due_on).slice(0, 10)) r.sign_days = nd; }); }
   if (own) {   // dòng phí bảo trì: đặt sau các đợt có hạn không muộn hơn hạn của nó (chưa có hạn → sau đợt thu phí bảo trì)
-    const mr = out.find(r => r.is_maint), rest = out.filter(r => r !== mr), at = mr.due_on ? rest.filter(r => r.due_on && r.due_on <= mr.due_on).length : Math.min(Math.max(1, +dot || 3), rest.length);
+    const mr = out.find(r => r.is_maint), rest0 = out.filter(r => r !== mr && !r.is_fin);
+    if (!mr.due_on && !mr.is_bg) { const k0 = rest0[Math.min(Math.max(1, +dot || 3), rest0.length) - 1]; if (k0?.due_on) { mr.due_on = k0.due_on; if (k0.sign_days != null) mr.sign_days = k0.sign_days; } }   // 17/11/2026: phí bảo trì trống hạn → cùng hạn đợt thu phí bảo trì
+    const rest = out.filter(r => r !== mr), at = mr.due_on ? rest.filter(r => r.due_on && r.due_on <= mr.due_on).length : Math.min(Math.max(1, +dot || 3), rest.length);
     out = [...rest.slice(0, at), mr, ...rest.slice(at)];
   }
   if (fs) { const d = r => String(r.due_on); const ms = out.filter(r => r.is_maint); out = out.filter(r => !r.is_maint).map((r, i) => [r, i]).sort((a, b) => d(a[0]) < d(b[0]) ? -1 : d(a[0]) > d(b[0]) ? 1 : a[1] - b[1]).map(x => x[0]);   // đợt hoàn thiện xếp xen theo ngày đến hạn
@@ -1233,7 +1235,7 @@ async function bgRows(db, r) {
   if (!r.building_id) return [];
   const us = await db.q('SELECT id, code, floor FROM kd_unit WHERE building_id = $1 ORDER BY floor NULLS LAST, code', [+r.building_id]);
   if (!us.length) return [];
-  const cts = await db.q(`SELECT DISTINCT ON (c.unit_id) c.id, c.unit_id, c.number, c.contract_on, k.full_name, k.code kcode FROM kd_contract c LEFT JOIN kd_customer k ON k.id = c.customer_id
+  const cts = await db.q(`SELECT DISTINCT ON (c.unit_id) c.id, c.unit_id, c.number, c.contract_on, c.maint_dot, k.full_name, k.code kcode FROM kd_contract c LEFT JOIN kd_customer k ON k.id = c.customer_id
     WHERE c.unit_id = ANY($1) AND c.kind = 'hdmb' AND c.status = 'da_ky' ORDER BY c.unit_id, c.id DESC`, [us.map(u => u.id)]);
   const ins = cts.length ? await db.q('SELECT id, contract_id, seq, name, due_on, amount, is_maint, is_bg, bg_days FROM kd_installment WHERE contract_id = ANY($1) AND active ORDER BY contract_id, seq', [cts.map(c => c.id)]) : [];
   // 16/11/2026: căn chưa có HĐMB đã ký → HĐ thuê / vay bán căn đã ký có «Tiến độ thu tiền HĐMB»: đợt trong tiến độ đó (sale: true, seq = thứ tự + 1)
@@ -1247,6 +1249,10 @@ async function bgRows(db, r) {
     const c = ctOf.get(u.id), list = c ? ins.filter(x => x.contract_id === c.id) : [], { items: pk, how } = bgPickInst(list), o = other.find(n => bgCodes(n.unit_list).includes(u.code.toUpperCase()));
     const items = pk.map(i => { const own = i.bg_days != null ? +i.bg_days : how === 'text' ? bgDaysIn(i.name) : null, days = own ?? def;   // số ngày riêng của đợt → không có thì theo thông báo
       return { id: i.id, seq: i.seq, name: lbl(i), maint: !!i.is_maint, own, days, amount: +i.amount, due_old: d10(i.due_on), due_new: base ? C.addDays(base, days) : null, ...(i.sale ? { sale: true } : {}) }; });
+    // 17/11/2026: phí bảo trì chưa gắn bàn giao riêng mà đang cùng hạn đợt bàn giao (hoặc là «Đợt thu phí bảo trì» của HĐ) → đổi hạn cùng đợt đó
+    const mr = list.find(x => x.is_maint && !x.is_bg), nonM = list.filter(x => !x.is_maint);
+    const lead = mr && !pk.includes(mr) && pk.find(t => !t.is_maint && (d10(t.due_on) === d10(mr.due_on) || nonM.indexOf(t) + 1 === +c?.maint_dot)), li = lead && items.find(x => x.seq === lead.seq);
+    if (li) items.push({ id: mr.id, seq: mr.seq, name: lbl(mr), maint: true, own: li.own, days: li.days, amount: +mr.amount, due_old: d10(mr.due_on), due_new: li.due_new, follow: li.seq, ...(mr.sale ? { sale: true } : {}) });
     const f = items[0];
     return { id: u.id, code: u.code, floor: u.floor, contract_id: c?.id || null, number: c ? `${c.number || ''}${c.sale ? ' (HĐ thuê / vay — tiến độ HĐMB)' : ''}` : '', sale: !!c?.sale, contract_on: c?.contract_on || null, customer: c ? `${c.full_name || ''}${c.kcode ? ' · ' + c.kcode : ''}` : '',
       items, how, inst_id: f?.id || null, inst_seq: f?.seq || null, inst_name: items.map(x => x.name).join(' + '), days: f?.days ?? def, days_own: f?.own ?? null,
@@ -2252,4 +2258,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, bgSet, bgSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, bgReapply, bgSet, bgSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
