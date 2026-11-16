@@ -1054,7 +1054,7 @@ const DS_HEAD = [
   ['Phát sinh', [['p_total', 'Tổng phải thu', 'money'], ['p_due', 'Phải thu theo tiến độ', 'money'], ['p_paid', 'Tổng đã thu', 'money'], ['p_left', 'Còn lại', 'money'], ['p_left_due', 'Còn lại theo tiến độ', 'money']]],
   ['Bảo trì', [['b_total', 'Tổng phải thu', 'money'], ['b_due', 'Phải thu theo tiến độ', 'money'], ['b_paid', 'Tổng đã thu', 'money'], ['b_left', 'Còn lại', 'money']]],
   ['Tổng hợp', [['value', 'Giá trị hợp đồng', 'money'], ['t_total', 'Tổng phải thu', 'money'], ['t_due', 'Tổng phải thu theo tiến độ', 'money'], ['t_paid', 'Tổng đã thu', 'money'], ['t_left_due', 'Số còn lại theo tiến độ', 'money'], ['t_left', 'Còn lại theo hợp đồng', 'money'], ['pct5', '5 % theo hợp đồng', 'money']]],
-  ['', [['common_amt', 'Tiền diện tích sử dụng chung đã chi', 'money'], ['sign_l', 'Ký hợp đồng'], ['hdv_left', 'Số dư còn lại HĐV', 'money']]],
+  ['', [['sign_l', 'Ký hợp đồng'], ['hdv_left', 'Số dư còn lại HĐV', 'money']]],
 ];
 const DS_COLS = DS_HEAD.flatMap(([, cs]) => cs);
 // mục của bảng tổng hợp theo loại hợp đồng (14/11/2026): HĐ thuê / vay có bản chất giao dịch = Bán căn hộ
@@ -1133,7 +1133,7 @@ async function debtSummary(db, user, f = {}) {
       unit_id: uid, contract_id: c.id, project: c.project, project_name: c.project_name, building: c.building, unit: c.unit, number: c.number, cust_code: c.cust_code, customer: c.customer,
       address: c.b_addr || c.k_addr || '', contract_on: c.contract_on, vbtt_on: c.vbtt_on, phone: c.b_phone || c.k_phone || '',
       area_floor: c.area_floor ?? c.area_build ?? null, area_tt: c.area_tt ?? c.area_land ?? null, base_price: c.base_price ?? c.land_price ?? null, build_price: c.build_price ?? null,
-      common_amt: all.reduce((s, x) => s + (+x.common_area_amt || 0), 0) || null, sign_l: c.status === 'da_ky' ? 'Đã ký hợp đồng' : ST_L[c.status] || c.status, signed: c.status === 'da_ky',
+      sign_l: c.status === 'da_ky' ? 'Đã ký hợp đồng' : ST_L[c.status] || c.status, signed: c.status === 'da_ky',
       hdv_left: HDV.has(uid) ? HDV.get(uid) : null, grp: ['thue', 'vay'].includes(c.kind) ? c.kind : 'mb' };
     for (const k of ['n', 'g', 'p', 'b']) { r[k + '_total'] = o[k].total; r[k + '_due'] = o[k].due; r[k + '_paid'] = o[k].paid; r[k + '_left'] = o[k].total - o[k].paid; r[k + '_left_due'] = pos(o[k].due - o[k].paid); }
     r.value = all.reduce((s, x) => s + (['thue', 'vay'].includes(x.kind) ? +x.unit_total || 0 : +x.value || 0), 0);   // HĐ thuê / vay bán căn: giá trị = Giá trị HĐMB
