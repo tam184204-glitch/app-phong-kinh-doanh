@@ -274,12 +274,15 @@ def('sale_notice', {
     { k: 'unit_group', l: 'Căn hộ mở bán / cho thuê', t: 'text', req: 1, def: '', pick: 'units', help: 'Tích chọn đúng các căn trong đợt (tích cả tòa = chọn nguyên tòa)' },
     { k: 'policy_id', l: 'Chính sách cho thuê áp dụng', t: 'ref', ref: 'price_policy', filter: 'phat_hanh', optq: 'pkind=thue', show: { deal: ['thue'] }, help: 'Chính sách loại «Cho thuê» đã phát hành của dự án — giá thuê, thời hạn, đặt cọc, tiến độ thu tiền thuê của các căn trong đợt' },
     { k: 'note', l: 'Ghi chú', t: 'long' },
-    { k: 'status', l: 'Trạng thái', t: 'sel', o: [['nhap', 'Nháp', 's'], ['cho_duyet', 'Chờ duyệt', 'a'], ['da_duyet', 'Đã phát hành', 'g'], ['tu_choi', 'Từ chối', 'r']], ro: 1, def: 'nhap' },
+    { k: 'status', l: 'Trạng thái', t: 'sel', o: [['nhap', 'Nháp', 's'], ['cho_duyet', 'Chờ duyệt', 'a'], ['da_duyet', 'Đã phát hành', 'g'], ['tu_choi', 'Từ chối', 'r'], ['huy', 'Đã hủy', 's']], ro: 1, def: 'nhap' },
   ], list: ['code', 'deal', 'project_id', 'title', 'doc_no', 'notice_on', 'open_on', 'close_on', 'n_units', 'n_reg', 'n_free', 'status'],
-  lock: ['cho_duyet', 'da_duyet'], lockKeep: ['note', 'close_on', 'channels'], flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'da_duyet', no: 'tu_choi' }, submitLabel: 'Trình duyệt' },
+  lock: ['cho_duyet', 'da_duyet', 'huy'], lockKeep: ['note', 'close_on', 'channels'], flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'da_duyet', no: 'tu_choi' }, submitLabel: 'Trình duyệt' },
   acts: [{ k: 'in_tb', l: 'In thông báo', icon: 'fa-print', from: '*', roles: ALL, url: '/print/sale_notice/:id?kind=thong_bao' },
     { k: 'in_ds', l: 'In danh sách căn', icon: 'fa-list-ol', from: '*', roles: ALL, url: '/print/sale_notice/:id?kind=danh_sach' },
-    { k: 'xls_ds', l: 'Xuất file danh sách căn', icon: 'fa-file-excel', from: '*', roles: ALL, url: '/api/sale-notice/:id/units-xlsx' }],   // 17/11/2026: thông báo cho thuê kèm đơn giá thuê
+    { k: 'xls_ds', l: 'Xuất file danh sách căn', icon: 'fa-file-excel', from: '*', roles: ALL, url: '/api/sale-notice/:id/units-xlsx' },
+    // 17/11/2026: rút căn / hủy thông báo đã phát hành — căn được gợi ý lại cho loại giao dịch kia (một căn không đồng thời mở bán và cho thuê)
+    { k: 'rut_can', l: 'Rút căn khỏi thông báo', icon: 'fa-right-from-bracket', from: ['da_duyet'], roles: MGR, ask: [{ k: 'codes', l: 'Mã căn rút khỏi thông báo', t: 'text', req: 1, help: 'Nhiều căn cách nhau dấu phẩy, VD CTS-K-103, CTS-K-104' }, { k: 'reason', l: 'Lý do', t: 'long', req: 1 }] },
+    { k: 'huy_tb', l: 'Hủy thông báo', icon: 'fa-ban', from: ['da_duyet'], roles: MGR, danger: 1, ask: [{ k: 'reason', l: 'Lý do hủy', t: 'long', req: 1 }] }],   // 17/11/2026: thông báo cho thuê kèm đơn giá thuê
 });
 def('reservation', {
   title: 'Đăng ký mua / thuê – giữ chỗ', one: 'phiếu đăng ký', code: 'GD-01', mod: '04', icon: 'fa-hand-holding-hand', disp: "t.code||coalesce(' · '||t.cust_name,'')",
