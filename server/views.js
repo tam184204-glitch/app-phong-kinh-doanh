@@ -1054,7 +1054,7 @@ const DS_HEAD = [
   ['Phát sinh', [['p_total', 'Tổng phải thu', 'money'], ['p_due', 'Phải thu theo tiến độ', 'money'], ['p_paid', 'Tổng đã thu', 'money'], ['p_left', 'Còn lại', 'money'], ['p_left_due', 'Còn lại theo tiến độ', 'money']]],
   ['Bảo trì', [['b_total', 'Tổng phải thu', 'money'], ['b_due', 'Phải thu theo tiến độ', 'money'], ['b_paid', 'Tổng đã thu', 'money'], ['b_left', 'Còn lại', 'money']]],
   ['Tổng hợp', [['value', 'Giá trị hợp đồng', 'money'], ['t_total', 'Tổng phải thu', 'money'], ['t_due', 'Tổng phải thu theo tiến độ', 'money'], ['t_paid', 'Tổng đã thu', 'money'], ['t_left_due', 'Số còn lại theo tiến độ', 'money'], ['t_left', 'Còn lại theo hợp đồng', 'money'], ['pct5', '5 % theo hợp đồng', 'money']]],
-  ['', [['common_amt', 'Tiền diện tích sử dụng chung đã chi', 'money'], ['sign_l', 'Ký hợp đồng'], ['tax_code', 'Mã số thuế'], ['id_no', 'CCCD'], ['id_date', 'Ngày cấp', 'date'], ['id_place', 'Nơi cấp'], ['hdv_left', 'Số dư còn lại HĐV', 'money']]],
+  ['', [['sign_l', 'Ký hợp đồng'], ['hdv_left', 'Số dư còn lại HĐV', 'money']]],
 ];
 const DS_COLS = DS_HEAD.flatMap(([, cs]) => cs);
 // mục của bảng tổng hợp theo loại hợp đồng (14/11/2026): HĐ thuê / vay có bản chất giao dịch = Bán căn hộ
@@ -1087,7 +1087,6 @@ async function debtSummary(db, user, f = {}) {
   const DV = await B.debtOf(db, vays.map(v => v.id), to);
   const GT = new Map((await db.q("SELECT contract_id, sum(coalesce(paid_amt, 0)) s FROM kd_loan_pay WHERE kind = 'goc' AND contract_id = ANY($1) AND (paid_on IS NULL OR paid_on <= $2) GROUP BY 1", [vays.map(v => v.id), to])).map(x => [x.contract_id, +x.s]));
   const HDV = new Map(); for (const v of vays) HDV.set(v.unit_id, (HDV.get(v.unit_id) || 0) + (DV.get(v.id)?.paid || 0) - (GT.get(v.id) || 0));
-  const pii = PII_ROLES.includes(user.role), mask = v => v == null || v === '' ? '' : pii ? v : '•••••' + String(v).slice(-3);
   const ST_L = Object.fromEntries(C.F.contract.status.o.map(o => [o[0], o[1]]));
   // chia 1 hợp đồng ra các khoản: { n, g, p, b } × { total, due, paid }
   const split = c => {
@@ -1134,8 +1133,7 @@ async function debtSummary(db, user, f = {}) {
       unit_id: uid, contract_id: c.id, project: c.project, project_name: c.project_name, building: c.building, unit: c.unit, number: c.number, cust_code: c.cust_code, customer: c.customer,
       address: c.b_addr || c.k_addr || '', contract_on: c.contract_on, vbtt_on: c.vbtt_on, phone: c.b_phone || c.k_phone || '',
       area_floor: c.area_floor ?? c.area_build ?? null, area_tt: c.area_tt ?? c.area_land ?? null, base_price: c.base_price ?? c.land_price ?? null, build_price: c.build_price ?? null,
-      common_amt: all.reduce((s, x) => s + (+x.common_area_amt || 0), 0) || null, sign_l: c.status === 'da_ky' ? 'Đã ký hợp đồng' : ST_L[c.status] || c.status, signed: c.status === 'da_ky',
-      tax_code: mask(c.k_tax), id_no: mask(c.b_id_no || c.k_id_no), id_date: pii ? (c.b_id_date || c.k_id_date) : null, id_place: pii ? (c.b_id_place || c.k_id_place || '') : '',
+      sign_l: c.status === 'da_ky' ? 'Đã ký hợp đồng' : ST_L[c.status] || c.status, signed: c.status === 'da_ky',
       hdv_left: HDV.has(uid) ? HDV.get(uid) : null, grp: ['thue', 'vay'].includes(c.kind) ? c.kind : 'mb' };
     for (const k of ['n', 'g', 'p', 'b']) { r[k + '_total'] = o[k].total; r[k + '_due'] = o[k].due; r[k + '_paid'] = o[k].paid; r[k + '_left'] = o[k].total - o[k].paid; r[k + '_left_due'] = pos(o[k].due - o[k].paid); }
     r.value = all.reduce((s, x) => s + (['thue', 'vay'].includes(x.kind) ? +x.unit_total || 0 : +x.value || 0), 0);   // HĐ thuê / vay bán căn: giá trị = Giá trị HĐMB
@@ -1149,7 +1147,7 @@ async function debtSummary(db, user, f = {}) {
   }
   // điều kiện lọc theo tình trạng công nợ (07/11/2026)
   if (f.cond) { const F = DS_COND[f.cond]; if (!F) bad('Điều kiện lọc không hợp lệ'); rows.splice(0, rows.length, ...rows.filter(F[1])); }
-  return { grps: DS_GRP, head: DS_HEAD.map(([g, cs]) => [g, cs.map(c => c.slice(0, 3))]), conds: Object.entries(DS_COND).map(([k, v]) => [k, v[0]]), sum: DS_SUM, rows, to, pii, bravo_sync: await bravoSync(db) };
+  return { grps: DS_GRP, head: DS_HEAD.map(([g, cs]) => [g, cs.map(c => c.slice(0, 3))]), conds: Object.entries(DS_COND).map(([k, v]) => [k, v[0]]), sum: DS_SUM, rows, to, bravo_sync: await bravoSync(db) };
 }
 // xuất Excel đúng bố cục bảng: 2 tầng tiêu đề, dòng mục (1. HỢP ĐỒNG …), dòng cộng từng tòa, dòng Tổng cộng
 function debtSummaryXlsx(d, q = '', hide = new Set()) {
