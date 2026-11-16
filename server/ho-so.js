@@ -579,11 +579,11 @@ async function batchKeys(units, bo, user) {   // danh sách loại hồ sơ củ
     try { const f = await findUnit(code); await autoProjectTemplates(f.id, user);
       const ts = await unitTemplates(f.id);
       for (const s of steps) { const all = ts.filter(t => t.bo === s), hd = all.some(t => tplKey(t.code) === 'MB-02');
-        for (const t of all.filter(t => !(hd && ANNEX(tplKey(t.code))))) { const k = tplKey(t.code); if (!keys.has(k)) keys.set(k, { name: shortName(t.name), bo: s, ids: [] }); if (t.id && !keys.get(k).ids.includes(t.id)) keys.get(k).ids.push(t.id); } }
+        for (const t of all.filter(t => !(hd && ANNEX(tplKey(t.code))))) { const k = tplKey(t.code); if (!keys.has(k)) keys.set(k, { name: shortName(t.name), bo: s, ids: [], tpls: [] }); const K = keys.get(k); if (t.id && !K.ids.includes(t.id)) { K.ids.push(t.id); K.tpls.push({ id: t.id, code: t.code, name: t.name }); } } }
     } catch (e) { seen.delete(g); }
   }
   const ord = Object.keys(BO_PFX);
-  return { keys: [...keys].map(([key, x]) => ({ key, name: x.name, bo: x.bo, bo_l: BO_L[x.bo], ids: x.ids || [] })).sort((a, b) => ord.indexOf(a.bo) - ord.indexOf(b.bo) || a.key.localeCompare(b.key)) };
+  return { keys: [...keys].map(([key, x]) => ({ key, name: x.name, bo: x.bo, bo_l: BO_L[x.bo], ids: x.ids || [], tpls: x.tpls || [] })).sort((a, b) => ord.indexOf(a.bo) - ord.indexOf(b.bo) || a.key.localeCompare(b.key)) };
 }
 // căn + mẫu sẽ in (dùng chung cho In / Word / Lưu vào kho)
 async function batchPick(units, bo, keys, user) {
