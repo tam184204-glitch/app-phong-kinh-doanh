@@ -1258,6 +1258,11 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   // phiếu đăng ký: Tổng giá bán = Giá trị căn hộ + Giá trị hoàn thiện nội thất
   const sumRes = () => { const rd = k => readField(form, fields.find(f => f.k === k) || {}), uv = rd('unit_value'); if (uv != null && form.elements.price) form.elements.price.value = moneyStr(uv + (rd('finish_value') || 0)); };
   if (ent === 'reservation') form.addEventListener('input', e => { if (['unit_value', 'finish_value'].includes(e.target.name)) sumRes(); });
+  // 16/11/2026: phiếu hủy / thanh lý — Ngày dự kiến chi trả = Ngày thanh lý + Số ngày chi trả tiền, tính lại ngay khi đổi 1 trong 2 ô (máy chủ cũng tính khi lưu)
+  if (ent === 'cancel_req') {
+    const payDue = () => { const lo = parseDmy(form.elements.liquidate_on?.value || ''), w = String(form.elements.wait_days?.value ?? '').replace(/\D/g, ''); if (!lo || !form.elements.pay_due) return; form.elements.pay_due.value = dmy(addDays(lo, w === '' ? 0 : +w)); };
+    for (const ev of ['input', 'change']) form.addEventListener(ev, e => { if (['wait_days', 'liquidate_on'].includes(e.target.name)) payDue(); });
+  }
   // HĐMB (15/11/2026): chọn khách chưa có hồ sơ NOXH đủ điều kiện tại căn → báo ngay (vẫn lưu dự thảo; máy chủ chặn gửi trình duyệt / duyệt)
   if (ent === 'contract') form.addEventListener('change', async e => {
     if (e.target.name !== 'customer_id' || !e.target.value || (form.elements.kind?.value ?? rec.kind) !== 'hdmb' || !form.elements.unit_id?.value) return;
