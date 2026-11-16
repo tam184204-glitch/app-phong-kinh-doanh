@@ -387,6 +387,9 @@ def('noxh_check', {
     { k: 'sale_check', l: 'Thông báo mở bán / cho thuê', t: 'text', ro: 1 },   // căn có trong thông báo đã duyệt gần nhất (hồ sơ thuê: thông báo cho thuê)? (cảnh báo, không chặn)
     { k: 'received_on', l: 'Ngày nộp hồ sơ', t: 'date', def: 'today' },
     { k: 'reg_kind', l: 'Hình thức', t: 'sel', def: 'mua', o: M4.hinh_thuc, help: 'Gắn phiếu đăng ký thì tự theo phiếu (đăng ký thuê → Thuê). Hồ sơ thuê chuyển «Chờ xét duyệt» → tự lập HĐ thuê' },
+    // 16/11/2026: hồ sơ thuê theo phương án bán căn hộ → chuyển «Chờ xét duyệt» tự lập HĐ thuê (bản chất Bán căn hộ, có tiến độ thu tiền HĐMB theo chính sách bán) + HĐ hoàn thiện căn hộ
+    { k: 'sale_plan', l: 'Phương án', t: 'sel', def: 'thue', o: [['thue', 'Cho thuê'], ['ban', 'Bán căn hộ (thuê theo phương án bán)']], show: { reg_kind: ['thue'] },
+      help: 'Bán căn hộ: hồ sơ chuyển «Chờ xét duyệt» → tự lập HĐ thuê (bản chất Bán căn hộ, tiến độ thu tiền HĐMB theo chính sách bán hàng) và HĐ hoàn thiện căn hộ (gói hoàn thiện, tiến độ theo chính sách bán hàng)' },
     { k: 'unit_text', l: 'Mã căn hộ ngoài danh mục', t: 'text', help: 'Chỉ ghi khi căn chưa có trong Danh mục sản phẩm (VD CTS-L-0511)' },
     { k: 'plan_sign', l: 'Ngày dự kiến ký', t: 'date', sec: 'Lịch ký', help: 'Tự sang hợp đồng và màn Lịch ký hợp đồng' },
     { k: 'sign_place', l: 'Địa điểm ký', t: 'text' },

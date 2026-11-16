@@ -1060,8 +1060,31 @@ const saleLive = async (db, rows) => { const c = new Map(); for (const r of rows
 // Chờ duyệt hồ sơ: chưa trình duyệt / phát hành / ký được; SXD duyệt đủ điều kiện → bỏ chờ (noxhSyncWait). Lập không được → chỉ báo, hồ sơ vẫn chuyển trạng thái
 const HD_L = { hdmb: 'hợp đồng mua bán', thue: 'hợp đồng thuê', thue_mua: 'hợp đồng thuê mua' };
 const noxhOk = n => n.status === 'da_duyet' && n.sxd_result !== 'khong_duyet';
+// 16/11/2026: hồ sơ thuê theo phương án bán căn hộ (sale_plan = ban) — HĐ thuê bản chất «Bán căn hộ» có tiến độ thu tiền HĐMB theo chính sách bán + HĐ hoàn thiện căn hộ
+const noxhSalePlan = n => n.reg_kind === 'thue' && n.sale_plan === 'ban';
+// HĐ hoàn thiện căn hộ đi kèm hồ sơ (gói hoàn thiện = giá trị hoàn thiện của căn theo phiếu / chính sách bán hàng đang áp dụng; Lần thanh toán theo «Tiến độ thu giá trị hoàn thiện»
+// của chính sách — lập ở afterSave), cùng «Dự thảo – Chờ duyệt hồ sơ»; đã có HĐ hoàn thiện của hồ sơ / của khách tại căn thì không lập thêm. need: thiếu dữ liệu thì cảnh báo
+async function noxhAutoFinish(db, n, user, warn, demo, { s, u, ptype, owner, need } = {}) {
+  s ??= n.reservation_id ? await raw(db, 'reservation', n.reservation_id) : null;
+  const unitId = n.unit_id || s?.unit_id, custId = n.customer_id || s?.customer_id; if (!unitId || !custId) return;
+  u ??= await raw(db, 'unit', unitId);
+  if (await db.one("SELECT 1 FROM kd_contract WHERE kind = 'hoan_thien' AND (noxh_id = $1 OR (unit_id = $2 AND customer_id = $3 AND status NOT IN ('huy','thanh_ly'))) LIMIT 1", [n.id, unitId, custId])) return;
+  if (!ptype) ptype = (await db.one('SELECT ptype FROM kd_contract WHERE noxh_id = $1 ORDER BY id LIMIT 1', [n.id]))?.ptype || 'can_ho';
+  if (ptype === 'lien_ke') return;   // liền kề: hoàn thiện gộp vào HĐMB
+  const pol = (await pricing(db, u, today(), { source: s?.source || 'truc_tiep', agent_id: s?.agent_id ?? null })).policy;
+  if (!pol && need) { warn.push(`Chưa xác định được chính sách bán hàng đã ban hành áp cho căn ${u.code} — chưa lập hợp đồng hoàn thiện căn hộ: bổ sung chính sách bán hàng`); return; }
+  const fv = +(s?.finish_value ?? polFin(pol, u.code) ?? 0);
+  if (!(fv > 0)) { if (need) warn.push(`Chính sách bán hàng ${pol.code} v${pol.version} chưa có giá trị gói hoàn thiện cho căn ${u.code} — chưa lập hợp đồng hoàn thiện căn hộ: bổ sung gói hoàn thiện ở chính sách (tab «Hoàn thiện căn hộ»)`); return; }
+  if (need && !pol.fin_sched?.length) warn.push(`Chính sách bán hàng ${pol.code} v${pol.version} chưa khai «Tiến độ thu giá trị hoàn thiện» — hợp đồng hoàn thiện chưa có Lần thanh toán: bổ sung ở chính sách hoặc nhập trên hợp đồng`);
+  const ht = await create('contract', { kind: 'hoan_thien', ptype, unit_id: unitId, customer_id: custId, owner_id: owner || s?.owner_id || user?.id, value: fv, finish_value: fv, price_policy_id: pol.id,
+    noxh_id: n.id, noxh_wait: !noxhOk(n), ...(s ? { reservation_id: s.id } : {}) }, user, { db, system: true, demo });
+  warn.push(`Đã tự lập hợp đồng hoàn thiện căn hộ ${ht.row.number} (${fmtMoney(fv)}đ, theo chính sách ${pol.code} v${pol.version})`); for (const w of ht.warnings || []) warn.push(`${ht.row.number}: ${w}`);
+}
 async function noxhAutoContract(db, n, user, warn = [], demo) {
-  if (await db.one('SELECT 1 FROM kd_contract WHERE noxh_id = $1 LIMIT 1', [n.id])) return;   // hồ sơ đã có hợp đồng tự lập (kể cả đã hủy) — không lập thêm
+  if (await db.one('SELECT 1 FROM kd_contract WHERE noxh_id = $1 LIMIT 1', [n.id])) {   // hồ sơ đã có hợp đồng tự lập (kể cả đã hủy) — không lập thêm (chuyển lại trạng thái không tạo trùng)
+    if (noxhSalePlan(n)) await noxhAutoFinish(db, n, user, warn, demo, { need: true });   // phương án bán căn: bổ sung HĐ hoàn thiện nếu còn thiếu
+    return;
+  }
   const s = n.reservation_id ? await raw(db, 'reservation', n.reservation_id) : null;
   const unitId = n.unit_id || s?.unit_id, custId = n.customer_id || s?.customer_id;
   if (!unitId || !custId) { warn.push(`Hồ sơ NOXH #${n.id} chưa có mã căn / mã khách hàng — chưa tự lập hợp đồng`); return; }
@@ -1084,6 +1107,7 @@ async function noxhAutoContract(db, n, user, warn = [], demo) {
       const rent = +s?.rent > 0 ? +s.rent : (rp.rent || 0) + (+rp.furn || 0), tn = +s?.term_months || +rp.policy?.rent_term || nn;
       if (!(rent > 0)) bad('chưa có tiền thuê/tháng (phiếu đăng ký thuê / chính sách cho thuê áp cho căn)');
       Object.assign(data, { rent, term_months: tn, eff_on: a, exp_on: addDays(addMonths(a, tn), -1), value: Math.round(rent * tn), ...(rp.policy ? { price_policy_id: rp.policy.id } : {}) });
+      if (noxhSalePlan(n)) Object.assign(data, { nature: 'ban', sale_on: true });   // phương án bán căn: tiến độ thu tiền HĐMB tự lấy theo chính sách bán (beforeSave)
     }
     else data.value = s?.price ?? (u?.total_price != null ? +u.total_price : null);
     const made = await create('contract', data, user, { db, system: true, demo }), c = made.row;
@@ -1091,14 +1115,7 @@ async function noxhAutoContract(db, n, user, warn = [], demo) {
     for (const w of made.warnings || []) warn.push(`${c.number}: ${w}`);   // Lần thanh toán theo chính sách / chưa xác định được chính sách
     // căn hộ có giá trị hoàn thiện (nội thất) theo chính sách / phiếu: lập kèm HĐ hoàn thiện căn hộ dự thảo (như form HĐMB tab «Hoàn thiện căn hộ»),
     // Lần thanh toán theo «Tiến độ thu giá trị hoàn thiện» của chính sách; cùng hồ sơ nên cùng «Chờ duyệt hồ sơ»
-    if (kind === 'hdmb' && c.ptype !== 'lien_ke') {
-      const pol = (await pricing(db, u, today(), { source: s?.source || 'truc_tiep', agent_id: s?.agent_id ?? null })).policy;
-      const fv = +(s?.finish_value ?? polFin(pol, u.code) ?? 0);
-      if (fv > 0 && !(await db.one("SELECT 1 FROM kd_contract WHERE unit_id = $1 AND customer_id = $2 AND kind = 'hoan_thien' AND status NOT IN ('huy','thanh_ly') LIMIT 1", [unitId, custId]))) {
-        const ht = await create('contract', { kind: 'hoan_thien', ptype: c.ptype, unit_id: unitId, customer_id: custId, owner_id: data.owner_id, value: fv, finish_value: fv, noxh_id: n.id, noxh_wait: wait, ...(s ? { reservation_id: s.id } : {}) }, user, { db, system: true, demo });
-        warn.push(`Đã tự lập hợp đồng hoàn thiện căn hộ ${ht.row.number} (${fmtMoney(fv)}đ)`); for (const w of ht.warnings || []) warn.push(`${ht.row.number}: ${w}`);
-      }
-    }
+    if (kind === 'hdmb' || noxhSalePlan(n)) await noxhAutoFinish(db, n, user, warn, demo, { s, u, ptype: c.ptype, owner: data.owner_id, need: noxhSalePlan(n) });   // 16/11/2026: + hồ sơ thuê phương án bán căn
     if (s && ['giu_cho', 'da_coc'].includes(s.status)) await sys(db, 'reservation', s.id, { status: 'chuyen_hd' }, user, 'tt:to_contract', `Tự lập ${HD_L[kind]} ${c.number} khi hồ sơ NOXH #${n.id} chuyển «Chờ xét duyệt»`);
     if (sp) await db.q('RELEASE SAVEPOINT sp_auto_hd');
     warn.push(`Đã tự lập ${HD_L[kind]} ${c.number} — ${wait ? '«Dự thảo – Chờ duyệt hồ sơ»' : '«Dự thảo»'}`);
@@ -1110,8 +1127,9 @@ async function noxhAutoContract(db, n, user, warn = [], demo) {
 // 16/11/2026: hồ sơ được Sở Xây dựng xét duyệt KHÔNG đủ điều kiện → HĐ của hồ sơ «Dự thảo – Hồ sơ không đủ điều kiện» (noxh_fail + lý do / số văn bản / ngày xét duyệt),
 // chặn trình duyệt / duyệt / ký (kể cả hàng loạt) cho tới khi hồ sơ được cập nhật «đủ điều kiện»
 const NOXH_HD = { hdmb: 'Hợp đồng mua bán', thue_mua: 'Hợp đồng thuê mua', thue: 'Hợp đồng thuê', hoan_thien: 'Hợp đồng hoàn thiện căn hộ', vay: 'Hợp đồng vay' };
-const noxhFailMsg = kind => { const w = kind === 'thue' ? 'thuê' : kind === 'thue_mua' ? 'thuê mua' : 'mua';
+const noxhFailMsg = (kind, rk) => { const k = rk || kind, w = k === 'thue' ? 'thuê' : k === 'thue_mua' ? 'thuê mua' : 'mua';   // rk: hình thức của hồ sơ (HĐ hoàn thiện đi kèm hồ sơ thuê → «thuê»)
   return `Hồ sơ ${w} của khách hàng đã được Sở Xây dựng xét duyệt không đủ điều kiện ${w} nhà ở xã hội. Không thể trình duyệt, duyệt hoặc ký ${NOXH_HD[kind] || 'hợp đồng'}.`; };
+const noxhFailStop = async (db, r, opt) => bad(noxhFailMsg(r.kind, r.noxh_id ? (await db.one('SELECT reg_kind FROM kd_noxh_check WHERE id = $1', [r.noxh_id]))?.reg_kind : null), opt);
 const noxhFailTxt = n => ['Sở Xây dựng xét duyệt KHÔNG đủ điều kiện', String(n.sxd_note || '').trim() ? `Lý do: ${String(n.sxd_note).trim()}` : '', n.sxd_doc_no ? `Số văn bản: ${n.sxd_doc_no}` : '',
   n.sxd_approved_on ? `Ngày xét duyệt: ${d10(n.sxd_approved_on).split('-').reverse().join('/')}` : '', `Hồ sơ NOXH #${n.id}`].filter(Boolean).join(' · ');
 // lúc khởi động: hợp đồng chưa ký của mọi hồ sơ theo đúng kết quả xét duyệt hiện tại (hồ sơ đổi kết quả trước khi có đồng bộ «không đủ điều kiện»)
@@ -1428,7 +1446,10 @@ H.noxh_check = {
         [r.plan_sign ?? null, r.sign_place ?? null, r.sign_status ?? null, r.customer_id, r.unit_id ?? null]);
     // 15/11/2026: hồ sơ chuyển «Chờ xét duyệt» (hoặc thẳng «Đã duyệt SXD» đủ điều kiện) → tự lập hợp đồng «Dự thảo – Chờ duyệt hồ sơ» (mỗi hồ sơ 1 HĐ);
     // kết quả xét duyệt đổi → hợp đồng của hồ sơ bỏ / về «Chờ duyệt hồ sơ»
-    if (old && old.status !== r.status && (r.status === 'cho_duyet' || noxhOk(r))) await noxhAutoContract(db, r, user, warn, demo);
+    if (old && old.status !== r.status && (r.status === 'cho_duyet' || noxhOk(r))) {
+      const w0 = []; await noxhAutoContract(db, r, user, w0, demo); warn?.push(...w0);
+      if (w0.length) await C.audit(db, 'noxh_check', r.id, 'tu_lap_hd', null, null, user, w0.join(' · '), demo);   // 16/11/2026: kết quả tự lập HĐ / cảnh báo thiếu chính sách, gói hoàn thiện → lịch sử hồ sơ
+    }
     { const v = (x, k) => k === 'sxd_approved_on' ? d10(x[k]) ?? '' : String(x[k] ?? '');   // + lý do / số văn bản / ngày xét duyệt
       if (old && ['status', 'sxd_result', 'sxd_note', 'sxd_doc_no', 'sxd_approved_on'].some(k => v(old, k) !== v(r, k))) await noxhSyncWait(db, r, user); }
     // tiến trình giao dịch của phiếu đăng ký theo hồ sơ NOXH: Chờ xét duyệt → «Đã nộp hồ sơ chờ xét duyệt»; Đã duyệt SXD → «Đủ điều kiện ký HĐMB»,
@@ -2217,7 +2238,7 @@ function rentMonths(a, b) {
 H.contract = {
   async onApprove(r, ok, { db, user }) {
     if (!ok) return;
-    if (r.noxh_fail) bad(noxhFailMsg(r.kind));   // 16/11/2026: hồ sơ SXD duyệt không đủ điều kiện
+    if (r.noxh_fail) await noxhFailStop(db, r);   // 16/11/2026: hồ sơ SXD duyệt không đủ điều kiện
     if (r.noxh_wait) bad('Hợp đồng đang «Dự thảo – Chờ duyệt hồ sơ» — chờ Sở Xây dựng duyệt hồ sơ NOXH đủ điều kiện mới duyệt / ký được. Bấm «Từ chối» để trả về dự thảo.');
     await noxhGate(db, r.kind, r.customer_id, r.unit_id, 'duyệt');
     return { patch: { ...signedPatch(r), appr_by: user?.id ?? null, appr_at: new Date().toISOString() } };   // 16/11/2026: ghi người duyệt, thời gian duyệt
@@ -2262,7 +2283,7 @@ H.contract = {
   },
   async beforeSave(r, old, ctx) {
     const { db, opts } = ctx;
-    if (!opts?.system && r.noxh_fail && r.sign_status === 'da_ky' && old?.sign_status !== 'da_ky') bad(noxhFailMsg(r.kind), { fields: ['sign_status'] });   // 16/11/2026: không xác nhận ký khi hồ sơ không đủ điều kiện
+    if (!opts?.system && r.noxh_fail && r.sign_status === 'da_ky' && old?.sign_status !== 'da_ky') await noxhFailStop(db, r, { fields: ['sign_status'] });   // 16/11/2026: không xác nhận ký khi hồ sơ không đủ điều kiện
     // HĐMB căn hộ NOXH: khách chưa có hồ sơ được Sở Xây dựng xét duyệt đủ điều kiện tại căn → vẫn lưu dự thảo, chỉ cảnh báo (chặn ở bước trình / duyệt)
     if (!opts?.system && ['hdmb', 'thue', 'thue_mua'].includes(r.kind) && (!old || old.customer_id !== r.customer_id || old.unit_id !== r.unit_id)) {
       const x = await noxhIssue(db, r.kind, r.customer_id, r.unit_id);
@@ -2457,7 +2478,7 @@ H.contract = {
   // «Dự thảo – Chờ duyệt hồ sơ» (HĐ tự lập từ hồ sơ NOXH, 15/11/2026): ẩn nút Gửi trình duyệt / Duyệt cho tới khi SXD duyệt hồ sơ đủ điều kiện
   perms(row, user, db, out) { if (row.noxh_wait || row.noxh_fail) return { submit: false, approve: false, acts: (out?.acts || []).filter(k => k !== 'approve_direct') }; },
   async onSubmit(r, { db }) {
-    if (r.noxh_fail) bad(noxhFailMsg(r.kind));   // 16/11/2026: hồ sơ SXD duyệt không đủ điều kiện
+    if (r.noxh_fail) await noxhFailStop(db, r);   // 16/11/2026: hồ sơ SXD duyệt không đủ điều kiện
     if (r.noxh_wait) bad(`${HD_L[r.kind] ? HD_L[r.kind][0].toUpperCase() + HD_L[r.kind].slice(1) : 'Hợp đồng'} đang «Dự thảo – Chờ duyệt hồ sơ» — chờ Sở Xây dựng duyệt hồ sơ NOXH đủ điều kiện mới gửi trình duyệt được`);
     await noxhGate(db, r.kind, r.customer_id, r.unit_id, 'gửi trình duyệt');   // HĐMB căn hộ NOXH: khách phải được Sở Xây dựng xét duyệt đủ điều kiện tại căn (15/11/2026)
     const n = await db.one('SELECT count(*) n, coalesce(sum(amount),0) s FROM kd_installment WHERE contract_id = $1 AND active', [r.id]);
@@ -2539,6 +2560,7 @@ H.contract = {
     const D = await debtOf(db, rows.map(r => r.id));
     for (const r of rows) { const d = D.get(r.id); r.paid = d.paid; r.left = d.left; r.overdue = d.overdue; if (one) r._debt = d; }
     if (one) for (const r of rows) if (r.kind === 'vay') r._loan = await db.q('SELECT * FROM kd_loan_pay WHERE contract_id = $1 ORDER BY due_on, kind DESC, seq', [r.id]);
+    if (one) for (const r of rows) if (r.noxh_id) r._noxh_kind = (await db.one('SELECT reg_kind FROM kd_noxh_check WHERE id = $1', [r.noxh_id]))?.reg_kind || null;   // cảnh báo hồ sơ không đủ điều kiện: «mua / thuê» theo hồ sơ
     if (!one) await H.contract.listFill(rows, db);
     if (one && rows[0]) { const r0 = rows[0], xs = await db.q('SELECT id, seq, name, due_on, pct, amount, is_maint, is_bg, bg_days, is_fin, is_gcn, gcn_days FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq', [r0.id]);
       r0.new_schedule = xs.map(x => ({ name: x.name, due_on: x.due_on, pct: x.pct == null ? null : +x.pct, amount: x.pct == null ? +x.amount : null, ...(x.is_maint ? { maint: true } : {}), ...(x.is_fin ? { fin: true } : {}), ...(x.is_bg ? { bg: true, bg_days: x.bg_days == null ? null : +x.bg_days } : {}), ...(x.is_gcn ? { gcn: true, gcn_days: x.gcn_days == null ? null : +x.gcn_days } : {}) }));

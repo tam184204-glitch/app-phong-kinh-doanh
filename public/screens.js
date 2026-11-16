@@ -1611,7 +1611,7 @@ V.mau4 = async (main, params) => {
       const more = await m4Ask(`Chuyển <b>${sel.size}</b> hồ sơ sang <b>${M4_ST[status][0]}</b>?`, status, pre); if (!more) return;
       const r = await api('POST', '/api/mau4/status', { ids: [...sel], status, ...more });
       toast(`Đã chuyển ${r.n} hồ sơ sang «${M4_ST[status][0]}»`); sel.clear(); await load();
-      undo = r.prev; $('#m4UT', main).innerHTML = `Vừa chuyển <b>${r.n}</b> hồ sơ sang <b>${M4_ST[status][0]}</b>.`; $('#m4U', main).hidden = false;
+      undo = r.prev; $('#m4UT', main).innerHTML = `Vừa chuyển <b>${r.n}</b> hồ sơ sang <b>${M4_ST[status][0]}</b>.${r.warnings?.length ? `<div class="small" style="margin-top:4px">${r.warnings.map(w => `<div class="${/chưa|thiếu|không/i.test(w) ? 'neg' : ''}">• ${esc(w)}</div>`).join('')}</div>` : ''}`; $('#m4U', main).hidden = false;   // kết quả tự lập hợp đồng / cảnh báo
     });
     // hoàn tác lần chuyển gần nhất (giữ tới khi chuyển lần khác / rời màn hình)
     let undo = null;

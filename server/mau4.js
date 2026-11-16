@@ -64,12 +64,12 @@ async function bulkStatus(user, { ids, status, sxd_result, sxd_note, sxd_submit_
   const patch = { status, ...(day ? { sxd_submit_on: day } : {}) };
   if (status === 'da_duyet') Object.assign(patch, { sxd_result }, isDay(sxd_approved_on) ? { sxd_approved_on } : {}, s(sxd_doc_no) ? { sxd_doc_no: s(sxd_doc_no) } : {}, s(sxd_note) ? { sxd_note: s(sxd_note) } : {});
   const st = L => e.fields.find(f => f.k === 'status').o.find(o => o[0] === L)?.[1];
-  let n = 0, prev = [];
+  let n = 0, prev = []; const warnings = [];
   await tx(async db => {
     prev = await db.q(`SELECT id, ${UNDO_K.join(', ')} FROM kd_noxh_check WHERE id = ANY($1)`, [ids]);
-    for (const id of ids) { await C.sys(db, 'noxh_check', id, patch, user, 'chuyen_tt', `Chuyển hàng loạt sang «${st(status)}»`); n++; }
+    for (const id of ids) { const o = await C.sys(db, 'noxh_check', id, patch, user, 'chuyen_tt', `Chuyển hàng loạt sang «${st(status)}»`); n++; for (const w of o?.warnings || []) warnings.push(`Hồ sơ #${id}: ${w}`); }
   });
-  return { ok: true, n, prev };
+  return { ok: true, n, prev, warnings };   // 16/11/2026: tự lập hợp đồng / cảnh báo thiếu chính sách, gói hoàn thiện
 }
 // hoàn tác lần chuyển hàng loạt vừa rồi: ghi lại đúng giá trị cũ của từng hồ sơ
 const UNDO_K = ['status', 'sxd_submit_on', 'sxd_result', 'sxd_approved_on', 'sxd_doc_no', 'sxd_note'];
