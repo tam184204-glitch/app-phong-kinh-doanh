@@ -399,10 +399,14 @@ def('cancel_req', {
     { k: 'money_plan', l: 'Phương án xử lý', t: 'sel', req: 1, def: 'hoan_tien', o: [['hoan_tien', 'Hoàn tiền'], ['chuyen_can_moi', 'Chuyển tiền/bù trừ'], ['khac', 'Khác']] },
     { k: 'money_note', l: 'Diễn giải phương án khác', t: 'text', show: { money_plan: ['khac'] } },
     // 16/11/2026 theo dõi thanh lý & chi trả: tổng đã thu (phiếu thu của HĐ), khấu trừ theo hồ sơ thanh lý, phải hoàn trả = đã thu − khấu trừ, đã chi = phiếu chi hoàn tiền / hoàn cọc / thanh lý của HĐ
-    money('collected', 'Tổng tiền đã thu (đồng)', { help: 'Tự tính = các phiếu thu hợp lệ của hợp đồng — sửa tay thì giữ số đã sửa' }),
-    money('deduct_amount', 'Các khoản khấu trừ (đồng)', { help: 'Theo hồ sơ thanh lý (phạt vi phạm, phí, chi phí…)' }),
-    { k: 'deduct_note', l: 'Diễn giải khấu trừ', t: 'text' },
-    money('pay_amount', 'Số tiền phải hoàn trả (đồng)', { help: 'Thanh lý hợp đồng: tự tính = tổng đã thu − khấu trừ. Đề nghị hủy / đổi: để trống = số khách đã nộp — sửa được' }),
+    // 16/11/2026: phiếu thanh lý chung — nhiều hợp đồng cùng căn, cùng khách (HĐMB + HĐ hoàn thiện…): từng HĐ có tiền đã thu, khấu trừ, phải hoàn trả; tổng chung ở bảng
+    { k: 'items', l: 'Hợp đồng thanh lý trong phiếu', t: 'json', pick: 'liq', show: { kind: ['thanh_ly'] }, help: 'Tích các hợp đồng của căn / khách cần thanh lý chung 1 phiếu. Tiền đã thu tự tính theo phiếu thu; phải hoàn trả = đã thu − khấu trừ (sửa được). Hợp đồng đã ở phiếu khác không chọn được' },
+    { k: 'ct_ids', l: 'Các hợp đồng trong phiếu', t: 'refs', ref: 'contract', ro: 1, hide: 1 },
+    { k: 'liq_reason', l: 'Lý do thanh lý', t: 'sel', def: 'tra_lai', o: [['tra_lai', 'Trả lại hẳn'], ['chuyen_ten', 'Chuyển tên']], show: { kind: ['thanh_ly'] }, help: 'Duyệt phiếu → các hợp đồng chưa thanh lý trong phiếu được thanh lý với lý do này' },
+    money('collected', 'Tổng tiền đã thu (đồng)', { show: { kind: ['huy', 'doi_can', 'doi_kh'] }, help: 'Tự tính = các phiếu thu hợp lệ của hợp đồng — sửa tay thì giữ số đã sửa' }),
+    money('deduct_amount', 'Các khoản khấu trừ (đồng)', { show: { kind: ['huy', 'doi_can', 'doi_kh'] }, help: 'Theo hồ sơ thanh lý (phạt vi phạm, phí, chi phí…)' }),
+    { k: 'deduct_note', l: 'Diễn giải khấu trừ', t: 'text', show: { kind: ['huy', 'doi_can', 'doi_kh'] } },
+    money('pay_amount', 'Số tiền phải hoàn trả (đồng)', { show: { kind: ['huy', 'doi_can', 'doi_kh'] }, help: 'Thanh lý hợp đồng: tự tính = tổng đã thu − khấu trừ. Đề nghị hủy / đổi: để trống = số khách đã nộp — sửa được' }),
     money('paid_amount', 'Số tiền đã chi trả (đồng)', { help: 'Tự cộng các phiếu chi hoàn tiền / hoàn cọc / thanh lý của hợp đồng — sửa tay thì giữ số đã sửa' }),
     { k: 'edited', l: 'Ô đã sửa tay', t: 'json', ro: 1, hide: 1 },   // 16/11/2026: đồng bộ lại từ hợp đồng / phiếu thu chi không ghi đè các ô này
     { k: 'liquidate_on', l: 'Ngày ký thanh lý HĐMB (nếu có)', t: 'date' },

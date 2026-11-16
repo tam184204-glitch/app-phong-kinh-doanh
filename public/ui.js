@@ -148,6 +148,7 @@ async function bgPicker(el, form) {
 }
 function show(f, row, { plain } = {}) {
   if (f.pick === 'units' && Array.isArray(row._units) && !plain) return unitsTable(row._units);
+  if (f.pick === 'liq' && Array.isArray(row[f.k])) return plain ? row[f.k].map(x => x.number).join(' + ') : liqTable(row[f.k]);   // phiếu thanh lý chung: bảng từng hợp đồng + tổng
   if (f.pick === 'bg_units' && Array.isArray(row._bg) && !plain) return `<div class="small muted mb">${row._bg.length} căn · hạn thu đợt bàn giao ${row.status === 'da_duyet' ? 'đã cập nhật vào HĐMB' : 'sẽ cập nhật khi phát hành'}</div>` + bgTable(row._bg);
   const v = row[f.k];
   if (f.k === 'fin_sched' && !plain && !(Array.isArray(v) && v.length)) return '<span class="muted">Chưa khai tiến độ riêng — giá trị hoàn thiện thu chung theo tiến độ thu tiền HĐMB ở trên</span>';
@@ -282,7 +283,8 @@ function input(f, v, rec = {}, { ro, id } = {}) {
     case 'refs': { const ids = v || [], ls = String(rec[f.k + '__l'] ?? '').split(', '), lab = (id, i) => { const p = f.ref === 'project' && M.projects.find(x => x.id === id); return p ? `${p.code} · ${p.name}` : ids.length === ls.length ? ls[i] : '#' + id; };
       return `<div class="combo multi" data-ref="${f.ref}" data-multi><div class="chips">${ids.map((id, i) => `<span class="chip" data-id="${id}">${esc(lab(id, i))}<button type="button" tabindex="-1" title="Bỏ">${ico('fa-xmark')}</button></span>`).join('')}<input type="text" placeholder="${ids.length ? 'Thêm' : 'Gõ để tìm'} ${esc(M.ents[f.ref].one)}…" autocomplete="off" data-combo></div><input type="hidden" ${nm} value="${esc(ids.join(','))}"></div>`; }
     case 'check': return `<div class="cklist${f.qty ? ' qty' : ''}" ${nm} ${f.qty ? 'data-qty' : ''}>${checkRows(v || [], f.qty)}</div>`;
-    case 'json': if (f.pick === 'finish') return `<div class="upick" data-pick-fin><input type="hidden" ${nm} value="${esc(JSON.stringify(v || {}))}"><div class="upick-bd"></div></div>`;
+    case 'json': if (f.pick === 'liq') return `<div class="upick" data-pick-liq><input type="hidden" ${nm} value="${esc(JSON.stringify(Array.isArray(v) ? v : []))}"><div class="upick-bd"></div></div>`;   // phiếu thanh lý chung (16/11/2026)
+      if (f.pick === 'finish') return `<div class="upick" data-pick-fin><input type="hidden" ${nm} value="${esc(JSON.stringify(v || {}))}"><div class="upick-bd"></div></div>`;
       return f.k === 'pay_sched' ? `<div data-psched ${nm}></div>` : f.k === 'fin_sched' ? `<div data-fsched ${nm}></div>` : f.k === 'new_schedule' ? `<div data-sched ${nm}></div>` : f.k === 'sale_sched' ? `<div data-ssched ${nm}></div>` : f.grid ? `<div class="gridin" ${nm}>${gridRows(f, v || [])}</div>` : `<div class="ro">${show(f, rec)}</div>`;
     default: if (f.choose) return `<select ${nm}>${[...new Set([...f.choose, ...(v ? [v] : [])])].map(o => `<option ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;   // ô chữ nhưng chọn trong danh sách (giữ giá trị cũ ngoài danh sách)
       if (f.sugRef) return `<input ${nm} value="${esc(v ?? '')}" autocomplete="off" list="dl_${f.k}" placeholder="Gõ mã hoặc tên để tìm ${esc(M.ents[f.sugRef].one)} đã có…"><datalist id="dl_${f.k}"></datalist>`;   // gợi ý động: xem openForm
@@ -930,7 +932,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   const lockKeep = perm?.locked ? new Set(perm.lockKeep || []) : null;
   // khách đã ở giai đoạn sau mở bán (02 Danh mục khách hàng): Tình trạng chỉ chọn các bước sau mở bán — chọn lại «Mới»… thì khách chuyển sang 03 Tiềm năng, mất khỏi danh mục (PROSPECT ở screens.js)
   const postSale = ent === 'customer' && rec.stage && !PROSPECT.has(rec.stage);
-  const fields = E.fields.filter(f => !skip.includes(f.k) && !f.noForm && !(f.ro && !id) && !(f.t === 'code' && !id && !f.manual) && !(f.t === 'json' && !['new_schedule', 'sale_sched', 'pay_sched', 'fin_sched', 'finish_vals'].includes(f.k) && !f.grid))
+  const fields = E.fields.filter(f => !skip.includes(f.k) && !f.noForm && !(f.ro && !id) && !(f.t === 'code' && !id && !f.manual) && !(f.t === 'json' && !f.pick && !['new_schedule', 'sale_sched', 'pay_sched', 'fin_sched', 'finish_vals'].includes(f.k) && !f.grid))
     .map(f => postSale && f.k === 'stage' ? { ...f, o: f.o.filter(o => !PROSPECT.has(o[0])) } : f);
   const wide = f => ['long', 'check', 'json'].includes(f.t) || !!f.pick || !!f.upload;
   const body = `${E.note ? `<div class="warnbar">${ico('fa-circle-info')}<span>${esc(E.note)}</span></div>` : ''}${lockKeep ? `<div class="lockbar">${ico('fa-lock')} Bản ghi đã chốt — chỉ sửa được: ${[...lockKeep].filter(k => { const f = E.fields.find(x => x.k === k), sh = d => isShown(E.fields.find(x => x.k === d) || {}, rec); return !f?.show || isShown(f, rec) || Object.keys(f.show).every(d => lockKeep.has(d) && sh(d)); }).map(k => k === 'new_schedule' ? 'Lần thanh toán' : E.fields.find(f => f.k === k)?.l).join(', ')}</div>` : ''}${perm?.softOpen ? `<div class="warnbar">${ico('fa-unlock')}<span>Hợp đồng đã trình duyệt: nhân viên đã bị khóa, chỉ sửa được Lần thanh toán. Quản lý vẫn sửa được toàn bộ.</span></div>` : ''}<div id="ferr"></div><form class="form" autocomplete="off">${fields.map(f => {
@@ -1287,6 +1289,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   });
   $$('[data-pick-units]', form).forEach(el => unitPicker(el, form, ent === 'price_policy' ? { policy: true, self: id || 0 } : {}).catch(e => toast(e.message, true)));
   $$('[data-pick-fin]', form).forEach(el => finishPicker(el, form, { self: id || 0 }));
+  $$('[data-pick-liq]', form).forEach(el => liqPicker(el, form, { self: id || 0 }));   // phiếu thanh lý chung (16/11/2026)
   if (ent === 'price_policy') policyTabs(form);
   $$('[data-pick-bg]', form).forEach(el => bgPicker(el, form).catch(e => toast(e.message, true)));
   if (ckF && !id) { fillCheck(); form.addEventListener('change', e => { if (e.target.name === ckF.srcBy || e.target.name === 'reg_kind') fillCheck(); }); }
@@ -1341,6 +1344,55 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
 // rồi nhập 1 lần → «Áp cho căn đã tích». Căn CÓ SỐ = có hoàn thiện (lưu); ô trống = không khai (giữ hoàn thiện đang có trong bảng hàng). Ghi vào ô ẩn finish_vals { MÃ CĂN: số tiền }
 // 14/11/2026 (sửa lỗi mất giá trị): ô tích chỉ để CHỌN căn áp giá — bỏ tích không xóa giá trị đã nhập; áp xong tự bỏ tích để lần tích sau không đè căn vừa áp;
 // bỏ hoàn thiện của căn = xóa số ở ô của căn, hoặc tích rồi bấm «Bỏ hoàn thiện căn đã tích»
+// ===== phiếu thanh lý chung (16/11/2026): nhiều hợp đồng cùng căn, cùng khách (HĐ mua bán + HĐ hoàn thiện…) — từng HĐ + tổng chung =====
+const ctOpt = (k, v) => M.ents.contract.fields.find(f => f.k === k)?.o?.find(o => o[0] === v) || null;
+function liqTable(items) {
+  const t = k => items.reduce((s, x) => s + (+x[k] || 0), 0);
+  return `<div class="tbl-wrap"><table class="t compact noclick"><thead><tr><th>Loại hợp đồng</th><th>Số hợp đồng</th><th>Tình trạng</th><th class="num">Tiền đã thu</th><th class="num">Khấu trừ</th><th class="num">Phải hoàn trả</th><th>Ghi chú</th></tr></thead><tbody>
+    ${items.map(x => { const st = ctOpt('status', x.status); return `<tr><td>${esc(ctOpt('kind', x.kind)?.[1] || x.kind || '')}</td><td><a href="#" data-open-ct="${x.contract_id}">${esc(x.number || '#' + x.contract_id)}</a></td><td>${st ? pill(st[1], st[2]) : ''}</td><td class="num">${fm(x.collected || 0)}</td><td class="num">${fm(x.deduct || 0)}</td><td class="num"><b>${fm(x.refund || 0)}</b>${x.refund_edited ? ' <span class="tag" title="Số hoàn trả sửa tay">sửa tay</span>' : ''}</td><td>${esc(x.note || '')}</td></tr>`; }).join('')}</tbody>
+    <tfoot><tr><td colspan="3"><b>Tổng ${items.length} hợp đồng</b></td><td class="num"><b>${fm(t('collected'))}</b></td><td class="num"><b>${fm(t('deduct'))}</b></td><td class="num"><b>${fm(t('refund'))}</b></td><td></td></tr></tfoot></table></div>`;
+}
+document.addEventListener('click', e => { const a = e.target.closest('[data-open-ct]'); if (a) { e.preventDefault(); openDetail('contract', +a.dataset.openCt); } });
+// form phiếu thanh lý: tích các hợp đồng của căn / khách — tiền đã thu theo phiếu thu, khấu trừ, phải hoàn trả (= đã thu − khấu trừ, gõ số thì giữ số đã gõ), ghi chú;
+// hợp đồng đã nằm trong phiếu khác không tích được. Ghi vào ô ẩn items [{ contract_id, deduct, refund?, refund_edited?, note }] — máy chủ tính lại tiền đã thu
+function liqPicker(el, root, { self } = {}) {
+  const hid = $('input[type=hidden]', el), box = $('.upick-bd', el);
+  let val = []; try { val = JSON.parse(hid.value || '[]') || []; } catch { val = []; }
+  const sel = new Map(val.map(x => [+x.contract_id, { deduct: x.deduct ? fm(x.deduct) : '', refund: x.refund_edited && x.refund != null ? fm(x.refund) : '', ed: !!x.refund_edited, note: x.note || '' }]));
+  let rows = [], key = null;
+  const nm = s => Math.max(0, Math.round(num(s, true)) || 0);
+  hid._get = () => [...sel].map(([id, x]) => ({ contract_id: id, deduct: nm(x.deduct), ...(x.ed && x.refund !== '' ? { refund: nm(x.refund), refund_edited: true } : {}), ...(x.note ? { note: x.note } : {}) }));
+  const refundOf = (r, x) => x.ed && x.refund !== '' ? nm(x.refund) : Math.max(0, (+r.collected || 0) - nm(x.deduct));
+  const totals = () => { const on = rows.filter(r => sel.has(r.id)), t = f => on.reduce((s, r) => s + f(r, sel.get(r.id)), 0);
+    return `<b>Tổng ${on.length} hợp đồng</b> · đã thu ${fm(t(r => +r.collected || 0))} · khấu trừ ${fm(t((r, x) => nm(x.deduct)))} · <b>phải hoàn trả ${fm(t(refundOf))}</b>`; };
+  const draw = () => {
+    if (!rows.length) { box.innerHTML = `<div class="muted small">${root.elements.unit_id?.value || root.elements.contract_id?.value ? 'Căn / khách hàng chưa có hợp đồng' : 'Chọn mã căn hộ hoặc mã hợp đồng ở trên — các hợp đồng của căn hiện ở đây để tích gộp chung 1 phiếu'}</div>`; return; }
+    box.innerHTML = `<div class="tbl-wrap"><table class="t compact noclick"><thead><tr><th style="width:30px"></th><th>Loại hợp đồng</th><th>Số hợp đồng</th><th>Khách hàng</th><th>Tình trạng</th><th class="num">Tiền đã thu</th><th class="num">Khấu trừ</th><th class="num">Phải hoàn trả</th><th>Ghi chú</th></tr></thead><tbody>
+      ${rows.map(r => { const on = sel.has(r.id), x = sel.get(r.id) || {}, st = ctOpt('status', r.status), dis = !!r.other && !on;
+        return `<tr class="${on ? 'sel' : ''}" data-lr="${r.id}"><td><input type="checkbox" data-lt="${r.id}" ${on ? 'checked' : ''} ${dis ? 'disabled' : ''}></td><td>${esc(ctOpt('kind', r.kind)?.[1] || r.kind)}</td><td>${esc(r.number || '#' + r.id)}${r.other ? ` <span class="tag" title="Hợp đồng đã nằm trong phiếu ${esc(r.other)} — không đưa vào phiếu khác">Đã ở phiếu ${esc(r.other)}</span>` : ''}</td><td class="small">${esc((r.cust_code ? r.cust_code + ' · ' : '') + (r.customer || ''))}</td><td>${st ? pill(st[1], st[2]) : ''}</td><td class="num">${fm(r.collected || 0)}</td>
+          <td class="num"><input class="inp" data-lk="deduct" data-id="${r.id}" inputmode="numeric" value="${esc(x.deduct || '')}" placeholder="0" style="width:120px;text-align:right" ${on ? '' : 'disabled'}></td>
+          <td class="num"><input class="inp" data-lk="refund" data-id="${r.id}" inputmode="numeric" value="${esc(x.ed ? x.refund : '')}" placeholder="${on ? fm(refundOf(r, x)) : ''}" title="Để trống = đã thu − khấu trừ; gõ số = giữ số đã gõ" style="width:130px;text-align:right" ${on ? '' : 'disabled'}></td>
+          <td><input class="inp" data-lk="note" data-id="${r.id}" value="${esc(x.note || '')}" style="min-width:140px" ${on ? '' : 'disabled'}></td></tr>`; }).join('')}</tbody></table></div>
+      <div class="small mt liq-tot">${totals()}</div>`;
+  };
+  const load = async () => {
+    const cid = root.elements.contract_id?.value || [...sel.keys()][0], uid = root.elements.unit_id?.value, qs = new URLSearchParams({ self: self || 0 });
+    if (cid) { const c = (await api('GET', `/api/e/contract/${cid}`)).row; qs.set('unit', c.unit_id); qs.set('customer', c.customer_id); if (!sel.size && !self) sel.set(+cid, { deduct: '', refund: '', ed: false, note: '' }); }
+    else if (uid) qs.set('unit', uid);
+    else { rows = []; key = null; return draw(); }
+    const k = qs.toString(); if (k !== key) { key = k; rows = (await api('GET', '/api/liq-contracts?' + k)).rows; }
+    draw();
+  };
+  box.addEventListener('change', e => { const t = e.target; if (!t.dataset.lt) return; e.stopPropagation(); const id = +t.dataset.lt; t.checked ? sel.set(id, { deduct: '', refund: '', ed: false, note: '' }) : sel.delete(id); draw(); }, true);
+  box.addEventListener('input', e => {
+    const t = e.target, k = t.dataset.lk; if (!k) return; e.stopPropagation(); const x = sel.get(+t.dataset.id); if (!x) return;
+    if (k === 'refund') { x.refund = t.value.trim(); x.ed = x.refund !== ''; } else x[k] = t.value;
+    const r = rows.find(y => y.id === +t.dataset.id), rf = $(`[data-lk="refund"][data-id="${t.dataset.id}"]`, box); if (r && rf && !x.ed) rf.placeholder = fm(refundOf(r, x));
+    const tt = $('.liq-tot', box); if (tt) tt.innerHTML = totals();
+  }, true);
+  root.addEventListener('change', e => { if (['unit_id', 'contract_id', 'kind'].includes(e.target.name)) load().catch(er => toast(er.message, true)); });
+  load().catch(er => toast(er.message, true));
+}
 function finishPicker(el, root, { self } = {}) {
   const hid = $('input[type=hidden]', el), box = $('.upick-bd', el), projEl = $('[name="project_ids"]', root), ugEl = $('[name="unit_group"]', root);
   let val = {}; try { val = JSON.parse(hid.value || '{}') || {}; } catch { val = {}; }
@@ -1720,11 +1772,11 @@ async function openDetail(ent, id, tab, plain) {   // plain: chỉ xem (mở t�
   const body = $('#dBody', el);
   const T = {
     info: () => {
-      const fs = E.fields.filter(f => f.t !== 'json' || f.k === 'reviews' || f.k === 'new_schedule' || f.k === 'pay_sched' || f.k === 'fin_sched');
+      const fs = E.fields.filter(f => f.t !== 'json' || f.k === 'reviews' || f.k === 'new_schedule' || f.k === 'pay_sched' || f.k === 'fin_sched' || f.pick === 'liq');   // liq: bảng hợp đồng của phiếu thanh lý chung (16/11/2026)
       let h = !plain && p.locked ? `<div class="lockbar">${ico('fa-lock')} ${E.one[0].toUpperCase() + E.one.slice(1)} đã chốt / đang trình duyệt — ${ent === 'contract' && E.softLock?.st.includes(r.status) ? 'nhân viên chỉ sửa được Lần thanh toán, nội dung khác do quản lý sửa.' : `không sửa trực tiếp${ent === 'contract' ? '. Thay đổi qua «Điều chỉnh – phụ lục hợp đồng».' : '.'}`}</div>` : '';
       if (E.note) h += `<div class="warnbar">${ico('fa-circle-info')}<span>${esc(E.note)}</span></div>`;
       if (String(r.sale_check || '').startsWith('⚠')) h += `<div class="warnbar">${ico('fa-triangle-exclamation')} <div><b>Cảnh báo mở bán:</b> ${esc(r.sale_check.slice(2))}</div></div>`;   // căn ngoài thông báo mở bán đã duyệt gần nhất
-      h += `<dl class="kv">${fs.filter(f => f.t !== 'check' && (f.t !== 'json' || f.grid || f.k === 'pay_sched' || f.k === 'fin_sched') && isShown(f, r) && (!plain || (r[f.k] != null && r[f.k] !== '' && r[f.k] !== false && !(Array.isArray(r[f.k]) && !r[f.k].length)))).map(f => `<div data-fk="${f.k}" class="${f.t === 'long' || f.grid || f.k === 'pay_sched' || f.k === 'fin_sched' || (f.pick && r._units) ? 'wide' : ''}"><dt>${esc(f.l)}</dt><dd>${show(f, r)}${(f.pii || f.grid?.some(c => c.pii)) && r._masked && M.piiRoles.includes(M.me.role) ? ` <button class="btn ghost sm" data-do="pii">${ico('fa-eye')} Hiện</button>` : ''}</dd></div>`).join('')}</dl>`;
+      h += `<dl class="kv">${fs.filter(f => f.t !== 'check' && (f.t !== 'json' || f.grid || f.k === 'pay_sched' || f.k === 'fin_sched' || f.pick === 'liq') && isShown(f, r) && (!plain || (r[f.k] != null && r[f.k] !== '' && r[f.k] !== false && !(Array.isArray(r[f.k]) && !r[f.k].length)))).map(f => `<div data-fk="${f.k}" class="${f.t === 'long' || f.grid || f.k === 'pay_sched' || f.k === 'fin_sched' || f.pick === 'liq' || (f.pick && r._units) ? 'wide' : ''}"><dt>${esc(f.l)}</dt><dd>${show(f, r)}${(f.pii || f.grid?.some(c => c.pii)) && r._masked && M.piiRoles.includes(M.me.role) ? ` <button class="btn ghost sm" data-do="pii">${ico('fa-eye')} Hiện</button>` : ''}</dd></div>`).join('')}</dl>`;
       for (const f of fs.filter(f => f.t === 'check')) h += `<div class="sec-title">${esc(f.l)}</div><table class="t compact noclick"><thead><tr><th>Giấy tờ</th><th>Tình trạng</th><th>Ghi chú</th></tr></thead><tbody>${(r[f.k] || []).map(x => `<tr><td>${esc(x.n)}</td><td>${x.st ? pill(CK.find(o => o[0] === x.st)[1], x.st === 'da_nhan' ? 'g' : 'r') : '<span class="muted">chưa</span>'}</td><td>${esc(x.note)}</td></tr>`).join('')}</tbody></table>`;
       if (r.reviews?.length) h += `<div class="sec-title">Các bước xét duyệt nội bộ</div><div class="tl">${r.reviews.map(x => `<div><b>${esc({ kiem_tra_1: 'Kiểm tra lần 1', kiem_tra_cheo: 'Kiểm tra chéo', doi_chieu_goc: 'Đối chiếu bản gốc' }[x.step] || x.step)}</b> — ${x.conclusion === 'dat' ? pill('Đạt', 'g') : pill('Cần bổ sung', 'a')}<br><small>${esc(x.by)} · ${dmyhm(x.at)}${x.note ? ' · ' + esc(x.note) : ''}</small></div>`).join('')}</div>`;
       if (r.new_schedule?.length) h += `<div class="sec-title">Tiến độ thanh toán mới</div>${schedTable(r.new_schedule)}`;

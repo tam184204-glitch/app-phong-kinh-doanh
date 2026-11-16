@@ -795,10 +795,11 @@ async function payouts(db, user, f = {}) {
   // 16/11/2026: thêm mã KH, loại / số HĐ, ngày thanh lý, tổng đã thu (phiếu thu của HĐ), khấu trừ, phải hoàn trả, đã chi trả (phiếu chi hoàn tiền / hoàn cọc / thanh lý), còn phải trả
   const rows = await db.q(`SELECT t.id, t.code, t.kind, t.status, t.money_plan, coalesce(t.liquidate_on, c.liquidated_on) liquidate_on, t.wait_days, t.pay_due, t.pay_amount, t.deduct_amount, t.deduct_note,
       t.acct_status, t.acct_on, t.pay_status, t.paid_on, t.note, t.contract_id,
-      c.number contract_no, c.kind ct_kind, c.status contract_status, u.code unit, pj.code project, k.code cust_code, coalesce(k.full_name, r.cust_name) customer, coalesce(k.phone, r.phone) phone,
+      coalesce((SELECT string_agg(cc.number, ' + ' ORDER BY (cc.kind = 'hdmb') DESC, cc.id) FROM kd_contract cc WHERE cc.id = ANY(t.ct_ids)), c.number) contract_no,
+      coalesce((SELECT array_agg(cc.kind ORDER BY (cc.kind = 'hdmb') DESC, cc.id) FROM kd_contract cc WHERE cc.id = ANY(t.ct_ids)), ARRAY[c.kind]) ct_kinds, c.kind ct_kind, c.status contract_status, t.items, u.code unit, pj.code project, k.code cust_code, coalesce(k.full_name, r.cust_name) customer, coalesce(k.phone, r.phone) phone,
       t.edited,   -- ô sửa tay (16/11/2026): hiện số đã sửa, không tính lại
-      CASE WHEN t.contract_id IS NOT NULL AND NOT coalesce(t.edited ? 'collected', false) THEN (SELECT coalesce(sum(x.amount), 0) FROM kd_receipt x WHERE x.contract_id = t.contract_id AND x.status = 'hop_le') ELSE t.collected END collected,
-      CASE WHEN t.contract_id IS NOT NULL AND NOT coalesce(t.edited ? 'paid_amount', false) THEN (SELECT coalesce(sum(y.amount), 0) FROM kd_payment y WHERE y.contract_id = t.contract_id AND y.status = 'hop_le' AND y.kind IN ('hoan_tien','hoan_coc','thanh_ly')) ELSE t.paid_amount END paid_amount
+      CASE WHEN t.contract_id IS NOT NULL AND NOT coalesce(t.edited ? 'collected', false) THEN (SELECT coalesce(sum(x.amount), 0) FROM kd_receipt x WHERE x.contract_id = ANY(coalesce(t.ct_ids, ARRAY[t.contract_id])) AND x.status = 'hop_le') ELSE t.collected END collected,
+      CASE WHEN t.contract_id IS NOT NULL AND NOT coalesce(t.edited ? 'paid_amount', false) THEN (SELECT coalesce(sum(y.amount), 0) FROM kd_payment y WHERE y.contract_id = ANY(coalesce(t.ct_ids, ARRAY[t.contract_id])) AND y.status = 'hop_le' AND y.kind IN ('hoan_tien','hoan_coc','thanh_ly')) ELSE t.paid_amount END paid_amount
     FROM kd_cancel_req t LEFT JOIN kd_reservation r ON r.id = t.reservation_id LEFT JOIN kd_contract c ON c.id = t.contract_id
     LEFT JOIN kd_unit u ON u.id = coalesce(c.unit_id, r.unit_id) LEFT JOIN kd_project pj ON pj.id = u.project_id
     LEFT JOIN kd_customer k ON k.id = coalesce(c.customer_id, r.customer_id) WHERE true ${w} ORDER BY t.pay_due NULLS LAST, t.id DESC`, p);

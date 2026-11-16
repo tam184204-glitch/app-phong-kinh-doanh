@@ -1371,41 +1371,81 @@ H.handover_notice = {
 };
 
 // ===== Theo dõi thanh lý & chi trả (16/11/2026) =====
-// Tổng đã thu = phiếu thu hợp lệ của HĐ; phải hoàn trả = đã thu − khấu trừ (đề nghị loại «Thanh lý hợp đồng»; đề nghị hủy / đổi giữ số đã nhập);
-// đã chi trả = phiếu chi hoàn tiền / hoàn cọc / thanh lý của HĐ → trạng thái Chưa chi trả / Đã chi trả một phần / Đã chi trả đủ (tự cập nhật khi phát sinh chi)
+// Phiếu thanh lý chung: 1 phiếu gồm 1 hoặc nhiều hợp đồng cùng căn, cùng khách (VD HĐ mua bán + HĐ hoàn thiện) — items: từng HĐ { contract_id, number, kind,
+// collected (phiếu thu hợp lệ của HĐ), deduct (khấu trừ), refund (phải hoàn trả = đã thu − khấu trừ, sửa tay thì refund_edited), note }; ct_ids: các HĐ (chặn trùng phiếu).
+// Tổng phiếu: đã thu / khấu trừ / phải hoàn trả = cộng các dòng; đã chi trả = phiếu chi hoàn tiền / hoàn cọc / thanh lý của các HĐ trong phiếu → trạng thái chung theo phiếu.
+// Đề nghị hủy / đổi giữ số đã nhập. Ô người dùng sửa tay (edited) — đồng bộ lại không ghi đè.
 const LIQ_PAY = ['hoan_tien', 'hoan_coc', 'thanh_ly'];
 const liqCollected = async (db, cid) => +(await db.one("SELECT coalesce(sum(amount), 0) s FROM kd_receipt WHERE contract_id = $1 AND status = 'hop_le'", [cid])).s || 0;
-// ô do đồng bộ tự tính — người dùng sửa tay ô nào thì ghi vào edited và đồng bộ không ghi đè ô đó (16/11/2026)
 const LIQ_SYNC = ['liquidate_on', 'pay_due', 'collected', 'pay_amount', 'paid_amount', 'pay_status', 'paid_on'];
-async function liqSync(db, id, user) {
-  const r = await raw(db, 'cancel_req', id); if (!r?.contract_id) return;
-  const ed = new Set(Array.isArray(r.edited) ? r.edited : []);
-  const collected = ed.has('collected') ? +r.collected || 0 : await liqCollected(db, r.contract_id);
-  const py = await db.one("SELECT coalesce(sum(amount), 0) s, max(voucher_date) d FROM kd_payment WHERE contract_id = $1 AND status = 'hop_le' AND kind = ANY($2)", [r.contract_id, LIQ_PAY]);
-  const paid = ed.has('paid_amount') ? +r.paid_amount || 0 : +py.s || 0, due = r.kind === 'thanh_ly' && !ed.has('pay_amount') ? Math.max(0, collected - (+r.deduct_amount || 0)) : +r.pay_amount || 0;
-  const st = due <= 0 ? (paid > 0 ? 'da_chi' : 'khong_chi') : paid <= 0 ? 'chua_chi' : paid < due ? 'mot_phan' : 'da_chi';
-  const nx = { collected, paid_amount: paid, pay_amount: r.kind === 'thanh_ly' ? due : r.pay_amount, pay_status: st, paid_on: paid > 0 && !ed.has('paid_amount') ? d10(py.d) : (st === 'chua_chi' ? null : r.paid_on) };
-  for (const k of ed) delete nx[k];   // ô đã sửa tay: giữ nguyên
-  const ch = Object.keys(nx).filter(k => String(r[k] ?? '') !== String(nx[k] ?? '') && !(k === 'paid_on' && d10(r[k]) === d10(nx[k])));
-  if (!ch.length) return;
-  await db.q(`UPDATE kd_cancel_req SET ${ch.map((k, i) => `${k} = $${i + 2}`).join(', ')}, updated_at = now() WHERE id = $1`, [r.id, ...ch.map(k => nx[k])]);
-  if (ch.includes('pay_status') || ch.includes('paid_amount'))
-    await C.audit(db, 'cancel_req', r.id, 'cap_nhat_chi_tra', Object.fromEntries(ch.map(k => [k, r[k]])), Object.fromEntries(ch.map(k => [k, nx[k]])), user,
-      `Đã chi ${fmtMoney(paid)} / phải trả ${fmtMoney(due)} — ${await C.optLabel(C.F.cancel_req.pay_status, st)}`, r.is_demo);
+const liqIds = r => { const xs = Array.isArray(r?.ct_ids) && r.ct_ids.length ? r.ct_ids : r?.contract_id ? [r.contract_id] : []; return [...new Set(xs.map(Number).filter(Boolean))]; };
+// dòng hợp đồng của phiếu thanh lý: số liệu hiện tại (tiền đã thu theo phiếu thu); giữ khấu trừ / số hoàn trả sửa tay / ghi chú đã nhập
+async function liqLines(db, items) {
+  const out = [];
+  for (const x of items) {
+    const c = await raw(db, 'contract', +x.contract_id); if (!c) continue;
+    const collected = await liqCollected(db, c.id), deduct = Math.max(0, Math.round(+x.deduct || 0)), ed = !!x.refund_edited && x.refund != null && x.refund !== '';
+    out.push({ contract_id: c.id, number: c.number, kind: c.kind, status: c.status, collected, deduct, refund: ed ? Math.max(0, Math.round(+x.refund || 0)) : Math.max(0, collected - deduct), refund_edited: ed || undefined, note: x.note || undefined });
+  }
+  return out;
 }
-const liqSyncContract = async (db, cids, user) => { for (const cid of new Set(cids.filter(Boolean))) for (const x of await db.q('SELECT id FROM kd_cancel_req WHERE contract_id = $1', [cid])) await liqSync(db, x.id, user); };
-// hợp đồng chuyển «Thanh lý» → 1 dòng theo dõi gắn hợp đồng gốc (đã có đề nghị của HĐ thì cập nhật đề nghị đó, không lập trùng)
+async function liqSync(db, id, user) {
+  const r = await raw(db, 'cancel_req', id); const ids = liqIds(r); if (!ids.length) return;
+  const ed = new Set(Array.isArray(r.edited) ? r.edited : []), slip = r.kind === 'thanh_ly';
+  const lines = slip ? await liqLines(db, Array.isArray(r.items) && r.items.length ? r.items : ids.map(contract_id => ({ contract_id }))) : null;
+  const sum = k => lines.reduce((s, x) => s + (+x[k] || 0), 0);
+  const collected = ed.has('collected') ? +r.collected || 0 : slip ? sum('collected') : (await Promise.all(ids.map(i => liqCollected(db, i)))).reduce((s, v) => s + v, 0);
+  const py = await db.one("SELECT coalesce(sum(amount), 0) s, max(voucher_date) d FROM kd_payment WHERE contract_id = ANY($1) AND status = 'hop_le' AND kind = ANY($2)", [ids, LIQ_PAY]);
+  const paid = ed.has('paid_amount') ? +r.paid_amount || 0 : +py.s || 0, due = slip && !ed.has('pay_amount') ? sum('refund') : +r.pay_amount || 0;
+  const st = due <= 0 ? (paid > 0 ? 'da_chi' : 'khong_chi') : paid <= 0 ? 'chua_chi' : paid < due ? 'mot_phan' : 'da_chi';
+  const nx = { collected, paid_amount: paid, pay_amount: slip ? due : r.pay_amount, pay_status: st, paid_on: paid > 0 && !ed.has('paid_amount') ? d10(py.d) : (st === 'chua_chi' ? null : r.paid_on),
+    ...(slip ? { items: lines, ct_ids: lines.map(x => x.contract_id), deduct_amount: sum('deduct'), contract_id: (lines.find(x => x.kind === 'hdmb') || lines[0])?.contract_id ?? r.contract_id } : {}) };
+  for (const k of ed) delete nx[k];   // ô đã sửa tay: giữ nguyên
+  const J = v => typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v ?? '');
+  const ch = Object.keys(nx).filter(k => J(r[k]) !== J(nx[k]) && !(k === 'paid_on' && d10(r[k]) === d10(nx[k])));
+  if (!ch.length) return;
+  await db.q(`UPDATE kd_cancel_req SET ${ch.map((k, i) => `${k} = $${i + 2}${k === 'items' ? '::jsonb' : k === 'ct_ids' ? '::int[]' : ''}`).join(', ')}, updated_at = now() WHERE id = $1`, [r.id, ...ch.map(k => k === 'items' ? JSON.stringify(nx[k]) : nx[k])]);
+  if (ch.some(k => ['pay_status', 'paid_amount', 'pay_amount', 'collected'].includes(k)))
+    await C.audit(db, 'cancel_req', r.id, 'cap_nhat_chi_tra', Object.fromEntries(ch.map(k => [k, r[k]])), Object.fromEntries(ch.map(k => [k, nx[k]])), user,
+      `Đã thu ${fmtMoney(collected)} · phải hoàn trả ${fmtMoney(due)} · đã chi ${fmtMoney(paid)} — ${await C.optLabel(C.F.cancel_req.pay_status, st)}`, r.is_demo);
+}
+// phiếu đang chứa hợp đồng (là HĐ chính hoặc nằm trong danh sách)
+const liqOf = (db, cid) => db.q('SELECT id FROM kd_cancel_req WHERE contract_id = $1 OR $1 = ANY(ct_ids) ORDER BY (kind = \'thanh_ly\') DESC, id DESC', [cid]);
+const liqSyncContract = async (db, cids, user) => { const done = new Set(); for (const cid of new Set(cids.filter(Boolean))) for (const x of await liqOf(db, cid)) if (!done.has(x.id)) { done.add(x.id); await liqSync(db, x.id, user); } };
+// hợp đồng chuyển «Thanh lý» → vào phiếu thanh lý: đã có phiếu chứa HĐ thì cập nhật; có phiếu thanh lý cùng căn + cùng khách chưa chi trả thì gộp vào
+// (VD HĐ hoàn thiện thanh lý theo HĐ mua bán → cùng 1 phiếu); không có thì lập phiếu mới — không lập trùng
 async function liqTrack(db, c, user, demo) {
   const on = d10(c.liquidated_on) || today();
-  let cr = await db.one("SELECT id FROM kd_cancel_req WHERE contract_id = $1 ORDER BY (kind = 'thanh_ly') DESC, id DESC LIMIT 1", [c.id]);
+  let cr = (await liqOf(db, c.id))[0];
+  if (!cr) {
+    cr = await db.one(`SELECT t.id, t.items FROM kd_cancel_req t JOIN kd_contract m ON m.id = t.contract_id WHERE t.kind = 'thanh_ly' AND m.unit_id = $1 AND m.customer_id = $2
+      AND coalesce(t.pay_status, 'chua_chi') IN ('chua_chi', 'khong_chi') ORDER BY t.id DESC LIMIT 1`, [c.unit_id, c.customer_id]);
+    if (cr) {   // gộp vào phiếu thanh lý chung của căn + khách
+      const items = [...(Array.isArray(cr.items) && cr.items.length ? cr.items : []), { contract_id: c.id }];
+      await db.q('UPDATE kd_cancel_req SET items = $2::jsonb, ct_ids = array_append(coalesce(ct_ids, ARRAY[contract_id]), $3), updated_at = now() WHERE id = $1', [cr.id, JSON.stringify(items), c.id]);
+      await C.audit(db, 'cancel_req', cr.id, 'gop_hop_dong', null, { contract: c.number }, user, `Gộp ${HD_L[c.kind] || 'hợp đồng'} ${c.number || ''} vào phiếu thanh lý chung`, demo);
+    }
+  }
   if (cr) await db.q('UPDATE kd_cancel_req SET liquidate_on = coalesce(liquidate_on, $2::date), pay_due = coalesce(pay_due, $2::date + coalesce(wait_days, 30)), updated_at = now() WHERE id = $1', [cr.id, on]);
   else {
     const why = await C.optLabel(C.F.contract.liquidate_reason, c.liquidate_reason).catch(() => '');
-    cr = (await create('cancel_req', { kind: 'thanh_ly', contract_id: c.id, money_plan: 'hoan_tien', liquidate_on: on,
+    cr = (await create('cancel_req', { kind: 'thanh_ly', contract_id: c.id, items: [{ contract_id: c.id }], money_plan: 'hoan_tien', liquidate_on: on, liq_reason: c.liquidate_reason || 'tra_lai',
       reason: `Thanh lý ${HD_L[c.kind] || 'hợp đồng'} ${c.number || ''}${why ? ' — ' + why : ''}${c.liquidate_note ? ': ' + c.liquidate_note : ''}`, note: 'Tự lập khi hợp đồng chuyển «Thanh lý»' }, user, { db, system: true, demo })).row;
     await db.q("UPDATE kd_cancel_req SET status = 'da_duyet' WHERE id = $1 AND status = 'nhap'", [cr.id]);   // thanh lý đã thực hiện ở hợp đồng — không qua duyệt đề nghị
   }
   await liqSync(db, cr.id, user);
+}
+// form phiếu thanh lý: hợp đồng của căn (+ khách) để tích gộp — kèm tiền đã thu, phiếu khác đã chứa HĐ (không chọn được)
+async function liqContracts(db, qs) {
+  const unit = +qs.unit || null, cust = +qs.customer || null, self = +qs.self || 0;
+  if (!unit && !cust) return { rows: [] };
+  const cs = await db.q(`SELECT c.id, c.number, c.kind, c.status, c.customer_id, u.code unit, k.code cust_code, k.full_name customer FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id
+    WHERE ($1::int IS NULL OR c.unit_id = $1) AND ($2::int IS NULL OR c.customer_id = $2) AND c.status <> 'huy' ORDER BY (c.kind = 'hdmb') DESC, c.id`, [unit, cust]);
+  for (const c of cs) {
+    c.collected = await liqCollected(db, c.id);
+    c.other = (await db.one('SELECT code FROM kd_cancel_req WHERE id <> $2 AND (contract_id = $1 OR $1 = ANY(ct_ids)) ORDER BY id LIMIT 1', [c.id, self]))?.code || null;
+  }
+  return { rows: cs };
 }
 H.cancel_req = {
   // 16/11/2026: dòng theo dõi thanh lý tự lập từ hợp đồng không khóa theo trạng thái — người có quyền sửa mọi thông tin (lịch sử sửa: tab Lịch sử)
@@ -1424,10 +1464,27 @@ H.cancel_req = {
     if (old && !opts?.system) {
       const nv = v => v == null || v === '' ? '' : /^d{4}-d{2}-d{2}/.test(String(v)) ? String(v).slice(0, 10) : !isNaN(+v) && String(v).trim() !== '' ? String(+v) : String(v);
       const ed = new Set(Array.isArray(old.edited) ? old.edited : []), same = (a, b) => nv(a) === nv(b);
-      for (const k of LIQ_SYNC) if (!same(r[k], old[k])) ed.add(k);
+      for (const k of LIQ_SYNC) if ((r.kind !== 'thanh_ly' || !['collected', 'pay_amount'].includes(k)) && !same(r[k], old[k])) ed.add(k);   // phiếu thanh lý: đã thu / phải hoàn trả tính theo từng hợp đồng
       r.edited = ed.size ? [...ed] : null;
-      if (old.kind === 'thanh_ly' && r.kind !== 'thanh_ly') bad('Dòng theo dõi thanh lý hợp đồng — không đổi loại đề nghị');
-      if (old.kind === 'thanh_ly' && old.contract_id && r.contract_id !== old.contract_id) bad('Dòng theo dõi thanh lý gắn với hợp đồng gốc — không đổi hợp đồng');
+      if (old.kind === 'thanh_ly' && r.kind !== 'thanh_ly') bad('Phiếu thanh lý hợp đồng — không đổi loại đề nghị');
+    }
+    // phiếu thanh lý chung (16/11/2026): các hợp đồng tích chọn — cùng căn hộ, cùng khách hàng; mỗi hợp đồng chỉ nằm ở 1 phiếu
+    if (r.kind === 'thanh_ly') {
+      let items = Array.isArray(r.items) ? r.items.filter(x => +x?.contract_id) : [];
+      if (!items.length && r.contract_id) items = [{ contract_id: r.contract_id }];
+      if (!items.length) bad('Tích ít nhất 1 hợp đồng cần thanh lý', { fields: ['items'] });
+      const ids = [...new Set(items.map(x => +x.contract_id))];
+      const cs = await db.q('SELECT id, number, kind, unit_id, customer_id, status FROM kd_contract WHERE id = ANY($1)', [ids]);
+      if (cs.length !== ids.length) bad('Có hợp đồng không tồn tại', { fields: ['items'] });
+      if (new Set(cs.map(c => c.unit_id)).size > 1 || new Set(cs.map(c => c.customer_id)).size > 1) bad('Chỉ gộp các hợp đồng của cùng 1 căn hộ, cùng 1 khách hàng vào 1 phiếu thanh lý', { fields: ['items'] });
+      if (cs.some(c => c.status === 'huy')) bad(`Hợp đồng ${cs.filter(c => c.status === 'huy').map(c => c.number).join(', ')} đã hủy — không đưa vào phiếu thanh lý`, { fields: ['items'] });
+      const dup = await db.one(`SELECT t.code, (SELECT string_agg(c.number, ', ') FROM kd_contract c WHERE c.id = ANY($2) AND (c.id = t.contract_id OR c.id = ANY(t.ct_ids))) nums
+        FROM kd_cancel_req t WHERE t.id <> $1 AND (t.contract_id = ANY($2) OR t.ct_ids && $2::int[]) ORDER BY t.id LIMIT 1`, [old?.id || 0, ids]);
+      if (dup) bad(`Hợp đồng ${dup.nums || ''} đã nằm trong phiếu ${dup.code} — không đưa vào phiếu khác`, { fields: ['items'] });
+      const lines = await liqLines(db, items), sum = k => lines.reduce((s, x) => s + (+x[k] || 0), 0);
+      Object.assign(r, { items: lines, ct_ids: lines.map(x => x.contract_id), contract_id: (lines.find(x => x.kind === 'hdmb') || lines[0]).contract_id,
+        collected: sum('collected'), deduct_amount: sum('deduct'), pay_amount: sum('refund'), liq_reason: r.liq_reason || 'tra_lai' });
+      if (!r.unit_id) r.unit_id = cs[0].unit_id;
     }
     // thông tin khách hàng theo hợp đồng / phiếu giữ chỗ (chọn lại thì lấy lại); số tiền đề nghị để trống = số khách đã nộp
     if (r.contract_id || r.reservation_id) {
@@ -1452,8 +1509,17 @@ H.cancel_req = {
     }
     if (r.kind === 'doi_kh' && !r.new_customer_id) bad('Chọn khách hàng mới');
   },
-  async afterApprove(r, ok, { db, user, demo }) {
+  async afterApprove(r, ok, { db, user, demo, warn = [] }) {
     if (!ok) return;
+    if (r.kind === 'thanh_ly') {   // 16/11/2026: duyệt phiếu thanh lý chung → thanh lý các hợp đồng đã ký trong phiếu (HĐ dự thảo / chờ duyệt không thanh lý — báo lại)
+      for (const id of liqIds(r)) {
+        const c = await raw(db, 'contract', id); if (!c || ['thanh_ly', 'huy'].includes(c.status)) continue;
+        if (c.status !== 'da_ky') { warn.push(`${c.number}: đang «${await C.optLabel(C.F.contract.status, c.status)}» — chưa thanh lý (chỉ thanh lý hợp đồng đã ký)`); continue; }
+        await sys(db, 'contract', id, { status: 'thanh_ly', liquidated_on: d10(r.liquidate_on) || today(), liquidate_reason: r.liq_reason || 'tra_lai', liquidate_note: `Theo phiếu thanh lý ${r.code}` }, user, 'thanh_ly', `Theo phiếu thanh lý ${r.code}`);
+      }
+      await liqSync(db, r.id, user);
+      return;
+    }
     const res = r.reservation_id && await raw(db, 'reservation', r.reservation_id);
     const con = r.contract_id && await raw(db, 'contract', r.contract_id);
     if (r.kind === 'huy') {
@@ -2137,7 +2203,7 @@ async function jobs(db) {
   // chính sách bán hàng tới ngày bắt đầu (đã phát hành, chưa áp) → tự áp cho căn chưa bán
   for (const p of await db.q("SELECT * FROM kd_price_policy WHERE status = 'phat_hanh' AND rolled_at IS NULL AND start_on <= $1 AND end_on >= $1", [today()])) await safely(db, () => policyRoll(db, p, null), 'policyRoll');
   // 16/11/2026: hợp đồng đã thanh lý chưa có dòng «Theo dõi thanh lý & chi trả» (thanh lý trước khi có tính năng / nhập file) → lập (1 dòng / hợp đồng)
-  for (const c of await db.q("SELECT c.* FROM kd_contract c WHERE c.status = 'thanh_ly' AND NOT EXISTS (SELECT 1 FROM kd_cancel_req t WHERE t.contract_id = c.id) ORDER BY c.id LIMIT 200")) await safely(db, () => liqTrack(db, c, null, c.is_demo), 'liqTrack ' + c.id);
+  for (const c of await db.q("SELECT c.* FROM kd_contract c WHERE c.status = 'thanh_ly' AND NOT EXISTS (SELECT 1 FROM kd_cancel_req t WHERE t.contract_id = c.id OR c.id = ANY(t.ct_ids)) ORDER BY c.id LIMIT 200")) await safely(db, () => liqTrack(db, c, null, c.is_demo), 'liqTrack ' + c.id);
   for (const c of await db.q(`SELECT c.* FROM kd_contract c WHERE c.status = 'da_ky' AND c.kind <> 'hoan_thien' AND EXISTS (SELECT 1 FROM kd_reservation s WHERE (s.id = c.reservation_id OR (c.reservation_id IS NULL AND s.unit_id = c.unit_id AND s.customer_id = c.customer_id))
       AND s.status IN ${ACTIVE_RES} AND (s.status <> 'chuyen_hd' OR (c.kind IN ('hdmb','thue_mua') AND (s.reg_state IS DISTINCT FROM 'ky_hdmb' OR s.progress IS DISTINCT FROM 'da_ky'))))`)) await safely(db, () => resFromContract(db, c, null), 'resFromContract ' + c.id);
   // HĐ thuê (cho thuê) hết hạn: phiếu đăng ký của HĐ đó hết hiệu lực → căn đăng ký mới được
@@ -2186,4 +2252,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, bgSet, bgSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, bgSet, bgSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

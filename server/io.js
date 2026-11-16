@@ -657,6 +657,14 @@ async function printReservation(id, user, kind, tplCode) {
 }
 
 // phiếu đề nghị hủy giao dịch / đổi căn / đổi khách (3 phần + ký: người lập phiếu – bộ phận kiểm tra – người phê duyệt)
+// phiếu thanh lý chung (16/11/2026): bảng từng hợp đồng — loại, số HĐ, tiền đã thu, khấu trừ, phải hoàn trả + tổng
+function liqLinesHtml(r) {
+  const xs = r.kind === 'thanh_ly' && Array.isArray(r.items) ? r.items : []; if (!xs.length) return '';
+  const KL = Object.fromEntries(E.contract.fields.find(f => f.k === 'kind').o.map(o => [o[0], o[1]])), t = k => xs.reduce((s, x) => s + (+x[k] || 0), 0), m = v => fmtMoney(+v || 0);
+  return `<p>Các hợp đồng thanh lý chung trong phiếu:</p><table class="lq"><tr><th>STT</th><th>Loại hợp đồng</th><th>Số hợp đồng</th><th>Tiền đã thu</th><th>Khấu trừ</th><th>Phải hoàn trả</th></tr>
+${xs.map((x, i) => `<tr><td class="c">${i + 1}</td><td>${escH(KL[x.kind] || x.kind || '')}</td><td>${escH(x.number || '')}</td><td class="n">${m(x.collected)}</td><td class="n">${m(x.deduct)}</td><td class="n">${m(x.refund)}</td></tr>`).join('')}
+<tr><td></td><td colspan="2"><b>Tổng cộng</b></td><td class="n"><b>${m(t('collected'))}</b></td><td class="n"><b>${m(t('deduct'))}</b></td><td class="n"><b>${m(t('refund'))}</b></td></tr></table>`;
+}
 async function printCancelReq(id, user) {
   const { row: r } = await C.get('cancel_req', id, user, { reveal: true });
   const x = await one(`SELECT p.name project, u.code unit, c.number contract, s.code res, nu.code new_unit, nk.full_name new_cust, o.full_name maker
@@ -671,10 +679,10 @@ async function printCancelReq(id, user) {
 <h2>PHIẾU ĐỀ NGHỊ ${escH(lab('kind', r.kind).toUpperCase())}</h2><p class="c">Số: ${escH(r.code)}</p>
 <p class="h">1. Thông tin khách hàng</p>
 <p>Họ tên khách hàng: <b>${v(r.cust_name)}</b></p><p>Số điện thoại: ${v(r.phone)}</p>
-<p>Dự án: ${v(x.project)}&nbsp;&nbsp;&nbsp;&nbsp;Mã căn hộ: <b>${v(x.unit)}</b></p><p>Mã hợp đồng: ${v(x.contract)}${x.res ? `&nbsp;&nbsp;&nbsp;&nbsp;Phiếu giữ chỗ: ${escH(x.res)}` : ''}</p>
+<p>Dự án: ${v(x.project)}&nbsp;&nbsp;&nbsp;&nbsp;Mã căn hộ: <b>${v(x.unit)}</b></p><p>Mã hợp đồng: ${Array.isArray(r.items) && r.items.length > 1 ? escH(r.items.map(i => i.number).join(' + ')) : v(x.contract)}${x.res ? `&nbsp;&nbsp;&nbsp;&nbsp;Phiếu giữ chỗ: ${escH(x.res)}` : ''}</p>
 <p class="h">2. Nội dung đề nghị</p>
 <p>Loại đề nghị: ${kind}</p><p>Phương án xử lý: ${plan}</p>
-<p>Số tiền đề nghị xử lý: <b>${r.pay_amount ? fmtMoney(r.pay_amount) : D}</b> đồng${r.pay_amount ? ` <i>(${moneyWords(r.pay_amount)})</i>` : ''}</p>
+${liqLinesHtml(r)}<p>${r.kind === 'thanh_ly' ? 'Tổng số tiền phải hoàn trả' : 'Số tiền đề nghị xử lý'}: <b>${r.pay_amount ? fmtMoney(r.pay_amount) : D}</b> đồng${r.pay_amount ? ` <i>(${moneyWords(r.pay_amount)})</i>` : ''}</p>
 <p>Ngày ký thanh lý HĐMB (nếu có): ${r.liquidate_on ? dmy(r.liquidate_on) : '....../....../......'}</p><p>Ngày đề nghị chi trả: ${r.pay_due ? dmy(r.pay_due) : '....../....../......'}</p>
 ${r.reason ? `<p>Lý do: ${escH(r.reason)}</p>` : ''}
 <p class="h">3. Chuyển xử lý</p>
@@ -687,6 +695,7 @@ ${r.reason ? `<p>Lý do: ${escH(r.reason)}</p>` : ''}
     @page{size:A4;margin:20mm 15mm 20mm 25mm} body{font:13pt/1.45 "Times New Roman",serif;color:#000;max-width:170mm;margin:auto}
     .qh{text-align:center;line-height:1.3} .qh .tn{display:inline-block;padding-bottom:2pt;border-bottom:1px solid #000} h2{text-align:center;font-size:14pt;margin:14pt 0 2pt}
     p{margin:3pt 0} .c{text-align:center} .r{text-align:right;margin-top:10pt} .h{font-weight:bold;margin-top:9pt}
+    table.lq{width:100%;border-collapse:collapse;margin:4pt 0} table.lq th,table.lq td{border:1px solid #000;padding:2pt 5pt;font-size:12pt} table.lq .n{text-align:right;white-space:nowrap}
     table.sign3{width:100%;border-collapse:collapse;margin-top:6pt;page-break-inside:avoid} table.sign3 td{width:33%;text-align:center;vertical-align:top} table.sign3 tr.nm td{padding-top:70pt}
     ${EDIT_CSS}</style></head><body>${editBar(`Phiếu đề nghị ${escH(r.code)}`)}${editDoc(body)}</body></html>`;
 }

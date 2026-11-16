@@ -1666,7 +1666,7 @@ V.payouts = async (main, params) => {
   const t = today(), t30 = addDays(t, 30);
   const dueCls = r => !r.pay_due || ['da_chi', 'khong_chi'].includes(r.pay_status) ? '' : r.pay_due < t ? 'neg' : r.pay_due <= t30 ? 'warn' : '';
   const load = async () => {
-    rows = (await api('GET', '/api/payouts' + (s.project ? '?project=' + s.project : ''))).map(r => ({ ...r, kind_l: L('cancel_req', 'kind', r.kind), contract_status_l: r.contract_status ? L('contract', 'status', r.contract_status) : '', ct_kind_l: r.ct_kind ? L('contract', 'kind', r.ct_kind) : '',
+    rows = (await api('GET', '/api/payouts' + (s.project ? '?project=' + s.project : ''))).map(r => ({ ...r, kind_l: L('cancel_req', 'kind', r.kind), contract_status_l: r.contract_status ? L('contract', 'status', r.contract_status) : '', ct_kind_l: (r.ct_kinds || [r.ct_kind]).filter(Boolean).map(k => L('contract', 'kind', k)).join(' + '),   // phiếu thanh lý chung: các loại HĐ trong phiếu
       money_plan_l: L('cancel_req', 'money_plan', r.money_plan), acct_status_l: L('cancel_req', 'acct_status', r.acct_status), pay_status_l: L('cancel_req', 'pay_status', r.pay_status) }));
     draw();
   };
