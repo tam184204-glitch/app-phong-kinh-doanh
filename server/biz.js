@@ -1190,7 +1190,8 @@ H.reservation = {
     if (r.reg_state === 'huy') { if (!['huy', 'het_han'].includes(r.status)) r.status = 'huy'; }
     else if (!opts.system && (!r.status || ['nhap', 'tu_choi'].includes(r.status))) r.status = r.deposit > 0 ? 'da_coc' : 'giu_cho';
     // qua «Hạn giữ chỗ» mà chưa đặt cọc → «Quá hạn giữ chỗ»; gia hạn sang ngày sau → về lại «Giữ chỗ»
-    const expired = !!r.hold_until && Date.parse(r.hold_until) < Date.now() && !(+r.deposit > 0);
+    // 17/11/2026: tính theo NGÀY — giữ chỗ còn hiệu lực hết ngày ghi ở «Hạn giữ chỗ» (giờ Việt Nam), sang ngày sau mới quá hạn
+    const expired = !!r.hold_until && holdDay(r.hold_until) < today() && !(+r.deposit > 0);
     if (expired && r.reg_state === 'giu_cho') { r.reg_state = 'qua_han'; if (r.status === 'giu_cho') r.status = 'qua_han'; }
     else if (!expired && (r.reg_state === 'qua_han' || r.status === 'qua_han')) { if (r.reg_state === 'qua_han') r.reg_state = 'giu_cho'; if (r.status === 'qua_han') r.status = +r.deposit > 0 ? 'da_coc' : 'giu_cho'; }
     await linkCustomer(db, r, old, user, opts, demo);
@@ -1200,7 +1201,7 @@ H.reservation = {
       if (!FREE_UNIT.includes(u.status)) bad(`Căn ${u.code} đang «${await C.optLabel(C.F.unit.status, u.status)}» — không giữ chỗ được`);
     }
     if (r.hold_until && r.reg_date && !opts.system && new Date(Date.parse(r.hold_until) + 7 * 3600e3).toISOString().slice(0, 10) < r.reg_date) bad('Hạn giữ chỗ phải sau ngày đăng ký');
-    if (!old && r.hold_until && Date.parse(r.hold_until) < Date.now() && !opts.system) bad('Hạn giữ chỗ đã qua');
+    if (!old && r.hold_until && holdDay(r.hold_until) < today() && !opts.system) bad('Hạn giữ chỗ đã qua (phải từ hôm nay trở đi)');
     if (['dai_ly', 'ctv'].includes(r.source) && !r.agent_id) {
       const c = await raw(db, 'customer', r.customer_id); if (c?.agent_id) r.agent_id = c.agent_id; else bad('Nguồn bán đại lý / CTV cần chọn đối tác');
     }
@@ -1284,7 +1285,7 @@ H.reservation = {
   acts: {
     async deposit(r, d) { if (r.price != null && d.deposit > r.price) bad('Tiền đặt cọc lớn hơn giá bán');   // phiếu thuê không có giá bán
       return { patch: { deposit: d.deposit, deposit_on: d.deposit_on, status: 'da_coc' } }; },
-    async extend(r, d) { if (Date.parse(d.hold_until) <= Date.now()) bad('Hạn mới phải sau thời điểm hiện tại'); return { patch: { hold_until: d.hold_until, status: r.deposit > 0 ? 'da_coc' : 'giu_cho' } }; },
+    async extend(r, d) { if (!d.hold_until || holdDay(d.hold_until) < today()) bad('Hạn mới phải từ hôm nay trở đi'); return { patch: { hold_until: d.hold_until, status: r.deposit > 0 ? 'da_coc' : 'giu_cho' } }; },
     // giải phóng căn = hủy đăng ký (07/11/2026): phiếu sang «Đã hủy», trạng thái căn «Hủy đăng ký», căn trả về còn bán
     async release(r, d) { return { patch: { status: 'huy', reg_state: 'huy' }, msg: r.deposit > 0 ? `Đã giải phóng căn — phiếu chuyển sang «Đã hủy». Khách đã cọc ${fmtMoney(r.deposit)}đ — xử lý theo chính sách (lập «Đề xuất hoàn tiền» nếu cần), hệ thống không tự hoàn tiền.` : 'Đã giải phóng căn — phiếu chuyển sang «Đã hủy»' }; },
     async to_contract(r, d, { db, user, demo }) {
@@ -2865,17 +2866,20 @@ H.report = {
 C.hooks(H);
 
 // ---------- việc chạy nền ----------
+// ngày (giờ Việt Nam) của «Hạn giữ chỗ»
+const holdDay = v => new Date(Date.parse(v) + 7 * 3600e3).toISOString().slice(0, 10);
+// 17/11/2026: tính theo NGÀY, chạy mỗi ngày 1 lần (lượt đêm + khi khởi động): qua hết ngày của «Hạn giữ chỗ» mà chưa đặt cọc
 // giữ chỗ quá hạn (chưa đặt cọc) → trạng thái căn hộ + tình trạng phiếu «Quá hạn giữ chỗ» (không tự giải phóng, không tự hoàn tiền)
 async function expireHolds(db) {   // chỉ đổi 2 cột trạng thái (không qua kiểm tra phiếu — dữ liệu cũ sai ngày không chặn cả lượt) + ghi nhật ký
   const rows = await db.q(`UPDATE kd_reservation SET reg_state = 'qua_han', status = CASE WHEN status = 'giu_cho' THEN 'qua_han' ELSE status END, updated_at = now()
-    WHERE hold_until < now() AND coalesce(deposit, 0) = 0 AND (reg_state = 'giu_cho' OR status = 'giu_cho') AND status IN ('nhap','cho_duyet','giu_cho','qua_han')
-      AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.reservation_id = kd_reservation.id AND c.status NOT IN ('huy','thanh_ly')) RETURNING id, status, is_demo`);   // đã lập HĐ từ phiếu → không quá hạn
+    WHERE (hold_until AT TIME ZONE 'Asia/Ho_Chi_Minh')::date < $1::date AND coalesce(deposit, 0) = 0 AND (reg_state = 'giu_cho' OR status = 'giu_cho') AND status IN ('nhap','cho_duyet','giu_cho','qua_han')
+      AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.reservation_id = kd_reservation.id AND c.status NOT IN ('huy','thanh_ly')) RETURNING id, status, is_demo`, [today()]);   // đã lập HĐ từ phiếu → không quá hạn
   for (const r of rows) await C.audit(db, 'reservation', r.id, 'qua_han_giu_cho', null, { reg_state: 'qua_han', status: r.status }, null, 'Qua hạn giữ chỗ', r.is_demo);
 }
 // 17/11/2026: chia việc nền theo mức cần thiết (trước: mọi việc chạy toàn bộ mỗi 2 phút + đồng bộ tình trạng khách sau MỖI lần lưu)
-//  · mỗi 2 phút (theo giờ / ngày, nhẹ): giữ chỗ quá hạn, chính sách tới ngày bắt đầu, HĐ thuê hết hạn → phiếu hết hiệu lực + căn trống lại
+//  · mỗi 2 phút (nhẹ): chính sách tới ngày bắt đầu, HĐ thuê hết hạn → phiếu hết hiệu lực + căn trống lại
 //  · chỉ khi có thay đổi (có ai lưu / nhập phiếu thu MISA kể từ lượt trước — cờ markDirty): điều kiện bàn giao, tình trạng khách
-//  · mỗi đêm (lượt đầu tiên sau 1h sáng) + 1 lần khi khởi động: tính lại hoa hồng mọi HĐ có đại lý (đã tự tính khi lưu phiếu thu / đổi trạng thái HĐ),
+//  · mỗi đêm (lượt đầu tiên sau 1h sáng) + 1 lần khi khởi động: giữ chỗ quá hạn (theo ngày), tính lại hoa hồng mọi HĐ có đại lý (đã tự tính khi lưu phiếu thu / đổi trạng thái HĐ),
 //    các bước vá dữ liệu cũ (dòng theo dõi thanh lý, đóng kế hoạch thu HĐ thanh lý, phiếu đăng ký theo HĐ đã ký) + chạy lại đủ các việc «khi có thay đổi»
 let dirtyStage = true, dirtyHand = true, lastNight = null;
 const markDirty = () => { dirtyStage = dirtyHand = true; };
@@ -2886,7 +2890,6 @@ async function jobs(db, { full } = {}) {
   const hand = night || dirtyHand; dirtyHand = false;
   try {
     // ---- mỗi 2 phút ----
-    await expireHolds(db);
     // chính sách bán hàng tới ngày bắt đầu (đã phát hành, chưa áp) → tự áp cho căn chưa bán
     for (const p of await db.q("SELECT * FROM kd_price_policy WHERE status = 'phat_hanh' AND rolled_at IS NULL AND start_on <= $1 AND end_on >= $1", [today()])) { await safely(db, () => policyRoll(db, p, null), 'policyRoll'); markDirty(); }
     // HĐ thuê (cho thuê) hết hạn: phiếu đăng ký của HĐ đó hết hiệu lực → căn đăng ký mới được
@@ -2895,6 +2898,7 @@ async function jobs(db, { full } = {}) {
     for (const x of await db.q(`SELECT DISTINCT c.unit_id FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id WHERE c.kind = 'thue' AND coalesce(c.nature, 'thue') <> 'ban' AND c.status NOT IN ('huy','thanh_ly') AND c.exp_on < $1 AND u.status NOT IN ('con_ban','chua_mo_ban')`, [today()])) await recomputeUnit(db, x.unit_id, null);
     // ---- mỗi đêm ----
     if (night) {
+      await expireHolds(db);   // giữ chỗ quá hạn: theo ngày
       // 16/11/2026: hợp đồng đã thanh lý chưa có dòng «Theo dõi thanh lý & chi trả» (thanh lý trước khi có tính năng / nhập file) → lập (1 dòng / hợp đồng)
       for (const c of await db.q("SELECT c.* FROM kd_contract c WHERE c.status = 'thanh_ly' AND NOT EXISTS (SELECT 1 FROM kd_cancel_req t WHERE t.contract_id = c.id OR c.id = ANY(t.ct_ids)) ORDER BY c.id LIMIT 200")) await safely(db, () => liqTrack(db, c, null, c.is_demo), 'liqTrack ' + c.id);
       // 17/11/2026: HĐ đã thanh lý còn dòng kế hoạch thu chưa đóng (từ tháng thanh lý trở đi) → đóng công nợ
@@ -2953,4 +2957,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { markDirty, syncIfDirty, buyerCarry, noxhSpouse, spouseCo, polFinish, saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs, noticeHist, noticeUnits, noticeRent, rentPrices, noticeConflict, saleNotes, rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan };
+module.exports = { holdDay, markDirty, syncIfDirty, buyerCarry, noxhSpouse, spouseCo, polFinish, saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs, noticeHist, noticeUnits, noticeRent, rentPrices, noticeConflict, saleNotes, rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan };

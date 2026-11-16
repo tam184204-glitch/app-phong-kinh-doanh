@@ -319,7 +319,7 @@ def('reservation', {
     { k: 'note', l: 'Ghi chú', t: 'long' },
     { k: 'reg_at', l: 'Ngày giờ đăng ký', t: 'dt', req: 1, def: 'now', help: 'Tự lấy giờ hiện tại khi mở phiếu — sửa được' },
     { k: 'reg_date', l: 'Ngày đăng ký', t: 'date', hide: 1 },   // = ngày của reg_at (giờ VN), giữ cho giá / hoa hồng / kiểm tra hạn
-    { k: 'hold_until', l: 'Hạn giữ chỗ', t: 'dt', help: 'Để trống = giữ đến khi ký HĐMB / hủy đăng ký' },
+    { k: 'hold_until', l: 'Hạn giữ chỗ', t: 'dt', help: 'Giữ chỗ còn hiệu lực hết ngày này — sang ngày sau chưa đặt cọc thì tự chuyển «Quá hạn giữ chỗ». Để trống = giữ đến khi ký HĐMB / hủy đăng ký' },
     money('deposit', 'Số tiền đặt cọc', { hide: 1 }),   // không dùng đặt cọc — giữ cột cho dữ liệu cũ
     { k: 'deposit_on', l: 'Ngày đặt cọc', t: 'date', hide: 1 },   // không dùng đặt cọc — giữ cột cho dữ liệu cũ
     { k: 'docs_deadline', l: 'Hạn hoàn thiện hồ sơ', t: 'date' },

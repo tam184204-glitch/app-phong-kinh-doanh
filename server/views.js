@@ -217,16 +217,18 @@ async function alerts(db, user, f = {}) {
   const push = (...a) => { const [cat, lvl, text, ent, id, due, who, unit_id] = a; if (mineOnly && a.length > 8 && a[8] !== me) return; out.push({ cat, lvl, text, ent, id, due, who, unit_id }); };
   const p = []; const w = uf(f, p);
   for (const a of await approvalsFor(db, user)) push('phe_duyet', 'a', a.title, a.ent, a.rec_id, String(a.requested_at).slice(0, 10), a.requested_by_l);
-  // giữ chỗ: quá hạn (tình trạng phiếu hoặc trạng thái căn) · còn ≤ 24h (cả phiếu nháp / chờ duyệt đang giữ căn) · đã cọc mà qua hạn giữ chỗ chưa lập HĐ
+  // giữ chỗ: quá hạn (tình trạng phiếu hoặc trạng thái căn) · hết hạn hôm nay / ngày mai (cả phiếu nháp / chờ duyệt đang giữ căn) · đã cọc mà qua hạn giữ chỗ chưa lập HĐ
   // 17/11/2026: bỏ qua phiếu đã lập hợp đồng; mốc «còn ≤ 24h» chỉ tính hạn chưa qua (trước gộp cả hạn đã qua nên ghi sai «hết hạn trong 24h»)
-  for (const r of await db.q(`SELECT r.id, r.code, r.status, r.reg_state, r.hold_until, r.hold_until < now() past, r.owner_id, u.code unit, u.id unit_id, k.full_name, own.full_name who FROM kd_reservation r JOIN kd_unit u ON u.id = r.unit_id JOIN kd_customer k ON k.id = r.customer_id LEFT JOIN kd_user own ON own.id = r.owner_id
+  for (const r of await db.q(`SELECT r.id, r.code, r.status, r.reg_state, r.hold_until, r.owner_id, u.code unit, u.id unit_id, k.full_name, own.full_name who FROM kd_reservation r JOIN kd_unit u ON u.id = r.unit_id JOIN kd_customer k ON k.id = r.customer_id LEFT JOIN kd_user own ON own.id = r.owner_id
     WHERE r.status IN ('nhap','cho_duyet','giu_cho','qua_han','da_coc') AND coalesce(r.reg_state, '') NOT IN ('huy','ky_hdmb')
-      AND (r.status = 'qua_han' OR r.reg_state = 'qua_han' OR (r.hold_until < now() + interval '24 hours' AND (r.status IN ('giu_cho','da_coc') OR r.reg_state = 'giu_cho')))
-      AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.reservation_id = r.id AND c.status NOT IN ('huy','thanh_ly')) ${w}`, p)) {
+      AND (r.status = 'qua_han' OR r.reg_state = 'qua_han' OR ((r.hold_until AT TIME ZONE 'Asia/Ho_Chi_Minh')::date <= $${p.length + 1}::date + 1 AND (r.status IN ('giu_cho','da_coc') OR r.reg_state = 'giu_cho')))
+      AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.reservation_id = r.id AND c.status NOT IN ('huy','thanh_ly')) ${w}`, [...p, t])) {
     const late = r.status === 'qua_han' || r.reg_state === 'qua_han';
-    if (!late && r.past && r.status !== 'da_coc') continue;   // chưa cọc đã qua hạn: việc nền sẽ chuyển «Quá hạn» ở lượt tới
-    const vn = r.hold_until ? new Date(Date.parse(r.hold_until) + 7 * 3600e3).toISOString() : '', hh = vn ? `${vn.slice(11, 16)} ngày ${vn.slice(8, 10)}/${vn.slice(5, 7)}` : '';   // giờ Việt Nam
-    push('giu_cho', late ? 'r' : 'a', `${r.unit} · ${r.full_name} — ${late ? 'đã quá hạn giữ chỗ, cần gia hạn / giải phóng / lập HĐ' : r.past ? `đã đặt cọc, qua hạn giữ chỗ ${hh} — cần lập HĐ / gia hạn` : `hết hạn giữ chỗ lúc ${hh} (còn dưới 24h)`}`, 'reservation', r.id, r.hold_until ? new Date(Date.parse(r.hold_until) + 7 * 3600e3).toISOString().slice(0, 10) : null, r.who, r.unit_id, r.owner_id);
+    // 17/11/2026: theo NGÀY — hạn giữ chỗ còn hiệu lực hết ngày ghi trên phiếu; nhắc từ hôm trước
+    const hd = r.hold_until ? B.holdDay(r.hold_until) : null, past = !!hd && hd < t;
+    if (!late && past && r.status !== 'da_coc') continue;   // chưa cọc, đã qua ngày: lượt đêm chuyển «Quá hạn»
+    const hh = hd ? C.dmy(hd) : '';
+    push('giu_cho', late ? 'r' : past || hd === t ? 'a' : 'b', `${r.unit} · ${r.full_name} — ${late ? 'đã quá hạn giữ chỗ, cần gia hạn / giải phóng / lập HĐ' : past ? `đã đặt cọc, qua hạn giữ chỗ ${hh} — cần lập HĐ / gia hạn` : hd === t ? `hôm nay (${hh}) hết hạn giữ chỗ — qua ngày sẽ chuyển «Quá hạn»` : `ngày mai (${hh}) hết hạn giữ chỗ`}`, 'reservation', r.id, hd, r.who, r.unit_id, r.owner_id);
   }
   // 17/11/2026: phiếu đăng ký chưa nộp hồ sơ (tiến trình «Đã tiếp nhận hồ sơ», chưa có hồ sơ NOXH chờ xét / đã duyệt) mà «Hạn hoàn thiện hồ sơ» còn ≤ 3 ngày hoặc đã qua
   for (const r of await db.q(`SELECT r.id, r.docs_deadline, r.owner_id, u.code unit, u.id unit_id, k.full_name, own.full_name who FROM kd_reservation r JOIN kd_unit u ON u.id = r.unit_id JOIN kd_customer k ON k.id = r.customer_id LEFT JOIN kd_user own ON own.id = r.owner_id
