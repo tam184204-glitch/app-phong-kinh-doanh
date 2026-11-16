@@ -622,6 +622,31 @@ async function voucherList(db, user, f = {}) {
   return { rows, more: list.length > lim, can: { thu: rc && can(user, E.receipt, 'c'), chi: pc && can(user, E.payment, 'c') }, see: { thu: rc, chi: pc } };
 }
 
+// ======================= THEO DÕI CÔNG NỢ ĐẾN HẠN (CN-11, 17/11/2026) =======================
+// mỗi dòng = 1 đợt thu (kể cả phí bảo trì, tiền thuê, hoàn thiện…) của hợp đồng còn hiệu lực (đã ký; HĐ đã thanh lý / hủy không có), hạn ≤ hôm nay, chưa thu đủ.
+// Đã thu từng đợt chia theo phiếu thu như B.debtOf (phiếu chọn đợt vào đợt đó trước, còn lại vào đợt hạn sớm nhất) → thu một phần còn số thiếu, thu đủ thì khỏi bảng.
+// Tính trực tiếp từ lịch thu hiện hành + phiếu thu hợp lệ mỗi lần xem (không lưu bảng riêng) → đổi hạn / ghi thu là cập nhật, không trùng khoản. HĐ vay (công ty vay khách) không có ở đây
+async function dueDebt(db, user, f = {}) {
+  if (!can(user, E.installment, 'r')) deny();
+  const t = today(), KL = Object.fromEntries(E.contract.fields.find(x => x.k === 'kind').o.map(o => [o[0], o[1]]));
+  const cs = await signedContracts(db, f, "AND c.status = 'da_ky' AND c.kind <> 'vay'" + mine(user, 'c'));
+  const rows = [];
+  for (const c of cs) {
+    if (c.d.closed) continue;
+    const no = new Map(); let k = 0; for (const i of [...c.d.inst].sort((a, b) => a.seq - b.seq)) if (!i.is_maint) no.set(i.id, ++k);
+    for (const i of c.d.inst) {
+      if (!(i.rem > 0) || !i.due_on || i.due_on > t) continue;
+      const days = dayDiff(i.due_on, t), dot = i.is_maint ? 'Phí bảo trì' : `Đợt ${no.get(i.id)}`;
+      rows.push({ contract_id: c.id, inst_id: i.id, unit_id: c.unit_id, unit: c.unit, project: c.project, building: c.building, customer: c.customer, phone: c.b_phone || c.phone || '', owner: c.owner || '',
+        number: c.number || '', kind: c.kind, kind_l: KL[c.kind] || c.kind, dot, name: i.name || '', content: `${dot}${i.name ? ' — ' + i.name : ''}`, maint: !!i.is_maint,
+        due_on: i.due_on, amount: +i.amount, paid: +i.paid, rem: +i.rem, days, st: days > 0 ? 'qua_han' : 'den_han',
+        st_l: `${days > 0 ? `Quá hạn ${days} ngày` : 'Đến hạn hôm nay'}${i.paid > 0 ? ' · thu một phần' : ''}` });
+    }
+  }
+  rows.sort((a, b) => b.days - a.days || String(a.unit).localeCompare(String(b.unit), 'vi', { numeric: true }) || String(a.due_on).localeCompare(String(b.due_on)));
+  return { rows, asof: t, kinds: [...new Set(rows.map(r => r.kind))].map(k => [k, KL[k] || k]), can_thu: can(user, E.receipt, 'c') };
+}
+
 // ======================= THEO DÕI HỢP ĐỒNG THUÊ / MUA BÁN / HOÀN THIỆN (CN-07) =======================
 // công nợ khách phải trả công ty theo lịch thu (kd_installment) + phiếu thu hợp lệ (kd_receipt); HĐ vay xem loanTrack
 const CT_KIND = { thue: ['thue', 'thue_mua'], hdmb: ['hdmb'], hoan_thien: ['hoan_thien'] };
@@ -1340,4 +1365,4 @@ async function monthly(db, period, projectId) {
   };
 }
 
-module.exports = { debtStatus, setDebtClass, setDebtDays, debtCfg, debtGrpOf, debtGrpL, customerLedger, myDay, debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, voucherList, contractTrack, setLateRate, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
+module.exports = { dueDebt, debtStatus, setDebtClass, setDebtDays, debtCfg, debtGrpOf, debtGrpL, customerLedger, myDay, debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, voucherList, contractTrack, setLateRate, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };

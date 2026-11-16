@@ -2249,6 +2249,53 @@ V.ctdebt = async (main, params = {}) => {
   await draw();
 };
 
+// Theo dõi công nợ đến hạn (CN-11, 17/11/2026): từng đợt thu chưa thu đủ có hạn ≤ hôm nay của HĐ còn hiệu lực — tự tải lại khi lưu phiếu thu / sửa hạn ở bất kỳ đâu
+V.duedebt = async main => {
+  const f = filt(), s = ST.duedebt ||= { q: '', kind: '', st: '' };
+  const cols = [['unit', 'Mã căn'], ['customer', 'Khách hàng'], ['number', 'Số hợp đồng'], ['kind_l', 'Loại HĐ'], ['content', 'Nội dung / đợt thu'], ['due_on', 'Ngày đến hạn', 'date'],
+    ['amount', 'Số tiền phải thu', 'money'], ['paid', 'Đã thu', 'money'], ['rem', 'Còn phải thu', 'money'], ['days', 'Số ngày quá hạn', 'int'], ['st_l', 'Tình trạng'], ['_act', '']];
+  const SUM = ['amount', 'paid', 'rem'];
+  let d = { rows: [] };
+  const shown = () => { const q = s.q.trim().toLowerCase(); return d.rows.filter(r => (!s.kind || r.kind === s.kind) && (!s.st || (s.st === 'part' ? r.paid > 0 : r.st === s.st)) && (!q || [r.unit, r.customer, r.number, r.content, r.phone].some(x => String(x || '').toLowerCase().includes(q)))); };
+  const draw = () => {
+    const rs = shown(), sum = (xs, k) => xs.reduce((t, r) => t + (+r[k] || 0), 0), tile = (l, v, sub, red) => `<div class="card kpi ${red ? 'red' : ''}" style="cursor:default"><div class="l">${l}</div><div class="v" style="font-size:18px">${v}</div><div class="s">${sub || '&nbsp;'}</div></div>`;
+    const od = d.rows.filter(r => r.days > 0), o30 = d.rows.filter(r => r.days > 30);
+    $('#ddK', main).innerHTML = tile('Khoản đến hạn chưa thu đủ', d.rows.length, `${new Set(d.rows.map(r => r.contract_id)).size} hợp đồng · ${new Set(d.rows.map(r => r.unit_id)).size} căn`)
+      + tile('Còn phải thu', fm(sum(d.rows, 'rem')), `phải thu ${fm(sum(d.rows, 'amount'))} · đã thu ${fm(sum(d.rows, 'paid'))}`)
+      + tile('Quá hạn', fm(sum(od, 'rem')), `${od.length} khoản · đến hạn hôm nay ${fm(sum(d.rows.filter(r => !r.days), 'rem'))}`, od.length > 0)
+      + tile('Quá hạn trên 30 ngày', fm(sum(o30, 'rem')), `${o30.length} khoản`, o30.length > 0);
+    $('#ddN', main).textContent = `${rs.length} khoản · tính đến ${dmy(d.asof)}`;
+    const kSel = $('#ddKind', main); if (kSel && kSel.options.length !== (d.kinds || []).length + 1) kSel.innerHTML = `<option value="">Mọi loại hợp đồng</option>${(d.kinds || []).map(([v, l]) => `<option value="${v}" ${s.kind === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}`;
+    const cell = (c, r) => c[0] === '_act' ? (d.can_thu ? `<button class="btn sm" data-rc="${r.inst_id}" title="Lập phiếu thu cho đợt này (số tiền = còn phải thu)">${ico('fa-plus')} Phiếu thu</button>` : '')
+      : c[0] === 'st_l' ? pill(r.st_l, r.days > 30 ? 'r' : r.days > 0 ? 'a' : 'b') : undefined;
+    $('#ddT', main).innerHTML = rowsTable(cols, rs, SUM, { no: 'STT', cell });
+  };
+  const load = async () => { const ok = latest(main), r = await api('GET', '/api/due-debt?' + qsOf({ project: f.project, building: f.building })); if (ok()) { d = r; draw(); } };
+  main.innerHTML = `<div class="page">${head('06', 'Theo dõi công nợ đến hạn', 'fa-calendar-xmark', `<button class="btn" id="ddX">${ico('fa-file-excel')} Xuất file</button>`, 'CN-11')}${filterBar(f, { period: false })}<div class="grid g4 mb" id="ddK"></div>
+    <div class="card"><div class="toolbar"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="ddQ" placeholder="Tìm mã căn, khách hàng, số HĐ, đợt thu…" value="${esc(s.q)}"></div>
+      <select class="inp" id="ddKind" style="width:auto;height:30px"><option value="">Mọi loại hợp đồng</option></select>
+      <select class="inp" id="ddSt" style="width:auto;height:30px">${[['', 'Mọi tình trạng'], ['qua_han', 'Quá hạn'], ['den_han', 'Đến hạn hôm nay'], ['part', 'Thu một phần']].map(([v, l]) => `<option value="${v}" ${s.st === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <span class="grow"></span><span class="small muted" id="ddN"></span></div><div id="ddT"><div class="empty">Đang tải…</div></div>
+    <div class="small muted mt">Tự lấy từ tiến độ thanh toán (Lần thanh toán) của các hợp đồng đã ký còn hiệu lực — mọi đợt thu gồm cả phí bảo trì, tiền thuê, hoàn thiện — có ngày đến hạn bằng hoặc trước hôm nay mà chưa thu đủ. Đã thu của từng đợt chia theo phiếu thu hợp lệ (phiếu chọn đợt vào đợt đó trước, phần còn lại vào đợt hạn sớm nhất); thu một phần thì còn số thiếu, thu đủ thì tự rời bảng. Đổi hạn (sửa hợp đồng, thông báo bàn giao…) hoặc lập / hủy phiếu thu là bảng cập nhật ngay. Hợp đồng đã thanh lý / hủy không có ở đây (khoản hoàn trả xem <a href="#/v/payouts">Theo dõi thanh lý &amp; chi trả</a>). Bấm 1 dòng để xem công nợ của hợp đồng.</div></div></div>`;
+  wireFilter(main, f, load);
+  $('#ddQ', main).oninput = debounce(e => { s.q = e.target.value; draw(); }, 200);
+  $('#ddKind', main).onchange = e => { s.kind = e.target.value; draw(); };
+  $('#ddSt', main).onchange = e => { s.st = e.target.value; draw(); };
+  $('#ddX', main).onclick = () => download('/api/export-rows', { title: 'THEO DÕI CÔNG NỢ ĐẾN HẠN', cols: cols.filter(c => c[0] !== '_act'), rows: shown(), sum: SUM, file: 'Theo_doi_cong_no_den_han', note: `Tính đến ${dmy(d.asof)} • các đợt thu chưa thu đủ có hạn bằng hoặc trước ngày này của hợp đồng còn hiệu lực • đơn vị: đồng` });
+  main.onclick = run(async e => {
+    const b = e.target.closest('[data-rc]');
+    if (b) { const r = d.rows.find(x => x.inst_id === +b.dataset.rc); if (!r) return;
+      return openForm('receipt', { preset: { contract_id: r.contract_id, contract_id__l: r.number, unit_id: r.unit_id, unit_id__l: r.unit, installment_id: r.inst_id, installment_id__l: r.content, voucher_date: today(), amount: r.rem, content: `Thu tiền ${r.content} căn ${r.unit}` }, onSaved: load }); }
+    const tr = e.target.closest('#ddT tr[data-i]'); if (tr) { const r = shown()[+tr.dataset.i]; if (r) location.hash = `#/v/ctdebt?id=${r.contract_id}`; }
+  });
+  // tự cập nhật: lưu phiếu thu / sửa hợp đồng / thông báo… ở form bất kỳ → tải lại; quay lại tab trình duyệt hoặc mỗi 60 giây cũng tải lại (không cần F5)
+  ST.reload = async () => { if ($('#ddT', main)) await load(); };
+  const vis = () => { if (!$('#ddT', main)) return document.removeEventListener('visibilitychange', vis); if (document.visibilityState === 'visible') load().catch(() => {}); };
+  document.addEventListener('visibilitychange', vis);
+  const tm = setInterval(() => { if (!$('#ddT', main)) return clearInterval(tm); if (document.visibilityState === 'visible' && !document.querySelector('.modal')) load().catch(() => {}); }, 60000);
+  await load();
+};
+
 // HĐ thuê / mua bán / hoàn thiện: khách phải trả công ty theo lịch thu, thực thu theo phiếu thu hợp lệ
 const ctTrack = async (main, kind) => {
   const f = filt(), s = (ST.cttrack ||= {})[kind] ||= { state: '', q: '', from: '', to: '' }, rent = kind === 'thue', hdmb = kind === 'hdmb', KL = Object.fromEntries(CT_KINDS.map(x => [x[0], x[1]]));
