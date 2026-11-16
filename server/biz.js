@@ -539,6 +539,26 @@ async function closeReservations(db, c, user) {
   for (const s of await db.q(`SELECT id FROM kd_reservation WHERE unit_id = $1 AND status IN ${ACTIVE_RES}`, [c.unit_id]))
     await C.sys(db, 'reservation', s.id, { status: 'huy', reg_state: 'huy' }, user, 'huy', `Theo thanh lý hợp đồng ${c.number || ''}`);
 }
+// 16/11/2026: HĐ thuê lập trước khi có chi tiết giá thuê (VD HĐ tự lập chỉ có tổng tiền thuê theo phiếu) — lúc khởi động bổ sung theo bản lưu chính sách:
+// đơn giá / đơn vị tính / ưu đãi / chu kỳ / phí; tiền thuê nhà + nội thất chỉ khi cộng lại đúng tổng tiền thuê đang có (không đổi số tiền, không đổi kỳ thu);
+// tiền đặt cọc trống = theo chính sách (không đặt cọc = 0); HĐ thuê thuần đang dự thảo bỏ giá bán ở «Giá trị HĐMB». Ghi lịch sử từng HĐ
+async function rentBackfill(db) {
+  const cs = await db.q("SELECT * FROM kd_contract WHERE kind = 'thue' AND rent_terms IS NOT NULL AND status <> 'huy' AND rent_cycle_txt IS NULL ORDER BY id");
+  for (const c of cs) {
+    const T = c.rent_terms, u = c.unit_id ? await raw(db, 'unit', c.unit_id) : null, p = { ...rentDetail(T, u) }, draft = ['du_thao', 'tu_choi'].includes(c.status);
+    if (c.rent_house == null && c.rent_furn == null) {
+      const house = rentOf({ rent_mode: T.rent_mode, rent_fixed: T.rent_fixed, rent_price: T.rent_price, rent_price_goc: T.rent_price_goc, rent_price_thang: T.rent_price_thang, rent_vat_pct: T.vat }, u);
+      let furn = T.furn; if (furn == null) { const pol = c.price_policy_id ? await raw(db, 'price_policy', c.price_policy_id) : null; furn = pol?.pkind === 'thue' ? +polFin(pol, u?.code) || 0 : 0; }
+      if (house > 0 && (!(+c.rent > 0) || Math.abs(house + +furn - +c.rent) < 1)) { p.rent_house = house; p.rent_furn = +furn || 0; }
+    }
+    if (c.deposit == null) p.deposit = rentDep(T, c.rent) ?? 0;
+    if (draft && c.nature !== 'ban' && !c.sale_on && c.unit_total != null) p.unit_total = null;
+    const ks = Object.keys(p);
+    await db.q(`UPDATE kd_contract SET ${ks.map((k, i) => `${k} = $${i + 2}`).join(', ')} WHERE id = $1`, [c.id, ...ks.map(k => p[k])]);
+    await C.audit(db, 'contract', c.id, 'bo_sung_gia_thue', null, p, null, `Bổ sung chi tiết giá thuê theo chính sách cho thuê ${T.code} v${T.version}`, c.is_demo);
+  }
+  return cs.length;
+}
 // hợp đồng đã thanh lý trước khi có closeReservations: căn còn kẹt «Đã ký hợp đồng» thì giải phóng lúc khởi động
 async function fixLiquidated(db) {
   const cs = await db.q(`SELECT DISTINCT ON (c.unit_id) c.id, c.unit_id, c.number FROM kd_contract c WHERE c.status = 'thanh_ly' AND c.kind <> 'hoan_thien'
@@ -2328,7 +2348,7 @@ H.contract = {
     // không lưu vào cột (lịch thu nằm ở kd_installment) — chuyển sang afterSave qua ctx
     if (r.kind === 'thue' && r.rent_terms) {   // 17/11/2026
       const nb = k => +(old?.[k] ?? 0) !== +(r[k] ?? 0), dt = k => String(d10(old?.[k]) ?? '') !== String(d10(r[k]) ?? '');
-      ctx.rentRedo = !!old && ['du_thao', 'tu_choi'].includes(r.status) && (dt('eff_on') || dt('exp_on') || ['term_months', 'rent', 'rent_house', 'rent_furn'].some(nb));
+      ctx.rentRedo = !!old && ['du_thao', 'tu_choi'].includes(r.status) && (dt('eff_on') || dt('exp_on') || ['term_months', 'rent'].some(nb));   // tách nhà / nội thất mà tổng tiền thuê không đổi: giữ kỳ thu
       if (ctx.rentRedo) r.new_schedule = null;
       else if (Array.isArray(r.new_schedule) && r.new_schedule.length && r.new_schedule.every(x => +x.amount > 0)) r.value = r.new_schedule.reduce((s, x) => s + +x.amount, 0);
     }
@@ -2988,4 +3008,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, noticeHist, noticeUnits, noticeRent, rentPrices, noticeConflict, unitNotes, saleSchedPolicy, saleSchedRows, rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, noticeHist, noticeUnits, noticeRent, rentPrices, noticeConflict, unitNotes, saleSchedPolicy, saleSchedRows, rentBackfill, rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

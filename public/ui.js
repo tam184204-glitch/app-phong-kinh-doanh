@@ -1208,6 +1208,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   // tiến độ nội thất của chính sách → tab Hoàn thiện căn hộ (chung cư; liền kề gộp hoàn thiện vào HĐMB) — 14/11/2026
   const htFin = d => {
     if (!htp || form.elements.ptype?.value === 'lien_ke' || !d?.fin_sched?.length) return;
+    if ((form.elements.kind?.value ?? rec.kind) === 'thue' && (form.elements.nature?.value ?? rec.nature) !== 'ban') return;   // 16/11/2026: HĐ thuê thuần — không điền tiến độ nội thất của chính sách bán
     const has = x => x.days != null && x.days !== '';
     if (htp.finSched(d.fin_sched.map(x => ({ name: x.name, pct: x.pct, amount: null, due_on: '', ...(has(x) && +x.days ? { _days: +x.days } : { _d0: true }) })), d.fin_policy)) toast(`Tiến độ nội thất điền ở tab Hoàn thiện căn hộ theo chính sách ${d.fin_policy}`);
   };

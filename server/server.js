@@ -727,6 +727,7 @@ async function start() {
   if (!n) { console.log('CSDL trống — nạp dữ liệu gốc…'); await require('./seed').seedBase(); }
   await require('./seed').ensureTemplates();
   await B.fixLiquidated({ q, one }).catch(e => console.error('fixLiquidated', e.message));
+  await tx(db => B.rentBackfill(db)).then(n => n && console.log(`Bổ sung chi tiết giá thuê cho ${n} HĐ thuê`)).catch(e => console.error('rentBackfill', e.message));   // 16/11/2026
   await tx(db => B.fixBaseDiscount(db)).catch(e => console.error('fixBaseDiscount', e.message));
   await tx(db => B.loanPayVouchers(db)).catch(e => console.error('loanPayVouchers', e.message));
   await tx(db => B.fillVoucherInfo(db)).catch(e => console.error('fillVoucherInfo', e.message));   // phiếu thu / chi cũ: điền mã căn, khách hàng… theo hợp đồng   // kỳ HĐ vay ghi nhận tay cũ → phiếu chi (1 lần)
