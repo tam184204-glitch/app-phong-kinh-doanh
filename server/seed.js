@@ -153,7 +153,7 @@ async function ensureTemplates() {
     for (const t of REG_TEMPLATES()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });
     // mẫu chuẩn theo file Excel phòng Kinh doanh: lần đầu nạp thì tắt các mẫu khung cũ
     let moi = 0;
-    for (const t of require('./mau-mo-ban').MAU_MO_BAN()) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });
+    for (const t of [...require('./mau-mo-ban').MAU_MO_BAN(), ...require('./mau-mo-ban').MAU_CHO_THUE()]) if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });   // 17/11/2026: + mẫu thông báo cho thuê
     // bộ MẪU HS TNS (12/11/2026): nạp mẫu còn thiếu; mẫu đã có (kể cả đã sửa tay) chỉ gắn lại bộ hồ sơ nếu bị mất
     for (const t of require('./ho-so').MAU_TNS()) {
       if (!await db.one('SELECT 1 FROM kd_template WHERE code = $1', [t.code])) await C.create('template', { ...t, active: true }, sysU, { db, system: true });

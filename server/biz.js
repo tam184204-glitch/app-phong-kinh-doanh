@@ -120,12 +120,109 @@ const polFin = (pol, code) => { const v = pol?.finish_vals?.[String(code || '').
 async function pricing(db, unit, on = today(), seller) {
   const b = await db.one('SELECT code FROM kd_building WHERE id = $1', [unit.building_id]);
   // 14/11/2026: chính sách áp dụng = chính sách được DUYỆT GẦN NHẤT (theo ngày duyệt) còn hiệu lực cho căn + người bán — chính sách duyệt trước đó không còn áp cho căn
-  const pols = await db.q(`SELECT p.*, (SELECT max(a.decided_at) FROM kd_approval a WHERE a.ent = 'price_policy' AND a.rec_id = p.id AND a.status = 'da_duyet') appr_at FROM kd_price_policy p WHERE p.status = 'phat_hanh' AND $1 = ANY(p.project_ids) AND p.start_on <= $2 AND p.end_on >= $2
-    ORDER BY appr_at DESC NULLS LAST, p.start_on DESC, p.version DESC, p.id DESC`, [unit.project_id, on]);
+  const pols = await db.q(`SELECT p.*, (SELECT max(a.decided_at) FROM kd_approval a WHERE a.ent = 'price_policy' AND a.rec_id = p.id AND a.status = 'da_duyet') appr_at FROM kd_price_policy p WHERE p.status = 'phat_hanh' AND coalesce(p.pkind, 'ban') = 'ban' AND $1 = ANY(p.project_ids) AND p.start_on <= $2 AND p.end_on >= $2
+    ORDER BY appr_at DESC NULLS LAST, p.start_on DESC, p.version DESC, p.id DESC`, [unit.project_id, on]);   // 17/11/2026: chỉ chính sách loại «Bán»
   const pol = pols.find(p => polHas(p, unit.code, b?.code) && polFor(p, seller));
   if (!pol) return { policy: null, price: unit.total_price || null };
   if (pol.mode === 'don_gia') { const after = Math.round(pol.unit_price * unit.area_tt), before = after / (1 + (pol.vat_pct ?? 5) / 100); return { policy: pol, price: after + Math.round(before * (pol.maint_pct ?? 2) / 100 / 1000) * 1000 }; }   // đơn giá đã gồm thuế; bảo trì = 2% × tiền trước thuế
   return { policy: pol, price: unit.total_price || unit.list_price || null };
+}
+
+// ======================= CHÍNH SÁCH CHO THUÊ (17/11/2026: chính sách loại «Cho thuê») =======================
+// tiền thuê/tháng của căn: cố định mỗi căn, hoặc đơn giá/m² thông thủy theo vị trí căn (thường / góc / cạnh thang); có thuế GTGT thì × (1 + thuế %) — làm tròn nghìn đồng
+const rentOf = (pol, u) => {
+  if (!pol || !u) return null;
+  const vat = 1 + (+pol.rent_vat_pct || 0) / 100;
+  if (pol.rent_mode === 'co_dinh') return +pol.rent_fixed > 0 ? Math.round(+pol.rent_fixed * vat / 1000) * 1000 : null;
+  const p = u.position === 'goc' && +pol.rent_price_goc > 0 ? +pol.rent_price_goc : u.position === 'thang' && +pol.rent_price_thang > 0 ? +pol.rent_price_thang : +pol.rent_price;
+  return p > 0 && +u.area_tt > 0 ? Math.round(p * +u.area_tt * vat / 1000) * 1000 : null;
+};
+// chính sách cho thuê áp cho căn = chính sách loại «Cho thuê» đã phát hành, DUYỆT GẦN NHẤT, còn hiệu lực, có căn (+ đúng người bán nếu có)
+async function rentPolicyFor(db, unit, on = today(), seller) {
+  const b = await db.one('SELECT code FROM kd_building WHERE id = $1', [unit.building_id]);
+  const ps = await db.q(`SELECT p.*, (SELECT max(a.decided_at) FROM kd_approval a WHERE a.ent = 'price_policy' AND a.rec_id = p.id AND a.status = 'da_duyet') appr_at FROM kd_price_policy p
+    WHERE p.status = 'phat_hanh' AND p.pkind = 'thue' AND $1 = ANY(p.project_ids) AND p.start_on <= $2 AND p.end_on >= $2 ORDER BY appr_at DESC NULLS LAST, p.start_on DESC, p.version DESC, p.id DESC`, [unit.project_id, on]);
+  const pol = ps.find(p => polHas(p, unit.code, b?.code) && polFor(p, seller)) || null;
+  return { policy: pol, rent: rentOf(pol, unit), furn: pol ? polFin(pol, unit.code) : null };
+}
+const RT_CYC = { 1: 'hàng tháng', 3: 'hàng quý', 6: '6 tháng/kỳ', 12: 'hàng năm' };
+// bản lưu điều khoản cho thuê của phiên bản chính sách (ghi vào HĐ thuê lúc lập — sửa / phiên bản mới về sau không đổi HĐ)
+const rentTerms = p => ({ id: p.id, code: p.code, version: p.version, name: p.name || null, doc_no: p.doc_no || null, rent_mode: p.rent_mode, rent_price: p.rent_price, rent_price_goc: p.rent_price_goc, rent_price_thang: p.rent_price_thang,
+  rent_fixed: p.rent_fixed, vat: +p.rent_vat_pct || 0, term: +p.rent_term || null, start: p.rent_start || 'ngay_ky', dep_mode: p.dep_mode || 'khong', dep_months: p.dep_months, dep_amount: p.dep_amount, dep_days: +p.dep_days || 0,
+  dep_sched: !!p.dep_sched, dep_terms: p.dep_terms || null, free_months: +p.free_months || 0, disc_pct: +p.disc_pct || 0, disc_months: p.disc_months ?? null, promo_terms: p.promo_terms || null,
+  adj_from: p.adj_from ?? null, adj_cycle: p.adj_cycle ?? null, adj_pct: +p.adj_pct || 0, cycle: p.pay_cycle === 'khac' ? Math.max(1, +p.pay_cycle_n || 1) : Math.max(1, +p.pay_cycle || 1), pay_when: p.pay_when || 'dau_ky', pay_days: +p.pay_days || 0,
+  fees: (Array.isArray(p.rent_fees) ? p.rent_fees : []).filter(f => +f.amount > 0), ref_fee: p.ref_fee_mode && p.ref_fee_mode !== 'khong' ? { mode: p.ref_fee_mode, val: p.ref_fee_val, types: p.ref_fee_types, terms: p.ref_fee_terms } : null });
+const rentDep = (T, rent) => !T ? null : T.dep_mode === 'so_tien' ? (+T.dep_amount > 0 ? Math.round(+T.dep_amount) : null) : T.dep_mode === 'thang' && +T.dep_months > 0 && +rent > 0 ? Math.round(+T.dep_months * +rent / 1000) * 1000 : null;
+const rentTxt = T => [`${T.code} v${T.version}`, T.cycle ? `thu ${RT_CYC[T.cycle] || T.cycle + ' tháng/kỳ'} (${T.pay_when === 'cuoi_ky' ? 'cuối kỳ' : 'đầu kỳ'}${T.pay_days ? ' + ' + T.pay_days + ' ngày' : ''})` : '',
+  T.dep_mode === 'thang' && +T.dep_months > 0 ? `cọc ${String(T.dep_months).replace('.', ',')} tháng` : T.dep_mode === 'so_tien' && +T.dep_amount > 0 ? `cọc ${fmtMoney(T.dep_amount)}đ` : '',
+  T.free_months ? `miễn ${T.free_months} tháng đầu` : '', T.disc_pct ? `giảm ${String(T.disc_pct).replace('.', ',')}%${T.disc_months ? ' trong ' + T.disc_months + ' tháng' : ''}` : '',
+  T.adj_pct && T.adj_from != null ? `điều chỉnh ${T.adj_pct > 0 ? '+' : ''}${String(T.adj_pct).replace('.', ',')}%/${T.adj_cycle || 12} tháng từ tháng ${+T.adj_from + 1}` : '', T.fees?.length ? `phí: ${T.fees.map(f => f.name).join(', ')}` : ''].filter(Boolean).join(' · ');
+// tiến độ thu tiền thuê theo bản lưu điều khoản (T; HĐ cũ không có T: theo Số kỳ thanh toán, không có nữa thì hàng tháng): mỗi kỳ = tiền thuê các tháng trong kỳ
+// (miễn → 0, giảm %, điều chỉnh giá theo chu kỳ) + phí hàng tháng; phí một lần ở kỳ đầu; đầu kỳ: mốc = ngày đầu kỳ, cuối kỳ: ngày cuối kỳ; hạn = mốc + số ngày; tiền cọc vào tiến độ khi chính sách chọn
+function rentPlan(c, T) {
+  const n = +c.term_months || 0, base = +c.rent || 0, a = d10(c.eff_on);
+  if (!(n > 0) || !(base > 0) || !a) return null;
+  T = T || {};
+  const cyc = +T.cycle > 0 ? +T.cycle : +c.pay_times > 0 ? Math.max(1, Math.ceil(n / +c.pay_times)) : 1;
+  const fm = +T.free_months || 0, dp = +T.disc_pct || 0, dm = T.disc_months == null || T.disc_months === '' ? null : +T.disc_months;
+  const af = T.adj_from == null || T.adj_from === '' ? null : +T.adj_from, ac = Math.max(1, +T.adj_cycle || 12), ap = +T.adj_pct || 0;
+  const mon = i => {   // tiền thuê tháng thứ i (1..n)
+    if (i <= fm) return 0;
+    let v = base;
+    if (ap && af != null && i > af) v *= Math.pow(1 + ap / 100, 1 + Math.floor((i - 1 - af) / ac));
+    if (dp > 0 && (dm == null || i <= fm + dm)) v *= 1 - dp / 100;
+    return Math.round(v / 1000) * 1000;
+  };
+  const area = +c.area_tt || 0, fees = (T.fees || []).filter(f => +f.amount > 0), every = fees.filter(f => f.basis !== 'mot_lan');
+  const feeMon = every.reduce((s, f) => s + (f.basis === 'm2' ? Math.round(+f.amount * area / 1000) * 1000 : Math.round(+f.amount)), 0), feeNames = every.map(f => f.name).join(', ');
+  const p = Math.ceil(n / cyc), late = T.pay_when === 'cuoi_ky', dd = Math.max(0, +T.pay_days || 0), rows = [];
+  for (let k = 0; k < p; k++) {
+    const m1 = k * cyc + 1, m2 = Math.min(n, (k + 1) * cyc), lb = `kỳ ${k + 1}/${p} (tháng ${m1 === m2 ? m1 : `${m1}–${m2}`})`;
+    let amt = 0; for (let i = m1; i <= m2; i++) amt += mon(i);
+    const fee = feeMon * (m2 - m1 + 1), due = C.addDays(late ? addDays(addMonths(a, m2), -1) : addMonths(a, m1 - 1), dd);
+    if (amt + fee > 0) rows.push({ name: amt > 0 ? `Tiền thuê${fee ? ` và phí ${feeNames}` : ''} ${lb}${m1 <= fm ? ' (có tháng miễn tiền thuê)' : ''}` : `Phí ${feeNames} ${lb} (miễn tiền thuê)`, due_on: due, pct: null, amount: amt + fee });
+  }
+  const d0 = C.addDays(a, dd);
+  for (const f of fees.filter(f => f.basis === 'mot_lan')) rows.push({ name: String(f.name || 'Phí').trim(), due_on: d0, pct: null, amount: Math.round(+f.amount) });
+  const dep = T.dep_sched ? rentDep(T, base) : null;
+  if (dep) rows.push({ name: 'Tiền đặt cọc thuê', due_on: C.addDays(d10(c.contract_on) || a, +T.dep_days || 0), pct: null, amount: dep });
+  return rows.map((r, i) => [r, i]).sort((x, y) => String(x[0].due_on).localeCompare(String(y[0].due_on)) || x[1] - y[1]).map(x => x[0]);
+}
+const rentPlanTotal = c => (rentPlan(c, c.rent_terms) || []).reduce((s, r) => s + r.amount, 0);
+// HĐ thuê: Lần thanh toán theo bản lưu điều khoản cho thuê của HĐ (chưa có thì lấy từ chính sách cho thuê ghi trên HĐ / áp cho căn); tiền cọc mặc định theo chính sách
+async function rentApply(db, c, user, demo) {
+  let T = c.rent_terms || null;
+  if (!T) {
+    const p0 = c.price_policy_id ? await raw(db, 'price_policy', c.price_policy_id) : null, u = c.unit_id ? await raw(db, 'unit', c.unit_id) : null;
+    const pol = p0?.pkind === 'thue' ? p0 : u ? (await rentPolicyFor(db, u, d10(c.contract_on) || today())).policy : null;
+    if (pol) { T = rentTerms(pol); await db.q('UPDATE kd_contract SET price_policy_id = $2, rent_terms = $3, rent_policy_txt = $4 WHERE id = $1', [c.id, pol.id, JSON.stringify(T), rentTxt(T)]); }
+  }
+  const rows0 = rentPlan(c, T); if (!rows0?.length) return null;
+  const total = rows0.reduce((s, r) => s + r.amount, 0);
+  const rows = await normSchedule(db, rows0, total, `Tiến độ thu tiền thuê${T ? ' theo chính sách ' + T.code : ''}`);
+  await writeSchedule(db, c.id, rows, 'hop_dong', user, demo ?? c.is_demo);
+  const dep = c.deposit == null ? rentDep(T, c.rent) : null;
+  const cyc = +T?.cycle > 0 ? +T.cycle : +c.pay_times > 0 ? Math.max(1, Math.ceil(+c.term_months / +c.pay_times)) : 1;
+  await db.q('UPDATE kd_contract SET value = $2, pay_times = $3, deposit = coalesce(deposit, $4), updated_at = now() WHERE id = $1', [c.id, total, Math.ceil(+c.term_months / cyc), dep]);
+  await C.audit(db, 'contract', c.id, 'tien_do_chinh_sach', null, { chinh_sach_thue: T ? `${T.code} v${T.version}` : null, so_dot: rows.length, tong: total }, user,
+    `Lần thanh toán tiền thuê: ${rows.length} khoản · ${fmtMoney(total)}đ${T ? ` theo chính sách cho thuê ${T.code} v${T.version}` : ''}${dep ? ` · tiền đặt cọc ${fmtMoney(dep)}đ` : ''}`, demo ?? c.is_demo);
+  return { n: rows.length, T, dep, total };
+}
+// chính sách cho thuê có hiệu lực (phát hành / tới ngày bắt đầu): phiếu đăng ký thuê còn hiệu lực của căn mà chính sách này là chính sách đang áp → tiền thuê, thời hạn theo chính sách
+async function rentRoll(db, pol, user) {
+  const out = { res: [], hd: [], err: [], can: [] }, on = today();
+  if (pol?.status !== 'phat_hanh' || d10(pol.start_on) > on || d10(pol.end_on) < on) return out;
+  const rs = await db.q(`SELECT s.*, u.code ucode, b.code bcode FROM kd_reservation s JOIN kd_unit u ON u.id = s.unit_id JOIN kd_building b ON b.id = u.building_id
+    WHERE s.deal = 'thue' AND s.status = ANY($2) AND u.project_id = ANY($1) ORDER BY s.id`, [pol.project_ids || [], RES_OPEN]);
+  for (const s of rs.filter(s => polHas(pol, s.ucode, s.bcode))) {
+    const u = await raw(db, 'unit', s.unit_id), rp = await rentPolicyFor(db, u, on, { source: s.source, agent_id: s.agent_id });
+    if (rp.policy?.id !== pol.id || s.policy_id === pol.id) continue;
+    try { await sys(db, 'reservation', s.id, { policy_id: pol.id, rent: (rp.rent || 0) + (+rp.furn || 0) || s.rent, term_months: +pol.rent_term || s.term_months }, user, 'chinh_sach_moi', `Áp chính sách cho thuê mới ${pol.code} v${pol.version}`); out.res.push(s.ucode); }
+    catch (e) { if (e.status !== 400) throw e; out.err.push(`Phiếu căn ${s.ucode}: ${e.message}`); }
+  }
+  await db.q('UPDATE kd_price_policy SET rolled_at = now() WHERE id = $1', [pol.id]);
+  if (out.res.length || out.err.length) await C.audit(db, 'price_policy', pol.id, 'ap_can_chua_ban', null, out, user, `Tự áp chính sách cho thuê: ${out.res.length} phiếu đăng ký thuê${out.res.length ? ' (' + out.res.join(', ') + ')' : ''}${out.err.length ? ` · ${out.err.length} chỗ không áp được` : ''}`);
+  return out;
 }
 
 // ======================= LỊCH THANH TOÁN =======================
@@ -248,6 +345,7 @@ async function policyApply(db, pol, user) {
 // HĐMB dự thảo / bị từ chối ghi chính sách mới + Lần thanh toán theo tiến độ mới (nếu chính sách có khai tiến độ)
 const RES_OPEN = ['nhap', 'cho_duyet', 'giu_cho', 'qua_han', 'da_coc'];
 async function policyRoll(db, pol, user) {
+  if (pol?.pkind === 'thue') return rentRoll(db, pol, user);   // 17/11/2026: chính sách cho thuê → phiếu đăng ký thuê
   const out = { res: [], hd: [], err: [] }, on = today();
   if (pol?.status !== 'phat_hanh' || d10(pol.start_on) > on || d10(pol.end_on) < on) return out;
   const lab = `${pol.code} v${pol.version}`;
@@ -302,7 +400,7 @@ async function policyRoll(db, pol, user) {
     `Tự áp cho căn chưa bán: ${out.can.length ? `hoàn thiện ${out.can.length} căn, ` : ''}${out.res.length} phiếu đăng ký${out.res.length ? ' (' + [...new Set(out.res)].join(', ') + ')' : ''}, ${out.hd.length} HĐMB dự thảo${out.hd.length ? ' (' + out.hd.join(', ') + ')' : ''}${out.err.length ? ` · ${out.err.length} chỗ không áp được` : ''}`);
   return out;
 }
-const rollMsg = o => (o.res.length || o.hd.length || o.can?.length ? `Đã áp chính sách cho căn chưa bán: ${o.can?.length ? `giá trị hoàn thiện ${o.can.length} căn, ` : ''}${o.res.length} phiếu đăng ký, ${o.hd.length} HĐMB dự thảo${o.hd.length ? ' (' + o.hd.join(', ') + ')' : ''}` : 'Không có phiếu đăng ký / HĐMB dự thảo nào cần đổi sang chính sách này') + (o.err.length ? ` · Không áp được: ${o.err.join('; ')}` : '');
+const rollMsg = o => (o.res.length || o.hd.length || o.can?.length ? `Đã áp chính sách cho căn chưa bán / chưa thuê: ${o.can?.length ? `giá trị hoàn thiện ${o.can.length} căn, ` : ''}${o.res.length} phiếu đăng ký, ${o.hd.length} HĐMB dự thảo${o.hd.length ? ' (' + o.hd.join(', ') + ')' : ''}` : 'Không có phiếu đăng ký / HĐMB dự thảo nào cần đổi sang chính sách này') + (o.err.length ? ` · Không áp được: ${o.err.join('; ')}` : '');
 // căn chọn được khi tạo chính sách bán hàng (16/11/2026): còn trong bảng hàng (không ngừng kinh doanh), chưa ký HĐMB / thuê mua / vay / thuê.
 // Kèm chính sách đang phát hành áp cho căn (trừ chính sách đang sửa) và HĐMB dự thảo của căn — để biết căn nào sẽ đổi Lần thanh toán
 async function policyUnits(db, qs) {
@@ -313,7 +411,7 @@ async function policyUnits(db, qs) {
       (SELECT c.number FROM kd_contract c WHERE c.unit_id = u.id AND c.kind IN ('hdmb','thue_mua') AND c.status IN ('du_thao','tu_choi') ORDER BY c.id DESC LIMIT 1) draft
     FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = ANY($1)`, [pids]);
   const pols = await db.q(`SELECT p.id, p.code, p.version, p.unit_group, p.project_ids, (p.pay_sched IS NOT NULL) td, (SELECT max(a.decided_at) FROM kd_approval a WHERE a.ent = 'price_policy' AND a.rec_id = p.id AND a.status = 'da_duyet') appr_at FROM kd_price_policy p WHERE p.status = 'phat_hanh' AND p.id <> $1 AND p.project_ids && $2::int[] AND p.end_on >= $3
-    ORDER BY appr_at DESC NULLS LAST, p.start_on DESC, p.version DESC, p.id DESC`, [self, pids, today()]);   // như pricing: chính sách duyệt gần nhất
+    AND coalesce(p.pkind, 'ban') = $4 ORDER BY appr_at DESC NULLS LAST, p.start_on DESC, p.version DESC, p.id DESC`, [self, pids, today(), qs.pkind === 'thue' ? 'thue' : 'ban']);   // như pricing: chính sách duyệt gần nhất, cùng loại (bán / cho thuê)
   const rows = all.filter(u => !u.signed && u.lock !== 'ngung_kd' && u.status !== 'giu_cho').map(u => {
     const p = pols.find(p => p.project_ids.includes(u.project_id) && polHas(p, u.code, u.b));
     return { ...u, pol: p ? `${p.code} v${p.version}` : null, pol_td: !!p?.td };
@@ -649,9 +747,50 @@ H.unit = {
   noDelete: r => !['chua_mo_ban', 'con_ban', 'tam_khoa', 'ngung_kd'].includes(r.status) && 'Căn đã phát sinh giao dịch — không xóa được, chỉ được khóa kinh doanh',
 };
 
+const RENT_K = ['rent_mode', 'rent_price', 'rent_price_goc', 'rent_price_thang', 'rent_fixed', 'rent_vat_pct', 'rent_term', 'rent_start', 'dep_mode', 'dep_months', 'dep_amount', 'dep_days', 'dep_sched', 'dep_terms',
+  'free_months', 'disc_pct', 'disc_months', 'promo_terms', 'adj_from', 'adj_cycle', 'adj_pct', 'ref_fee_mode', 'ref_fee_val', 'ref_fee_types', 'ref_fee_terms', 'pay_cycle', 'pay_cycle_n', 'pay_when', 'pay_days', 'rent_fees'];
+// 17/11/2026: chính sách cho thuê — kiểm tra giá thuê, thời hạn, đặt cọc, ưu đãi, điều chỉnh giá, kỳ thu, các khoản phí
+function rentPolicyCheck(r) {
+  const num = k => r[k] === '' || r[k] == null ? null : +r[k], neg = (k, l) => { if (num(k) != null && !(num(k) >= 0)) bad(`${l} không được âm`, { fields: [k] }); };
+  r.rent_mode = r.rent_mode === 'co_dinh' ? 'co_dinh' : 'don_gia';
+  if (r.rent_mode === 'don_gia') { if (!(num('rent_price') > 0)) bad('Nhập đơn giá thuê căn thường (đ/m²/tháng)', { fields: ['rent_price'] }); r.rent_fixed = null; }
+  else { if (!(num('rent_fixed') > 0)) bad('Nhập tiền thuê/tháng mỗi căn', { fields: ['rent_fixed'] }); r.rent_price = r.rent_price_goc = r.rent_price_thang = null; }
+  neg('rent_vat_pct', 'Thuế GTGT');
+  if (!(num('rent_term') > 0)) bad('Nhập thời hạn hợp đồng thuê (tháng)', { fields: ['rent_term'] });
+  r.pay_cycle ||= '1';
+  const cyc = r.pay_cycle === 'khac' ? num('pay_cycle_n') : +r.pay_cycle;
+  if (!(cyc >= 1)) bad('Nhập số tháng mỗi kỳ thu tiền thuê', { fields: ['pay_cycle_n'] });
+  if (cyc > num('rent_term')) bad('Kỳ thu tiền thuê dài hơn thời hạn thuê', { fields: ['pay_cycle'] });
+  if (r.pay_cycle !== 'khac') r.pay_cycle_n = null;
+  r.pay_when = r.pay_when === 'cuoi_ky' ? 'cuoi_ky' : 'dau_ky';
+  for (const [k, l] of [['pay_days', 'Số ngày đến hạn'], ['dep_days', 'Hạn nộp tiền cọc'], ['free_months', 'Số tháng miễn tiền thuê'], ['disc_months', 'Thời gian giảm'], ['adj_from', 'Mốc điều chỉnh giá'], ['dep_months', 'Số tháng đặt cọc'], ['dep_amount', 'Số tiền đặt cọc'], ['ref_fee_val', 'Mức hưởng phí giới thiệu']]) neg(k, l);
+  if (num('free_months') >= num('rent_term')) bad('Số tháng miễn tiền thuê phải nhỏ hơn thời hạn thuê', { fields: ['free_months'] });
+  if (num('disc_pct') != null && !(num('disc_pct') >= 0 && num('disc_pct') < 100)) bad('Mức giảm tiền thuê phải từ 0 đến dưới 100%', { fields: ['disc_pct'] });
+  if (num('adj_pct') && num('adj_from') == null) bad('Có mức điều chỉnh giá thì nhập «Điều chỉnh giá thuê lần đầu sau (tháng)»', { fields: ['adj_from'] });
+  if (num('adj_cycle') != null && !(num('adj_cycle') >= 1)) bad('Chu kỳ điều chỉnh giá phải từ 1 tháng', { fields: ['adj_cycle'] });
+  if (num('adj_pct') != null && !(num('adj_pct') > -100)) bad('Mức điều chỉnh giá không hợp lệ', { fields: ['adj_pct'] });
+  r.dep_mode = ['thang', 'so_tien', 'khong'].includes(r.dep_mode) ? r.dep_mode : 'khong';
+  if (r.dep_mode === 'thang' && !(num('dep_months') > 0)) bad('Nhập số tháng tiền thuê đặt cọc', { fields: ['dep_months'] });
+  if (r.dep_mode === 'so_tien' && !(num('dep_amount') > 0)) bad('Nhập số tiền đặt cọc', { fields: ['dep_amount'] });
+  if (r.dep_mode !== 'thang') r.dep_months = null; if (r.dep_mode !== 'so_tien') r.dep_amount = null; if (r.dep_mode === 'khong') r.dep_sched = false;
+  if ((r.ref_fee_mode || 'khong') === 'khong') { r.ref_fee_mode = 'khong'; r.ref_fee_val = null; } else if (!(num('ref_fee_val') > 0)) bad('Nhập mức hưởng phí giới thiệu / phân phối', { fields: ['ref_fee_val'] });
+  const fees = [];   // các khoản phí: tên + số tiền + cách thu (mỗi tháng / theo m² / một lần)
+  for (const f of (Array.isArray(r.rent_fees) ? r.rent_fees : [])) {
+    const name = String(f.name || '').trim(), amount = Math.round(+String(f.amount ?? '').replace(/[^\d.-]/g, ''));
+    if (!name && !amount) continue;
+    if (!name) bad('Khoản phí: nhập tên khoản phí', { fields: ['rent_fees'] });
+    if (!(amount > 0)) bad(`Khoản phí «${name}»: nhập số tiền`, { fields: ['rent_fees'] });
+    fees.push({ name, amount, basis: ['thang', 'm2', 'mot_lan'].includes(f.basis) ? f.basis : 'thang' });
+  }
+  r.rent_fees = fees.length ? fees : null;
+}
 H.price_policy = {
+  where(qs) { if (qs.group === 'thue') return { sql: "t.pkind = 'thue'" }; if (qs.group === 'ban') return { sql: "coalesce(t.pkind, 'ban') <> 'thue'" }; },   // tab Chính sách bán / cho thuê
   async beforeSave(r) {
     if (r.start_on && r.end_on && r.end_on < r.start_on) bad('Ngày kết thúc phải sau ngày bắt đầu');
+    r.pkind = r.pkind === 'thue' ? 'thue' : 'ban';   // 17/11/2026: loại chính sách Bán / Cho thuê
+    if (r.pkind === 'thue') { rentPolicyCheck(r); r.pay_sched = null; r.fin_sched = null; r.mode = 'bang_hang'; }
+    else for (const k of RENT_K) r[k] = null;
     if (r.mode === 'don_gia' && !(r.unit_price > 0)) bad('Cần đơn giá (đ/m²) khi tính theo đơn giá');
     r.unit_group = r.unit_group ? String(r.unit_group).toUpperCase().replace(/\s+/g, '') : '*';
     r.project_id = r.project_ids?.[0] ?? null;   // dự án chính = dự án chọn đầu tiên
@@ -705,7 +844,7 @@ H.price_policy = {
       return { msg: rollMsg(await policyRoll(db, r, user)) };
     },
     async new_version(r, d, { db, user, demo }) {
-      const keep = ['code', 'project_ids', 'unit_group', 'mode', 'unit_price', 'maint_pct', 'vat_pct', 'content', 'target', 'seller_types', 'seller_ids', 'finish_vals', 'start_on', 'end_on', 'src_file', 'pay_sched', 'fin_sched', 'pay_mdot'];
+      const keep = ['pkind', 'code', 'name', 'doc_no', 'project_ids', 'unit_group', 'mode', 'unit_price', 'maint_pct', 'vat_pct', 'content', 'target', 'seller_types', 'seller_ids', 'finish_vals', 'start_on', 'end_on', 'src_file', 'pay_sched', 'fin_sched', 'pay_mdot', ...RENT_K];
       const n = (await create('price_policy', { ...Object.fromEntries(keep.map(k => [k, r[k]])), version: r.version + 1, parent_id: r.id, status: 'nhap' }, user, { db, system: true, demo })).row;
       return { open: ['price_policy', n.id], msg: `Đã tạo phiên bản ${n.version} (nháp). Phiên bản đang phát hành giữ nguyên tới khi bản mới được duyệt.` };
     },
@@ -714,11 +853,11 @@ H.price_policy = {
   async decorate(rows, { db, one }) {
     if (!one) return;
     for (const r of rows) {
-      const us = await db.q('SELECT u.code, u.floor, u.kind, u.area_tt, u.area_xd, u.total_price, u.price_net, u.maint_fee, u.finish_value, upper(b.code) b FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = ANY($1) ORDER BY b.code, u.floor, u.code', [r.project_ids || []]);
+      const us = await db.q('SELECT u.code, u.floor, u.kind, u.position, u.area_tt, u.area_xd, u.total_price, u.price_net, u.maint_fee, u.finish_value, upper(b.code) b FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = ANY($1) ORDER BY b.code, u.floor, u.code', [r.project_ids || []]);
       const fv = r.finish_vals || {};
       // base = giá căn hộ chưa gồm hoàn thiện (như cột «Tổng giá căn hộ» ở form chính sách) → bảng chi tiết cộng thêm «Tổng giá trị căn hộ» = base + hoàn thiện (14/11/2026)
       const base = u => u.price_net != null ? +u.price_net + (+u.maint_fee || 0) : (+u.total_price || 0) - (+u.finish_value || 0);
-      r._units = us.filter(u => polHas(r, u.code, u.b)).map(u => ({ code: u.code, b: u.b, floor: u.floor, kind: u.kind, area_tt: u.area_tt, area_xd: u.area_xd, total_price: u.total_price, base: base(u), fin: fv[u.code.toUpperCase()] ?? null })).sort((x, y) => x.code.localeCompare(y.code, 'vi', { numeric: true }));
+      r._units = us.filter(u => polHas(r, u.code, u.b)).map(u => ({ code: u.code, b: u.b, floor: u.floor, kind: u.kind, area_tt: u.area_tt, area_xd: u.area_xd, total_price: u.total_price, base: r.pkind === 'thue' ? rentOf(r, u) : base(u), fin: fv[u.code.toUpperCase()] ?? null, ...(r.pkind === 'thue' ? { rent: true } : {}) })).sort((x, y) => x.code.localeCompare(y.code, 'vi', { numeric: true }));
     }
   },
   noDelete: r => !['nhap', 'tu_choi'].includes(r.status) && 'Chỉ xóa được bản nháp',
@@ -814,19 +953,24 @@ async function intakeLead(db, b, user, { demo } = {}) {
   return { customer_id: k.id, log_id: log.id, new_customer: isNew };
 }
 
-// mã căn phải có trong thông báo mở bán đã duyệt gần nhất của dự án — không có thì cảnh báo, vẫn cho lưu / trình duyệt
-async function saleCheck(db, unitId, cache = new Map()) {   // cache: theo dự án (đợt gần nhất + id căn trong đợt) khi kiểm nhiều dòng
+// mã căn phải có trong thông báo đã duyệt gần nhất của dự án — mở bán (deal 'ban': đăng ký mua, hồ sơ mua) / cho thuê (deal 'thue': đăng ký thuê, hồ sơ thuê);
+// không có thì cảnh báo, vẫn cho lưu / trình duyệt. hit = đợt thông báo (đã phát hành, mới nhất) có căn — gắn vào phiếu đăng ký (17/11/2026)
+const dealOf = r => r.deal === 'thue' || r.reg_kind === 'thue' ? 'thue' : 'ban';
+async function saleCheck(db, unitId, cache = new Map(), deal = 'ban') {   // cache: theo dự án + loại (các đợt gần nhất + id căn trong đợt) khi kiểm nhiều dòng
   const u = unitId && await raw(db, 'unit', unitId); if (!u) return null;
-  if (!cache.has(u.project_id)) {
-    const n = await db.one("SELECT * FROM kd_sale_notice WHERE project_id = $1 AND status = 'da_duyet' ORDER BY notice_on DESC NULLS LAST, id DESC LIMIT 1", [u.project_id]);
-    cache.set(u.project_id, { n, ids: n ? new Set((await noticeUnits(db, n)).map(x => x.id)) : null });
+  const ck = `${u.project_id}:${deal}`, L = deal === 'thue' ? 'cho thuê' : 'mở bán';
+  if (!cache.has(ck)) {
+    const ns = await db.q("SELECT * FROM kd_sale_notice WHERE project_id = $1 AND status = 'da_duyet' AND coalesce(deal, 'ban') = $2 ORDER BY notice_on DESC NULLS LAST, id DESC LIMIT 20", [u.project_id, deal]);
+    const xs = []; for (const n of ns) xs.push({ n, ids: new Set((await noticeUnits(db, n)).map(x => x.id)) });
+    cache.set(ck, xs);
   }
-  const { n, ids } = cache.get(u.project_id);
-  if (!n) return { ok: false, text: `⚠ Dự án chưa có thông báo mở bán được duyệt (căn ${u.code})` };
-  return ids.has(u.id) ? { ok: true, text: `✓ Có trong ${n.code} · ${n.title}` } : { ok: false, text: `⚠ Căn ${u.code} không có trong thông báo mở bán gần nhất (${n.code} · ${n.title})` };
+  const xs = cache.get(ck), last = xs[0]?.n, hit = xs.find(x => x.ids.has(u.id))?.n || null;
+  if (!last) return { ok: false, hit: null, text: `⚠ Dự án chưa có thông báo ${L} được duyệt (căn ${u.code})` };
+  return hit === last ? { ok: true, hit, text: `✓ Có trong ${last.code} · ${last.title}` }
+    : { ok: false, hit, text: `⚠ Căn ${u.code} không có trong thông báo ${L} gần nhất (${last.code} · ${last.title})${hit ? ` — có trong ${hit.code} · ${hit.title}` : ''}` };
 }
-const saleWarn = async (db, r, warn) => { const sc = await saleCheck(db, r.unit_id); r.sale_check = sc?.text ?? null; if (sc && !sc.ok) warn.push(sc.text.slice(2)); };
-const saleLive = async (db, rows) => { const c = new Map(); for (const r of rows) if (r.unit_id) r.sale_check = (await saleCheck(db, r.unit_id, c))?.text ?? r.sale_check; };   // danh sách / chi tiết: theo thông báo hiện tại
+const saleWarn = async (db, r, warn) => { const sc = await saleCheck(db, r.unit_id, new Map(), dealOf(r)); r.sale_check = sc?.text ?? null; if (sc && !sc.ok) warn.push(sc.text.slice(2)); return sc; };
+const saleLive = async (db, rows) => { const c = new Map(); for (const r of rows) if (r.unit_id) r.sale_check = (await saleCheck(db, r.unit_id, c, dealOf(r)))?.text ?? r.sale_check; };   // danh sách / chi tiết: theo thông báo hiện tại
 
 // hồ sơ mua / thuê NOXH chuyển «Chờ xét duyệt» (15/11/2026) → tự lập hợp đồng «Dự thảo – Chờ duyệt hồ sơ» (noxh_wait) lấy theo hồ sơ (khách, căn, loại đăng ký)
 // và phiếu đăng ký của hồ sơ (giá / tiền thuê): mua → HĐMB, thuê → HĐ thuê, thuê mua → HĐ thuê mua; số HĐ tự cấp.
@@ -853,7 +997,12 @@ async function noxhAutoContract(db, n, user, warn = [], demo) {
   try {
     const u = await raw(db, 'unit', unitId), nn = +s?.term_months || 12, a = today();
     const data = { kind, unit_id: unitId, customer_id: custId, owner_id: s?.owner_id || user?.id, noxh_id: n.id, noxh_wait: wait, ...(s ? { reservation_id: s.id } : {}) };
-    if (kind === 'thue') { if (!(+s?.rent > 0)) bad('phiếu đăng ký thuê của hồ sơ chưa có tiền thuê/tháng'); Object.assign(data, { rent: +s.rent, term_months: nn, eff_on: a, exp_on: addDays(addMonths(a, nn), -1), value: Math.round(+s.rent * nn) }); }
+    if (kind === 'thue') {   // 17/11/2026: theo phiếu đăng ký thuê, không có thì chính sách cho thuê áp cho căn; HĐ lưu bản điều khoản chính sách, Lần thanh toán tiền thuê lập khi lưu HĐ
+      const p0 = s?.policy_id ? await raw(db, 'price_policy', s.policy_id) : null, rp = p0?.pkind === 'thue' ? { policy: p0, rent: rentOf(p0, u), furn: polFin(p0, u.code) } : await rentPolicyFor(db, u, a, s ? { source: s.source, agent_id: s.agent_id } : undefined);
+      const rent = +s?.rent > 0 ? +s.rent : (rp.rent || 0) + (+rp.furn || 0), tn = +s?.term_months || +rp.policy?.rent_term || nn;
+      if (!(rent > 0)) bad('chưa có tiền thuê/tháng (phiếu đăng ký thuê / chính sách cho thuê áp cho căn)');
+      Object.assign(data, { rent, term_months: tn, eff_on: a, exp_on: addDays(addMonths(a, tn), -1), value: Math.round(rent * tn), ...(rp.policy ? { price_policy_id: rp.policy.id } : {}) });
+    }
     else data.value = s?.price ?? (u?.total_price != null ? +u.total_price : null);
     const made = await create('contract', data, user, { db, system: true, demo }), c = made.row;
     await markCustomer(db, custId, user);
@@ -924,11 +1073,15 @@ async function unitCustomers(db, unitId, q) {
 async function resPolicy(db, qs) {
   const u = +qs.unit ? await raw(db, 'unit', +qs.unit) : null; if (!u) return { policy: null };
   const on = /^\d{4}-\d{2}-\d{2}$/.test(qs.date || '') ? qs.date : today();
+  if (qs.deal === 'thue') {   // 17/11/2026: đăng ký thuê — chính sách cho thuê áp cho căn + người bán, tiền thuê (giá thuê + thuê nội thất), thời hạn
+    const rp = await rentPolicyFor(db, u, on, { source: qs.source || 'truc_tiep', agent_id: +qs.agent || null }), rent = (rp.rent || 0) + (+rp.furn || 0);
+    return { policy: rp.policy ? { id: rp.policy.id, label: `${rp.policy.code} v${rp.policy.version}` } : null, rent: rent || null, term_months: rp.policy ? +rp.policy.rent_term || null : null, wait: [] };
+  }
   const p = (await pricing(db, u, on, { source: qs.source || 'truc_tiep', agent_id: +qs.agent || null })).policy;
   const pf = polFin(p, u.code), uv = u.price_net != null ? +u.price_net + (+u.maint_fee || 0) : u.total_price != null ? +u.total_price - (+u.finish_value || 0) : null;
   // chính sách đã trình nhưng chưa duyệt áp cho căn + người bán này → nhắc trên form (chưa có hiệu lực tới khi được duyệt)
   const b = await db.one('SELECT code FROM kd_building WHERE id = $1', [u.building_id]), seller = { source: qs.source || 'truc_tiep', agent_id: +qs.agent || null };
-  const wait = (await db.q("SELECT id, code, version, unit_group, seller_types, seller_ids FROM kd_price_policy WHERE status = 'cho_duyet' AND $1 = ANY(project_ids) AND end_on >= $2 ORDER BY id", [u.project_id, on]))
+  const wait = (await db.q("SELECT id, code, version, unit_group, seller_types, seller_ids FROM kd_price_policy WHERE status = 'cho_duyet' AND coalesce(pkind, 'ban') = 'ban' AND $1 = ANY(project_ids) AND end_on >= $2 ORDER BY id", [u.project_id, on]))
     .filter(x => polHas(x, u.code, b?.code) && polFor(x, seller)).map(x => `${x.code} v${x.version}`);
   return { policy: p ? { id: p.id, label: `${p.code} v${p.version}` } : null, unit_value: uv, finish_value: pf ?? (u.finish_value != null ? +u.finish_value : null), fin_src: pf != null ? 'policy' : 'unit', wait };
 }
@@ -938,7 +1091,7 @@ H.reservation = {
     const changedUnit = !old || old.unit_id !== r.unit_id;
     const u = r.unit_id ? await raw(db, 'unit', r.unit_id) : null;
     if (!u) bad('Chọn mã căn hộ', { fields: ['unit_id'] });   // chưa chọn căn: báo rõ thay vì lỗi máy chủ
-    await saleWarn(db, r, warn);
+    r.notice_id = (await saleWarn(db, r, warn))?.hit?.id ?? null;   // 17/11/2026: gắn đợt thông báo mở bán / cho thuê có căn
     // ngày giờ đăng ký (reg_at) → ngày đăng ký (reg_date, giờ VN); phiếu hệ thống tạo chỉ có ngày thì suy ra giờ
     const vnDay = iso => new Date(Date.parse(iso) + 7 * 3600e3).toISOString().slice(0, 10);
     if (!old && r.reg_date && (!r.reg_at || vnDay(r.reg_at) !== r.reg_date)) r.reg_at = new Date(r.reg_date === today() ? Date.now() : Date.parse(r.reg_date + 'T09:00:00+07:00')).toISOString();
@@ -980,9 +1133,21 @@ H.reservation = {
     if (changedUnit && old && ['huy', 'het_han'].includes(r.status)) bad('Phiếu đã hủy — không đổi căn được');
     if (r.deal === 'thue') {   // đăng ký thuê: không có giá bán — tiền thuê/tháng dự kiến sang hợp đồng thuê
       r.unit_value = r.finish_value = r.price = null;
-      if (!(+r.rent > 0)) bad('Nhập tiền thuê/tháng dự kiến', { fields: ['rent'] });
+      // 17/11/2026: phiếu còn hiệu lực theo chính sách cho thuê được duyệt gần nhất áp cho căn + người bán — tiền thuê (giá thuê + thuê nội thất), thời hạn tự lấy
+      // (đổi căn / đổi chính sách thì lấy lại; giữ chính sách mà sửa tay tiền thuê thì giữ số đã sửa)
+      if (!old || RES_OPEN.includes(r.status ?? old?.status) || changedUnit) {
+        const rp = await rentPolicyFor(db, u, r.reg_date, { source: r.source, agent_id: r.agent_id });
+        if (rp.policy) {
+          const chg = changedUnit || +r.policy_id !== rp.policy.id, rent = (rp.rent || 0) + (+rp.furn || 0);
+          r.policy_id = rp.policy.id;
+          if (rent > 0 && (chg || !(+r.rent > 0))) r.rent = rent;
+          if (chg || !(+r.term_months > 0)) r.term_months = +rp.policy.rent_term || r.term_months;
+        } else { if (r.policy_id && (await raw(db, 'price_policy', r.policy_id))?.pkind !== 'thue') r.policy_id = null; if (!r.policy_id) warn.push('Chưa có chính sách cho thuê đang phát hành áp cho căn này — tiền thuê theo số nhập trên phiếu'); }
+      }
+      if (!(+r.rent > 0)) bad('Nhập tiền thuê/tháng dự kiến (hoặc phát hành chính sách cho thuê cho căn)', { fields: ['rent'] });
       return;
     }
+    if (r.policy_id && (await raw(db, 'price_policy', r.policy_id))?.pkind === 'thue') r.policy_id = null;   // đổi sang đăng ký mua: bỏ chính sách cho thuê
     const seller = { source: r.source, agent_id: r.agent_id };
     if (r.policy_id && old && (r.source !== old.source || (r.agent_id ?? null) !== (old.agent_id ?? null)) && r.policy_id === old.policy_id) {   // đổi người bán: chính sách cũ không dành cho người bán mới → lấy lại
       const p0 = await raw(db, 'price_policy', r.policy_id);
@@ -1048,11 +1213,11 @@ H.reservation = {
       // phiếu đăng ký thuê → hợp đồng thuê: tiền thuê, thời hạn từ phiếu; bắt đầu thuê = ngày dự kiến ký
       if (r.deal !== 'thue' && d.kind === 'thue') bad('Phiếu đăng ký mua không lập hợp đồng thuê — sửa phiếu sang «Đăng ký thuê» và nhập tiền thuê/tháng, hoặc lập phiếu đăng ký thuê mới');
       const kind = r.deal === 'thue' ? 'thue' : d.kind, n = +r.term_months || 12, a = d.plan_sign || today();   // phiếu thuê luôn ra HĐ thuê
-      const rent = kind === 'thue' ? { rent: r.rent, term_months: n, eff_on: a, exp_on: addDays(addMonths(a, n), -1), value: Math.round(+r.rent * n) } : { value: r.price };
-      const c = (await create('contract', { kind, number: d.number, plan_sign: d.plan_sign, unit_id: r.unit_id, customer_id: r.customer_id, ...rent, owner_id: r.owner_id || user.id, reservation_id: r.id },
-        user, { db, system: true, demo })).row;
+      const rent = kind === 'thue' ? { rent: r.rent, term_months: n, eff_on: a, exp_on: addDays(addMonths(a, n), -1), value: Math.round(+r.rent * n), ...(r.policy_id ? { price_policy_id: r.policy_id } : {}) } : { value: r.price };
+      const made = await create('contract', { kind, number: d.number, plan_sign: d.plan_sign, unit_id: r.unit_id, customer_id: r.customer_id, ...rent, owner_id: r.owner_id || user.id, reservation_id: r.id },
+        user, { db, system: true, demo }), c = made.row, ws = (made.warnings || []).join(' · ');
       await markCustomer(db, r.customer_id, user);
-      return { patch: { status: 'chuyen_hd' }, open: ['contract', c.id], msg: kind === 'thue' ? `Đã lập dự thảo hợp đồng thuê ${c.number} (${n} tháng × ${fmtMoney(r.rent)}đ). Bước tiếp: sửa hợp đồng, nhập Số kỳ thanh toán (các kỳ thu tự chia) → gửi trình duyệt.` : `Đã lập dự thảo hợp đồng ${c.number}. Bước tiếp: lập lịch thanh toán → gửi trình duyệt.` };
+      return { patch: { status: 'chuyen_hd' }, open: ['contract', c.id], msg: kind === 'thue' ? `Đã lập dự thảo hợp đồng thuê ${c.number} (${n} tháng × ${fmtMoney(r.rent)}đ)${ws ? ' · ' + ws : ''}. Bước tiếp: kiểm tra Lần thanh toán → gửi trình duyệt.` : `Đã lập dự thảo hợp đồng ${c.number}. Bước tiếp: lập lịch thanh toán → gửi trình duyệt.` };
     },
   },
 };
@@ -1127,18 +1292,21 @@ async function noxhHead(db, r, old, user, demo) {
 }
 
 H.noxh_check = {
+  where(qs) { if (qs.group === 'thue') return { sql: "t.reg_kind = 'thue'" }; if (qs.group === 'mua') return { sql: "coalesce(t.reg_kind, 'mua') <> 'thue'" }; },   // tab Hồ sơ mua / Hồ sơ thuê (17/11/2026)
   async decorate(rows, { db, one }) { if (one) await saleLive(db, rows); },
   async beforeSave(r, old, { db, warn, user, opts, demo }) {
     if (r.reservation_id && (!old || old.reservation_id !== r.reservation_id)) { const s = await raw(db, 'reservation', r.reservation_id); r.customer_id = s.customer_id; r.unit_id = s.unit_id; }
     if (!opts?.check) await noxhHead(db, r, old, user, demo);
     if (!r.customer_id) bad('Nhập thông tin chủ hộ hoặc chọn khách hàng');
     if (r.unit_id) { const u = await raw(db, 'unit', r.unit_id); r.project_id = u.project_id; r.unit_area = u.area_tt; }   // diện tích theo Danh mục sản phẩm
-    await saleWarn(db, r, warn);
     // hồ sơ lập xong → gắn vào phiếu đăng ký đang hiệu lực của khách (cùng căn nếu đã chọn căn) để in biên bản / cập nhật tiến trình từ phiếu
     if (!r.reservation_id && r.customer_id) r.reservation_id = (await db.one(`SELECT id FROM kd_reservation WHERE customer_id = $1 AND status IN ('cho_duyet','giu_cho','qua_han','da_coc','chuyen_hd')
       AND ($2::int IS NULL OR unit_id = $2) ORDER BY id DESC LIMIT 1`, [r.customer_id, r.unit_id ?? null]))?.id ?? null;
-    if (r.reservation_id) { const s = await raw(db, 'reservation', r.reservation_id); r.customer_id = s.customer_id; r.unit_id = s.unit_id; }
+    if (r.reservation_id) { const s = await raw(db, 'reservation', r.reservation_id); r.customer_id = s.customer_id; r.unit_id = s.unit_id;
+      // 17/11/2026: kế thừa phiếu đăng ký — đăng ký thuê → hồ sơ thuê; đăng ký mua → hồ sơ mua (giữ «Thuê mua» nếu đã chọn)
+      if (s.deal === 'thue') r.reg_kind = 'thue'; else if (r.reg_kind === 'thue') { r.reg_kind = 'mua'; warn.push(`Phiếu ${s.code} là đăng ký mua — hồ sơ chuyển hình thức «Mua»`); } }
     if (!r.reg_kind) r.reg_kind = 'mua';
+    await saleWarn(db, r, warn);   // hồ sơ thuê: thông báo cho thuê · hồ sơ mua: thông báo mở bán
     if (!r.grp) r.grp = grpOf(r.doi_tuong) || bad('Chọn nhóm đối tượng hoặc ghi đối tượng chính sách');
     const rel = (r.members || []).filter(m => !m.relation); if (rel.length) bad(`Thành viên hộ «${rel[0].name || '(chưa có tên)'}»: chọn quan hệ với chủ hộ`);
     for (const m of r.members || []) {
@@ -1204,17 +1372,30 @@ async function noticeUnits(db, n) {
   const us = await db.q('SELECT u.id, u.code, u.status, u.activated, u.lock, u.floor, u.area_tt, u.area_xd, b.code b FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = $1 ORDER BY b.code, u.floor, u.code', [n.project_id]);
   return us.filter(u => g.includes('*') || g.includes(String(u.b).toUpperCase()) || g.includes(u.code.toUpperCase()));
 }
+const SN_L = r => r?.deal === 'thue' ? 'cho thuê' : 'mở bán';
 H.sale_notice = {
+  where(qs) { if (qs.group === 'thue') return { sql: "t.deal = 'thue'" }; if (qs.group === 'ban') return { sql: "coalesce(t.deal, 'ban') <> 'thue'" }; },   // tab Mở bán / Cho thuê (17/11/2026)
   noDelete: r => !['nhap', 'tu_choi'].includes(r.status) && 'Chỉ xóa được thông báo đang ở bản nháp',
-  async beforeSave(r) {
+  async beforeSave(r, old, { db, warn }) {
+    if (!['ban', 'thue'].includes(r.deal)) bad('Chọn loại giao dịch: Bán hoặc Cho thuê', { fields: ['deal'] });
     if (r.close_on && r.open_on && r.close_on < r.open_on) bad('Ngày kết thúc nhận hồ sơ phải sau ngày bắt đầu');
-    if (!String(r.unit_group || '').trim()) bad('Tích chọn căn hộ mở bán');
+    if (!String(r.unit_group || '').trim()) bad(`Tích chọn căn hộ ${SN_L(r)}`);
+    if (r.deal !== 'thue') r.policy_id = null;
+    else if (r.policy_id) {   // chính sách cho thuê áp dụng: loại «Cho thuê», đã phát hành, đúng dự án
+      const p = await raw(db, 'price_policy', r.policy_id);
+      if (!p || p.pkind !== 'thue') bad('Chọn chính sách loại «Cho thuê»', { fields: ['policy_id'] });
+      if (!(p.project_ids || []).map(Number).includes(+r.project_id)) bad('Chính sách cho thuê không áp dụng cho dự án đã chọn', { fields: ['policy_id'] });
+      if (p.status !== 'phat_hanh') bad(`Chính sách cho thuê ${p.code} chưa phát hành`, { fields: ['policy_id'] });
+    } else warn?.push('Thông báo cho thuê chưa chọn chính sách cho thuê áp dụng — chọn trước khi trình duyệt');
   },
-  async onSubmit(r, { db }) { if (!(await noticeUnits(db, r)).length) bad('Đợt mở bán chưa có căn nào'); },
-  // duyệt (phát hành): căn trong đợt chưa mở bán → kích hoạt «Còn bán»
+  async onSubmit(r, { db }) {
+    if (!(await noticeUnits(db, r)).length) bad(`Đợt ${SN_L(r)} chưa có căn nào`);
+    if (r.deal === 'thue' && !r.policy_id) bad('Thông báo cho thuê: chọn chính sách cho thuê áp dụng (đã phát hành) trước khi trình duyệt', { fields: ['policy_id'] });
+  },
+  // duyệt (phát hành): căn trong đợt chưa mở bán → kích hoạt «Còn bán» (còn trống — đăng ký mua / thuê được)
   async afterApprove(r, ok, { db, user }) {
     if (!ok) return;
-    for (const u of await noticeUnits(db, r)) if (!u.activated && !u.lock) { await sys(db, 'unit', u.id, { activated: true }, user, 'kich_hoat', `Theo thông báo mở bán ${r.code}`); await recomputeUnit(db, u.id, user); }
+    for (const u of await noticeUnits(db, r)) if (!u.activated && !u.lock) { await sys(db, 'unit', u.id, { activated: true }, user, 'kich_hoat', `Theo thông báo ${SN_L(r)} ${r.code}`); await recomputeUnit(db, u.id, user); }
   },
   // theo dõi: số căn trong đợt, đã đăng ký / giữ chỗ (đã có phiếu đăng ký hoặc hợp đồng), còn trống
   async decorate(rows, { db, one }) {
@@ -1880,11 +2061,27 @@ H.contract = {
         r.unit_total = t != null ? t - (+r.discount || 0) : null;
       } else if (same && r.unit_total != null && String(old.discount ?? '') !== String(r.discount ?? '')) r.unit_total = +old.unit_total + (+old.discount || 0) - (+r.discount || 0);   // chỉ sửa giảm giá
     }
+    // 17/11/2026: HĐ thuê mới — chính sách cho thuê (ghi trên HĐ / theo phiếu đăng ký thuê / áp cho căn) → lưu bản điều khoản của phiên bản chính sách (sửa chính sách về sau không đổi HĐ);
+    // chưa nhập tiền thuê thì tiền thuê nhà = giá thuê theo chính sách, thuê nội thất theo chính sách; thời hạn, ngày bắt đầu, tiền đặt cọc mặc định theo chính sách
+    if (r.kind === 'thue' && !old && !r.rent_terms && r.unit_id) {
+      const s = r.reservation_id ? await raw(db, 'reservation', r.reservation_id) : null, u = await raw(db, 'unit', r.unit_id);
+      let pol = null; for (const id of [r.price_policy_id, s?.policy_id]) if (!pol && id) { const p = await raw(db, 'price_policy', id); if (p?.pkind === 'thue') pol = p; }
+      if (!pol && u) pol = (await rentPolicyFor(db, u, d10(r.contract_on) || today(), s ? { source: s.source, agent_id: s.agent_id } : undefined)).policy;
+      if (pol) {
+        const T = rentTerms(pol); r.price_policy_id = pol.id; r.rent_terms = T; r.rent_policy_txt = rentTxt(T);
+        if (!(+r.rent > 0) && r.rent_house == null && r.rent_furn == null) { r.rent_house = rentOf(pol, u); const ff = polFin(pol, u.code); if (ff) r.rent_furn = ff; }
+        if (!(+r.term_months > 0) && !r.exp_on && T.term) r.term_months = T.term;
+        if (!r.eff_on) r.eff_on = d10(r.contract_on) || today();
+        if (r.eff_on && +r.term_months > 0 && !r.exp_on) r.exp_on = addDays(addMonths(r.eff_on, +r.term_months), -1);
+      } else if (r.price_policy_id && (await raw(db, 'price_policy', r.price_policy_id))?.pkind !== 'thue') r.price_policy_id = null;
+    }
     if (r.kind === 'thue') {
       if (r.area_tt == null || r.area_floor == null) { const u = await raw(db, 'unit', r.unit_id); r.area_tt ??= u?.area_tt ?? null; r.area_floor ??= u?.area_xd ?? null; }   // diện tích theo căn (sàn = diện tích xây dựng / tim tường)
       if (r.eff_on && r.exp_on && r.exp_on >= r.eff_on) r.term_months = rentMonths(r.eff_on, r.exp_on);
       if (r.rent_house != null || r.rent_furn != null) r.rent = (+r.rent_house || 0) + (+r.rent_furn || 0);   // tổng giá thuê/tháng = thuê nhà + thuê nội thất
-      if (+r.rent > 0 && +r.term_months > 0) r.value = Math.round(+r.rent * +r.term_months);
+      // HĐ theo chính sách cho thuê: giá trị HĐ = tổng Lần thanh toán (tiền thuê sau ưu đãi / điều chỉnh giá + các khoản phí); HĐ khác = tiền thuê/tháng × số tháng
+      if (+r.rent > 0 && +r.term_months > 0) r.value = r.rent_terms ? (ctx.sched?.length ? ctx.sched.reduce((s, x) => s + +x.amount, 0) : rentPlanTotal(r) || Math.round(+r.rent * +r.term_months)) : Math.round(+r.rent * +r.term_months);
+      if (r.rent_terms && r.deposit == null && !old) { const dp = rentDep(r.rent_terms, r.rent); if (dp) r.deposit = dp; }
       if (+r.pay_times > 0 && +r.term_months > 0 && +r.pay_times > +r.term_months) bad(`Số kỳ thanh toán (${r.pay_times}) không được nhiều hơn thời hạn thuê (${r.term_months} tháng)`, { fields: ['pay_times'] });
     }
     // chưa có giá nền (căn chưa nạp số Bravo, VD tòa G; hoặc lập HĐ không qua form): giá nền gốc theo căn — để giảm giá, phí bảo trì 2% tính được
@@ -1911,6 +2108,12 @@ H.contract = {
     if (['hdmb', 'thue_mua'].includes(r.kind)) { if (+r.maint_fee > 0 && r.maint_dot == null) r.maint_dot = 3; if (r.maint_dot != null && !(+r.maint_dot >= 1)) bad('Đợt thu phí bảo trì phải từ 1 trở lên', { fields: ['maint_dot'] }); } else r.maint_dot = null;
     // bảng «Lần thanh toán» trên form: kiểm tra khớp Tổng tiền (ghi thành lịch thu ở afterSave)
     // không lưu vào cột (lịch thu nằm ở kd_installment) — chuyển sang afterSave qua ctx
+    if (r.kind === 'thue' && r.rent_terms) {   // 17/11/2026
+      const nb = k => +(old?.[k] ?? 0) !== +(r[k] ?? 0), dt = k => String(d10(old?.[k]) ?? '') !== String(d10(r[k]) ?? '');
+      ctx.rentRedo = !!old && ['du_thao', 'tu_choi'].includes(r.status) && (dt('eff_on') || dt('exp_on') || ['term_months', 'rent', 'rent_house', 'rent_furn'].some(nb));
+      if (ctx.rentRedo) r.new_schedule = null;
+      else if (Array.isArray(r.new_schedule) && r.new_schedule.length && r.new_schedule.every(x => +x.amount > 0)) r.value = r.new_schedule.reduce((s, x) => s + +x.amount, 0);
+    }
     ctx.sched = Array.isArray(r.new_schedule) && r.new_schedule.length ? await normSchedule(db, r.new_schedule.map(x => x.pct != null ? { ...x, amount: null } : x), r.value, 'Lần thanh toán', ['hdmb', 'thue_mua'].includes(r.kind) ? +r.maint_fee || 0 : 0, r.maint_dot, ['hdmb', 'thue_mua'].includes(r.kind) ? +r.finish_value || 0 : 0) : null;
     r.new_schedule = null;
     // tiến độ thu tiền HĐMB của HĐ thuê / vay bán căn: tổng các đợt phải khớp Giá trị HĐMB
@@ -1995,7 +2198,7 @@ H.contract = {
     if (r.kind !== 'thue' && !n.n) bad('Chưa có lịch thanh toán — bấm «Sửa», nhập «Lần thanh toán» rồi lưu trước khi gửi trình duyệt');
     if (n.n && n.s !== r.value) bad(`Tổng lịch thanh toán ${fmtMoney(n.s)} khác giá trị hợp đồng ${fmtMoney(r.value)}`);
   },
-  async afterSave(r, old, { db, user, demo, sched, warn = [] }) {
+  async afterSave(r, old, { db, user, demo, sched, warn = [], rentRedo }) {
     // nối giao dịch: hợp đồng trước ghi «Đã chuyển sang hợp đồng»; hủy / thanh lý / bỏ nối thì gỡ
     const live = !['huy', 'thanh_ly'].includes(r.status);
     if (old?.prev_id && (old.prev_id !== r.prev_id || !live)) await db.q('UPDATE kd_contract SET next_id = NULL, updated_at = now() WHERE id = $1 AND next_id = $2', [old.prev_id, r.id]);
@@ -2033,6 +2236,14 @@ H.contract = {
           warn.push(`Lần thanh toán theo ${L} của chính sách ${p.code} v${p.version}: ${xs.length} kỳ${pend ? ` · ${pend} kỳ chưa có ngày đến hạn (theo bàn giao / mốc khác) — tự điền khi thông báo bàn giao phát hành, hoặc nhập khi có ngày chính thức` : ''}`);
         }
       } catch (e) { if (e.status !== 400) throw e; warn.push(`Chưa tự điền được Lần thanh toán theo chính sách ${p.code}: ${e.message}`); }
+    }
+    // 17/11/2026: HĐ thuê mới (dự thảo — tự lập từ hồ sơ thuê / phiếu đăng ký thuê / form) chưa nhập Lần thanh toán, hoặc HĐ theo chính sách vừa đổi ngày / thời hạn / tiền thuê
+    // → Lần thanh toán tiền thuê theo bản lưu điều khoản chính sách cho thuê (kỳ thu, đầu / cuối kỳ, ưu đãi, điều chỉnh giá, các khoản phí, tiền cọc nếu chính sách đưa vào tiến độ)
+    if (r.kind === 'thue' && ['du_thao', 'tu_choi'].includes(r.status) && ((!old && !sched?.length) || rentRedo)) {
+      try {
+        const x = await rentApply(db, await raw(db, 'contract', r.id), user, demo);
+        warn.push(x ? `Lần thanh toán tiền thuê: ${x.n} khoản · ${fmtMoney(x.total)}đ${x.T ? ` theo chính sách cho thuê ${x.T.code} v${x.T.version}` : ' (hàng tháng — chưa có chính sách cho thuê áp cho căn)'}${x.dep ? ` · tiền đặt cọc ${fmtMoney(x.dep)}đ` : ''}` : 'HĐ thuê chưa đủ ngày bắt đầu / thời hạn / tiền thuê — chưa tự lập Lần thanh toán');
+      } catch (e) { if (e.status !== 400) throw e; warn.push(`Chưa tự lập được Lần thanh toán tiền thuê: ${e.message}`); }
     }
     // 15/11/2026: có / đổi ngày ký chính thức (Ngày ký HĐ, hoặc ngày ký khi duyệt nếu chưa ghi) mà lần lưu này không gửi Lần thanh toán → hạn các đợt tính theo ngày ký = ngày ký + số ngày
     const ky = d10(r.contract_on || r.signed_on), ky0 = old ? d10(old.contract_on || old.signed_on) : null;
@@ -2439,9 +2650,9 @@ async function noticeTargets(db, r) {
 // mẫu biểu: chưa chọn module thì suy theo loại mẫu (mẫu cũ trước 11/11/2026)
 const TPL_ENT_SQL = `CASE WHEN kind = 'hop_dong' THEN 'contract' WHEN kind = 'phu_luc' THEN 'contract_change' WHEN kind = 'bien_ban' THEN 'handover'
   WHEN kind IN ('dang_ky_can', 'dang_ky_noi_that', 'de_nghi') THEN 'reservation' WHEN kind = 'bien_ban_giao_nhan' THEN 'noxh_check'
-  WHEN kind = 'thong_bao' AND upper(code) LIKE 'TB-MOBAN%' THEN 'sale_notice' WHEN kind = 'thong_bao' THEN 'notice' WHEN kind = 'bao_cao' THEN 'report' END`;
+  WHEN kind = 'thong_bao' AND (upper(code) LIKE 'TB-MOBAN%' OR upper(code) LIKE 'TB-CHOTHUE%') THEN 'sale_notice' WHEN kind = 'thong_bao' THEN 'notice' WHEN kind = 'bao_cao' THEN 'report' END`;
 const tplEntOf = (kind, code) => ({ hop_dong: 'contract', phu_luc: 'contract_change', bien_ban: 'handover', dang_ky_can: 'reservation', dang_ky_noi_that: 'reservation', de_nghi: 'reservation',
-  bien_ban_giao_nhan: 'noxh_check', bao_cao: 'report', thong_bao: /^TB-MOBAN/i.test(code || '') ? 'sale_notice' : 'notice' })[kind] || null;
+  bien_ban_giao_nhan: 'noxh_check', bao_cao: 'report', thong_bao: /^TB-(MOBAN|CHOTHUE)/i.test(code || '') ? 'sale_notice' : 'notice' })[kind] || null;
 const fillTplEnt = db => db.q(`UPDATE kd_template SET ent = ${TPL_ENT_SQL} WHERE ent IS NULL`);
 H.template = {
   async beforeSave(r) { if (!r.ent) r.ent = tplEntOf(r.kind, r.code); if (!r.ent) bad('Chọn module hiện mẫu', { fields: ['ent'] }); },
@@ -2539,4 +2750,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, noticeHist, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, noticeHist, rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

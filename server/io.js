@@ -701,13 +701,18 @@ ${r.reason ? `<p>Lý do: ${escH(r.reason)}</p>` : ''}
 }
 
 // thông báo mở bán: «thong_bao» theo mẫu Thông báo (Mẫu biểu, mã TB-MOBAN-…, theo dự án) / «danh_sach» = danh sách căn mở bán (như «DS mở bán đợt 5 CTS.xlsx»)
+// 17/11/2026: thông báo cho thuê — mẫu TB-CHOTHUE-… (chưa có mẫu thì dùng mẫu chuẩn), trường trộn thêm giá thuê, thời hạn, kỳ thanh toán, đặt cọc, ưu đãi theo chính sách cho thuê;
+// danh sách căn cho thuê kèm tiền thuê/tháng từng căn theo chính sách
 async function printSaleNotice(id, user, kind, tplCode) {
   const { row: n } = await C.get('sale_notice', id, user);
+  const thue = n.deal === 'thue', W = thue ? 'cho thuê' : 'mở bán', WT = thue ? 'Cho thuê' : 'Mở bán';
   const p = await one('SELECT * FROM kd_project WHERE id = $1', [n.project_id]);
   const seller = M.SELLERS.find(s => s.projects.includes(p.code)) || M.SELLERS[0];
   const g = String(n.unit_group || '').split(/[,;\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
-  const units = (await q(`SELECT u.code, u.floor, u.area_tt, u.area_xd, b.code b FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = $1 ORDER BY b.code, u.floor, u.code`, [p.id]))
+  const units = (await q(`SELECT u.code, u.floor, u.area_tt, u.area_xd, u.position, b.code b FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = $1 ORDER BY b.code, u.floor, u.code`, [p.id]))
     .filter(u => g.includes('*') || g.includes(String(u.b).toUpperCase()) || g.includes(u.code.toUpperCase()));
+  const pol = thue && n.policy_id ? await one('SELECT * FROM kd_price_policy WHERE id = $1', [n.policy_id]) : null;
+  const rentU = u => pol ? (B.rentOf(pol, u) || 0) + (+(pol.finish_vals || {})[u.code.toUpperCase()] || 0) : null;
   const d = n.notice_on ? new Date(n.notice_on + 'T00:00:00Z') : new Date(Date.now() + 7 * 3600e3);
   const dot = String(n.title || '').trim(), DOT = dot ? dot[0].toUpperCase() + dot.slice(1) : '';
   const num = v => v == null ? '' : String(+v).replace('.', ',');
@@ -718,22 +723,38 @@ async function printSaleNotice(id, user, kind, tplCode) {
     ${EDIT_CSS}`;
   let body;
   if (kind === 'danh_sach') {
-    body = `<p class="c"><b>${escH(seller.name.toUpperCase())}</b></p><h2>DANH SÁCH MỞ BÁN ${escH(DOT.toUpperCase())}</h2><p class="c"><b>Dự án nhà ở xã hội ${escH(p.name)}</b></p>
-<table class="ds"><thead><tr><th>STT</th><th>Mã căn hộ</th><th>Diện tích thông thủy (m²)</th><th>Diện tích xây dựng (m²)</th></tr></thead><tbody>
-${units.map((u, i) => `<tr><td class="ct">${i + 1}</td><td>${escH(u.code)}</td><td class="n">${num(u.area_tt)}</td><td class="n">${num(u.area_xd)}</td></tr>`).join('')}
-<tr><td></td><td><b>Tổng cộng: ${units.length} căn</b></td><td class="n"><b>${num(Math.round(units.reduce((s, u) => s + (+u.area_tt || 0), 0) * 10) / 10)}</b></td><td class="n"><b>${num(Math.round(units.reduce((s, u) => s + (+u.area_xd || 0), 0) * 10) / 10)}</b></td></tr></tbody></table>`;
+    const rc = !!pol;   // danh sách cho thuê có chính sách: thêm cột tiền thuê/tháng
+    body = `<p class="c"><b>${escH(seller.name.toUpperCase())}</b></p><h2>DANH SÁCH ${W.toUpperCase()} ${escH(DOT.toUpperCase())}</h2><p class="c"><b>Dự án nhà ở xã hội ${escH(p.name)}</b></p>${rc ? `<p class="c"><i>Theo chính sách cho thuê ${escH(pol.code)} v${pol.version}</i></p>` : ''}
+<table class="ds"><thead><tr><th>STT</th><th>Mã căn hộ</th><th>Diện tích thông thủy (m²)</th><th>Diện tích xây dựng (m²)</th>${rc ? '<th>Tiền thuê/tháng (đồng)</th>' : ''}</tr></thead><tbody>
+${units.map((u, i) => `<tr><td class="ct">${i + 1}</td><td>${escH(u.code)}</td><td class="n">${num(u.area_tt)}</td><td class="n">${num(u.area_xd)}</td>${rc ? `<td class="n">${rentU(u) ? C.fmtMoney(rentU(u)) : ''}</td>` : ''}</tr>`).join('')}
+<tr><td></td><td><b>Tổng cộng: ${units.length} căn</b></td><td class="n"><b>${num(Math.round(units.reduce((s, u) => s + (+u.area_tt || 0), 0) * 10) / 10)}</b></td><td class="n"><b>${num(Math.round(units.reduce((s, u) => s + (+u.area_xd || 0), 0) * 10) / 10)}</b></td>${rc ? '<td></td>' : ''}</tr></tbody></table>`;
   } else {
-    const tpl = tplCode ? await one('SELECT * FROM kd_template WHERE active AND code = $1', [tplCode])
-      : (await q(`SELECT * FROM kd_template WHERE active AND kind = 'thong_bao' AND code LIKE 'TB-MOBAN%' AND coalesce(ent, 'sale_notice') = 'sale_notice' ORDER BY id`)).map(t => [t, tplFitLevel(t, { pcode: p.code })]).filter(x => x[1] >= 0).sort((a, b) => b[1] - a[1])[0]?.[0];
-    if (!tpl) bad('Chưa có mẫu Thông báo mở bán — tạo ở Quản trị › Mẫu biểu (loại Thông báo, mã bắt đầu TB-MOBAN)');
+    const pre = thue ? 'TB-CHOTHUE' : 'TB-MOBAN';
+    let tpl = tplCode ? await one('SELECT * FROM kd_template WHERE active AND code = $1', [tplCode])
+      : (await q(`SELECT * FROM kd_template WHERE active AND kind = 'thong_bao' AND code LIKE '${pre}%' AND coalesce(ent, 'sale_notice') = 'sale_notice' ORDER BY id`)).map(t => [t, tplFitLevel(t, { pcode: p.code })]).filter(x => x[1] >= 0).sort((a, b) => b[1] - a[1])[0]?.[0];
+    if (!tpl && thue) tpl = require('./mau-mo-ban').MAU_CHO_THUE()[0];   // chưa có mẫu cho thuê trong Mẫu biểu → mẫu chuẩn
+    if (!tpl) bad(`Chưa có mẫu Thông báo ${W} — tạo ở Quản trị › Mẫu biểu (loại Thông báo, mã bắt đầu ${pre})`);
+    // chính sách cho thuê → các đoạn giá thuê, thời hạn, kỳ thanh toán, đặt cọc, ưu đãi, các khoản phí
+    const f0 = v => v == null || v === '' ? '' : C.fmtMoney(+v), pc = v => String(+v).replace('.', ',');
+    const RP = !pol ? {} : {
+      gia_thue: (pol.rent_mode === 'co_dinh' ? `${f0(pol.rent_fixed)} đồng/căn/tháng` : [`Căn thường: ${f0(pol.rent_price)} đồng/m²/tháng`, +pol.rent_price_goc ? `Căn góc: ${f0(pol.rent_price_goc)} đồng/m²/tháng` : '', +pol.rent_price_thang ? `Căn cạnh thang: ${f0(pol.rent_price_thang)} đồng/m²/tháng` : ''].filter(Boolean).join('; '))
+        + (+pol.rent_vat_pct ? ` (chưa gồm thuế GTGT ${pc(pol.rent_vat_pct)}%)` : ''),
+      thoi_han_thue: pol.rent_term ? `${pol.rent_term} tháng` : '',
+      ky_thanh_toan: `${({ 1: 'Hàng tháng', 3: 'Hàng quý (3 tháng)', 6: '6 tháng/kỳ', 12: 'Hàng năm' })[pol.pay_cycle] || `${pol.pay_cycle_n || ''} tháng/kỳ`}, thanh toán ${pol.pay_when === 'cuoi_ky' ? 'cuối kỳ' : 'đầu kỳ'}${+pol.pay_days ? `, chậm nhất ${pol.pay_days} ngày kể từ ${pol.pay_when === 'cuoi_ky' ? 'ngày cuối kỳ' : 'ngày đầu kỳ'}` : ''}`,
+      dat_coc: pol.dep_mode === 'thang' ? `${pc(pol.dep_months)} tháng tiền thuê` : pol.dep_mode === 'so_tien' ? `${f0(pol.dep_amount)} đồng` : 'Không đặt cọc',
+      uu_dai: [+pol.free_months ? `Miễn tiền thuê ${pol.free_months} tháng đầu` : '', +pol.disc_pct ? `Giảm ${pc(pol.disc_pct)}% tiền thuê${pol.disc_months ? ` trong ${pol.disc_months} tháng` : ''}` : '', pol.promo_terms || ''].filter(Boolean).join('; ') || 'Không',
+      phi: (Array.isArray(pol.rent_fees) ? pol.rent_fees : []).map(x => `${x.name}: ${f0(x.amount)} đồng${x.basis === 'm2' ? '/m²/tháng' : x.basis === 'mot_lan' ? ' (một lần)' : '/tháng'}`).join('; ') || 'Không',
+      chinh_sach_thue: `${pol.code} v${pol.version}${pol.name ? ' – ' + pol.name : ''}`,
+    };
     const map = { cong_ty: seller.name, cong_ty_hoa: seller.name.toUpperCase(), so_vb: n.doc_no || `&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/${d.getUTCFullYear()}/TB-${p.code}`,
       ngay_viet: `ngày ${String(d.getUTCDate()).padStart(2, '0')} tháng ${String(d.getUTCMonth() + 1).padStart(2, '0')} năm ${d.getUTCFullYear()}`, ten_dot: escH(DOT), du_an: escH(p.name),
-      ngay_bat_dau: n.open_on ? dmy(n.open_on) : '....../....../......', ngay_ket_thuc: n.close_on ? dmy(n.close_on) : '....../....../......', so_can: String(units.length) };
+      ngay_bat_dau: n.open_on ? dmy(n.open_on) : '....../....../......', ngay_ket_thuc: n.close_on ? dmy(n.close_on) : '....../....../......', so_can: String(units.length),
+      ...Object.fromEntries(Object.entries(RP).map(([k, v]) => [k, escH(v)])) };
     body = tpl.content.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '').replace(/\{(\w+)\}/g, (m, k) => k in map ? map[k] : m);
   }
   await C.audit({ q }, 'sale_notice', n.id, kind === 'danh_sach' ? 'in_danh_sach' : 'in_thong_bao', null, null, user);
-  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${escH(n.code)} – ${kind === 'danh_sach' ? 'Danh sách mở bán' : 'Thông báo mở bán'}</title><style>${CSS}</style></head>
-<body>${editBar(`${kind === 'danh_sach' ? 'Danh sách căn mở bán' : 'Thông báo mở bán'} ${escH(n.code)} · ${units.length} căn`)}${editDoc(body)}</body></html>`;
+  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${escH(n.code)} – ${kind === 'danh_sach' ? 'Danh sách ' + W : 'Thông báo ' + W}</title><style>${CSS}</style></head>
+<body>${editBar(`${kind === 'danh_sach' ? 'Danh sách căn ' + W : 'Thông báo ' + W} ${escH(n.code)} · ${units.length} căn`)}${editDoc(body)}</body></html>`;
 }
 
 // ===== Mẫu in chung cho mọi module (11/11/2026) =====

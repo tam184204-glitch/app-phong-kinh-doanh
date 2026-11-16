@@ -291,6 +291,7 @@ R('GET', '/api/opts/:ent', async (req, res, u, p, qs) => {
   if (qs.id) { params.push(+qs.id); w.push(`t.id = $${params.length}`); }
   if (qs.dep && qs.depv && C.F[p.ent][qs.dep]) { params.push(+qs.depv); w.push(`t.${qs.dep} = $${params.length}`); }
   if (qs.filter && C.F[p.ent].status) { params.push(qs.filter.split(',')); w.push(`t.status = ANY($${params.length})`); }
+  if (qs.pkind && C.F[p.ent].pkind) { params.push(qs.pkind === 'thue' ? 'thue' : 'ban'); w.push(`coalesce(t.pkind, 'ban') = $${params.length}`); }   // 17/11/2026: chọn chính sách theo loại (thông báo cho thuê → chính sách cho thuê)
   if (C.own(u, e)) { params.push(u.id); w.push(`(t.${C.F[p.ent].owner_id ? 'owner_id' : 'created_by'} = $${params.length} OR t.created_by = $${params.length})`); }
   const extra = p.ent === 'unit' ? ", t.status, (SELECT code FROM kd_building b WHERE b.id = t.building_id) sub" : p.ent === 'customer' ? ", '…' || right(t.phone, 3) sub" : p.ent === 'contract' ? ", (SELECT code FROM kd_unit u WHERE u.id = t.unit_id) || ' · ' || (SELECT full_name FROM kd_customer k WHERE k.id = t.customer_id) sub" : p.ent === 'reservation' ? ", (SELECT code FROM kd_unit u WHERE u.id = t.unit_id) sub" : '';
   send(res, 200, await q(`SELECT t.id, ${e.disp} AS label ${extra} FROM ${e.table} t ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY ${p.ent === 'unit' ? 't.code' : p.ent === 'installment' && qs.dep ? 't.active DESC, t.seq' : p.ent === 'loan_pay' && qs.dep ? 't.due_on, t.kind DESC, t.seq' : 't.id DESC'} LIMIT ${qs.id ? 1 : 30}`, params));
@@ -393,7 +394,7 @@ R('GET', '/api/sale-track/:id', async (req, res, u, p, qs) => {   // HĐ thuê /
 R('GET', '/api/contract-prefill/:unit', async (req, res, u, p, qs) => { if (!can(u, M.E.contract, 'c') && !can(u, M.E.contract, 'u')) C.deny(); send(res, 200, await B.contractPrefill({ q, one }, p.unit, qs.on)); });
 R('GET', '/api/res-policy', async (req, res, u, p, qs) => { if (!can(u, M.E.reservation, 'c') && !can(u, M.E.reservation, 'u')) C.deny(); send(res, 200, await B.resPolicy({ q, one }, qs)); });   // phiếu đăng ký: chính sách duyệt gần nhất + hoàn thiện theo chính sách (14/11/2026)
 R('GET', '/api/policy-units', async (req, res, u, p, qs) => { if (!can(u, M.E.price_policy, 'c') && !can(u, M.E.price_policy, 'u')) C.deny(); send(res, 200, await B.policyUnits({ q, one }, qs)); });
-R('GET', '/api/sale-check/:id', async (req, res, u, p) => send(res, 200, await B.saleCheck({ q, one }, p.id) || {}));
+R('GET', '/api/sale-check/:id', async (req, res, u, p, qs) => { const sc = await B.saleCheck({ q, one }, p.id, new Map(), qs.deal === 'thue' ? 'thue' : 'ban'); send(res, 200, sc ? { ok: sc.ok, text: sc.text } : {}); });   // đăng ký thuê / hồ sơ thuê: thông báo cho thuê
 R('GET', '/api/unit360/:id', async (req, res, u, p) => send(res, 200, await V.unit360({ q, one }, u, p.id)));
 R('GET', '/api/customer360/:id', async (req, res, u, p) => send(res, 200, await V.customer360({ q, one }, u, p.id)));
 R('GET', '/api/search', async (req, res, u, p, qs) => send(res, 200, await V.search({ q, one }, u, qs.q)));
