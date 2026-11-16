@@ -712,7 +712,7 @@ async function printSaleNotice(id, user, kind, tplCode) {
   const units = (await q(`SELECT u.code, u.floor, u.area_tt, u.area_xd, u.position, b.code b FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = $1 ORDER BY b.code, u.floor, u.code`, [p.id]))
     .filter(u => g.includes('*') || g.includes(String(u.b).toUpperCase()) || g.includes(u.code.toUpperCase()));
   const pol = thue && n.policy_id ? await one('SELECT * FROM kd_price_policy WHERE id = $1', [n.policy_id]) : null;
-  const rentU = u => pol ? (B.rentOf(pol, u) || 0) + (+(pol.finish_vals || {})[u.code.toUpperCase()] || 0) : null;
+  const RM = thue ? new Map((await B.noticeRent({ q, one }, n.project_id, n.policy_id, units)).map(x => [x.code, x])) : null;   // đơn giá thuê từng căn (chưa có chính sách = Chưa thiết lập)
   const d = n.notice_on ? new Date(n.notice_on + 'T00:00:00Z') : new Date(Date.now() + 7 * 3600e3);
   const dot = String(n.title || '').trim(), DOT = dot ? dot[0].toUpperCase() + dot.slice(1) : '';
   const num = v => v == null ? '' : String(+v).replace('.', ',');
@@ -723,11 +723,11 @@ async function printSaleNotice(id, user, kind, tplCode) {
     ${EDIT_CSS}`;
   let body;
   if (kind === 'danh_sach') {
-    const rc = !!pol;   // danh sách cho thuê có chính sách: thêm cột tiền thuê/tháng
-    body = `<p class="c"><b>${escH(seller.name.toUpperCase())}</b></p><h2>DANH SÁCH ${W.toUpperCase()} ${escH(DOT.toUpperCase())}</h2><p class="c"><b>Dự án nhà ở xã hội ${escH(p.name)}</b></p>${rc ? `<p class="c"><i>Theo chính sách cho thuê ${escH(pol.code)} v${pol.version}</i></p>` : ''}
-<table class="ds"><thead><tr><th>STT</th><th>Mã căn hộ</th><th>Diện tích thông thủy (m²)</th><th>Diện tích xây dựng (m²)</th>${rc ? '<th>Tiền thuê/tháng (đồng)</th>' : ''}</tr></thead><tbody>
-${units.map((u, i) => `<tr><td class="ct">${i + 1}</td><td>${escH(u.code)}</td><td class="n">${num(u.area_tt)}</td><td class="n">${num(u.area_xd)}</td>${rc ? `<td class="n">${rentU(u) ? C.fmtMoney(rentU(u)) : ''}</td>` : ''}</tr>`).join('')}
-<tr><td></td><td><b>Tổng cộng: ${units.length} căn</b></td><td class="n"><b>${num(Math.round(units.reduce((s, u) => s + (+u.area_tt || 0), 0) * 10) / 10)}</b></td><td class="n"><b>${num(Math.round(units.reduce((s, u) => s + (+u.area_xd || 0), 0) * 10) / 10)}</b></td>${rc ? '<td></td>' : ''}</tr></tbody></table>`;
+    const rc = thue;   // danh sách cho thuê: cột đơn giá thuê + tiền thuê/tháng
+    body = `<p class="c"><b>${escH(seller.name.toUpperCase())}</b></p><h2>DANH SÁCH ${W.toUpperCase()} ${escH(DOT.toUpperCase())}</h2><p class="c"><b>Dự án nhà ở xã hội ${escH(p.name)}</b></p>${rc && pol ? `<p class="c"><i>Theo chính sách cho thuê ${escH(pol.code)} v${pol.version}</i></p>` : ''}
+<table class="ds"><thead><tr><th>STT</th><th>Mã căn hộ</th><th>Diện tích thông thủy (m²)</th><th>Diện tích xây dựng (m²)</th>${rc ? '<th>Đơn giá thuê</th><th>Tiền thuê/tháng (đồng)</th>' : ''}</tr></thead><tbody>
+${units.map((u, i) => `<tr><td class="ct">${i + 1}</td><td>${escH(u.code)}</td><td class="n">${num(u.area_tt)}</td><td class="n">${num(u.area_xd)}</td>${rc ? (x => x?.rent_price ? `<td class="n">${C.fmtMoney(x.rent_price)} ${escH(x.rent_unit)}</td><td class="n">${C.fmtMoney(x.rent_month)}</td>` : '<td class="ct"><i>Chưa thiết lập</i></td><td></td>')(RM.get(u.code)) : ''}</tr>`).join('')}
+<tr><td></td><td><b>Tổng cộng: ${units.length} căn</b></td><td class="n"><b>${num(Math.round(units.reduce((s, u) => s + (+u.area_tt || 0), 0) * 10) / 10)}</b></td><td class="n"><b>${num(Math.round(units.reduce((s, u) => s + (+u.area_xd || 0), 0) * 10) / 10)}</b></td>${rc ? '<td></td><td></td>' : ''}</tr></tbody></table>`;
   } else {
     const pre = thue ? 'TB-CHOTHUE' : 'TB-MOBAN';
     let tpl = tplCode ? await one('SELECT * FROM kd_template WHERE active AND code = $1', [tplCode])

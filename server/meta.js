@@ -278,7 +278,8 @@ def('sale_notice', {
   ], list: ['code', 'deal', 'project_id', 'title', 'doc_no', 'notice_on', 'open_on', 'close_on', 'n_units', 'n_reg', 'n_free', 'status'],
   lock: ['cho_duyet', 'da_duyet'], lockKeep: ['note', 'close_on', 'channels'], flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'da_duyet', no: 'tu_choi' }, submitLabel: 'Trình duyệt' },
   acts: [{ k: 'in_tb', l: 'In thông báo', icon: 'fa-print', from: '*', roles: ALL, url: '/print/sale_notice/:id?kind=thong_bao' },
-    { k: 'in_ds', l: 'In danh sách căn', icon: 'fa-list-ol', from: '*', roles: ALL, url: '/print/sale_notice/:id?kind=danh_sach' }],
+    { k: 'in_ds', l: 'In danh sách căn', icon: 'fa-list-ol', from: '*', roles: ALL, url: '/print/sale_notice/:id?kind=danh_sach' },
+    { k: 'xls_ds', l: 'Xuất file danh sách căn', icon: 'fa-file-excel', from: '*', roles: ALL, url: '/api/sale-notice/:id/units-xlsx' }],   // 17/11/2026: thông báo cho thuê kèm đơn giá thuê
 });
 def('reservation', {
   title: 'Đăng ký mua / thuê – giữ chỗ', one: 'phiếu đăng ký', code: 'GD-01', mod: '04', icon: 'fa-hand-holding-hand', disp: "t.code||coalesce(' · '||t.cust_name,'')",

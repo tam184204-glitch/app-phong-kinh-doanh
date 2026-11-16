@@ -577,6 +577,18 @@ R('GET', '/print/handover/:kind/:id', async (req, res, u, p, qs) => send(res, 20
 R('GET', '/api/voucher-prefill', async (req, res, u, p, qs) => { if (!can(u, M.E.receipt, 'c') && !can(u, M.E.payment, 'c')) C.deny(); send(res, 200, await B.voucherPrefill({ q, one }, qs, u)); });
 R('POST', '/api/handover-notice/set-bg', async (req, res, u) => { if (!can(u, M.E.contract, 'u')) C.deny('Bạn không được sửa hợp đồng'); const b = await readJson(req); send(res, 200, await tx(db => B.bgSet(db, u, b))); });   // chọn đợt bàn giao / số ngày cho 1 HĐMB ngay ở thông báo
 R('GET', '/api/handover-notice/suggest', async (req, res, u, p, qs) => { if (!can(u, M.E.handover_notice, 'c') && !can(u, M.E.handover_notice, 'u') && !can(u, M.E.handover_notice, 'r')) C.deny(); send(res, 200, await B.bgSuggest({ q, one }, qs)); });   // thông báo bàn giao: gợi ý căn có HĐMB đã ký + hạn thu đợt bàn giao
+// 17/11/2026: thông báo cho thuê — đơn giá thuê từng căn (form) + xuất file danh sách căn của thông báo (cho thuê: đơn giá thuê, tiền thuê/tháng)
+R('GET', '/api/rent-prices', async (req, res, u, p, qs) => { if (!can(u, M.E.sale_notice, 'r') && !can(u, M.E.sale_notice, 'c')) C.deny(); send(res, 200, await B.rentPrices({ q, one }, qs)); });
+R('GET', '/api/sale-notice/:id/units-xlsx', async (req, res, u, p) => {
+  const { row: n } = await C.get('sale_notice', p.id, u), thue = n.deal === 'thue';
+  const us = await B.noticeUnits({ q, one }, n), rows = thue ? await B.noticeRent({ q, one }, n.project_id, n.policy_id, us) : us;
+  const KIND = Object.fromEntries(M.E.unit.fields.find(f => f.k === 'kind').o.map(o => [o[0], o[1]])), ST = Object.fromEntries(M.E.unit.fields.find(f => f.k === 'status').o.map(o => [o[0], o[1]]));
+  for (const x of rows) { x.kind_l = KIND[x.kind] || x.kind || ''; x.st_l = thue && x.status === 'con_ban' ? 'Còn cho thuê' : ST[x.status] || x.status || ''; if (thue && !x.rent_price) x.rent_unit = 'Chưa thiết lập'; }
+  const cols = [['code', 'Mã căn'], ['b', 'Tòa'], ['floor', 'Tầng', 'int'], ['kind_l', 'Loại căn'], ['area_tt', 'DT thông thủy (m²)', 'num'], ['area_xd', 'DT xây dựng (m²)', 'num'],
+    ...(thue ? [['rent_price', 'Đơn giá thuê', 'money'], ['rent_unit', 'Đơn vị'], ['rent_month', 'Tiền thuê/tháng (đồng)', 'money']] : []), ['st_l', 'Trạng thái']];
+  const title = `DANH SÁCH CĂN ${thue ? 'CHO THUÊ' : 'MỞ BÁN'} — ${n.code}${n.title ? ' · ' + n.title : ''}`;
+  sendFile(res, IO.sheet(title.slice(0, 120), cols, rows, { note: `${rows.length} căn${thue ? ' · đơn giá thuê theo chính sách cho thuê áp dụng cho từng căn' : ''}` }), `${safeName(n.code)}_danh_sach_can_${C.today()}.xlsx`, MIME['.xlsx']);
+});
 // 17/11/2026: lịch sử các lần thông báo bàn giao / bàn giao GCN của 1 căn (nút «Xem lịch sử» ở cột Ghi chú)
 R('GET', '/api/notice-history', async (req, res, u, p, qs) => { const ent = qs.ent === 'gcn_notice' ? 'gcn_notice' : 'handover_notice'; if (!can(u, M.E[ent], 'r') && !can(u, M.E[ent], 'c')) C.deny(); send(res, 200, await B.noticeHist({ q, one }, ent, qs.unit)); });
 // 17/11/2026: Thông báo bàn giao Giấy chứng nhận — bảng căn (gợi ý hạn mới) + gắn đợt thu với GCN
