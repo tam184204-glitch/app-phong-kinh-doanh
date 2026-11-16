@@ -1370,7 +1370,41 @@ H.handover_notice = {
   },
 };
 
+// ===== Theo dõi thanh lý & chi trả (16/11/2026) =====
+// Tổng đã thu = phiếu thu hợp lệ của HĐ; phải hoàn trả = đã thu − khấu trừ (đề nghị loại «Thanh lý hợp đồng»; đề nghị hủy / đổi giữ số đã nhập);
+// đã chi trả = phiếu chi hoàn tiền / hoàn cọc / thanh lý của HĐ → trạng thái Chưa chi trả / Đã chi trả một phần / Đã chi trả đủ (tự cập nhật khi phát sinh chi)
+const LIQ_PAY = ['hoan_tien', 'hoan_coc', 'thanh_ly'];
+const liqCollected = async (db, cid) => +(await db.one("SELECT coalesce(sum(amount), 0) s FROM kd_receipt WHERE contract_id = $1 AND status = 'hop_le'", [cid])).s || 0;
+async function liqSync(db, id, user) {
+  const r = await raw(db, 'cancel_req', id); if (!r?.contract_id) return;
+  const collected = await liqCollected(db, r.contract_id);
+  const py = await db.one("SELECT coalesce(sum(amount), 0) s, max(voucher_date) d FROM kd_payment WHERE contract_id = $1 AND status = 'hop_le' AND kind = ANY($2)", [r.contract_id, LIQ_PAY]);
+  const paid = +py.s || 0, due = r.kind === 'thanh_ly' ? Math.max(0, collected - (+r.deduct_amount || 0)) : +r.pay_amount || 0;
+  const st = due <= 0 ? (paid > 0 ? 'da_chi' : 'khong_chi') : paid <= 0 ? 'chua_chi' : paid < due ? 'mot_phan' : 'da_chi';
+  const nx = { collected, paid_amount: paid, pay_amount: r.kind === 'thanh_ly' ? due : r.pay_amount, pay_status: st, paid_on: paid > 0 ? d10(py.d) : (st === 'chua_chi' ? null : r.paid_on) };
+  const ch = Object.keys(nx).filter(k => String(r[k] ?? '') !== String(nx[k] ?? '') && !(k === 'paid_on' && d10(r[k]) === d10(nx[k])));
+  if (!ch.length) return;
+  await db.q(`UPDATE kd_cancel_req SET ${ch.map((k, i) => `${k} = $${i + 2}`).join(', ')}, updated_at = now() WHERE id = $1`, [r.id, ...ch.map(k => nx[k])]);
+  if (ch.includes('pay_status') || ch.includes('paid_amount'))
+    await C.audit(db, 'cancel_req', r.id, 'cap_nhat_chi_tra', Object.fromEntries(ch.map(k => [k, r[k]])), Object.fromEntries(ch.map(k => [k, nx[k]])), user,
+      `Đã chi ${fmtMoney(paid)} / phải trả ${fmtMoney(due)} — ${await C.optLabel(C.F.cancel_req.pay_status, st)}`, r.is_demo);
+}
+const liqSyncContract = async (db, cids, user) => { for (const cid of new Set(cids.filter(Boolean))) for (const x of await db.q('SELECT id FROM kd_cancel_req WHERE contract_id = $1', [cid])) await liqSync(db, x.id, user); };
+// hợp đồng chuyển «Thanh lý» → 1 dòng theo dõi gắn hợp đồng gốc (đã có đề nghị của HĐ thì cập nhật đề nghị đó, không lập trùng)
+async function liqTrack(db, c, user, demo) {
+  const on = d10(c.liquidated_on) || today();
+  let cr = await db.one("SELECT id FROM kd_cancel_req WHERE contract_id = $1 ORDER BY (kind = 'thanh_ly') DESC, id DESC LIMIT 1", [c.id]);
+  if (cr) await db.q('UPDATE kd_cancel_req SET liquidate_on = coalesce(liquidate_on, $2::date), pay_due = coalesce(pay_due, $2::date + coalesce(wait_days, 30)), updated_at = now() WHERE id = $1', [cr.id, on]);
+  else {
+    const why = await C.optLabel(C.F.contract.liquidate_reason, c.liquidate_reason).catch(() => '');
+    cr = (await create('cancel_req', { kind: 'thanh_ly', contract_id: c.id, money_plan: 'hoan_tien', liquidate_on: on,
+      reason: `Thanh lý ${HD_L[c.kind] || 'hợp đồng'} ${c.number || ''}${why ? ' — ' + why : ''}${c.liquidate_note ? ': ' + c.liquidate_note : ''}`, note: 'Tự lập khi hợp đồng chuyển «Thanh lý»' }, user, { db, system: true, demo })).row;
+    await db.q("UPDATE kd_cancel_req SET status = 'da_duyet' WHERE id = $1 AND status = 'nhap'", [cr.id]);   // thanh lý đã thực hiện ở hợp đồng — không qua duyệt đề nghị
+  }
+  await liqSync(db, cr.id, user);
+}
 H.cancel_req = {
+  async afterSave(r, old, { db, user }) { await liqSync(db, r.id, user); },   // khấu trừ / số phải trả đổi → tính lại còn phải trả, trạng thái chi trả
   async beforeSave(r, old, { db }) {
     // thông tin khách hàng theo hợp đồng / phiếu giữ chỗ (chọn lại thì lấy lại); số tiền đề nghị để trống = số khách đã nộp
     if (r.contract_id || r.reservation_id) {
@@ -1681,6 +1715,7 @@ H.contract = {
     // HĐ thuê / vay bán căn đã ký, tiến độ HĐMB đổi: đợt gắn bàn giao theo thông báo đã phát hành (ghi vào thông báo để hủy thì trả hạn) — 16/11/2026
     if (['thue', 'vay'].includes(r.kind) && r.status === 'da_ky' && r.sale_on && JSON.stringify(r.sale_sched || null) !== JSON.stringify(old?.sale_sched || null)) await bgReapply(db, r.id, user);
     await resFromContract(db, r, user);
+    if (old && old.status !== r.status && r.status === 'thanh_ly') await liqTrack(db, r, user, demo);   // 16/11/2026: sang «Theo dõi thanh lý & chi trả» (1 dòng / hợp đồng)
     if (old && old.status !== r.status && ['huy', 'thanh_ly'].includes(r.status) && ['hdmb', 'thue_mua'].includes(r.kind) && r.customer_id)
       for (const h of await db.q("SELECT id, status FROM kd_contract WHERE kind = 'hoan_thien' AND unit_id = $1 AND customer_id = $2 AND status NOT IN ('huy', 'thanh_ly')", [r.unit_id, r.customer_id])) {
         const tl = h.status === 'da_ky';   // HĐ hoàn thiện đã ký → thanh lý cùng ngày; chưa ký → hủy
@@ -1793,7 +1828,7 @@ H.receipt = {
     if (!old) { r.synced_at = r.synced_at || new Date().toISOString(); r.src = r.src || 'thu_cong'; }
     if (r.voucher_date > today()) bad('Ngày thu không được sau hôm nay');
   },
-  async afterSave(r, old, { db, user }) { await refreshCommission(db, r.contract_id, user); await loanRebase(db, [r.contract_id, old?.contract_id]); },
+  async afterSave(r, old, { db, user }) { await refreshCommission(db, r.contract_id, user); await loanRebase(db, [r.contract_id, old?.contract_id]); await liqSyncContract(db, [r.contract_id, old?.contract_id], user); },   // tổng đã thu của dòng theo dõi thanh lý
   acts: { async void(r, d) { return { patch: { status: 'huy', void_reason: d.reason } }; } },
 };
 
@@ -1827,6 +1862,7 @@ H.payment = {
     }
   },
   async afterSave(r, old, { db, user }) {
+    await liqSyncContract(db, [r.contract_id, old?.contract_id], user);   // 16/11/2026: phát sinh / hủy phiếu chi → đã chi trả, còn phải trả, trạng thái chi trả
     await loanPaySync(db, [r.contract_id, old?.contract_id]);
     const ok = r.status === 'hop_le';
     if (old?.refund_id && (old.refund_id !== r.refund_id || !ok)) await sys(db, 'refund', old.refund_id, { status: 'da_duyet', done_voucher: null, done_on: null }, user, 'huy_phieu_chi', `Phiếu chi ${r.voucher_no} ${ok ? 'đổi đề xuất' : 'đã hủy'}`);
@@ -2077,6 +2113,8 @@ async function jobs(db) {
   await expireHolds(db);
   // chính sách bán hàng tới ngày bắt đầu (đã phát hành, chưa áp) → tự áp cho căn chưa bán
   for (const p of await db.q("SELECT * FROM kd_price_policy WHERE status = 'phat_hanh' AND rolled_at IS NULL AND start_on <= $1 AND end_on >= $1", [today()])) await safely(db, () => policyRoll(db, p, null), 'policyRoll');
+  // 16/11/2026: hợp đồng đã thanh lý chưa có dòng «Theo dõi thanh lý & chi trả» (thanh lý trước khi có tính năng / nhập file) → lập (1 dòng / hợp đồng)
+  for (const c of await db.q("SELECT c.* FROM kd_contract c WHERE c.status = 'thanh_ly' AND NOT EXISTS (SELECT 1 FROM kd_cancel_req t WHERE t.contract_id = c.id) ORDER BY c.id LIMIT 200")) await safely(db, () => liqTrack(db, c, null, c.is_demo), 'liqTrack ' + c.id);
   for (const c of await db.q(`SELECT c.* FROM kd_contract c WHERE c.status = 'da_ky' AND c.kind <> 'hoan_thien' AND EXISTS (SELECT 1 FROM kd_reservation s WHERE (s.id = c.reservation_id OR (c.reservation_id IS NULL AND s.unit_id = c.unit_id AND s.customer_id = c.customer_id))
       AND s.status IN ${ACTIVE_RES} AND (s.status <> 'chuyen_hd' OR (c.kind IN ('hdmb','thue_mua') AND (s.reg_state IS DISTINCT FROM 'ky_hdmb' OR s.progress IS DISTINCT FROM 'da_ky'))))`)) await safely(db, () => resFromContract(db, c, null), 'resFromContract ' + c.id);
   // HĐ thuê (cho thuê) hết hạn: phiếu đăng ký của HĐ đó hết hiệu lực → căn đăng ký mới được

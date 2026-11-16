@@ -792,11 +792,17 @@ async function setLateRate(db, user, id, v) {   // db: trong giao dịch (tx)
 async function payouts(db, user, f = {}) {
   if (!can(user, E.cancel_req, 'r')) deny();
   const p = []; const w = uf(f, p);
-  return db.q(`SELECT t.id, t.code, t.kind, t.status, t.money_plan, t.liquidate_on, t.wait_days, t.pay_due, t.pay_amount, t.acct_status, t.acct_on, t.pay_status, t.paid_on, t.note,
-      c.number contract_no, c.status contract_status, u.code unit, pj.code project, coalesce(k.full_name, r.cust_name) customer, coalesce(k.phone, r.phone) phone
+  // 16/11/2026: thêm mã KH, loại / số HĐ, ngày thanh lý, tổng đã thu (phiếu thu của HĐ), khấu trừ, phải hoàn trả, đã chi trả (phiếu chi hoàn tiền / hoàn cọc / thanh lý), còn phải trả
+  const rows = await db.q(`SELECT t.id, t.code, t.kind, t.status, t.money_plan, coalesce(t.liquidate_on, c.liquidated_on) liquidate_on, t.wait_days, t.pay_due, t.pay_amount, t.deduct_amount, t.deduct_note,
+      t.acct_status, t.acct_on, t.pay_status, t.paid_on, t.note, t.contract_id,
+      c.number contract_no, c.kind ct_kind, c.status contract_status, u.code unit, pj.code project, k.code cust_code, coalesce(k.full_name, r.cust_name) customer, coalesce(k.phone, r.phone) phone,
+      CASE WHEN t.contract_id IS NOT NULL THEN (SELECT coalesce(sum(x.amount), 0) FROM kd_receipt x WHERE x.contract_id = t.contract_id AND x.status = 'hop_le') ELSE t.collected END collected,
+      CASE WHEN t.contract_id IS NOT NULL THEN (SELECT coalesce(sum(y.amount), 0) FROM kd_payment y WHERE y.contract_id = t.contract_id AND y.status = 'hop_le' AND y.kind IN ('hoan_tien','hoan_coc','thanh_ly')) ELSE t.paid_amount END paid_amount
     FROM kd_cancel_req t LEFT JOIN kd_reservation r ON r.id = t.reservation_id LEFT JOIN kd_contract c ON c.id = t.contract_id
     LEFT JOIN kd_unit u ON u.id = coalesce(c.unit_id, r.unit_id) LEFT JOIN kd_project pj ON pj.id = u.project_id
     LEFT JOIN kd_customer k ON k.id = coalesce(c.customer_id, r.customer_id) WHERE true ${w} ORDER BY t.pay_due NULLS LAST, t.id DESC`, p);
+  for (const x of rows) x.remain = x.pay_status === 'khong_chi' ? 0 : Math.max(0, (+x.pay_amount || 0) - (+x.paid_amount || 0));
+  return rows;
 }
 // theo dõi vay vốn: hợp đồng căn hộ chung cư + nhà liền kề đã ký tự sổ vào đây (sửa ở hợp đồng là cập nhật)
 // tiền hoàn thiện: HĐ hoàn thiện riêng lấy số thu thật; gộp trong HĐMB thì tạm tính theo % đã thu của hợp đồng (thu Bravo không tách khoản hoàn thiện)
