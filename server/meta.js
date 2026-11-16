@@ -399,11 +399,12 @@ def('cancel_req', {
     { k: 'money_plan', l: 'Phương án xử lý', t: 'sel', req: 1, def: 'hoan_tien', o: [['hoan_tien', 'Hoàn tiền'], ['chuyen_can_moi', 'Chuyển tiền/bù trừ'], ['khac', 'Khác']] },
     { k: 'money_note', l: 'Diễn giải phương án khác', t: 'text', show: { money_plan: ['khac'] } },
     // 16/11/2026 theo dõi thanh lý & chi trả: tổng đã thu (phiếu thu của HĐ), khấu trừ theo hồ sơ thanh lý, phải hoàn trả = đã thu − khấu trừ, đã chi = phiếu chi hoàn tiền / hoàn cọc / thanh lý của HĐ
-    money('collected', 'Tổng tiền đã thu (đồng)', { ro: 1, help: 'Tự tính = các phiếu thu hợp lệ của hợp đồng' }),
+    money('collected', 'Tổng tiền đã thu (đồng)', { help: 'Tự tính = các phiếu thu hợp lệ của hợp đồng — sửa tay thì giữ số đã sửa' }),
     money('deduct_amount', 'Các khoản khấu trừ (đồng)', { help: 'Theo hồ sơ thanh lý (phạt vi phạm, phí, chi phí…)' }),
     { k: 'deduct_note', l: 'Diễn giải khấu trừ', t: 'text' },
     money('pay_amount', 'Số tiền phải hoàn trả (đồng)', { help: 'Thanh lý hợp đồng: tự tính = tổng đã thu − khấu trừ. Đề nghị hủy / đổi: để trống = số khách đã nộp — sửa được' }),
-    money('paid_amount', 'Số tiền đã chi trả (đồng)', { ro: 1, help: 'Tự cộng các phiếu chi hoàn tiền / hoàn cọc / thanh lý của hợp đồng' }),
+    money('paid_amount', 'Số tiền đã chi trả (đồng)', { help: 'Tự cộng các phiếu chi hoàn tiền / hoàn cọc / thanh lý của hợp đồng — sửa tay thì giữ số đã sửa' }),
+    { k: 'edited', l: 'Ô đã sửa tay', t: 'json', ro: 1, hide: 1 },   // 16/11/2026: đồng bộ lại từ hợp đồng / phiếu thu chi không ghi đè các ô này
     { k: 'liquidate_on', l: 'Ngày ký thanh lý HĐMB (nếu có)', t: 'date' },
     { k: 'pay_due', l: 'Ngày đề nghị chi trả', t: 'date', help: 'Để trống → ngày ký thanh lý + thời gian chờ chi trả' },
     { k: 'reason', l: 'Lý do', t: 'long' },
@@ -418,7 +419,8 @@ def('cancel_req', {
     { k: 'status', l: 'Trạng thái', t: 'sel', o: S.duyet, ro: 1, def: 'nhap' },
   ], list: ['code', 'kind', 'reservation_id', 'contract_id', 'money_plan', 'liquidate_on', 'pay_due', 'pay_amount', 'pay_status', 'status'],
   lock: ['da_duyet', 'cho_duyet'], lockKeep: ['liquidate_on', 'wait_days', 'pay_due', 'pay_amount', 'deduct_amount', 'deduct_note', 'acct_status', 'acct_on', 'pay_status', 'paid_on', 'note'], flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'da_duyet' } },
-  acts: [{ k: 'phieu', l: 'In phiếu đề nghị', icon: 'fa-print', from: '*', roles: ALL, url: '/print/cancel_req/:id' }],
+  acts: [{ k: 'phieu', l: 'In phiếu đề nghị', icon: 'fa-print', from: '*', roles: ALL, url: '/print/cancel_req/:id' },
+    { k: 'resync', l: 'Tính lại tự động', icon: 'fa-rotate', from: '*', roles: ['ban_hang', 'truong_phong', 'ho_so', 'cong_no', 'ke_toan'] }],   // bỏ các số sửa tay → tính lại theo hợp đồng, phiếu thu, phiếu chi (16/11/2026)
   files: [['don_de_nghi', 'Đơn đề nghị của khách', 1]],
 });
 

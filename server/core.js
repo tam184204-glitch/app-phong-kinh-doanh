@@ -311,7 +311,8 @@ async function get(entKey, id, user, { db = { q, one }, reveal } = {}) {
   return { row, files, notes, approvals, trace, perm: await perms(e, row, user, approvals, db) };
 }
 // trường còn được sửa khi bản ghi bị khóa theo trạng thái; null = không khóa. softLock: quản lý (boss) không bị khóa
-function lockKeepOf(e, status, user) {
+function lockKeepOf(e, status, user, row) {
+  if (row && H[e.key]?.unlocked?.(row)) return null;   // 16/11/2026: bản ghi không khóa theo trạng thái (VD dòng theo dõi thanh lý tự lập từ hợp đồng)
   if (e.lock?.includes(status)) return e.lockKeep || [];
   const s = e.softLock;
   return s?.st.includes(status) && !s.boss.includes(user.role) && user.role !== 'admin' ? s.keep : null;
@@ -321,7 +322,7 @@ const undecided = (e, st) => !!e.flow && e.flow.submit.includes(st);
 const lockDel = (e, st) => !undecided(e, st) && (e.lock?.includes(st) || e.softLock?.st.includes(st));
 // quyền trên một bản ghi cụ thể — giao diện dựa vào đây để hiện nút
 async function perms(e, row, user, approvals, db) {
-  const keep = lockKeepOf(e, row.status, user), locked = !!keep;
+  const keep = lockKeepOf(e, row.status, user, row), locked = !!keep;
   const open = approvals.find(a => a.status === 'cho_duyet');
   const fl = e.flow;
   const out = {
@@ -431,7 +432,7 @@ async function update(entKey, id, input, user, opts = {}) {
     const ctx = ctxOf(db, user, opts);
     const data = await normalize(e, input, user, db, { old, system: opts.system });
     for (const k of Object.keys(data)) if (JSON.stringify(data[k]) === JSON.stringify(old[k])) delete data[k];
-    const keepK = !opts.system && lockKeepOf(e, old.status, user);
+    const keepK = !opts.system && lockKeepOf(e, old.status, user, old);
     if (keepK) {
       const blocked = Object.keys(data).filter(k => !keepK.includes(k));
       if (blocked.length) bad(`${e.one[0].toUpperCase() + e.one.slice(1)} đang ở trạng thái «${await optLabel(F[entKey].status, old.status)}» — không sửa trực tiếp (${blocked.map(k => F[entKey][k].l).join(', ')})${entKey === 'contract' ? '. Mọi thay đổi phải qua «Điều chỉnh – phụ lục hợp đồng».' : ''}`);

@@ -1375,13 +1375,17 @@ H.handover_notice = {
 // đã chi trả = phiếu chi hoàn tiền / hoàn cọc / thanh lý của HĐ → trạng thái Chưa chi trả / Đã chi trả một phần / Đã chi trả đủ (tự cập nhật khi phát sinh chi)
 const LIQ_PAY = ['hoan_tien', 'hoan_coc', 'thanh_ly'];
 const liqCollected = async (db, cid) => +(await db.one("SELECT coalesce(sum(amount), 0) s FROM kd_receipt WHERE contract_id = $1 AND status = 'hop_le'", [cid])).s || 0;
+// ô do đồng bộ tự tính — người dùng sửa tay ô nào thì ghi vào edited và đồng bộ không ghi đè ô đó (16/11/2026)
+const LIQ_SYNC = ['liquidate_on', 'pay_due', 'collected', 'pay_amount', 'paid_amount', 'pay_status', 'paid_on'];
 async function liqSync(db, id, user) {
   const r = await raw(db, 'cancel_req', id); if (!r?.contract_id) return;
-  const collected = await liqCollected(db, r.contract_id);
+  const ed = new Set(Array.isArray(r.edited) ? r.edited : []);
+  const collected = ed.has('collected') ? +r.collected || 0 : await liqCollected(db, r.contract_id);
   const py = await db.one("SELECT coalesce(sum(amount), 0) s, max(voucher_date) d FROM kd_payment WHERE contract_id = $1 AND status = 'hop_le' AND kind = ANY($2)", [r.contract_id, LIQ_PAY]);
-  const paid = +py.s || 0, due = r.kind === 'thanh_ly' ? Math.max(0, collected - (+r.deduct_amount || 0)) : +r.pay_amount || 0;
+  const paid = ed.has('paid_amount') ? +r.paid_amount || 0 : +py.s || 0, due = r.kind === 'thanh_ly' && !ed.has('pay_amount') ? Math.max(0, collected - (+r.deduct_amount || 0)) : +r.pay_amount || 0;
   const st = due <= 0 ? (paid > 0 ? 'da_chi' : 'khong_chi') : paid <= 0 ? 'chua_chi' : paid < due ? 'mot_phan' : 'da_chi';
-  const nx = { collected, paid_amount: paid, pay_amount: r.kind === 'thanh_ly' ? due : r.pay_amount, pay_status: st, paid_on: paid > 0 ? d10(py.d) : (st === 'chua_chi' ? null : r.paid_on) };
+  const nx = { collected, paid_amount: paid, pay_amount: r.kind === 'thanh_ly' ? due : r.pay_amount, pay_status: st, paid_on: paid > 0 && !ed.has('paid_amount') ? d10(py.d) : (st === 'chua_chi' ? null : r.paid_on) };
+  for (const k of ed) delete nx[k];   // ô đã sửa tay: giữ nguyên
   const ch = Object.keys(nx).filter(k => String(r[k] ?? '') !== String(nx[k] ?? '') && !(k === 'paid_on' && d10(r[k]) === d10(nx[k])));
   if (!ch.length) return;
   await db.q(`UPDATE kd_cancel_req SET ${ch.map((k, i) => `${k} = $${i + 2}`).join(', ')}, updated_at = now() WHERE id = $1`, [r.id, ...ch.map(k => nx[k])]);
@@ -1404,8 +1408,27 @@ async function liqTrack(db, c, user, demo) {
   await liqSync(db, cr.id, user);
 }
 H.cancel_req = {
+  // 16/11/2026: dòng theo dõi thanh lý tự lập từ hợp đồng không khóa theo trạng thái — người có quyền sửa mọi thông tin (lịch sử sửa: tab Lịch sử)
+  unlocked: r => r.kind === 'thanh_ly',
   async afterSave(r, old, { db, user }) { await liqSync(db, r.id, user); },   // khấu trừ / số phải trả đổi → tính lại còn phải trả, trạng thái chi trả
-  async beforeSave(r, old, { db }) {
+  acts: {
+    async resync(r, d, { db, user }) {   // bỏ các số sửa tay → tính lại theo hợp đồng / phiếu thu / phiếu chi
+      const ed = Array.isArray(r.edited) ? r.edited : [];
+      await db.q('UPDATE kd_cancel_req SET edited = NULL, updated_at = now() WHERE id = $1', [r.id]);
+      await liqSync(db, r.id, user);
+      return { msg: ed.length ? `Đã bỏ ${ed.length} ô sửa tay, tính lại theo hợp đồng / phiếu thu / phiếu chi` : 'Đã tính lại theo hợp đồng / phiếu thu / phiếu chi', note: ed.length ? 'Bỏ sửa tay: ' + ed.map(k => C.F.cancel_req[k]?.l || k).join(', ') : null };
+    },
+  },
+  async beforeSave(r, old, { db, opts }) {
+    // ô đồng bộ tự động mà người dùng sửa tay → ghi nhớ (edited): đồng bộ lại từ hợp đồng / phiếu thu chi không ghi đè (16/11/2026)
+    if (old && !opts?.system) {
+      const nv = v => v == null || v === '' ? '' : /^d{4}-d{2}-d{2}/.test(String(v)) ? String(v).slice(0, 10) : !isNaN(+v) && String(v).trim() !== '' ? String(+v) : String(v);
+      const ed = new Set(Array.isArray(old.edited) ? old.edited : []), same = (a, b) => nv(a) === nv(b);
+      for (const k of LIQ_SYNC) if (!same(r[k], old[k])) ed.add(k);
+      r.edited = ed.size ? [...ed] : null;
+      if (old.kind === 'thanh_ly' && r.kind !== 'thanh_ly') bad('Dòng theo dõi thanh lý hợp đồng — không đổi loại đề nghị');
+      if (old.kind === 'thanh_ly' && old.contract_id && r.contract_id !== old.contract_id) bad('Dòng theo dõi thanh lý gắn với hợp đồng gốc — không đổi hợp đồng');
+    }
     // thông tin khách hàng theo hợp đồng / phiếu giữ chỗ (chọn lại thì lấy lại); số tiền đề nghị để trống = số khách đã nộp
     if (r.contract_id || r.reservation_id) {
       const src = !old || old.contract_id !== r.contract_id || old.reservation_id !== r.reservation_id;
