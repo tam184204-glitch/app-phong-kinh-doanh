@@ -1954,3 +1954,80 @@ label.tplr { display: flex; gap: 8px; align-items: center; padding: 7px 0; }
 /* 17/11/2026: Hồ sơ & lưu trữ theo căn chỉ còn In bộ hồ sơ — bỏ menu trái của Kho */
 .vt.vt-one{grid-template-columns:minmax(0,1fr)} .vt.vt-one .vt-side{display:none}
 .hsb-u .s.ni{color:var(--amber-d,#C98210);font-weight:700}
+
+/* =====================================================================================
+   GIAO DIỆN MATERIAL · SWISS (17/11/2026) — theo skill ui-ux-pro-max (Minimalism & Swiss Style,
+   «internal admin dashboard data-dense»: xanh dữ liệu + điểm nhấn hổ phách) + nguyên tắc Material Design
+   (độ nổi theo tầng, lớp trạng thái khi rê / bấm, chip, snackbar). CHỈ đổi hiển thị — không đổi chức năng.
+   Bỏ cả khối này = về giao diện cũ (tag chua-giao-dien-material).
+   ===================================================================================== */
+:root {
+  --md-bg: #F3F6FA; --md-surface: #fff; --md-outline: #E2E8F0; --md-outline2: #CBD5E1;
+  --md-on: #0F1B2D; --md-on2: #475569; --md-primary: #1E4E8C; --md-primary-d: #143866; --md-accent: #D97706;
+  --md-e1: 0 1px 2px rgba(15, 27, 45, .06), 0 1px 3px rgba(15, 27, 45, .05);
+  --md-e2: 0 2px 6px rgba(15, 27, 45, .08), 0 1px 2px rgba(15, 27, 45, .05);
+  --md-e3: 0 12px 32px rgba(15, 27, 45, .16), 0 2px 6px rgba(15, 27, 45, .08);
+  --md-ring: 0 0 0 3px rgba(30, 78, 140, .28);
+  --md-ease: cubic-bezier(.2, 0, 0, 1);
+  --r: 12px;
+}
+/* nền yên tĩnh: bỏ lưới giấy + hình phố phía sau bảng dữ liệu (giảm nhiễu, tăng tương phản) */
+body { background: var(--md-bg); }
+body::before, body::after { display: none !important; animation: none !important; }
+/* tiêu đề trang gọn, rõ thứ bậc */
+.ph { margin-bottom: 14px; }
+.ph h1 { font-size: 22px; font-weight: 750; letter-spacing: -.3px; }
+.ph .eyebrow { font-size: 11px; }
+/* thẻ: độ nổi tầng 1, viền mảnh */
+.card { border: 1px solid var(--md-outline); box-shadow: var(--md-e1); border-radius: 12px; }
+.card .hd { padding: 12px 16px; }
+.card .bd { padding: 14px 16px; }
+.card h3 i { color: var(--md-accent); }
+/* nút: phẳng, lớp trạng thái Material khi rê / bấm, viền focus rõ cho bàn phím */
+.btn { height: 36px; border-radius: 8px; border-color: var(--md-outline2); box-shadow: none; transition: background .15s var(--md-ease), border-color .15s var(--md-ease), box-shadow .15s var(--md-ease), transform .1s; }
+.btn:hover { background: #EEF3FA; border-color: #A9BDD6; }
+.btn:active { transform: translateY(1px); }
+.btn.pri { background: var(--md-primary); border-color: var(--md-primary); box-shadow: var(--md-e1); }
+.btn.pri:hover { background: var(--md-primary-d); filter: none; box-shadow: var(--md-e2); }
+.btn.sm { height: 30px; border-radius: 7px; }
+.btn.ghost:hover { background: rgba(30, 78, 140, .07); border-color: transparent; }
+:is(a, button, input, select, textarea, [tabindex]):focus-visible { outline: none; box-shadow: var(--md-ring) !important; }
+/* tab: thanh chỉ báo hổ phách 3px, số đếm dạng chip */
+.tabs button { border-bottom-width: 3px; transition: color .15s var(--md-ease), background .15s var(--md-ease); border-radius: 6px 6px 0 0; }
+.tabs button:hover { background: rgba(30, 78, 140, .05); }
+.tabs button.on { color: var(--md-primary); border-bottom-color: var(--md-accent); }
+/* bảng dữ liệu: dày hơn (nhiều dòng trên 1 màn), tiêu đề dính khi cuộn, dòng rê sáng, số căn phải */
+table.t { font-size: 13px; }
+table.t th { background: #F6F8FB; color: #475569; font-weight: 650; font-size: 12.5px; padding: 9px 12px; border-bottom: 1px solid var(--md-outline); }
+table.t td { padding: 7px 12px; border-bottom: 1px solid #EEF2F6; vertical-align: middle; }
+table.t tbody tr { transition: background .12s; }
+table.t tbody tr:hover td { background: #F2F6FC; }
+table.t tbody tr.sel td { background: #FFF7E8; }
+table.t tfoot td { background: #F6F8FB; }
+/* ô nhập: cao 36, bo 8, focus vòng xanh */
+.fld input[type=text], .fld input[type=password], .fld select, .fld textarea, .fld input:not([type]), .fld input[type=number], .fld input[type=date] { border-radius: 8px; border-color: var(--md-outline2); transition: border-color .15s, box-shadow .15s; }
+.fld input:focus, .fld select:focus, .fld textarea:focus { border-color: var(--md-primary); box-shadow: var(--md-ring); outline: none; }
+.fld > label { color: #334155; font-weight: 650; }
+.fld .ro { border-radius: 8px; }
+/* hộp thoại: độ nổi tầng 3 */
+.modal { border-radius: 14px; box-shadow: var(--md-e3); }
+.modal .mf { border-radius: 0 0 14px 14px; background: #F8FAFC; }
+/* thông báo kiểu snackbar Material */
+.toast { border-radius: 8px; background: #1F2937; box-shadow: var(--md-e3); padding: 12px 18px; font-size: 13.5px; max-width: min(640px, calc(100vw - 32px)); }
+.toast.err { background: #B42318; }
+/* trạng thái rỗng / đang tải */
+.empty { color: var(--md-on2); }
+/* giảm chuyển động khi máy bật «giảm hiệu ứng» */
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
+/* -- từng màn -- */
+/* thẻ số liệu (Dashboard, Việc của tôi, công nợ…): bỏ góc tam giác trang trí, giữ vạch màu bên trái */
+.kpi { background-image: none !important; box-shadow: var(--md-e1); }
+.kpi:hover { box-shadow: var(--md-e2); transform: translateY(-1px); }
+/* Bảng hàng: ô căn gọn hơn → thấy nhiều tầng hơn trên 1 màn (đủ thông tin cũ) */
+.floors { gap: 5px; } .floor { gap: 5px; } .floor .us { gap: 5px; }
+.floors .u { width: 116px; padding: 6px 9px 6px 12px; font-size: 12px; line-height: 1.35; border-radius: 8px; }
+.floors .u .no { font-size: 14px; margin-bottom: 1px; }
+.floors .u .pr { font-size: 13px; }
+.floor .fl { width: 48px; border-radius: 8px; }
+/* cột nội dung dài: rộng hơn để bớt xuống dòng (bảng thấp, dễ dò) */
+table.t td.wrap { min-width: 260px; }
