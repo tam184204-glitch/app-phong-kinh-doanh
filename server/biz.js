@@ -98,7 +98,13 @@ async function unitDeals(db, unitId) {
       const s = (await saleTrack(db, c)).sale; row.sale = { total: s.total, paid: s.paid, left: s.left, overdue: s.overdue, src: s.src, policy: c.sale_policy_txt || null };
     }
     if (!closed && c.kind !== 'vay') { T.total += d.total; T.paid += d.paid; T.left += d.left; T.overdue += d.overdue; }   // tổng: HĐ còn theo dõi (không gồm HĐ vay — tiền khách cho vay; tiến độ HĐMB của HĐ thuê ở dòng riêng, đã thu lấy từ phiếu thu / gốc vay nên không cộng trùng)
+    row.link_ids = c.link_ids || [];
     rows.push(row);
+  }
+  // 17/11/2026: HĐ vay ↔ HĐ thuê đi kèm cùng tiến độ HĐMB → 1 dòng tiến độ (ở HĐ thuê, đã thu = gốc khách chuyển theo HĐ vay), HĐ vay ghi «dùng chung», không tính trùng
+  for (const v of rows.filter(x => x.kind === 'vay' && x.sale)) {
+    const t = rows.find(x => x.kind === 'thue' && x.sale && !x.closed && (v.link_ids.includes(x.id) || x.link_ids.includes(v.id)));
+    if (t) { t.sale.linked = v.number; v.sale_shared = t.number; delete v.sale; }
   }
   return { unit: u, rows, totals: T };
 }
@@ -1798,9 +1804,14 @@ async function bgSuggest(db, qs) {
 // b = { contract_id, items: [{ seq, days }] } (days trống = theo thông báo)
 async function bgDueSet(db, ct, i, due) {
   if (!i.sale) return db.q('UPDATE kd_installment SET due_on = $1 WHERE id = $2', [due, i.id]);
-  const c = await db.one('SELECT sale_sched FROM kd_contract WHERE id = $1', [ct]); const S = Array.isArray(c?.sale_sched) ? c.sale_sched : [];
-  if (!S[i.seq - 1]) return; S[i.seq - 1] = { ...S[i.seq - 1], due_on: due };
+  const c = await db.one('SELECT sale_sched, unit_id, link_ids FROM kd_contract WHERE id = $1', [ct]); const S = Array.isArray(c?.sale_sched) ? c.sale_sched : [];
+  if (!S[i.seq - 1]) return; const nm = String(S[i.seq - 1].name || '').trim(); S[i.seq - 1] = { ...S[i.seq - 1], due_on: due };
   await db.q('UPDATE kd_contract SET sale_sched = $1, updated_at = now() WHERE id = $2', [JSON.stringify(S), ct]);
+  // 17/11/2026: HĐ thuê ↔ HĐ vay đi kèm (cùng căn) dùng chung tiến độ HĐMB → đợt tương ứng (cùng thứ tự, cùng nội dung) của HĐ liên kết đổi hạn theo
+  if (c.link_ids?.length) for (const o of await db.q("SELECT id, sale_sched FROM kd_contract WHERE id = ANY($1) AND unit_id = $2 AND sale_on AND status NOT IN ('huy','thanh_ly')", [c.link_ids, c.unit_id])) {
+    const X = Array.isArray(o.sale_sched) ? o.sale_sched : [];
+    if (X[i.seq - 1] && String(X[i.seq - 1].name || '').trim() === nm && d10(X[i.seq - 1].due_on) !== d10(due)) { X[i.seq - 1] = { ...X[i.seq - 1], due_on: due }; await db.q('UPDATE kd_contract SET sale_sched = $1, updated_at = now() WHERE id = $2', [JSON.stringify(X), o.id]); }
+  }
 }
 async function bgSet(db, user, b) {
   const c = await db.one("SELECT id, kind, status, number, sale_on, sale_sched FROM kd_contract WHERE id = $1", [+b.contract_id]);
@@ -2421,13 +2432,21 @@ H.contract = {
     // tiến độ thu tiền HĐMB của HĐ thuê / vay bán căn: tổng các đợt phải khớp Giá trị HĐMB
     if (!['thue', 'vay'].includes(r.kind)) r.sale_on = null;
     // 16/11/2026: tick «Có tiến độ thu tiền HĐMB» mà chưa có đợt (HĐ tự lập, lưu ngay sau khi tick…) → tự lấy theo chính sách bán đã ban hành áp cho căn; ghi mã + phiên bản chính sách
-    if (['thue', 'vay'].includes(r.kind) && r.sale_on && r.unit_id && (!old || ['du_thao', 'tu_choi'].includes(old.status))) {
+    // 17/11/2026: HĐ vay tick «HĐ thuê đi kèm» cùng căn đã có tiến độ HĐMB → kế thừa nguyên tiến độ của HĐ thuê (đợt, nội dung, hạn, %, số tiền, phí bảo trì, đợt bàn giao / GCN)
+    // + Giá trị HĐMB; mới tick (chưa có đợt) thì tự bật «Có tiến độ thu tiền HĐMB». HĐ thuê chưa có tiến độ HĐMB → theo chính sách bán như trên
+    const draftSale = !old || ['du_thao', 'tu_choi'].includes(old.status);
+    const lkAll = r.kind === 'vay' && r.unit_id && r.link_ids?.length && draftSale ? await db.q(`SELECT id, number, sale_on, sale_sched, sale_policy_txt, unit_total FROM kd_contract WHERE id = ANY($1) AND kind = 'thue' AND unit_id = $2
+      AND status <> 'huy' ORDER BY id DESC`, [r.link_ids, r.unit_id]) : [];
+    const lkT = lkAll.find(x => x.sale_on && Array.isArray(x.sale_sched) && x.sale_sched.length) || null;
+    if (lkAll.some(x => !(old?.link_ids || []).includes(x.id)) && !r.sale_on && !(Array.isArray(r.sale_sched) && r.sale_sched.length)) r.sale_on = true;   // mới tick HĐ thuê đi kèm cùng căn
+    if (['thue', 'vay'].includes(r.kind) && r.sale_on && r.unit_id && draftSale) {
       const sp = await saleSchedPolicy(db, r.unit_id, d10(r.contract_on) || today(), r.reservation_id);
       if (!(Array.isArray(r.sale_sched) && r.sale_sched.some(x => !x.maint))) {
-        if (sp) { r.sale_sched = await saleSchedRows(db, sp, r.unit_id, d10(r.contract_on) || d10(r.eff_on) || today()); ctx.warn?.push(`Tiến độ thu tiền HĐMB lấy theo chính sách bán hàng ${sp.code} v${sp.version}`); }
+        if (lkT) { r.sale_sched = lkT.sale_sched; if (+lkT.unit_total > 0) r.unit_total = +lkT.unit_total; ctx.warn?.push(`Tiến độ thu tiền HĐMB lấy theo HĐ thuê đi kèm ${lkT.number}`); }
+        else if (sp) { r.sale_sched = await saleSchedRows(db, sp, r.unit_id, d10(r.contract_on) || d10(r.eff_on) || today()); ctx.warn?.push(`Tiến độ thu tiền HĐMB lấy theo chính sách bán hàng ${sp.code} v${sp.version}`); }
         else ctx.warn?.push('Chưa có chính sách bán hàng đã ban hành có tiến độ thu tiền áp dụng cho căn — chưa lập tiến độ thu tiền HĐMB (không dùng mẫu mặc định)');
       }
-      r.sale_policy_txt = sp ? `${sp.code} v${sp.version}` : 'Chưa có chính sách bán hàng đã ban hành áp dụng cho căn';
+      r.sale_policy_txt = lkT ? `Theo HĐ thuê đi kèm ${lkT.number}${lkT.sale_policy_txt ? ' · ' + lkT.sale_policy_txt : ''}` : sp ? `${sp.code} v${sp.version}` : 'Chưa có chính sách bán hàng đã ban hành áp dụng cho căn';
     }
     if (!['thue', 'vay'].includes(r.kind) || !r.sale_on) r.sale_policy_txt = null;
     if (['thue', 'vay'].includes(r.kind) && r.sale_on && Array.isArray(r.sale_sched) && r.sale_sched.length) {   // tick «Có tiến độ thu tiền HĐMB»
@@ -3074,4 +3093,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, noticeHist, noticeUnits, noticeRent, rentPrices, noticeConflict, unitNotes, saleSchedPolicy, saleSchedRows, rentBackfill, noxhSyncAll, unitDeals, rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, noticeHist, noticeUnits, noticeRent, rentPrices, noticeConflict, unitNotes, saleSchedPolicy, saleSchedRows, rentBackfill, noxhSyncAll, unitDeals, bgDueSet, rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

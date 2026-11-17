@@ -557,8 +557,8 @@ function schedEditor(el, rows, { total, base, first, maint, mdot, bgBase, pol, f
   { const f0 = first?.() || R[0]?.due_on;   // lịch đã lưu: hạn đúng «Sau N ngày» thì vẫn đi theo ngày ký (15/11/2026: HĐ chưa ghi ngày ký → mốc = hạn kỳ 1, VD HĐ tự lập từ hồ sơ NOXH)
     if (f0) for (const r of R) { const n = +r.sign_days > 0 ? +r.sign_days : nDays(r.name); if (n && addDays(f0, n) === r.due_on) r._days = n; } }
   const draw = () => {
-    const f1 = first?.(), d1 = /^\d{4}-\d{2}-\d{2}$/.test(f1 || '') ? f1 : null; if (d1 && R[0]) R[0].due_on = d1;   // ngày đang gõ dở thì giữ ngày trước
-    if (d1) R.forEach((r, i) => { if ((i || fin) && r._days) r.due_on = addDays(d1, r._days); if (r._d0) r.due_on = d1; });   // đợt tính theo ngày ký đi theo ngày ký
+    const f1 = first?.(), d1 = /^\d{4}-\d{2}-\d{2}$/.test(f1 || '') ? f1 : null; if (d1 && R[0] && !R[0]._keep) R[0].due_on = d1;   // ngày đang gõ dở thì giữ ngày trước
+    if (d1) R.forEach((r, i) => { if (r._keep) return; if ((i || fin) && r._days) r.due_on = addDays(d1, r._days); if (r._d0) r.due_on = d1; });   // đợt tính theo ngày ký đi theo ngày ký (_keep: kế thừa từ HĐ khác — giữ ngày)
     // tỷ lệ % các đợt × tiền sau thuế (= tổng − phí bảo trì); phí bảo trì ở dòng riêng cố định
     // maint() = null: không áp dụng (HĐ thuê, vay…); số (kể cả 0 khi chưa chọn căn): HĐMB — luôn có dòng phí bảo trì
     const tot = totalOf() || 0, mv = maint?.(), on = mv != null, mt = +(mv || 0), hasM = mt > 0, mi = on ? mIdx() : -1, fs = R.some(r => r.fin) ? +(finish?.() || 0) : 0, base = (hasM ? tot - mt : tot) - fs;
@@ -806,7 +806,7 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish, kind, debt, rec0 }) {
     lkBox.innerHTML = list.length ? list.map(x => `<label class="chk"><input type="checkbox" data-lk="${x.id}" ${cur.includes(x.id) ? 'checked' : ''} ${hid ? '' : 'disabled'}> <b>${esc(x.number || '#' + x.id)}</b> · ${esc(x.unit)} · ${esc(x.customer)}${other === 'thue' && x.rent ? ` · ${fm(x.rent)} đ/tháng` : x.value ? ` · ${fm(x.value)} đ` : ''}${x.exp_on ? ` · đến ${dmy(x.exp_on)}` : ''}</label>`).join('')
       : `<span class="small muted">Chưa có ${other === 'thue' ? 'HĐ thuê' : 'HĐ vay'} cùng căn / cùng khách hàng — chọn Mã căn, Khách hàng trước</span>`;
   };
-  lkBox.addEventListener('change', e => { if (!e.target.dataset.lk) return; const hid = $('[name=link_ids]', lkF); if (hid) hid.value = $$('[data-lk]:checked', lkBox).map(x => x.dataset.lk).join(','); loanDraw(); });
+  lkBox.addEventListener('change', e => { if (!e.target.dataset.lk) return; const hid = $('[name=link_ids]', lkF); if (hid) { hid.value = $$('[data-lk]:checked', lkBox).map(x => x.dataset.lk).join(','); hid.dispatchEvent(new CustomEvent('linkchange', { bubbles: true, detail: { added: e.target.checked ? +e.target.dataset.lk : null } })); } loanDraw(); });   // 17/11/2026: báo cho mục Tiến độ thu tiền HĐMB (HĐ vay kế thừa từ HĐ thuê đi kèm)
   form.addEventListener('change', e => { if (['unit_id', 'customer_id'].includes(e.target.name)) linkDraw(); });
   // HĐ thuê: số tháng + tổng tiền tự tính khi gõ (máy chủ tính lại khi lưu, cùng công thức)
   const addMon = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'), day = d.getUTCDate(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + n); d.setUTCDate(Math.min(day, new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate())); return d.toISOString().slice(0, 10); };
@@ -1032,6 +1032,27 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     };
     $('button', bar).onclick = () => { if (ssch._get().some(x => !x.maint) && !auto && !confirm('Thay các đợt đang nhập bằng tiến độ của chính sách?')) return; ssFill(true); };
     form.addEventListener('change', e => { if (['unit_id', 'kind'].includes(e.target.name)) ssLoad().catch(() => {}); else if (e.target.name === 'sale_on' && e.target.checked) { utFill(); ssFill(false); } });
+    // 17/11/2026: HĐ vay — tick «HĐ thuê đi kèm» cùng căn → kế thừa ngay tiến độ thu tiền HĐMB đang lưu trong HĐ thuê (đợt, nội dung, ngày đến hạn, %, số tiền, phí bảo trì,
+    // đợt bàn giao / Giấy chứng nhận) + Giá trị HĐMB, tự bật «Có tiến độ thu tiền HĐMB»; HĐ thuê chưa có tiến độ HĐMB → theo chính sách bán; không có chính sách → cảnh báo
+    form.addEventListener('linkchange', async e => {
+      const lid = e.detail?.added; if (!lid || (form.elements.kind?.value ?? rec.kind) !== 'vay' || (id && !['du_thao', 'tu_choi'].includes(rec.status))) return;
+      let t; try { t = (await api('GET', `/api/e/contract/${lid}`)).row; } catch (er) { return toast(er.message, true); }
+      if (t?.kind !== 'thue' || String(t.unit_id) !== String(form.elements.unit_id?.value || rec.unit_id)) return;
+      const so = form.elements.sale_on, tick = () => { if (so && !so.checked) { so.checked = true; so.dispatchEvent(new Event('change', { bubbles: true })); } };
+      if (t.sale_on && t.sale_sched?.length) {
+        if (ssch._get().some(x => !x.maint) && !auto && !confirm(`Thay các đợt đang nhập bằng tiến độ thu tiền HĐMB của HĐ thuê ${t.number}?`)) return;
+        const ut = form.elements.unit_total; if (ut && +t.unit_total > 0) ut.value = fm(+t.unit_total);
+        ssch._set(t.sale_sched.map(x => ({ ...(x.pct != null && x.pct !== '' && !x.maint ? { ...x, amount: null } : x), _keep: true })));   // _keep: giữ đúng ngày đến hạn của HĐ thuê
+        auto = true; tick();
+        const src = `Theo HĐ thuê đi kèm ${t.number}${t.sale_policy_txt ? ' · ' + t.sale_policy_txt : ''}`;
+        if (polBox()) polBox().textContent = src; const sp0 = $('span', bar); if (sp0) { sp0.classList.remove('neg'); sp0.textContent = `${src}: ${t.sale_sched.filter(x => !x.maint).length} đợt`; }
+        toast(`Tiến độ thu tiền HĐMB lấy theo HĐ thuê đi kèm ${t.number}: ${t.sale_sched.filter(x => !x.maint).length} đợt`);
+      } else {
+        tick();
+        if (sp?.rows?.length) { ssFill(false); toast(`HĐ thuê ${t.number} chưa có tiến độ thu tiền HĐMB — lấy theo chính sách bán hàng ${sp.policy}`); }
+        else toast(`HĐ thuê ${t.number} chưa có tiến độ thu tiền HĐMB và căn chưa có chính sách bán hàng đã ban hành — bổ sung chính sách bán hàng hoặc nhập tiến độ`, true);
+      }
+    });
     ssLoad().catch(() => {});
   }
   htp?.rentDraw(); htp?.loanDraw?.();
@@ -1988,7 +2009,8 @@ async function unitCtsInto(el, r) {
     <td>${esc(x.customer)}${x.kcode ? `<div class="small muted">${esc(x.kcode)}</div>` : ''}</td><td>${pill(x.st_l, x.st_c)}<div class="small muted">${x.closed_txt ? esc(x.closed_txt) + '<br>' : ''}cập nhật ${dmyhm(x.updated_at)}</div></td>
     ${money(x.debt.total)}${money(x.debt.paid)}${x.closed ? `<td class="num muted" title="Còn lại lúc đóng: ${fm(x.debt.left_at_close || 0)}">—</td><td class="num muted">—</td>` : money(x.debt.left) + money(x.debt.overdue, x.debt.overdue ? 'neg' : '')}
     <td class="center"><button type="button" class="btn ghost sm" style="padding:3px 5px" data-uch="${x.id}" data-ucn="${esc(x.number)}" title="Lịch sử chuyển trạng thái (thời gian, người thực hiện, lý do)">${ico('fa-clock-rotate-left')}</button></td></tr>`
-    + (x.sale ? `<tr class="uc-sub"><td colspan="3"><span class="muted">↳</span> Tiến độ thu tiền HĐMB của ${esc(x.number)}${x.sale.policy ? ` · theo ${esc(x.sale.policy)}` : ''}<div class="small muted">${esc(x.sale.src || '')}</div></td>${money(x.sale.total)}${money(x.sale.paid)}${money(x.sale.left)}${money(x.sale.overdue, x.sale.overdue ? 'neg' : '')}<td></td></tr>` : '');
+    + (x.sale_shared ? `<tr class="uc-sub"><td colspan="8"><span class="muted">↳</span> Tiến độ thu tiền HĐMB dùng chung với HĐ thuê đi kèm ${esc(x.sale_shared)} — xem dòng của HĐ thuê (không tính trùng)</td></tr>` : '')
+    + (x.sale ? `<tr class="uc-sub"><td colspan="3"><span class="muted">↳</span> Tiến độ thu tiền HĐMB của ${esc(x.number)}${x.sale.linked ? ` (dùng chung với HĐ vay ${esc(x.sale.linked)})` : ''}${x.sale.policy ? ` · theo ${esc(x.sale.policy)}` : ''}<div class="small muted">${esc(x.sale.src || '')}</div></td>${money(x.sale.total)}${money(x.sale.paid)}${money(x.sale.left)}${money(x.sale.overdue, x.sale.overdue ? 'neg' : '')}<td></td></tr>` : '');
   const open = d.rows.filter(x => !x.closed), shut = d.rows.filter(x => x.closed), T = d.totals;
   const cg = '<colgroup><col style="width:17%"><col style="width:14%"><col style="width:14%"><col style="width:12.5%"><col style="width:12.5%"><col style="width:12.5%"><col style="width:12.5%"><col style="width:5%"></colgroup>';
   const head = `${cg}<thead><tr><th>Hợp đồng</th><th>Khách hàng</th><th>Trạng thái</th><th class="num">Phải thu</th><th class="num">Đã thu</th><th class="num">Còn phải thu</th><th class="num">Quá hạn</th><th></th></tr></thead>`;
