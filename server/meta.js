@@ -820,7 +820,7 @@ def('collect_plan', {
   how: 'Lọc công nợ → nhập dự kiến từng căn → Trưởng phòng duyệt → theo dõi thực thu → chốt chênh lệch',
   rules: 'Không dự kiến âm; vượt công nợ phải giải trình; kế hoạch có phiên bản và ngày chốt',
   c: ['cong_no', 'truong_phong'], a: ['truong_phong'], own: [], order: 't.month desc, t.expected_on', bulk: 1, fields: [
-    { k: 'month', l: 'Tháng kế hoạch', t: 'month', req: 1 },
+    { k: 'month', l: 'Tháng kế hoạch', t: 'month', help: 'Để trống = tự lấy theo ngày dự kiến thu' },
     { k: 'contract_id', l: 'Hợp đồng / mã căn', t: 'ref', ref: 'contract', req: 1, filter: 'da_ky' },
     { k: 'unit_id', l: 'Mã căn', t: 'ref', ref: 'unit', ro: 1 },
     { k: 'customer_id', l: 'Khách hàng', t: 'ref', ref: 'customer', ro: 1 },
@@ -828,7 +828,13 @@ def('collect_plan', {
     money('expected', 'Số dự kiến thu', { req: 1 }),
     { k: 'expected_on', l: 'Ngày dự kiến thu', t: 'date', req: 1 },
     { k: 'basis', l: 'Căn cứ dự kiến', t: 'sel', req: 1, o: [['cam_ket', 'Cam kết khách hàng'], ['lich_hd', 'Lịch hợp đồng'], ['khac', 'Khác']] },
-    { k: 'basis_note', l: 'Ghi chú căn cứ', t: 'text' },
+    { k: 'basis_note', l: 'Ghi chú', t: 'text' },
+    // 17/11/2026: nguồn tiền, thuộc công nợ bán hàng / cho thuê, liên kết lần nhắc nợ (đưa cam kết vào kế hoạch), đổi lịch = bản mới (giữ bản cũ «Đã thay thế» + lý do)
+    { k: 'fund_src', l: 'Nguồn tiền', t: 'sel', def: 'khach_tu_tra', o: [['khach_tu_tra', 'Khách tự thanh toán'], ['vay_ngan_hang', 'Vay ngân hàng giải ngân'], ['ho_tro', 'Hỗ trợ / bên thứ ba'], ['khac', 'Khác']] },
+    { k: 'scope', l: 'Thuộc công nợ', t: 'sel', o: [['ban', 'Bán hàng'], ['thue', 'Cho thuê']] },
+    { k: 'call_id', l: 'Từ lần nhắc nợ', t: 'ref', ref: 'debt_call', noForm: 1 },
+    { k: 'prev_id', l: 'Kế hoạch trước khi đổi lịch', t: 'ref', ref: 'collect_plan', ro: 1 },
+    { k: 'resched_reason', l: 'Lý do đổi lịch', t: 'text', ro: 1 },
     { k: 'ability', l: 'Khả năng thu', t: 'sel', def: 'vua', o: [['cao', 'Cao', 'g'], ['vua', 'Vừa', 'a'], ['thap', 'Thấp', 'r']] },
     { k: 'explain', l: 'Giải trình (khi vượt công nợ)', t: 'long' },
     owner(),
@@ -838,7 +844,9 @@ def('collect_plan', {
   ], list: ['month', 'project', 'building', 'unit_id', 'customer_id', 'debt_left', 'expected', 'expected_on', 'basis', 'ability', 'actual', 'gap', 'owner_id', 'status'],
   lock: ['cho_duyet', 'da_duyet', 'thay_the', 'dong'], lockKeep: ['reason_miss'],
   flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'da_duyet' } },
-  acts: [{ k: 'revise', l: 'Lập phiên bản mới', icon: 'fa-code-branch', from: ['da_duyet'], roles: ['cong_no', 'truong_phong'] }],
+  acts: [{ k: 'revise', l: 'Lập phiên bản mới', icon: 'fa-code-branch', from: ['da_duyet'], roles: ['cong_no', 'truong_phong'] },
+    { k: 'doi_lich', l: 'Chuyển lịch', icon: 'fa-calendar-plus', from: ['nhap', 'cho_duyet', 'da_duyet', 'tu_choi'], roles: ['cong_no', 'truong_phong', 'ho_so'],
+      ask: [{ k: 'expected_on', l: 'Ngày dự kiến thu mới', t: 'date', req: 1 }, money('expected', 'Số tiền dự kiến (để trống = giữ nguyên)'), { k: 'reason', l: 'Lý do chuyển lịch', t: 'long', req: 1 }] }],
 });
 def('debt_call', {
   title: 'Nhật ký nhắc nợ – cam kết', one: 'lần gọi', code: 'CN-04', mod: '06', icon: 'fa-phone-volume', disp: "to_char(t.at,'DD/MM/YYYY')",
@@ -847,14 +855,18 @@ def('debt_call', {
   rules: 'Cam kết không đồng nghĩa thực thu; lịch sử không được ghi đè',
   c: ['cong_no', 'truong_phong'], u: [], d: [], order: 't.at desc', fields: [
     { k: 'contract_id', l: 'Hợp đồng / mã căn', t: 'ref', ref: 'contract', req: 1 },
-    { k: 'at', l: 'Ngày gọi', t: 'dt', req: 1, def: 'now' },
+    { k: 'at', l: 'Ngày giờ nhắc', t: 'dt', req: 1, def: 'now' },
+    // 17/11/2026: hình thức nhắc, phản hồi của khách, ghi chú — mỗi lần lưu là 1 bản ghi riêng (không sửa / ghi đè lần trước)
+    { k: 'channel', l: 'Hình thức nhắc', t: 'sel', req: 1, def: 'goi_dien', o: [['goi_dien', 'Gọi điện'], ['tin_nhan', 'Tin nhắn SMS'], ['zalo', 'Zalo'], ['email', 'Email'], ['gap_truc_tiep', 'Gặp trực tiếp'], ['van_ban', 'Gửi văn bản / thông báo']] },
     { k: 'contact_person', l: 'Người nghe máy', t: 'text' },
     { k: 'result', l: 'Kết quả liên hệ', t: 'sel', req: 1, o: [['da_trao_doi', 'Đã trao đổi', 'g'], ['khong_nghe', 'Không nghe máy', 'r'], ['hen_goi_lai', 'Hẹn gọi lại', 'a'], ['tu_choi', 'Từ chối thanh toán', 'r'], ['sai_so', 'Sai số', 's']] },
-    { k: 'content', l: 'Nội dung', t: 'long', req: 1 },
-    money('promise_amount', 'Số cam kết'),
-    { k: 'promise_on', l: 'Ngày cam kết', t: 'date' },
-    { k: 'next_on', l: 'Lần theo dõi tiếp', t: 'date' },
-    owner('Người gọi'),
+    { k: 'content', l: 'Nội dung nhắc', t: 'long', req: 1 },
+    { k: 'feedback', l: 'Phản hồi của khách hàng', t: 'long' },
+    money('promise_amount', 'Số tiền cam kết'),
+    { k: 'promise_on', l: 'Ngày cam kết thanh toán', t: 'date' },
+    { k: 'next_on', l: 'Lịch hẹn nhắc tiếp', t: 'date' },
+    owner('Người thực hiện'),
+    { k: 'note', l: 'Ghi chú', t: 'long' },
   ], list: ['at', 'contract_id', 'result', 'content', 'promise_amount', 'promise_on', 'promise_st', 'next_on', 'owner_id'],
 });
 def('refund', {

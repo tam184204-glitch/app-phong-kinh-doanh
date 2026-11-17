@@ -698,7 +698,36 @@ async function dueDebt(db, user, f = {}) {
   const planIn = +(await db.one(`SELECT coalesce(sum(p.expected), 0) s FROM kd_collect_plan p JOIN kd_contract c ON c.id = p.contract_id JOIN kd_unit u ON u.id = c.unit_id WHERE p.status NOT IN ('thay_the','dong','tu_choi') AND p.expected_on >= $1 AND p.expected_on < $2 ${uf(f, pp)}`, pp)).s;
   const planOut = +(await db.one(`SELECT coalesce(sum(l.amount - coalesce(l.paid_amt, 0)), 0) s FROM kd_loan_pay l JOIN kd_contract c ON c.id = l.contract_id JOIN kd_unit u ON u.id = c.unit_id WHERE c.status = 'da_ky' AND l.due_on >= $1 AND l.due_on < $2 AND coalesce(l.paid_amt, 0) < l.amount ${uf(f, pq)}`, pq)).s;
   return { rows, asof: t, from, synced_at: new Date().toISOString(), kinds: [...new Set(rows.map(r => r.kind))].map(k => [k, KL[k] || k]), grps: DD_GRP,
-    banks: [...new Set(rows.map(r => r.bank).filter(Boolean))], owners: [...new Set(rows.map(r => r.owner).filter(Boolean))], plan: { month: t.slice(0, 7), in: planIn, out: planOut }, can_thu: can(user, E.receipt, 'c') };
+    banks: [...new Set(rows.map(r => r.bank).filter(Boolean))], owners: [...new Set(rows.map(r => r.owner).filter(Boolean))], plan: { month: t.slice(0, 7), in: planIn, out: planOut }, can_thu: can(user, E.receipt, 'c'),
+    plans: await planRows(db, user, f, t), can_call: can(user, E.debt_call, 'c'), can_plan: can(user, E.collect_plan, 'c') };
+}
+
+// 17/11/2026: kế hoạch thu theo căn (tab báo cáo công nợ đến hạn) — mọi kế hoạch còn hiệu lực (không gồm bản «Đã thay thế» / đã đóng / bị từ chối) của các HĐ trong phạm vi lọc,
+// ngày dự kiến từ «Từ ngày» (trống = đầu tháng của «Đến ngày») trở đi + kế hoạch cũ hơn còn chưa thu đủ. Thực thu = phiếu thu hợp lệ của HĐ (từ ngày lập kế hoạch, đến «Đến ngày»)
+// phân bổ lần lượt cho các kế hoạch theo ngày dự kiến (không đếm 1 phiếu 2 lần); giữ nguyên số kế hoạch để đối chiếu. Tuần ISO / tháng theo ngày dự kiến
+const isoWeek = s => { const d = new Date(s + 'T00:00:00Z'), day = (d.getUTCDay() + 6) % 7; d.setUTCDate(d.getUTCDate() - day + 3); const y = d.getUTCFullYear(), w1 = new Date(Date.UTC(y, 0, 4));
+  const w = 1 + Math.round(((d - w1) / 864e5 - 3 + ((w1.getUTCDay() + 6) % 7)) / 7), mon = addDays(s, -day); return { key: `${y}-W${String(w).padStart(2, '0')}`, l: `Tuần ${w}/${y} (${C.dmy(mon).slice(0, 5)}–${C.dmy(addDays(mon, 6)).slice(0, 5)})` }; };
+async function planRows(db, user, f, t) {
+  const from = isoDay(f.from) || t.slice(0, 8) + '01', p = [];
+  const ps = await db.q(`SELECT p.*, c.number, c.kind, c.status c_status, u.code unit, u.id unit_id, pr.code project, b.code building, k.full_name customer, us.full_name owner
+    FROM kd_collect_plan p JOIN kd_contract c ON c.id = p.contract_id JOIN kd_unit u ON u.id = c.unit_id JOIN kd_project pr ON pr.id = u.project_id JOIN kd_building b ON b.id = u.building_id
+      JOIN kd_customer k ON k.id = c.customer_id LEFT JOIN kd_user us ON us.id = p.owner_id
+    WHERE p.status NOT IN ('thay_the','dong','tu_choi') AND c.status <> 'thanh_ly' ${uf(f, p)}${mine(user, 'c')} ORDER BY p.expected_on, p.id`, p);
+  if (!ps.length) return [];
+  const ids = [...new Set(ps.map(x => x.contract_id))], RC = await db.q("SELECT contract_id, voucher_date, amount FROM kd_receipt WHERE status = 'hop_le' AND contract_id = ANY($1) AND voucher_date <= $2 ORDER BY voucher_date, id", [ids, t]);
+  const PL = Object.fromEntries(E.collect_plan.fields.find(x => x.k === 'fund_src').o.map(o => [o[0], o[1]])), ST = Object.fromEntries(E.collect_plan.fields.find(x => x.k === 'status').o.map(o => [o[0], o[1]]));
+  for (const x of ps) { x.expected_on = ddDay(x.expected_on); x.actual = 0; x.from = ddDay(x.created_at); }
+  for (const r of RC) { let left = +r.amount; const vd = ddDay(r.voucher_date);
+    for (const x of ps.filter(x => x.contract_id === r.contract_id && x.from <= vd)) { if (left <= 0) break; const take = Math.min(left, +x.expected - x.actual); if (take > 0) { x.actual += take; left -= take; } } }
+  // lịch sử chuyển lịch: chuỗi kế hoạch trước (prev_id)
+  const prevIds = ps.map(x => x.prev_id).filter(Boolean), prev = new Map();
+  let q = prevIds; while (q.length) { const xs = await db.q('SELECT id, prev_id, expected_on, expected, resched_reason, created_at FROM kd_collect_plan WHERE id = ANY($1)', [q]); xs.forEach(x => prev.set(x.id, x)); q = xs.map(x => x.prev_id).filter(id => id && !prev.has(id)); }
+  return ps.filter(x => x.expected_on >= from || x.actual < +x.expected).map(x => { const w = isoWeek(x.expected_on), rem = Math.max(0, +x.expected - x.actual), late = x.expected_on < t && rem > 0, hist = [];
+    for (let id = x.prev_id; id && prev.get(id); id = prev.get(id).prev_id) hist.push({ on: ddDay(prev.get(id).expected_on), amt: +prev.get(id).expected });
+    return { id: x.id, contract_id: x.contract_id, unit_id: x.unit_id, unit: x.unit, project: x.project, building: x.building, customer: x.customer, number: x.number, tab: x.scope || (x.kind === 'thue' ? 'thue' : 'ban'),
+      expected_on: x.expected_on, week: w.key, week_l: w.l, month: x.expected_on.slice(0, 7), month_l: x.expected_on.slice(5, 7) + '/' + x.expected_on.slice(0, 4), expected: +x.expected, actual: x.actual, rem, pct: +x.expected ? Math.round(x.actual / +x.expected * 1000) / 10 : 0,
+      src_l: PL[x.fund_src] || '', owner: x.owner || '', note: x.basis_note || '', status: x.status, st_l: ST[x.status] || x.status, call_id: x.call_id, version: x.version, resched: x.resched_reason || '',
+      hist, warn: late ? `Quá ngày kế hoạch ${C.dmy(x.expected_on)}, chưa thu đủ (còn ${fmtMoney(rem)})` : '' }; });
 }
 
 // ======================= THEO DÕI HỢP ĐỒNG THUÊ / MUA BÁN / HOÀN THIỆN (CN-07) =======================

@@ -2872,6 +2872,9 @@ H.collect_plan = {
       r.unit_id = c.unit_id; r.customer_id = c.customer_id;
       r.debt_left = (await debtOf(db, [c.id])).get(c.id).left;
     }
+    if (r.expected_on && !r.month) r.month = String(r.expected_on).slice(0, 7);   // 17/11/2026: tháng kế hoạch tự theo ngày dự kiến thu
+    if (!r.month) bad('Nhập ngày dự kiến thu', { fields: ['expected_on'] });
+    if (!r.scope && r.contract_id) r.scope = (await db.one('SELECT kind FROM kd_contract WHERE id = $1', [+r.contract_id]))?.kind === 'thue' ? 'thue' : 'ban';
     if (!(r.expected > 0)) bad('Số dự kiến thu phải > 0');
     if (r.expected > (r.debt_left || 0) && !r.explain) bad(`Số dự kiến ${fmtMoney(r.expected)} vượt công nợ còn lại ${fmtMoney(r.debt_left)} — cần nhập giải trình`);
     if (r.month && r.expected_on && r.expected_on.slice(0, 7) !== r.month) warn.push('Ngày dự kiến thu không nằm trong tháng kế hoạch');
@@ -2885,6 +2888,16 @@ H.collect_plan = {
     for (const r of rows) { const a = m.get(r.id); r.actual = a.actual; r.gap = a.actual - r.expected; r.project = a.project; r.building = a.building; }
   },
   acts: {
+    // 17/11/2026: chuyển lịch — giữ nguyên kế hoạch cũ («Đã thay thế», ghi lý do) để đối chiếu, lập kế hoạch mới theo ngày / số tiền mới (liên kết kế hoạch trước)
+    async doi_lich(r, d, { db, user, demo }) {
+      const on = d.expected_on, amt = +d.expected > 0 ? +d.expected : +r.expected;
+      if (!on) bad('Chọn ngày dự kiến thu mới');
+      await sys(db, 'collect_plan', r.id, { status: 'thay_the' }, user, 'doi_lich', `Chuyển lịch ${C.dmy(r.expected_on)} → ${C.dmy(on)}${amt !== +r.expected ? ` · ${fmtMoney(r.expected)} → ${fmtMoney(amt)}` : ''} — ${d.reason}`);
+      const keep = ['contract_id', 'basis', 'basis_note', 'ability', 'explain', 'owner_id', 'fund_src', 'scope', 'call_id'];
+      const n = (await create('collect_plan', { ...Object.fromEntries(keep.map(k => [k, r[k]])), month: String(on).slice(0, 7), expected_on: on, expected: amt, version: (+r.version || 1) + 1, prev_id: r.id, resched_reason: d.reason,
+        explain: r.explain || (amt > +r.debt_left ? 'Chuyển lịch từ kế hoạch trước' : null) }, user, { db, system: true, demo })).row;
+      return { msg: `Đã chuyển lịch sang ${C.dmy(on)} (kế hoạch cũ giữ lại, trạng thái «Đã thay thế»)`, row: n };
+    },
     async revise(r, d, { db, user, demo }) {
       await sys(db, 'collect_plan', r.id, { status: 'thay_the' }, user, 'thay_the', 'Lập phiên bản mới');
       const keep = ['month', 'contract_id', 'expected', 'expected_on', 'basis', 'basis_note', 'ability', 'explain', 'owner_id'];
