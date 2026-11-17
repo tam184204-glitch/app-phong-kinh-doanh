@@ -2017,3 +2017,41 @@ table.t.uc-t td.num, table.t.uc-t th.num { white-space: nowrap; overflow-wrap: n
 .pw2 .pr-t tr.p td{font-weight:700;background:#f2f6fc}
 .pw2 .pr-t tr.p td:first-child{padding-left:22px}
 .pw2 .pr-t tr.b td:first-child{padding-left:36px}
+
+/* 17/11/2026: Xem chi tiết công nợ (Báo cáo công nợ đến hạn) — 1 cửa sổ cuộn dọc, mỗi HĐ 1 khối */
+.modal.ud-modal{width:min(1500px,92vw);max-width:92vw}
+.modal.ud-modal .mh h3{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px}
+.ud-asof{font-size:12.5px;font-weight:500;color:var(--muted)}
+.ud .ud-blk{border:1px solid var(--line2);border-radius:12px;padding:12px 14px;margin-bottom:14px;background:var(--card)}
+.ud .ud-hd{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--line2)}
+.ud .ud-hd a{font-weight:800;font-size:16px;color:#1e4e8c}
+.ud .ud-ov{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-bottom:10px}
+.ud .ud-ov>div{background:#f6f9fd;border-radius:8px;padding:7px 12px;display:flex;flex-direction:column;min-width:0}
+.ud .ud-ov span{font-size:12px;color:var(--muted)}
+.ud .ud-ov b{font-size:16px;font-variant-numeric:tabular-nums}
+.ud .ud-ov small{font-size:11.5px;color:var(--muted)}
+.ud .ud-ov .red b{color:#c0392b}
+.ud .ud-bar{display:flex;gap:2px;height:14px;margin:2px 0 3px}
+.ud .ud-seg{position:relative;border-radius:3px;overflow:hidden;background:#e5e7eb;min-width:8px}
+.ud .ud-seg i{position:absolute;left:0;top:0;bottom:0;background:#2e7d4f}
+.ud .ud-seg.r{background:#f5c2bd}.ud .ud-seg.a{background:#fde3a7}.ud .ud-seg.b{background:#cfe0f7}.ud .ud-seg.s{background:#e5e7eb}.ud .ud-seg.g{background:#bfe3cc}
+.ud .ud-barl{display:flex;gap:2px;font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.25}
+.ud .ud-barl span{min-width:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ud .ud-info{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px 18px;margin-bottom:10px;padding:8px 0;border-top:1px dashed var(--line2);border-bottom:1px dashed var(--line2)}
+.ud .ud-info>div{display:flex;flex-direction:column;min-width:0}
+.ud .ud-info span{font-size:12px;color:var(--muted)}
+.ud .ud-info b{font-size:13.5px;font-weight:600}
+.ud .ud-wn{color:#b45309;font-weight:600}
+.ud .ud-tw{overflow-x:auto;margin-bottom:6px}
+.ud .ud-t{width:100%;border-collapse:collapse;font-size:13px}
+.ud .ud-t th{background:#f1f5fb;font-size:12.5px;text-align:left;padding:6px 8px;white-space:nowrap;border-bottom:1px solid var(--line2)}
+.ud .ud-t td{padding:6px 8px;border-bottom:1px solid var(--line2);vertical-align:top}
+.ud .ud-t .n{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.ud .ud-t tr.od td{background:#fdf1f0}
+.ud .ud-t tr.od td:first-child b{color:#b42318}
+.ud .ud-t tr.mt td:first-child b{color:#6b46c1}
+.ud .ud-t tr.void td{color:var(--muted);text-decoration:line-through}
+.ud .ud-t tfoot td{font-weight:700;background:#eaf1fb;border-bottom:0}
+.ud .ud-sub{font-weight:600;font-size:13px;margin:8px 0 4px;color:#1e4e8c}
+.ud .ud-sec,.ud .sec-title{color:#1e4e8c;font-weight:800;font-size:13.5px;letter-spacing:.3px;margin:16px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--line2);text-transform:uppercase}
+@media (max-width:900px){.ud .ud-ov{grid-template-columns:repeat(2,minmax(0,1fr))}}
