@@ -2196,3 +2196,48 @@ table.t.uc-t td.num, table.t.uc-t th.num { white-space: nowrap; overflow-wrap: n
 .ap .ap-st{margin-top:10px;font-size:12.5px;color:#254f89;font-weight:600}
 .ap .ap-st a{color:#295ba0}
 .ap .ap-errb{color:#b42318}
+/* 17/11/2026: Tạo kế hoạch thu bán mới — bố cục 3 phần */
+.modal.su3-modal{width:min(1240px,94vw)}
+.modal.su3-modal .mb{max-height:calc(100vh - 190px);background:#fbfcfe}
+.su3{display:grid;gap:14px;font-size:13.5px}
+.su3-hint{color:var(--muted);font-size:13px}
+.su3 section{background:#fff;border:1px solid var(--line2);border-radius:12px;padding:12px 14px}
+.su3 h4{display:flex;align-items:center;gap:8px;font-size:14px;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line2)}
+.su3 h4 span{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#eaf1fb;color:#1e4e8c;font-size:12px}
+.su3-pick{display:grid;grid-template-columns:minmax(220px,1.3fr) minmax(150px,.8fr) minmax(240px,1.4fr);gap:10px}
+.su3-pick label{display:grid;gap:4px;font-size:12.5px;color:var(--muted)}
+.su3-pick select,.su3-dd{height:36px;font-size:13.5px;color:var(--ink,#1f2937)}
+.su3-dd{display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 10px;cursor:pointer;text-align:left}
+.su3-dd:disabled{background:#f4f6f9;color:var(--muted);cursor:not-allowed}
+.su3-list{margin-top:8px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.su3-lh{display:flex;gap:10px;align-items:center;padding:8px 10px;background:#f6f9fd;border-bottom:1px solid var(--line2)}
+.su3-lh .inp{max-width:240px;height:32px}
+.su3-lb{max-height:240px;overflow:auto}
+.su3-lb label{display:flex;gap:10px;align-items:center;padding:7px 12px;border-bottom:1px solid var(--line2);cursor:pointer}
+.su3-lb label:hover{background:#f6f9fd}.su3-lb label.on{background:#eef5ff}
+.su3-lb .n{font-variant-numeric:tabular-nums}
+.su3-tag{display:inline-block;font-size:11px;line-height:1;padding:3px 7px;border-radius:999px;background:#e6f5f3;color:#0f766e;font-weight:600}
+.su3-warn{color:#b45309;font-size:12.5px}
+.su3-bulk{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 10px;margin-bottom:8px;background:#fff7e8;border:1px solid #f3d9a4;border-radius:8px}
+.su3-bulk select{height:32px;width:auto}
+.su3-tw{overflow-x:auto}
+.su3-t{width:100%;border-collapse:collapse;font-size:13.5px}
+.su3-t th{background:#f1f5fb;text-align:left;padding:8px;font-size:12.5px;font-weight:600;white-space:nowrap;border-bottom:1px solid var(--line2)}
+.su3-t td{padding:7px 8px;border-bottom:1px solid var(--line2);vertical-align:middle}
+.su3-t .n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.su3-t .c{text-align:center}
+.su3-t select.inp,.su3-t .inp{height:32px;width:100%;min-width:0}
+.su3-t tr.pk td{background:#f6faff}
+.su3-gh td{background:#f7f9fc;font-weight:600;color:#1e4e8c;padding:6px 8px}
+.su3-gh span{color:var(--muted);margin:0 4px}.su3-gh em{font-style:normal;font-weight:400;color:var(--muted);margin-left:10px;font-size:12.5px}
+.su3-empty{text-align:center;color:var(--muted);padding:18px!important}
+.su3-lc{display:flex;align-items:center;gap:10px;justify-content:space-between}
+.su3-lt{display:grid;line-height:1.35}.su3-lt small{color:var(--muted);font-size:12px}
+.su3-sum{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--line2);border-radius:10px;overflow:hidden}
+.su3-sum>div{padding:10px 14px;border-left:1px solid var(--line2)}.su3-sum>div:first-child{border-left:0}
+.su3-sum span{display:block;font-size:12px;color:var(--muted)}.su3-sum b{font-size:16px;font-variant-numeric:tabular-nums}
+.su3-sum>div.w b{color:#b45309}
+.su3-more{margin:8px 0 4px;font-size:13px}.su3-more summary{cursor:pointer;color:#1e4e8c;font-weight:600}.su3-more>div{display:grid;gap:3px;padding:6px 2px}
+.su3-g{display:grid;grid-template-columns:minmax(220px,1fr) minmax(260px,2fr);gap:4px 14px;margin-top:6px}
+.su3-sh{display:flex;gap:24px;margin-bottom:10px;padding:8px 12px;background:#f6f9fd;border-radius:8px}
+.su3-ss{display:flex;flex-wrap:wrap;gap:6px 24px;margin-top:10px;padding:8px 12px;background:#f6f9fd;border-radius:8px}
+@media (max-width:820px){.su3-pick,.su3-g{grid-template-columns:1fr}.su3-sum{grid-template-columns:repeat(2,1fr)}}

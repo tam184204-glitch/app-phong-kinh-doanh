@@ -962,7 +962,7 @@ async function saleUnits(db, user, f) {
   return { units: us.map(u => { const free = ['chua_mo_ban', 'con_ban', 'giu_cho', 'da_coc'].includes(u.status);
     const ok = !u.sale_ct && !u.moi_plan && (free || !!u.rent_ct);
     return { id: u.id, code: u.code, project: u.project, project_id: u.project_id, building: u.building, building_id: u.building_id, area: u.area_tt != null ? +u.area_tt : null, price: +(u.total_price || u.list_price || 0) || null, hd_value: +u.total_price > 0 ? Math.round(+u.total_price) : null,
-      status_l: ST[u.status] || u.status, ok, note: u.sale_ct ? `Đã có HĐ bán ${u.sale_ct}` : u.moi_plan ? `Đã có kế hoạch bán mới (tháng ${u.moi_plan})` : u.rent_ct ? `Đang cho thuê – HĐ số ${u.rent_ct}` : free ? ST[u.status] || '' : `Trạng thái «${ST[u.status] || u.status}» — chưa thể bán` }; }) };
+      status_l: ST[u.status] || u.status, ok, rent: !!u.rent_ct, note: u.sale_ct ? `Đã có HĐ bán ${u.sale_ct}` : u.moi_plan ? `Đã có kế hoạch bán mới (tháng ${u.moi_plan})` : u.rent_ct ? `Đang cho thuê – HĐ số ${u.rent_ct}` : free ? ST[u.status] || '' : `Trạng thái «${ST[u.status] || u.status}» — chưa thể bán` }; }) };
 }
 // 17/11/2026: LỊCH THU GỢI Ý CỦA 1 CĂN theo chính sách bán đang áp dụng (đã ban hành) — giá trị dự kiến bán, các đợt (nội dung, mốc tính, tỷ lệ, số tiền, tháng thu):
 // tiền căn hộ = giá − phí bảo trì − hoàn thiện; đợt «sau ký N ngày» = ngày ký (đầu tháng bán) + N; đợt bàn giao: theo kế hoạch bàn giao của căn (nếu có) + số ngày;
