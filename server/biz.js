@@ -108,14 +108,26 @@ async function unitDeals(db, unitId) {
   }
   return { unit: u, rows, totals: T };
 }
+// 17/11/2026: gốc vay còn phải trả khách của từng HĐ vay = gốc thực tế đã nhận (phiếu thu hợp lệ của HĐ vay) − gốc đã hoàn trả (phiếu chi «Trả gốc HĐ vay» hợp lệ), đến ngày asOf;
+// không gồm lãi, không tính gốc khách chưa chuyển. Dùng làm «đã thu» tiến độ HĐMB của HĐ thuê đi kèm (cùng căn, cùng khách / đã tick liên kết) — ghi / sửa / hủy phiếu là tự đổi
+async function loanNet(db, ids, asOf) {
+  const M = new Map(ids.map(id => [id, { recv: 0, back: 0, net: 0 }])); if (!ids.length) return M; const t = asOf || today();
+  for (const x of await db.q("SELECT contract_id, sum(amount) s FROM kd_receipt WHERE status = 'hop_le' AND contract_id = ANY($1) AND voucher_date <= $2 GROUP BY 1", [ids, t])) M.get(x.contract_id).recv = +x.s;
+  for (const x of await db.q("SELECT contract_id, sum(amount) s FROM kd_payment WHERE status = 'hop_le' AND kind = 'tra_goc' AND contract_id = ANY($1) AND voucher_date <= $2 GROUP BY 1", [ids, t])) M.get(x.contract_id).back = +x.s;
+  for (const m of M.values()) m.net = Math.max(0, m.recv - m.back);
+  return M;
+}
+// HĐ vay đi kèm HĐ thuê c: cùng căn và (đã tick liên kết hoặc cùng khách hàng)
+const loanPairOf = (c, vays) => vays.filter(v => v.unit_id === c.unit_id && ((c.link_ids || []).includes(v.id) || (v.link_ids || []).includes(c.id) || (v.customer_id && v.customer_id === c.customer_id)));
 // HĐ thuê / HĐ vay bán căn (14/11/2026): tra cứu ở tab công nợ của HĐ — tiến độ thu tiền HĐMB (sale_sched) đã thu tới đâu + tình hình thu tiền HĐ vay cùng căn.
 // Đã thu HĐMB: HĐ thuê có HĐ vay cùng căn → gốc khách đã chuyển theo HĐ vay; còn lại → phiếu thu của chính hợp đồng (giống Bảng tổng hợp công nợ). Chia theo thứ tự hạn
 async function saleTrack(db, c, asOf) {
   const t = asOf || today(), t7 = addDays(t, 7);
-  const vays = c.kind === 'vay' ? [c] : await db.q("SELECT * FROM kd_contract WHERE kind = 'vay' AND status NOT IN ('huy','thanh_ly') AND unit_id = $1 ORDER BY id", [c.unit_id]);
-  const D = await debtOf(db, [c.id, ...vays.map(v => v.id)], t);
-  const pair = c.kind === 'thue' && vays.length, vPaid = vays.reduce((s, v) => s + (+D.get(v.id)?.paid || 0), 0);
-  let left = pair ? vPaid : +D.get(c.id)?.paid || 0;
+  const vays = c.kind === 'vay' ? [c] : loanPairOf(c, await db.q("SELECT * FROM kd_contract WHERE kind = 'vay' AND status NOT IN ('huy','thanh_ly') AND unit_id = $1 ORDER BY id", [c.unit_id]));
+  const D = await debtOf(db, [c.id, ...vays.map(v => v.id)], t), LN = await loanNet(db, vays.map(v => v.id), t);
+  // 17/11/2026: HĐ thuê có HĐ vay đi kèm (cùng căn, cùng khách / đã liên kết): đã thu HĐMB = gốc vay còn phải trả khách (gốc đã nhận − gốc đã hoàn trả), không gồm lãi / tiền thuê
+  const pair = c.kind === 'thue' && vays.length, vPaid = vays.reduce((s, v) => s + LN.get(v.id).net, 0);
+  let left = pair || c.kind === 'vay' ? vPaid : +D.get(c.id)?.paid || 0;
   const st = (i, rem) => rem <= 0 ? 'da_thu' : i.due_on < t ? 'qua_han' : i.due_on === t ? 'den_han' : i.due_on <= t7 ? 'sap_den_han' : i.paid > 0 ? 'mot_phan' : 'chua_den_han';
   const rows = (Array.isArray(c.sale_sched) ? c.sale_sched : []).map((x, k) => ({ seq: k + 1, name: x.name, due_on: String(x.due_on || '').slice(0, 10), pct: x.pct ?? null, amount: +x.amount || 0, maint: !!x.maint }))
     .sort((a, b) => a.due_on.localeCompare(b.due_on) || a.seq - b.seq);
@@ -123,7 +135,7 @@ async function saleTrack(db, c, asOf) {
   const sum = (xs, k) => xs.reduce((s, x) => s + x[k], 0), total = sum(rows, 'amount'), paid = sum(rows, 'paid'), od = rows.filter(i => i.st === 'qua_han'), nx = rows.find(i => i.rem > 0 && i.due_on >= t);
   const sale = { rows, total, paid, extra: left, left: total - paid, paid_pct: total ? Math.round(paid / total * 1000) / 10 : 0, overdue: sum(od, 'rem'),
     overdue_days: od.length ? Math.round((Date.parse(t) - Date.parse(od[0].due_on)) / 864e5) : 0, next: nx ? { name: nx.name, rem: nx.rem, due_on: nx.due_on } : null, value: +c.unit_total || 0,
-    src: pair ? `Đã thu = gốc khách đã chuyển theo HĐ vay ${vays.map(v => v.number).filter(Boolean).join(', ')}` : `Đã thu = phiếu thu của hợp đồng ${c.number || ''}` };
+    src: pair || c.kind === 'vay' ? `Đã thu = gốc vay còn phải trả khách theo HĐ vay ${vays.map(v => v.number).filter(Boolean).join(', ')} (gốc đã nhận ${fmtMoney(vays.reduce((s, v) => s + LN.get(v.id).recv, 0))} − gốc đã hoàn trả ${fmtMoney(vays.reduce((s, v) => s + LN.get(v.id).back, 0))}; không gồm lãi, không gồm tiền thuê)` : `Đã thu = phiếu thu của hợp đồng ${c.number || ''}` };
   const ids = vays.map(v => v.id);
   const RC = ids.length ? await db.q("SELECT contract_id, voucher_date, voucher_no, content, amount FROM kd_receipt WHERE status = 'hop_le' AND contract_id = ANY($1) AND voucher_date <= $2 ORDER BY voucher_date, id", [ids, t]) : [];
   const GT = ids.length ? await db.q("SELECT contract_id, sum(coalesce(paid_amt, 0)) s FROM kd_loan_pay WHERE kind = 'goc' AND contract_id = ANY($1) AND (paid_on IS NULL OR paid_on <= $2) GROUP BY 1", [ids, t]) : [];
@@ -3093,4 +3105,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, noticeHist, noticeUnits, noticeRent, rentPrices, noticeConflict, unitNotes, saleSchedPolicy, saleSchedRows, rentBackfill, noxhSyncAll, unitDeals, bgDueSet, rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, noticeHist, noticeUnits, noticeRent, rentPrices, noticeConflict, unitNotes, saleSchedPolicy, saleSchedRows, rentBackfill, noxhSyncAll, unitDeals, bgDueSet, loanNet, loanPairOf, rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

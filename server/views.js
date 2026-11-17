@@ -1078,15 +1078,15 @@ async function debtSummary(db, user, f = {}) {
   const ids = cs.map(c => c.id), D = await B.debtOf(db, ids, to);
   // căn có cả HĐ thuê và HĐ vay (cùng 1 khách mua — 16/11/2026): 1 dòng; phải thu theo tiến độ HĐMB của HĐ thuê, đã thu = gốc khách đã chuyển của HĐ vay
   const hasMain = new Set(cs.filter(c => ['hdmb', 'thue_mua'].includes(c.kind)).map(c => c.unit_id));
-  const VY = await db.q("SELECT id, unit_id, number FROM kd_contract WHERE kind = 'vay' AND status = 'da_ky' AND unit_id = ANY($1) ORDER BY id", [[...new Set(cs.filter(c => c.kind === 'thue').map(c => c.unit_id))]]);
-  const pairU = new Map(); for (const v of VY) if (!hasMain.has(v.unit_id)) (pairU.get(v.unit_id) || pairU.set(v.unit_id, []).get(v.unit_id)).push(v);
-  const DVY = await B.debtOf(db, VY.map(v => v.id), to), vPaid = uid => (pairU.get(uid) || []).reduce((s, v) => s + (+DVY.get(v.id)?.paid || 0), 0);
+  // 17/11/2026: HĐ vay đi kèm = cùng căn + (cùng khách hàng hoặc đã tick liên kết); đã thu của HĐ thuê = gốc vay còn phải trả khách (gốc đã nhận − gốc đã hoàn trả), không gồm lãi / tiền thuê
+  const VY = await db.q("SELECT id, unit_id, number, customer_id, link_ids FROM kd_contract WHERE kind = 'vay' AND status = 'da_ky' AND unit_id = ANY($1) ORDER BY id", [[...new Set(cs.filter(c => c.kind === 'thue').map(c => c.unit_id))]]);
+  const pairU = new Map(); for (const c of cs.filter(c => c.kind === 'thue' && !hasMain.has(c.unit_id))) { const ps = B.loanPairOf(c, VY); if (ps.length) pairU.set(c.unit_id, ps); }
+  const LNY = await B.loanNet(db, VY.map(v => v.id), to), vPaid = uid => (pairU.get(uid) || []).reduce((s, v) => s + LNY.get(v.id).net, 0);
   // HĐ vay cùng căn (bản chất bán): số dư = gốc khách đã chuyển − gốc công ty đã trả lại
   const unitIds = [...new Set(cs.map(c => c.unit_id))];
   const vays = await db.q("SELECT c.id, c.unit_id FROM kd_contract c WHERE c.kind = 'vay' AND c.status IN ('da_ky','thanh_ly') AND coalesce(c.nature, 'ban') = 'ban' AND c.unit_id = ANY($1)", [unitIds]);
-  const DV = await B.debtOf(db, vays.map(v => v.id), to);
-  const GT = new Map((await db.q("SELECT contract_id, sum(coalesce(paid_amt, 0)) s FROM kd_loan_pay WHERE kind = 'goc' AND contract_id = ANY($1) AND (paid_on IS NULL OR paid_on <= $2) GROUP BY 1", [vays.map(v => v.id), to])).map(x => [x.contract_id, +x.s]));
-  const HDV = new Map(); for (const v of vays) HDV.set(v.unit_id, (HDV.get(v.unit_id) || 0) + (DV.get(v.id)?.paid || 0) - (GT.get(v.id) || 0));
+  const LNV = await B.loanNet(db, vays.map(v => v.id), to);   // cùng cách tính: phiếu thu gốc − phiếu chi trả gốc
+  const HDV = new Map(); for (const v of vays) HDV.set(v.unit_id, (HDV.get(v.unit_id) || 0) + LNV.get(v.id).net);
   const ST_L = Object.fromEntries(C.F.contract.status.o.map(o => [o[0], o[1]]));
   // chia 1 hợp đồng ra các khoản: { n, g, p, b } × { total, due, paid }
   const split = c => {
