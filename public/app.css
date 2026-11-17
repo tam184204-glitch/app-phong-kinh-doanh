@@ -2187,3 +2187,7 @@ table.t.uc-t td.num, table.t.uc-t th.num { white-space: nowrap; overflow-wrap: n
 .ap .ap-t td button.ap-tg{width:20px;height:20px;padding:0;margin-right:6px;font-size:13px;line-height:18px;text-align:center;border:1px solid #c9d6ea;border-radius:4px;background:#fff;color:#254f89;font-weight:700}
 /* 17/11/2026: 3 dòng nguồn thu in đậm toàn dòng (tên, Tổng năm, T1–T12, kể cả số tiền bấm được) */
 .ap .ap-t tr.l0 td,.ap .ap-t tr.l0 td b,.ap .ap-t tr.l0 td button,.ap .ap-t tr.l0 td .ap-z{font-weight:700}
+.ap .ap-t td.ap-x{background:#fbfaf6}
+.ap .ap-t tr.tot td.ap-x{background:#254b80}
+.ap .ap-ok{color:#1d7a46;font-weight:700}
+.ap .ap-bad{color:#b42318;font-weight:700}

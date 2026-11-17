@@ -903,23 +903,37 @@ async function planYear(db, user, f) {
       contract: x.number || '', sale_month: x.sale_month || null, value: x.unit_price != null ? +x.unit_price : null, rate: x.rate != null ? +x.rate : null, carry_src: x.carry_from ? `Chuyển tiếp từ ${x.carry_from}` : '' }); }
   for (const r of roots.values()) if (r.value > r.alloc && (!r.sale || String(r.sale).slice(0, 4) === String(y)))
     items.push({ ...r.base, label: `Giá trị bán chưa phân bổ tháng thu (${Math.round((r.value - r.alloc) / r.value * 1000) / 10}%)`, month: null, due_on: null, week_l: '', plan: r.value - r.alloc, act: 0, rem: r.value - r.alloc, st: 'Chưa phân bổ kỳ', sale_month: r.sale, value: r.value, carry_src: '' });
-  // ---- công nợ còn lại + cho thuê (số dư từng đợt / kỳ tại đầu năm)
-  const [A, S] = await Promise.all([dueDebt(db, user, { ...fo, to: now, all: 1 }), dueDebt(db, user, { ...fo, to: `${y - 1}-12-31`, all: 1 })]);
+  // ---- công nợ còn lại + cho thuê — 17/11/2026 (đối chiếu Bảng tổng hợp công nợ): số còn nợ HIỆN TẠI (tại ngày chốt) của từng đợt / kỳ, đã trừ tiền thu đúng đợt;
+  //  vùng: trong năm (tháng đến hạn) · quá hạn chưa thu → «Công nợ chuyển sang» (đã chọn kỳ dự kiến thu trong năm → tháng đó) · đến hạn năm khác → «Ngoài năm» · chưa có ngày → «Chưa phân bổ kỳ»;
+  //  công nợ còn lại: tổng của căn = «Còn lại theo hợp đồng» (Bảng tổng hợp công nợ, cùng ngày chốt); phần còn lại theo HĐ chưa có lịch thu → «Chưa phân bổ kỳ» (không bỏ sót)
+  const asof = today(), [A, S] = await Promise.all([dueDebt(db, user, { ...fo, to: asof, all: 1 }), dueDebt(db, user, { ...fo, to: `${y - 1}-12-31`, all: 1 })]);
   const key = r => `${r.contract_id}|${r.src}|${r.inst_id || r.dot}|${r.due_on || ''}`, S0 = new Map(S.rows.map(r => [key(r), r]));
   const sig = new Map((await db.q('SELECT id, signed_on, contract_on FROM kd_contract WHERE id = ANY($1)', [[...new Set(A.rows.map(r => r.contract_id))]])).map(c => [c.id, ddDay(c.signed_on || c.contract_on)]));
   const DDP = new Map((await db.q("SELECT src_key, month FROM kd_collect_plan WHERE src_key LIKE 'dd:%' AND status NOT IN ('thay_the','dong','tu_choi','da_chot')")).map(x => [x.src_key, String(x.month).slice(0, 7)]));
+  const skipU = new Set(), cnSum = new Map(), cnInfo = new Map();
   for (const r of A.rows) { const tb = ddTab(r); if (!tb) continue;
     if (tb === 'thue' && /c[oọ]c/i.test(`${r.content || ''} ${r.dot || ''}`)) continue;   // tiền cọc không tính vào thu cho thuê
-    const mu = moiUnit.get(+r.unit_id); if (tb === 'ban' && mu && (sig.get(r.contract_id) || '') >= mu) continue;   // HĐ phát sinh từ kế hoạch bán mới → nguồn bán mới
-    const s0 = S0.get(key(r)), paid0 = s0 ? +s0.paid : 0, plan = Math.max(0, +r.amount - paid0); if (!(plan > 0)) continue;
-    if (r.due_on && r.due_on > Y1) continue;
-    const act = Math.max(0, Math.min(plan, +r.paid - paid0)), sel = DDP.get(`dd:${tb}:${r.unit_id}`);
-    const month = !r.due_on ? null : r.due_on >= Y0 ? r.due_on.slice(0, 7) : sel && sel.slice(0, 4) === String(y) ? sel : null;
-    items.push({ src: tb === 'thue' ? 'thue' : 'cn', project: r.project, building: r.building, unit: r.unit, unit_id: r.unit_id, customer: r.customer, contract: r.number, label: `${r.dot}${r.content ? ' — ' + r.content : ''}`,
-      month, due_on: r.due_on, carry: !!(r.due_on && r.due_on < Y0), carry_src: r.due_on && r.due_on < Y0 ? `Quá hạn từ năm trước (hạn ${C.dmy(r.due_on)})` : '', sel_on: r.due_on && r.due_on < Y0 && month ? month : null, week_l: '', plan, act, rem: Math.max(0, plan - act),
-      st: !r.due_on ? 'Chưa có ngày đến hạn' : r.due_on < Y0 ? (month ? 'Quá hạn năm trước — đã chọn kỳ thu' : 'Quá hạn năm trước — chưa chọn kỳ thu') : act >= plan ? 'Đã thu đủ' : r.due_on < now ? 'Quá hạn' : 'Chưa đến hạn' }); }
+    const mu = moiUnit.get(+r.unit_id); if (tb === 'ban' && mu && (sig.get(r.contract_id) || '') >= mu) { skipU.add(+r.unit_id); continue; }   // HĐ phát sinh từ kế hoạch bán mới → nguồn bán mới
+    const rem = Math.max(0, +r.rem || 0); if (!(rem > 0)) continue;
+    const s0 = S0.get(key(r)), act = Math.max(0, +r.paid - (s0 ? +s0.paid : 0)), sel = DDP.get(`dd:${tb}:${r.unit_id}`), od = r.due_on && r.due_on < asof;
+    let zone, month = null;
+    if (!r.due_on) zone = 'nodate';
+    else if (od) { if (sel && sel.slice(0, 4) === String(y)) { zone = 'in'; month = sel; } else if (sel) zone = 'out'; else zone = 'carry'; }
+    else if (r.due_on >= Y0 && r.due_on <= Y1) { zone = 'in'; month = r.due_on.slice(0, 7); }
+    else zone = 'out';
+    const src = tb === 'thue' ? 'thue' : 'cn';
+    if (src === 'cn') { cnSum.set(+r.unit_id, (cnSum.get(+r.unit_id) || 0) + rem); if (!cnInfo.has(+r.unit_id)) cnInfo.set(+r.unit_id, r); }
+    items.push({ src, project: r.project, building: r.building, unit: r.unit, unit_id: r.unit_id, customer: r.customer, contract: r.number, label: `${r.dot}${r.content ? ' — ' + r.content : ''}`,
+      month, zone, due_on: r.due_on, carry: !!od, carry_src: od ? `Quá hạn chưa thu (hạn ${C.dmy(r.due_on)})${sel ? ' — đã chọn kỳ thu ' + sel.slice(5) + '/' + sel.slice(0, 4) : ''}` : '', week_l: '', plan: rem, act, rem,
+      st: zone === 'nodate' ? 'Chưa có ngày đến hạn — chưa phân bổ kỳ' : zone === 'carry' ? 'Công nợ chuyển sang — chưa chọn kỳ thu' : zone === 'out' ? `Ngoài năm ${y} (${r.due_on ? C.dmy(r.due_on) : ''}${od && sel ? ', kỳ thu ' + sel.slice(5) + '/' + sel.slice(0, 4) : ''})` : od ? 'Quá hạn — đã chọn kỳ thu' : r.due_on === asof ? 'Đến hạn hôm nay' : 'Chưa đến hạn' }); }
+  // đối chiếu «Còn lại theo hợp đồng» (Bảng tổng hợp công nợ) theo căn — phần chưa có lịch thu → Chưa phân bổ kỳ
+  const DS = await debtSummary(db, user, { to: asof }), total_left = {};
+  for (const r of DS.rows) { if (skipU.has(+r.unit_id) || (fo.project && +r.project_id && +r.project_id !== +fo.project)) continue;
+    const tl = Math.max(0, Math.round(+r.t_left || 0)); total_left[r.unit_id] = tl; const gap = tl - Math.round(cnSum.get(+r.unit_id) || 0);
+    if (gap > 0) { const b0 = cnInfo.get(+r.unit_id); items.push({ src: 'cn', project: r.project, building: r.building, unit: r.unit, unit_id: r.unit_id, customer: r.customer, contract: r.number, label: 'Phần còn lại theo hợp đồng chưa có lịch thu / ngày đến hạn',
+      month: null, zone: 'gap', due_on: null, carry: false, carry_src: '', week_l: '', plan: gap, act: 0, rem: gap, st: 'Chưa phân bổ kỳ (đối chiếu Bảng tổng hợp công nợ)' }); } }
   const projects = [...new Set(items.map(i => i.project).filter(Boolean))].sort();
-  return { year: y, months: M12, asof: now, items, projects, can_plan: can(user, E.collect_plan, 'c') };
+  return { year: y, months: M12, asof: today(), items, projects, total_left, can_plan: can(user, E.collect_plan, 'c') };
 }
 // 17/11/2026: CĂN ĐỦ ĐIỀU KIỆN LẬP KẾ HOẠCH BÁN MỚI — chưa có HĐ bán (HĐMB / thuê mua / HĐ thuê – vay bán căn) còn hiệu lực;
 // căn trạng thái có thể bán (chưa mở bán / còn bán / giữ chỗ / đặt cọc) hoặc đang cho thuê (ghi «Đang cho thuê – HĐ số …»); căn đã có kế hoạch bán mới còn hiệu lực: báo, không chọn lại
