@@ -945,6 +945,106 @@ async function planYear(db, user, f) {
   const projects = [...new Set(items.map(i => i.project).filter(Boolean))].sort();
   return { year: y, months: M12, from: Y0, to: Y1, asof, items, projects, total_left, can_plan: can(user, E.collect_plan, 'c') };
 }
+// 17/11/2026: BẢN KẾ HOẠCH DÒNG THU NĂM — lưu thành bản có mã, phiên bản, số liệu cố định (chụp toàn bộ khoản thu 3 nguồn theo tháng, đến từng căn tại thời điểm lưu / trình);
+// luồng: Nháp → Chờ duyệt → Đã duyệt / Yêu cầu chỉnh sửa; Nháp / Yêu cầu chỉnh sửa được sửa và cập nhật lại số liệu nguồn; đã trình / đã duyệt không tự ghi đè;
+// đã duyệt muốn điều chỉnh → tạo phiên bản mới, trình duyệt lại (bản duyệt cũ chuyển «Đã thay thế» khi bản mới được duyệt); thực thu tính riêng để so sánh, không đổi số kế hoạch
+const YP_ST = { nhap: 'Nháp', cho_duyet: 'Chờ duyệt', da_duyet: 'Đã duyệt', yeu_cau_sua: 'Yêu cầu chỉnh sửa', thay_the: 'Đã thay thế' };
+const YP_BOSS = ['truong_phong', 'lanh_dao', 'admin'];
+const ypH = (user, act, note) => ({ at: new Date().toISOString(), by: user.id, by_name: user.full_name || user.username || '', act, note: note || '' });
+const ypEdit = (user, p) => ['nhap', 'yeu_cau_sua'].includes(p.status) && (p.created_by === user.id || YP_BOSS.includes(user.role)) && can(user, E.collect_plan, 'c');
+const ypDecider = (user, p) => p.status === 'cho_duyet' && (user.role === 'admin' || user.role === 'lanh_dao' || (+p.approver_id === user.id && YP_BOSS.includes(user.role)));
+async function ypCapture(db, user, h) {
+  await planRollover(db);
+  const pj = h.project_id ? await db.one('SELECT code FROM kd_project WHERE id = $1', [+h.project_id]) : null; if (h.project_id && !pj) bad('Không tìm thấy dự án');
+  const r = await planYear(db, user, { year: h.year, from: ddDay(h.from_on), to: ddDay(h.to_on), asof: ddDay(h.asof) });
+  const items = pj ? r.items.filter(i => i.project === pj.code) : r.items, cu = new Set(items.filter(i => i.src === 'cn').map(i => String(i.unit_id)));
+  const total_left = Object.fromEntries(Object.entries(r.total_left).filter(([k]) => cu.has(String(k))));
+  const t = { cn: 0, moi: 0, thue: 0, un: 0 }; for (const i of items) { if (i.month) t[i.src] += +i.plan || 0; else if (i.zone !== 'out' && i.zone !== 'carry') t.un += +i.plan || 0; }
+  t.all = t.cn + t.moi + t.thue; t.units = new Set(items.map(i => i.src + '|' + (i.unit_id || i.grp || i.unit))).size; t.items = items.length;
+  return { data: { year: r.year, months: r.months, from: r.from, to: r.to, asof: r.asof, items, total_left, can_plan: false, captured_at: new Date().toISOString() }, totals: t };
+}
+const ypHead = async (db, id) => { const p = await db.one('SELECT * FROM kd_year_plan WHERE id = $1', [+id]); if (!p) bad('Không tìm thấy bản kế hoạch'); return p; };
+const ypUsers = async db => (await db.q("SELECT id, full_name, role FROM kd_user WHERE active ORDER BY full_name"));
+async function ypList(db, user, f = {}) {
+  if (!can(user, E.collect_plan, 'r')) deny();
+  const p = [], w = ['true']; if (/^\d{4}$/.test(String(f.year || ''))) { p.push(+f.year); w.push(`y.year = $${p.length}`); } if (YP_ST[f.status]) { p.push(f.status); w.push(`y.status = $${p.length}`); }
+  const rows = await db.q(`SELECT y.id, y.code, y.name, y.year, y.from_on, y.to_on, y.asof, y.version, y.root_id, y.status, y.totals, y.note, y.created_at, y.submitted_at, y.decided_at, y.approver_id,
+      pr.code project, pr.name project_name, a.full_name created_name, b.full_name approver_name,
+      (SELECT max(z.version) FROM kd_year_plan z WHERE z.root_id = y.root_id) last_ver
+    FROM kd_year_plan y LEFT JOIN kd_project pr ON pr.id = y.project_id LEFT JOIN kd_user a ON a.id = y.created_by LEFT JOIN kd_user b ON b.id = y.approver_id
+    WHERE ${w.join(' AND ')} ORDER BY y.year DESC, y.code DESC, y.version DESC`, p);
+  return { rows: rows.map(r => ({ ...r, from_on: ddDay(r.from_on), to_on: ddDay(r.to_on), asof: ddDay(r.asof), status_l: YP_ST[r.status] })), st: YP_ST,
+    approvers: (await ypUsers(db)).filter(u => YP_BOSS.includes(u.role)).map(u => [u.id, u.full_name]), can_c: can(user, E.collect_plan, 'c') };
+}
+// thực thu (phiếu thu hợp lệ) theo tháng × nguồn của các căn trong bản kế hoạch — cập nhật liên tục, chỉ để so sánh
+async function ypActual(db, d) {
+  const to = d.to < today() ? d.to : today(); if (d.from > to) return { to, m: {} };
+  const units = [...new Set(d.items.filter(i => i.unit_id).map(i => +i.unit_id))], moi = new Set(d.items.filter(i => i.src === 'moi' && i.unit_id).map(i => +i.unit_id));
+  if (!units.length) return { to, m: {} };
+  const rs = await db.q(`SELECT u.id unit_id, c.kind, coalesce(c.nature, '') nature, to_char(r.voucher_date, 'YYYY-MM') m, r.amount, coalesce(r.content, '') || ' ' || coalesce(i.name, '') txt
+    FROM kd_receipt r JOIN kd_contract c ON c.id = r.contract_id JOIN kd_unit u ON u.id = c.unit_id LEFT JOIN kd_installment i ON i.id = r.installment_id
+    WHERE r.status = 'hop_le' AND r.voucher_date >= $1 AND r.voucher_date <= $2 AND u.id = ANY($3)`, [d.from, to, units]);
+  const m = {}; for (const r of rs) { const th = r.kind === 'thue' && r.nature !== 'ban'; if (th && /c[oọ]c/i.test(r.txt)) continue;
+    const s = th ? 'thue' : moi.has(+r.unit_id) ? 'moi' : 'cn'; (m[s] ||= {})[r.m] = (m[s][r.m] || 0) + Math.round(+r.amount || 0); }
+  return { to, m };
+}
+async function ypGet(db, user, id) {
+  if (!can(user, E.collect_plan, 'r')) deny();
+  const p = await ypHead(db, id), us = new Map((await ypUsers(db)).map(u => [u.id, u.full_name]));
+  const pr = p.project_id ? await db.one('SELECT code, name FROM kd_project WHERE id = $1', [p.project_id]) : null;
+  const vers = await db.q('SELECT id, version, status, created_at, decided_at FROM kd_year_plan WHERE root_id = $1 ORDER BY version', [p.root_id]);
+  const last = Math.max(...vers.map(v => v.version)), open = vers.some(v => ['nhap', 'yeu_cau_sua', 'cho_duyet'].includes(v.status));
+  return { plan: { ...p, data: undefined, from_on: ddDay(p.from_on), to_on: ddDay(p.to_on), asof: ddDay(p.asof), status_l: YP_ST[p.status], project: pr?.code || '', project_name: pr?.name || 'Tất cả dự án',
+      created_name: us.get(p.created_by) || '', approver_name: us.get(p.approver_id) || '', decided_name: us.get(p.decided_by) || '' },
+    data: p.data, actual: ['da_duyet', 'thay_the'].includes(p.status) ? await ypActual(db, p.data) : null,
+    versions: vers.map(v => ({ ...v, status_l: YP_ST[v.status] })),
+    approvers: (await ypUsers(db)).filter(u => YP_BOSS.includes(u.role)).map(u => [u.id, u.full_name]),
+    can: { edit: ypEdit(user, p), decide: ypDecider(user, p), newver: p.status === 'da_duyet' && p.version === last && !open && can(user, E.collect_plan, 'c'), del: p.status === 'nhap' && ypEdit(user, p) && !p.submitted_at } };
+}
+// lưu nháp / lưu và trình duyệt (tạo mới hoặc sửa bản Nháp / Yêu cầu chỉnh sửa); trình duyệt luôn chốt lại số liệu tại thời điểm trình
+async function ypSave(db, user, b) {
+  if (!can(user, E.collect_plan, 'c')) deny('Bạn không được lập kế hoạch thu');
+  const name = String(b.name || '').trim().slice(0, 200), note = String(b.note || '').trim().slice(0, 2000), asof = isoDay(b.asof) || today(), apr = b.approver_id ? +b.approver_id : null, submit = !!b.submit;
+  if (!name) bad('Nhập tên kế hoạch');
+  if (apr) { const a = await db.one('SELECT role, active FROM kd_user WHERE id = $1', [apr]); if (!a?.active || !YP_BOSS.includes(a.role)) bad('Người duyệt không có thẩm quyền phê duyệt'); }
+  if (submit && !apr) bad('Chọn người duyệt trước khi trình');
+  let p;
+  if (b.id) { p = await ypHead(db, b.id); if (!ypEdit(user, p)) bad(`Bản kế hoạch đang «${YP_ST[p.status]}» — không sửa được${p.status === 'da_duyet' ? ' (tạo phiên bản mới để điều chỉnh)' : ''}`); }
+  else { const y = /^\d{4}$/.test(String(b.year || '')) ? +b.year : bad('Chọn năm kế hoạch'), fr = isoDay(b.from), to = isoDay(b.to); if (!fr || !to || fr > to) bad('Kỳ kế hoạch không hợp lệ');
+    const n = (await db.one(`INSERT INTO kd_counter (prefix, n) VALUES ($1, 1) ON CONFLICT (prefix) DO UPDATE SET n = kd_counter.n + 1 RETURNING n`, ['KHDT-' + y])).n;
+    p = await db.one(`INSERT INTO kd_year_plan (code, name, year, from_on, to_on, project_id, asof, version, status, created_by, hist) VALUES ($1, $2, $3, $4, $5, $6, $7, 1, 'nhap', $8, '[]') RETURNING *`,
+      [`KHDT-${y}-${String(n).padStart(3, '0')}`, name, y, fr, to, b.project_id ? +b.project_id : null, asof, user.id]);
+    await db.q('UPDATE kd_year_plan SET root_id = id WHERE id = $1', [p.id]); p.root_id = p.id; }
+  const hist = [...(p.hist || [])], refresh = !b.id || submit || b.refresh || ddDay(p.asof) !== asof;
+  let cap = null; if (refresh) cap = await ypCapture(db, user, { ...p, asof });
+  hist.push(ypH(user, !b.id ? (submit ? 'Lập và trình duyệt' : 'Lập — lưu nháp') : submit ? 'Trình duyệt' : refresh ? 'Sửa — cập nhật lại số liệu nguồn' : 'Sửa thông tin', submit ? `Chốt số liệu tại ngày chốt công nợ ${C.dmy(asof)}` : ''));
+  const st = submit ? 'cho_duyet' : p.status === 'yeu_cau_sua' ? 'yeu_cau_sua' : 'nhap';
+  const x = await db.one(`UPDATE kd_year_plan SET name = $2, note = $3, asof = $4, approver_id = $5, status = $6, hist = $7, updated_by = $8, updated_at = now()${cap ? ', data = $9, totals = $10' : ''}${submit ? ', submitted_by = $8, submitted_at = now()' : ''} WHERE id = $1 RETURNING id, code, version, status`,
+    [p.id, name, note, asof, apr, st, JSON.stringify(hist), user.id, ...(cap ? [JSON.stringify(cap.data), JSON.stringify(cap.totals)] : [])]);
+  await C.audit(db, 'year_plan', x.id, b.id ? 'update' : 'create', null, { code: x.code, version: x.version, status: st }, user, hist[hist.length - 1].act);
+  return { id: x.id, msg: `${x.code} v${x.version}: ${submit ? 'đã trình duyệt — số liệu đã chốt' : 'đã lưu nháp'}` };
+}
+async function ypDecide(db, user, id, b) {
+  const p = await ypHead(db, id); if (!ypDecider(user, p)) bad(p.status === 'cho_duyet' ? 'Bạn không phải người duyệt của bản kế hoạch này' : `Bản kế hoạch đang «${YP_ST[p.status]}»`);
+  const ok = !!b.ok, cm = String(b.comment || '').trim().slice(0, 2000); if (!ok && !cm) bad('Nhập ý kiến yêu cầu chỉnh sửa');
+  const hist = [...(p.hist || []), ypH(user, ok ? 'Phê duyệt' : 'Yêu cầu chỉnh sửa', cm)];
+  await db.q(`UPDATE kd_year_plan SET status = $2, decided_by = $3, decided_at = now(), decide_note = $4, hist = $5, updated_at = now() WHERE id = $1`, [p.id, ok ? 'da_duyet' : 'yeu_cau_sua', user.id, cm, JSON.stringify(hist)]);
+  if (ok) for (const o of await db.q("SELECT id, hist FROM kd_year_plan WHERE root_id = $1 AND id <> $2 AND status = 'da_duyet'", [p.root_id, p.id]))
+    await db.q("UPDATE kd_year_plan SET status = 'thay_the', hist = $2 WHERE id = $1", [o.id, JSON.stringify([...(o.hist || []), ypH(user, 'Đã thay thế', `Phiên bản v${p.version} được duyệt`)])]);
+  await C.audit(db, 'year_plan', p.id, ok ? 'approve' : 'reject', { status: p.status }, { status: ok ? 'da_duyet' : 'yeu_cau_sua' }, user, cm);
+  return { msg: `${p.code} v${p.version}: ${ok ? 'đã phê duyệt — là kế hoạch chính thức' : 'đã yêu cầu chỉnh sửa'}` };
+}
+async function ypNewVer(db, user, id) {
+  const p = await ypHead(db, id), g = await ypGet(db, user, id); if (!g.can.newver) bad('Chỉ tạo phiên bản mới từ phiên bản đã duyệt mới nhất (không có phiên bản khác đang lập / chờ duyệt)');
+  const v = (await db.one('SELECT max(version) v FROM kd_year_plan WHERE root_id = $1', [p.root_id])).v + 1, cap = await ypCapture(db, user, { ...p, asof: today() });
+  const x = await db.one(`INSERT INTO kd_year_plan (code, name, year, from_on, to_on, project_id, asof, version, root_id, status, approver_id, note, data, totals, created_by, hist)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'nhap', $10, $11, $12, $13, $14, $15) RETURNING id`, [p.code, p.name, p.year, p.from_on, p.to_on, p.project_id, today(), v, p.root_id, p.approver_id, p.note,
+    JSON.stringify(cap.data), JSON.stringify(cap.totals), user.id, JSON.stringify([ypH(user, `Tạo phiên bản mới từ v${p.version}`, 'Số liệu nguồn lấy lại tại ngày chốt công nợ ' + C.dmy(today()))])]);
+  await C.audit(db, 'year_plan', x.id, 'create', null, { code: p.code, version: v }, user, `Phiên bản mới từ v${p.version}`);
+  return { id: x.id, msg: `${p.code}: đã tạo phiên bản v${v} (nháp)` };
+}
+async function ypDel(db, user, id) { const p = await ypHead(db, id); if (!(p.status === 'nhap' && ypEdit(user, p) && !p.submitted_at)) bad('Chỉ xóa được bản nháp chưa trình duyệt');
+  await db.q('DELETE FROM kd_year_plan WHERE id = $1', [p.id]); await C.audit(db, 'year_plan', p.id, 'delete', { code: p.code, version: p.version }, null, user, 'Xóa bản nháp'); return { msg: `Đã xóa bản nháp ${p.code} v${p.version}` }; }
 // 17/11/2026: CĂN ĐỦ ĐIỀU KIỆN LẬP KẾ HOẠCH BÁN MỚI — chưa có HĐ bán (HĐMB / thuê mua / HĐ thuê – vay bán căn) còn hiệu lực;
 // căn trạng thái có thể bán (chưa mở bán / còn bán / giữ chỗ / đặt cọc) hoặc đang cho thuê (ghi «Đang cho thuê – HĐ số …»); căn đã có kế hoạch bán mới còn hiệu lực: báo, không chọn lại
 const SALE_LIVE = "c.status NOT IN ('huy','thanh_ly') AND (c.kind IN ('hdmb','thue_mua') OR (c.kind IN ('thue','vay') AND c.nature = 'ban'))";
@@ -1930,4 +2030,4 @@ async function monthly(db, period, projectId) {
   };
 }
 
-module.exports = { dueDebt, ddPlanToggle, ddUnitHist, ddUnitDetail, saleUnits, saleUnitPlan, saleUnitSched, planSplitWeeks, salePlanCreate, planLink, planList, planReport, planAdjust, planRollover, planYear, debtStatus, setDebtClass, setDebtDays, debtCfg, debtGrpOf, debtGrpL, customerLedger, myDay, debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, voucherList, contractTrack, setLateRate, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
+module.exports = { ypList, ypGet, ypSave, ypDecide, ypNewVer, ypDel, dueDebt, ddPlanToggle, ddUnitHist, ddUnitDetail, saleUnits, saleUnitPlan, saleUnitSched, planSplitWeeks, salePlanCreate, planLink, planList, planReport, planAdjust, planRollover, planYear, debtStatus, setDebtClass, setDebtDays, debtCfg, debtGrpOf, debtGrpL, customerLedger, myDay, debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, voucherList, contractTrack, setLateRate, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };

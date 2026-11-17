@@ -2241,3 +2241,24 @@ table.t.uc-t td.num, table.t.uc-t th.num { white-space: nowrap; overflow-wrap: n
 .su3-sh{display:flex;gap:24px;margin-bottom:10px;padding:8px 12px;background:#f6f9fd;border-radius:8px}
 .su3-ss{display:flex;flex-wrap:wrap;gap:6px 24px;margin-top:10px;padding:8px 12px;background:#f6f9fd;border-radius:8px}
 @media (max-width:820px){.su3-pick,.su3-g{grid-template-columns:1fr}.su3-sum{grid-template-columns:repeat(2,1fr)}}
+/* 17/11/2026: Bản kế hoạch dòng thu năm — thông tin bản, trạng thái, thao tác duyệt, so sánh thực thu */
+.ap .yp-hd{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.ap .yp-hd h3{margin:2px 0 0;font-size:18px}
+.yp-st{display:inline-block;padding:4px 10px;border-radius:999px;font-size:12.5px;font-weight:600;color:var(--c);background:color-mix(in srgb,var(--c) 12%,#fff);border:1px solid color-mix(in srgb,var(--c) 35%,#fff);white-space:nowrap}
+.yp-st.sm{font-size:11.5px;padding:2px 8px}
+.ap .yp-act{display:flex;gap:8px;flex-wrap:wrap}
+.ap .yp-act button{padding:7px 11px;font-size:13px}
+.ap .yp-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px 18px;margin-top:14px;padding:12px 14px;background:#f7f9fc;border-radius:10px}
+.ap .yp-g span{display:block;font-size:12px;color:#6b7a90}.ap .yp-g b{font-weight:600;font-size:13.5px}
+.yp-msg{margin-top:10px;padding:8px 12px;border-radius:8px;background:#f1f5fb;color:#334155;font-size:13px}
+.yp-msg.r{background:#fdecec;color:#991b1b}.yp-msg.g{background:#eaf7ee;color:#166534}
+.ap .yp-vs{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:10px;font-size:13px;color:#6b7a90}
+.ap .yp-vs button{padding:4px 10px;font-size:12.5px}.ap .yp-vs button.on{background:#254f89;color:#fff;border-color:#254f89}
+.ap .yp-cmp td.c2{color:#6b7a90;white-space:nowrap}.ap .yp-cmp tr.yp-a td{border-top:2px solid #e1e7ef}.ap .yp-cmp tr.yp-pc td{color:#6b7a90;font-size:12.5px}
+.yp-dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.yp-f{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px}
+.yp-ro{min-height:36px;display:flex;align-items:center;padding:0 10px;background:#f4f6f9;border-radius:8px;font-size:13.5px}
+.yp-lf{display:flex;gap:12px;align-items:end;margin-bottom:10px}.yp-lf label{display:grid;gap:3px;font-size:12.5px;color:var(--muted)}.yp-lf select{height:34px;width:auto}
+.modal.yp-lm{width:min(1300px,94vw)}
+@media (max-width:700px){.yp-f{grid-template-columns:1fr}}
+.ap .yp-cmp td.c2{text-align:left!important}.ap .yp-cmp td.c1{vertical-align:middle}

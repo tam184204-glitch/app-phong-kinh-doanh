@@ -379,6 +379,13 @@ R('GET', '/api/sale-units', async (req, res, u, p, qs) => send(res, 200, await V
 R('POST', '/api/sale-plan-units', async (req, res, u) => { const b = await readJson(req); send(res, 200, await tx(db => V.saleUnitPlan(db, u, b))); });   // kế hoạch thu bán mới theo căn
 R('POST', '/api/sale-plan', async (req, res, u) => { const b = await readJson(req); send(res, 200, await tx(db => V.salePlanCreate(db, u, b))); });   // tạo dòng thu bán mới (17/11/2026)
 R('POST', '/api/collect-plans/:id/link', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await tx(db => V.planLink(db, u, p.id, b))); });   // liên kết dòng thu bán mới với căn / HĐ
+// 17/11/2026: bản kế hoạch dòng thu năm — lưu nháp / trình duyệt / phê duyệt / phiên bản mới
+R('GET', '/api/year-plans', async (req, res, u, p, qs) => send(res, 200, await V.ypList({ q, one }, u, qs)));
+R('GET', '/api/year-plans/:id', async (req, res, u, p) => send(res, 200, await V.ypGet({ q, one }, u, p.id)));
+R('POST', '/api/year-plans', async (req, res, u) => { const b = await readJson(req); send(res, 200, await tx(db => V.ypSave(db, u, b))); });
+R('POST', '/api/year-plans/:id/decide', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await tx(db => V.ypDecide(db, u, p.id, b))); });
+R('POST', '/api/year-plans/:id/new-version', async (req, res, u, p) => send(res, 200, await tx(db => V.ypNewVer(db, u, p.id))));
+R('DELETE', '/api/year-plans/:id', async (req, res, u, p) => send(res, 200, await tx(db => V.ypDel(db, u, p.id))));
 R('GET', '/api/plan-year', async (req, res, u, p, qs) => { await tx(db => V.planRollover(db)); send(res, 200, await V.planYear({ q, one }, u, qs)); });   // Kế hoạch dòng thu năm (17/11/2026)
 R('POST', '/api/collect-plans/:id/split-weeks', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await tx(db => V.planSplitWeeks(db, u, p.id, b))); });   // phân bổ 1 khoản tháng ra nhiều tuần (17/11/2026)
 R('POST', '/api/collect-plans/:id/adjust', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await tx(db => V.planAdjust(db, u, p.id, b))); });   // kế hoạch thu tuần / tháng   // Theo dõi công nợ đến hạn (17/11/2026)
