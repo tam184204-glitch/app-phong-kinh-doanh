@@ -2651,10 +2651,7 @@ V.duedebt = async main => {
 
       <select class="inp" id="ddKind" style="width:auto;height:30px"></select><select class="inp" id="ddGrp" style="width:auto;height:30px"></select>
       <select class="inp" id="ddBank" style="width:auto;height:30px"></select><select class="inp" id="ddOwn" style="width:auto;height:30px"></select>
-      <span class="grow"></span><span class="small muted" id="ddN"></span></div><div id="ddT"><div class="empty">Đang tải…</div></div>
-    <div class="small muted mt">Tự lấy tại ngày chốt các khoản có hạn ≤ ngày chốt còn chưa thanh toán đủ của hợp đồng đã ký còn theo dõi — mỗi dòng 1 khoản của 1 hợp đồng. Mỗi sheet 1 dòng / mã căn. <b>Sheet 1 — Công nợ bán hàng</b> (theo Bảng tổng hợp công nợ): tiền căn hộ, phí bảo trì, hoàn thiện / nội thất — đợt HĐMB / thuê mua, đợt hoàn thiện, tiến độ HĐMB của HĐ thuê / HĐ vay bán căn, đợt gốc khách chuyển của HĐ vay bán căn. <b>Sheet 2 — Công nợ cho thuê</b> (theo Theo dõi công nợ cho thuê): kỳ tiền thuê nhà + nội thất và khoản thu theo HĐ thuê. Gốc / lãi HĐ vay công ty phải trả khách không tính vào 2 sheet phải thu (xem Theo dõi công nợ › HĐ vay).
-      HĐ thuê + HĐ vay đi kèm dùng chung 1 tiến độ HĐMB — chỉ tính 1 lần ở HĐ thuê; «đã thanh toán» của tiến độ này = gốc vay còn phải trả khách (số liệu liên kết, không tạo phiếu thu). Thu / chi một phần: còn theo dõi phần thiếu; thanh toán đủ thì tự rời danh sách.
-      Lãi quá hạn = còn phải thanh toán × lãi suất quá hạn của hợp đồng × số ngày quá hạn / 365; HĐ chưa ghi lãi suất quá hạn: «Chưa đủ thông tin tính lãi». HĐ đã thanh lý đã đóng công nợ — khoản hoàn trả xem <a href="#/v/payouts">Theo dõi thanh lý &amp; chi trả</a>. Bấm 1 dòng để mở công nợ hợp đồng.</div></div></div>`;
+      <span class="grow"></span><span class="small muted" id="ddN"></span></div><div id="ddT"><div class="empty">Đang tải…</div></div></div></div>`;
   wireFilter(main, f, load);
   $('#ddQ', main).oninput = debounce(e => { s.q = e.target.value; draw(); }, 200);
   for (const [id, k] of [['#ddKind', 'kind'], ['#ddGrp', 'grp'], ['#ddBank', 'bank'], ['#ddOwn', 'owner']]) $(id, main).onchange = e => { s[k] = e.target.value; draw(); };
