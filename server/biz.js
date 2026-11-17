@@ -76,6 +76,32 @@ async function recomputeUnit(db, unitId, user) {
   if (st !== u.status) await sys(db, 'unit', u.id, { status: st }, user, 'cap_nhat_trang_thai');
 }
 
+// 16/11/2026: «Các hợp đồng của căn» (tab công nợ của HĐ / xem chi tiết căn ở Bảng tổng hợp công nợ) — mọi HĐ của căn (HĐMB, thuê, thuê mua, hoàn thiện, vay):
+// số HĐ, loại, khách, trạng thái theo dữ liệu thật (Dự thảo / Chờ duyệt hồ sơ / Hồ sơ không đủ điều kiện / Chờ duyệt hợp đồng / Đã duyệt – chờ ký / Đã ký / Đã thanh lý / Đã hủy),
+// ngày cập nhật; công nợ tách từng HĐ (HĐ thuê / vay bán căn có thêm dòng tiến độ HĐMB); HĐ đã thanh lý / hủy = «Đã đóng theo dõi công nợ», không cộng vào tổng phải thu
+const UC_KIND = { hdmb: 'HĐ mua bán', thue: 'HĐ thuê', thue_mua: 'HĐ thuê mua', hoan_thien: 'HĐ hoàn thiện căn hộ', vay: 'HĐ vay' };
+const UC_ST = { du_thao: ['Dự thảo', 's'], tu_choi: ['Trả lại dự thảo', 'r'], cho_duyet: ['Chờ duyệt hợp đồng', 'a'], cho_ky: ['Đã duyệt – chờ ký', 'b'], da_ky: ['Đã ký', 'g'], thanh_ly: ['Đã thanh lý', 't'], huy: ['Đã hủy', 's'] };
+const ucStatus = c => c.noxh_fail && !['da_ky', 'thanh_ly', 'huy'].includes(c.status) ? [`${c.status === 'du_thao' ? 'Dự thảo – ' : ''}Hồ sơ không đủ điều kiện`, 'r']
+  : c.noxh_wait && ['du_thao', 'tu_choi'].includes(c.status) ? ['Dự thảo – Chờ duyệt hồ sơ', 'a'] : UC_ST[c.status] || [c.status, 's'];
+async function unitDeals(db, unitId) {
+  const u = await db.one('SELECT id, code FROM kd_unit WHERE id = $1', [+unitId]); if (!u) return { rows: [] };
+  const cs = await db.q(`SELECT c.*, k.full_name customer, k.code kcode FROM kd_contract c LEFT JOIN kd_customer k ON k.id = c.customer_id WHERE c.unit_id = $1
+    ORDER BY (c.status IN ('thanh_ly','huy')), CASE c.kind WHEN 'hdmb' THEN 1 WHEN 'thue_mua' THEN 2 WHEN 'thue' THEN 3 WHEN 'hoan_thien' THEN 4 WHEN 'vay' THEN 5 ELSE 6 END, c.id`, [u.id]);
+  const D = await debtOf(db, cs.map(c => c.id)), T = { total: 0, paid: 0, left: 0, overdue: 0 };
+  const rows = [];
+  for (const c of cs) {
+    const d = D.get(c.id), closed = ['thanh_ly', 'huy'].includes(c.status), [st, stc] = ucStatus(c);
+    const row = { id: c.id, number: c.number || c.code || '#' + c.id, kind: c.kind, kind_l: UC_KIND[c.kind] || c.kind, nature: c.kind === 'thue' && c.nature === 'ban' ? 'bán căn hộ' : null, customer: c.customer || '', kcode: c.kcode || '',
+      status: c.status, st_l: st, st_c: stc, updated_at: c.updated_at, closed, closed_txt: c.status === 'thanh_ly' ? `Đã đóng theo dõi công nợ${c.liquidated_on ? ' từ ' + d10(c.liquidated_on).split('-').reverse().join('/') : ''}` : c.status === 'huy' ? 'Đã hủy — không theo dõi công nợ' : null,
+      debt: { total: d.total, paid: d.paid, left: closed ? 0 : d.left, overdue: closed ? 0 : d.overdue, left_at_close: d.left_at_close ?? null }, n_inst: d.inst.length };
+    if (['thue', 'vay'].includes(c.kind) && c.sale_on && Array.isArray(c.sale_sched) && c.sale_sched.length && !closed) {   // tiến độ thu tiền HĐMB của HĐ thuê / vay bán căn — tách riêng
+      const s = (await saleTrack(db, c)).sale; row.sale = { total: s.total, paid: s.paid, left: s.left, overdue: s.overdue, src: s.src, policy: c.sale_policy_txt || null };
+    }
+    if (!closed && c.kind !== 'vay') { T.total += d.total; T.paid += d.paid; T.left += d.left; T.overdue += d.overdue; }   // tổng: HĐ còn theo dõi (không gồm HĐ vay — tiền khách cho vay; tiến độ HĐMB của HĐ thuê ở dòng riêng, đã thu lấy từ phiếu thu / gốc vay nên không cộng trùng)
+    rows.push(row);
+  }
+  return { unit: u, rows, totals: T };
+}
 // HĐ thuê / HĐ vay bán căn (14/11/2026): tra cứu ở tab công nợ của HĐ — tiến độ thu tiền HĐMB (sale_sched) đã thu tới đâu + tình hình thu tiền HĐ vay cùng căn.
 // Đã thu HĐMB: HĐ thuê có HĐ vay cùng căn → gốc khách đã chuyển theo HĐ vay; còn lại → phiếu thu của chính hợp đồng (giống Bảng tổng hợp công nợ). Chia theo thứ tự hạn
 async function saleTrack(db, c, asOf) {
@@ -3048,4 +3074,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, noticeHist, noticeUnits, noticeRent, rentPrices, noticeConflict, unitNotes, saleSchedPolicy, saleSchedRows, rentBackfill, noxhSyncAll, rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, noticeHist, noticeUnits, noticeRent, rentPrices, noticeConflict, unitNotes, saleSchedPolicy, saleSchedRows, rentBackfill, noxhSyncAll, unitDeals, rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
