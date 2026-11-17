@@ -667,10 +667,13 @@ async function dueDebt(db, user, f = {}) {
     // f.all (Xem chi tiết 1 căn): lấy MỌI đợt — đã thu đủ, đến hạn, quá hạn, chưa đến hạn — cùng nguồn / cùng quy tắc không cộng trùng như bảng chính
     if (f.all ? !o.due_on : !(o.rem > 0) || !o.due_on || o.due_on > t || (from && o.due_on < from)) return;
     const days = o.rem > 0 ? Math.max(0, dayDiff(o.due_on, t)) : 0, rate = c.late_rate != null && c.late_rate !== '' ? +c.late_rate : null;
-    const lai = o.dir === 'thu' && days > 0 ? (rate != null ? Math.round(o.rem * rate / 100 * days / 365) : null) : 0;
+    // 17/11/2026: chỉ HĐ mua bán tính lãi chậm trả (theo lãi suất quá hạn ghi trên HĐ; chưa ghi → cảnh báo «Chưa đủ thông tin tính lãi»);
+    // HĐ hoàn thiện / thuê / thuê mua / vay (kể cả tiến độ HĐMB trên HĐ thuê / vay): không áp dụng lãi chậm trả — lãi = 0, ghi «Không áp dụng lãi»
+    const na = o.dir === 'thu' && days > 0 && c.kind !== 'hdmb';
+    const lai = o.dir === 'thu' && days > 0 ? (na ? 0 : rate != null ? Math.round(o.rem * rate / 100 * days / 365) : null) : 0;
     o.st = !(o.rem > 0) ? 'da_thu' : o.due_on < t ? 'qua_han' : o.due_on === t ? 'den_han' : o.paid > 0 ? 'mot_phan' : 'chua_den_han';
     const g = ddGrp(days), r = { ...base(c), ...o, days, grp: g, grp_l: DD_GRP.find(x => x[0] === g)[1], dir_l: o.dir === 'thu' ? 'Phải thu khách hàng' : 'Phải trả khách hàng',
-      lai, lai_l: lai == null ? 'Chưa đủ thông tin tính lãi' : '', total_rem: o.rem + (lai || 0) };
+      lai, lai_na: na, lai_l: lai == null ? 'Chưa đủ thông tin tính lãi' : na ? 'Không áp dụng lãi' : '', total_rem: o.rem + (lai || 0) };
     extra(r, c); rows.push(r);
   };
   for (const c of cs) {
@@ -1039,9 +1042,9 @@ async function ddUnitDetail(db, user, f) {
     return { id: c.id, number: c.number || '', kind: c.kind, kind_l: KL[c.kind] || c.kind, status_l: SL[c.status] || c.status, signed_on: c.signed_on ? ddDay(c.signed_on) : null,
       customer: c.customer, phone: c.phone || '', unit: c.unit, project: c.project, building: c.building, owner: c.owner_l || '',
       apt_value: +(c.sale_unit_val || c.after_tax || c.value || 0) || null, maint_fee: +(c.sale_maint ?? c.maint_fee ?? 0) || null, rent: c.kind === 'thue' ? (+c.rent_house || 0) + (+c.rent_furn || 0) || +c.rent || null : null,
-      late_rate: rate, src_note: shared ? 'Gồm tiến độ HĐMB dùng chung với HĐ vay — chỉ tính 1 lần tại hợp đồng này' : c.kind === 'vay' && !thu.length ? 'Tiến độ HĐMB dùng chung tính tại HĐ thuê — không tính lại ở HĐ vay' : '',
+      late_rate: rate, lai_na: c.kind !== 'hdmb', src_note: shared ? 'Gồm tiến độ HĐMB dùng chung với HĐ vay — chỉ tính 1 lần tại hợp đồng này' : c.kind === 'vay' && !thu.length ? 'Tiến độ HĐMB dùng chung tính tại HĐ thuê — không tính lại ở HĐ vay' : '',
       total: sm(thu, 'amount'), paid: sm(thu, 'paid'), rem: sm(thu, 'rem'), overdue: sm(thu.filter(r => r.st === 'qua_han'), 'rem'), lai: sm(thu, 'lai'), noLai,
-      rows: thu.map(r => ({ dot: r.dot, due_on: r.due_on, content: r.content, amount: +r.amount, paid: +r.paid, rem: +r.rem, st: r.st, st_l: ST[r.st] || r.st, days: r.days, over: r.st === 'qua_han' ? +r.rem : 0, lai: r.lai, maint: !!r.maint, src: r.src, inst_id: r.inst_id })),
+      rows: thu.map(r => ({ dot: r.dot, due_on: r.due_on, content: r.content, amount: +r.amount, paid: +r.paid, rem: +r.rem, st: r.st, st_l: ST[r.st] || r.st, days: r.days, over: r.st === 'qua_han' ? +r.rem : 0, lai: r.lai, lai_na: !!r.lai_na, maint: !!r.maint, src: r.src, inst_id: r.inst_id })),
       pay_rows: tra.map(r => ({ dot: r.dot, due_on: r.due_on, content: r.content, amount: +r.amount, paid: +r.paid, rem: +r.rem, st: r.st, st_l: ST[r.st] || r.st, days: r.days, loan_pay_id: r.loan_pay_id })) }; });
   const vouchers = [...RC.map(r => ({ type: 'thu', ent: 'receipt', id: r.id, on: ddDay(r.voucher_date), no: r.voucher_no || '', contract: live.find(c => c.id === r.contract_id)?.number || '', thu: +r.amount, chi: 0,
       alloc: (alloc.get(r.id) || []).map(([l, v]) => `${l}: ${fmtMoney(v)}`).join('; ') || (r.status === 'hop_le' ? '' : '—'), content: r.content || '', st_l: RST[r.status] || r.status || '', ok: r.status === 'hop_le' })),
