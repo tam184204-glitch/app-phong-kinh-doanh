@@ -899,9 +899,10 @@ async function planYear(db, user, f) {
     if (x.ym < Y0.slice(0, 7) || x.ym > Y1.slice(0, 7) || (x.status === 'dong' && !(x.actual > 0))) continue;
     const pv = x.prev_id ? byId.get(x.prev_id) : null, inMonth = x.carry_in != null && pv && pv.ym === x.ym, plan = inMonth ? +x.expected - +x.carry_in : x.status === 'dong' ? x.actual : +x.expected;
     items.push({ ...base, label: x.carry_from ? `Chuyển tiếp từ ${x.carry_from}` : x.rate ? `Thu ${String(x.rate).replace('.', ',')}% giá trị bán` : (x.title || 'Kế hoạch thu bán mới'), month: x.ym, due_on: x.expected_on, week_l: periodL(x.ym, x.wk),
-      plan, act: x.actual, rem: Math.max(0, +x.expected - x.actual), st: x.status === 'da_chot' ? 'Đã chốt kỳ' : x.status === 'dong' ? 'Đã bỏ chọn' : 'Đang thực hiện', plan_id: x.id }); }
+      plan, act: x.actual, rem: Math.max(0, +x.expected - x.actual), st: x.status === 'da_chot' ? 'Đã chốt kỳ' : x.status === 'dong' ? 'Đã bỏ chọn' : 'Đang thực hiện', plan_id: x.id,
+      contract: x.number || '', sale_month: x.sale_month || null, value: x.unit_price != null ? +x.unit_price : null, rate: x.rate != null ? +x.rate : null, carry_src: x.carry_from ? `Chuyển tiếp từ ${x.carry_from}` : '' }); }
   for (const r of roots.values()) if (r.value > r.alloc && (!r.sale || String(r.sale).slice(0, 4) === String(y)))
-    items.push({ ...r.base, label: `Giá trị bán chưa phân bổ tháng thu (${Math.round((r.value - r.alloc) / r.value * 1000) / 10}%)`, month: null, due_on: null, week_l: '', plan: r.value - r.alloc, act: 0, rem: r.value - r.alloc, st: 'Chưa phân bổ kỳ' });
+    items.push({ ...r.base, label: `Giá trị bán chưa phân bổ tháng thu (${Math.round((r.value - r.alloc) / r.value * 1000) / 10}%)`, month: null, due_on: null, week_l: '', plan: r.value - r.alloc, act: 0, rem: r.value - r.alloc, st: 'Chưa phân bổ kỳ', sale_month: r.sale, value: r.value, carry_src: '' });
   // ---- công nợ còn lại + cho thuê (số dư từng đợt / kỳ tại đầu năm)
   const [A, S] = await Promise.all([dueDebt(db, user, { ...fo, to: now, all: 1 }), dueDebt(db, user, { ...fo, to: `${y - 1}-12-31`, all: 1 })]);
   const key = r => `${r.contract_id}|${r.src}|${r.inst_id || r.dot}|${r.due_on || ''}`, S0 = new Map(S.rows.map(r => [key(r), r]));
@@ -915,7 +916,7 @@ async function planYear(db, user, f) {
     const act = Math.max(0, Math.min(plan, +r.paid - paid0)), sel = DDP.get(`dd:${tb}:${r.unit_id}`);
     const month = !r.due_on ? null : r.due_on >= Y0 ? r.due_on.slice(0, 7) : sel && sel.slice(0, 4) === String(y) ? sel : null;
     items.push({ src: tb === 'thue' ? 'thue' : 'cn', project: r.project, building: r.building, unit: r.unit, unit_id: r.unit_id, customer: r.customer, contract: r.number, label: `${r.dot}${r.content ? ' — ' + r.content : ''}`,
-      month, due_on: r.due_on, carry: !!(r.due_on && r.due_on < Y0), sel_on: r.due_on && r.due_on < Y0 && month ? month : null, week_l: '', plan, act, rem: Math.max(0, plan - act),
+      month, due_on: r.due_on, carry: !!(r.due_on && r.due_on < Y0), carry_src: r.due_on && r.due_on < Y0 ? `Quá hạn từ năm trước (hạn ${C.dmy(r.due_on)})` : '', sel_on: r.due_on && r.due_on < Y0 && month ? month : null, week_l: '', plan, act, rem: Math.max(0, plan - act),
       st: !r.due_on ? 'Chưa có ngày đến hạn' : r.due_on < Y0 ? (month ? 'Quá hạn năm trước — đã chọn kỳ thu' : 'Quá hạn năm trước — chưa chọn kỳ thu') : act >= plan ? 'Đã thu đủ' : r.due_on < now ? 'Quá hạn' : 'Chưa đến hạn' }); }
   const projects = [...new Set(items.map(i => i.project).filter(Boolean))].sort();
   return { year: y, months: M12, asof: now, items, projects, can_plan: can(user, E.collect_plan, 'c') };
