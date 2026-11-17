@@ -2070,14 +2070,3 @@ table.t.uc-t td.num, table.t.uc-t th.num { white-space: nowrap; overflow-wrap: n
 .ud .ud-ct small{font-size:12px}
 .ud .ud-ct small em{color:#c0392b;font-style:normal;font-weight:600}
 .ud .ud-ct.on{border-color:#1e4e8c;box-shadow:inset 0 0 0 1px #1e4e8c;background:#eaf1fb}
-/* 17/11/2026: Chi tiết căn hộ — giao diện theo mẫu: tiêu đề lớn, 4 tab, tóm tắt từng hợp đồng */
-.modal.ud-modal{border-radius:18px}
-.modal.ud-modal .mh h3{font-size:22px;font-weight:800}
-.ud .ud-cu{font-weight:500;font-size:13px;color:var(--muted);margin-bottom:12px}
-.ud .ud-tabs button{padding:10px 18px;font-size:15px;border-radius:10px}
-.ud .ud-sum{padding:12px 2px 14px;border-bottom:1px solid var(--line2);font-size:15px;line-height:1.9}
-.ud .ud-sum-h{display:flex;align-items:baseline;gap:12px}
-.ud .ud-sum-h b{font-size:15.5px}
-.ud .ud-sum .small{line-height:1.5}
-.modal.ud-modal .mh{background:#fff;border-bottom:0}
-.modal.ud-modal::before{display:none}
