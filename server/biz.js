@@ -1128,6 +1128,16 @@ async function noxhAutoFinish(db, n, user, warn, demo, { s, u, ptype, owner, nee
 // 17/11/2026: HĐ vay «Bán căn hộ» (lập mới / đổi sang bán căn / đổi căn, khách) → dự thảo HĐ hoàn thiện căn hộ theo gói hoàn thiện của chính sách bán đã ban hành áp cho căn
 // (khách, căn, giá trị, tiến độ thu giá trị hoàn thiện theo chính sách — lập ở afterSave của HĐ hoàn thiện), liên kết HĐ vay + HĐ thuê đi kèm (rel_ids), ghi nguồn + chính sách.
 // Đã có HĐ hoàn thiện của khách tại căn (từ hồ sơ / HĐ thuê / lập tay) → dùng HĐ đó (bổ sung liên kết), không lập trùng. HĐ vay không bán căn / chính sách không có gói hoàn thiện → không lập
+// 17/11/2026: thành phần giá bán của căn theo chính sách bán đang áp dụng: giá trị căn hộ sau thuế (chính sách tính theo đơn giá: đơn giá × DT thông thủy), phí bảo trì, giá trị hoàn thiện
+async function saleValues(db, unitId, on) {
+  const u = await raw(db, 'unit', unitId); if (!u) return {};
+  const pol = (await pricing(db, u, on || today())).policy;
+  let val = u.price_net != null ? +u.price_net : null, mt = u.maint_fee != null ? +u.maint_fee : null;
+  if (pol?.mode === 'don_gia' && +pol.unit_price > 0 && +u.area_tt > 0) { val = Math.round(+pol.unit_price * +u.area_tt); mt = Math.round(val / (1 + (pol.vat_pct ?? 5) / 100) * (pol.maint_pct ?? 2) / 100 / 1000) * 1000; }
+  if (val == null && u.total_price != null) val = +u.total_price - (+u.maint_fee || 0) - (+u.finish_value || 0);
+  const fin = pol ? polFin(pol, u.code) : null;
+  return { sale_unit_val: val, sale_maint: mt ?? 0, sale_finish: fin != null ? +fin : +u.finish_value || 0 };
+}
 async function loanAutoFinish(db, c, user, warn, demo) {
   if (c.kind !== 'vay' || (c.nature || 'ban') !== 'ban' || c.ptype === 'lien_ke' || !c.unit_id || !c.customer_id || ['huy', 'thanh_ly'].includes(c.status)) return;
   const rel = [c.id, ...((await db.q("SELECT id FROM kd_contract WHERE kind = 'thue' AND unit_id = $1 AND status <> 'huy' AND (id = ANY($2) OR $3 = ANY(coalesce(link_ids, '{}'::int[])))", [c.unit_id, c.link_ids || [], c.id])).map(x => x.id))];
@@ -2382,6 +2392,14 @@ H.contract = {
     if (r.kind !== 'thue') { r.rent_house = null; r.rent_furn = null; }
     if (!['thue', 'vay'].includes(r.kind)) r.unit_total = null;   // HĐ vay bán căn cũng có Giá trị HĐMB (07/11/2026)
     if (r.kind === 'thue' && r.nature !== 'ban' && !r.sale_on) r.unit_total = null;   // 16/11/2026: HĐ thuê thuần (không bán căn, không tiến độ HĐMB) — không mang giá bán của căn
+    // 17/11/2026: HĐ vay / HĐ thuê bán căn — Giá trị HĐMB = Giá trị căn hộ (sau thuế) + Phí bảo trì − Tiền giảm giá; Giá bán căn hộ = Giá trị HĐMB + Giá trị hoàn thiện / nội thất.
+    // Thành phần lấy theo chính sách bán đang áp dụng cho căn (chưa nhập / đổi căn), sửa được; không cộng trùng phí bảo trì, hoàn thiện không nằm trong Giá trị HĐMB (thuộc HĐ hoàn thiện)
+    if (['thue', 'vay'].includes(r.kind) && (r.nature || (r.kind === 'vay' ? 'ban' : 'thue')) === 'ban' && r.unit_id) {
+      if ((old && old.unit_id !== r.unit_id) || (r.sale_unit_val == null && r.sale_maint == null && r.sale_finish == null)) Object.assign(r, await saleValues(db, r.unit_id, d10(r.contract_on) || today()));
+      if (r.sale_unit_val != null || r.sale_maint != null) { r.unit_total = Math.max(0, (+r.sale_unit_val || 0) + (+r.sale_maint || 0) - (+r.discount || 0)); r.sale_price = r.unit_total + (+r.sale_finish || 0); }
+    } else { r.sale_unit_val = null; r.sale_maint = null; r.sale_finish = null; }
+    if (['thue', 'vay'].includes(r.kind) && r.sale_unit_val != null) {}   // đã tính theo thành phần
+    else if (r.kind === 'thue' && r.nature !== 'ban' && !r.sale_on) {}
     else if (['thue', 'vay'].includes(r.kind)) {
       // Tổng tiền (giá trị hợp đồng, chỉ để thông tin) = Tổng giá căn hộ theo Danh mục sản phẩm − Tiền giảm giá (trừ thẳng, như HĐMB)
       const same = old && String(old.unit_total ?? '') === String(r.unit_total ?? '');
@@ -2535,7 +2553,7 @@ H.contract = {
     if (r.kind === 'hoan_thien') r.nature = null;
     else if (!['thue', 'vay'].includes(r.kind)) r.nature = 'ban';
     else if (!r.nature) r.nature = r.kind === 'thue' ? 'thue' : 'ban';
-    if (r.nature === 'ban' && ['thue', 'vay'].includes(r.kind)) { if (r.sale_price == null) { const u = await raw(db, 'unit', r.unit_id); r.sale_price = u?.price_net != null ? +u.price_net + (+u.maint_fee || 0) : u?.total_price ?? null; } }
+    if (r.nature === 'ban' && ['thue', 'vay'].includes(r.kind)) { if (r.sale_price == null && r.sale_unit_val == null) { const u = await raw(db, 'unit', r.unit_id); r.sale_price = u?.price_net != null ? +u.price_net + (+u.maint_fee || 0) : u?.total_price ?? null; } }
     else { r.sale_price = null; r.plan_hdmb = null; }
     // HĐMB nối tiếp HĐ vay / HĐ thuê bản chất bán của căn (chỉ để gom giao dịch — tiền đã thu không trừ vào giá mua)
     if (['hdmb', 'thue_mua'].includes(r.kind)) {
@@ -3125,4 +3143,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, noticeHist, noticeUnits, noticeRent, rentPrices, noticeConflict, unitNotes, saleSchedPolicy, saleSchedRows, rentBackfill, noxhSyncAll, unitDeals, bgDueSet, loanNet, loanPairOf, loanAutoFinish, rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, noticeHist, noticeUnits, noticeRent, rentPrices, noticeConflict, unitNotes, saleSchedPolicy, saleSchedRows, rentBackfill, noxhSyncAll, unitDeals, bgDueSet, loanNet, loanPairOf, loanAutoFinish, saleValues, rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

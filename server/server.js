@@ -397,6 +397,8 @@ R('GET', '/api/sale-track/:id', async (req, res, u, p, qs) => {   // HĐ thuê /
   send(res, 200, await B.saleTrack({ q, one }, g.row, qs.to));
 });
 R('GET', '/api/contract-prefill/:unit', async (req, res, u, p, qs) => { if (!can(u, M.E.contract, 'c') && !can(u, M.E.contract, 'u')) C.deny(); send(res, 200, await B.contractPrefill({ q, one }, p.unit, qs.on)); });
+// 17/11/2026: thành phần giá bán của căn theo chính sách bán (HĐ vay / thuê bán căn)
+R('GET', '/api/sale-values/:unit', async (req, res, u, p, qs) => { if (!can(u, M.E.contract, 'c') && !can(u, M.E.contract, 'u')) C.deny(); send(res, 200, await B.saleValues({ q, one }, +p.unit, /^d{4}-d{2}-d{2}$/.test(qs.on || '') ? qs.on : undefined)); });
 // 16/11/2026: các hợp đồng của căn — trạng thái thật + công nợ tách từng HĐ (tab công nợ của HĐ / xem chi tiết căn ở Bảng tổng hợp công nợ)
 R('GET', '/api/unit-contracts/:unit', async (req, res, u, p) => { if (!can(u, M.E.contract, 'r')) C.deny(); send(res, 200, await B.unitDeals({ q, one }, p.unit)); });
 // 16/11/2026: HĐ thuê / vay — tiến độ thu tiền HĐMB theo chính sách bán đã ban hành áp cho căn (đã tính hạn theo ngày ký, đợt bàn giao / GCN theo thông báo đã phát hành)

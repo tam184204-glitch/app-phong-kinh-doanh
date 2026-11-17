@@ -640,7 +640,11 @@ def('contract', {
     { k: 'link_ids', l: 'Hợp đồng thuê / vay đi kèm', t: 'refs', ref: 'contract', show: RENT_VAY, help: 'HĐ vay tick chọn HĐ thuê đi kèm và ngược lại — chọn ở bên nào bên kia tự cập nhật' },
     money('value', 'Tổng tiền (giá trị hợp đồng)', { req: 1, help: 'Chung cư có giá nền: tự tính = tiền sau thuế + phí bảo trì + giá trị hoàn thiện' }),
     { k: 'closed', l: 'Hợp đồng đóng', t: 'bool', show: RENT_VAY, noForm: 1 },   // HĐMB bỏ ô này (03/11/2026); HĐ thuê / vay bỏ khỏi form 04/11/2026 (giữ cột dữ liệu cũ)
-    money('sale_price', 'Giá bán căn hộ', { show: { kind: ['thue', 'vay'], nature: ['ban'] }, help: 'Giá bán của giao dịch (chưa có HĐMB) — để trống: lấy theo Danh mục sản phẩm' }),
+    // 17/11/2026: HĐ vay / thuê bán căn — thành phần giá theo chính sách bán (sửa được): Giá trị HĐMB = căn hộ + phí bảo trì − giảm giá; Giá bán căn hộ = Giá trị HĐMB + hoàn thiện
+    money('sale_unit_val', 'Giá trị căn hộ (sau thuế)', { show: { kind: ['thue', 'vay'], nature: ['ban'] }, help: 'Theo chính sách bán hàng đang áp dụng cho căn — sửa thì Giá trị HĐMB, Giá bán căn hộ tự tính lại' }),
+    money('sale_maint', 'Phí bảo trì', { show: { kind: ['thue', 'vay'], nature: ['ban'] } }),
+    money('sale_finish', 'Giá trị hoàn thiện / nội thất', { show: { kind: ['thue', 'vay'], nature: ['ban'] }, help: 'Gói hoàn thiện theo chính sách — không nằm trong Giá trị HĐMB (thuộc HĐ hoàn thiện)' }),
+    money('sale_price', 'Giá bán căn hộ', { show: { kind: ['thue', 'vay'], nature: ['ban'] }, help: '= Giá trị HĐMB + Giá trị hoàn thiện / nội thất (tự tính)' }),
     { k: 'plan_hdmb', l: 'Dự kiến ký HĐMB', t: 'date', show: { kind: ['thue', 'vay'], nature: ['ban'] }, noForm: 1 },   // bỏ khỏi form + CN-06 04/11/2026 (giữ cột dữ liệu cũ)
     { k: 'prev_id', l: 'Chuyển tiếp từ hợp đồng', t: 'ref', ref: 'contract', hide: 1,   // bỏ khỏi form (03/11/2026) — máy tự nối khi lưu HĐMB
       help: 'HĐ vay / HĐ thuê (bản chất bán) trước đó của căn — chỉ để nối giao dịch, tiền đã thu theo hợp đồng đó KHÔNG trừ vào giá mua. Để trống: tự nối khi căn có' },
