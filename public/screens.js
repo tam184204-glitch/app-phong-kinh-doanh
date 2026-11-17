@@ -2770,7 +2770,7 @@ V.duedebt = async main => {
     // Công nợ (chọn hợp đồng → tổng quan, thanh tiến độ, thông tin HĐ, bảng mọi đợt + tổng cộng) · Lịch sử thu – chi · Lịch sử nhắc nợ (n, thêm lần nhắc) · Lịch sử kế hoạch (n) · Hợp đồng & trạng thái
     if (uvId) { const u = d.units.find(x => x.unit_id === +uvId); if (!u) return;
       const q = new URLSearchParams({ unit_id: u.unit_id, tab: s.tab }), [x, h0] = await Promise.all([api('GET', '/api/due-debt/unit-detail?' + new URLSearchParams({ unit_id: u.unit_id, tab: s.tab, to: d.asof })), api('GET', '/api/due-debt/unit-history?' + q)]);
-      let h = h0, tabU = 'cn', ctSel = x.blocks.slice().sort((a, b) => b.rem - a.rem)[0]?.id;
+      let h = h0, tabU = 'cn', ctView = null;   // ctView: id HĐ đang xem chi tiết công nợ (null = danh sách tóm tắt)
       const pct = (a, b) => b > 0 ? (Math.round(a / b * 1000) / 10).toLocaleString('vi-VN') + '%' : '—';
       const stc = st => ({ da_thu: 'g', qua_han: 'r', den_han: 'a', mot_phan: 'b', chua_den_han: 's' })[st] || 's';
       const laiC = r => r.lai == null ? `<span class="ud-wn" title="Hợp đồng chưa ghi lãi suất chậm trả">${ico('fa-triangle-exclamation')} Chưa đủ thông tin tính lãi</span>` : r.lai ? fm(r.lai) : '0';
@@ -2793,11 +2793,31 @@ V.duedebt = async main => {
             <tfoot><tr><td colspan="2">Tổng cộng · ${b.rows.length} đợt</td><td class="n">${fm(b.total)}</td><td class="n">${fm(b.paid)}</td><td class="n">${fm(b.rem)}</td><td></td><td></td><td class="n">${fm(b.overdue)}</td><td class="n">${fm(b.lai)}${b.noLai ? ' ⚠' : ''}</td><td></td></tr></tfoot></table></div>
           ${b.pay_rows.length ? `<div class="ud-sub">Khoản công ty phải trả khách theo HĐ vay — theo dõi riêng, không bù trừ với phải thu</div><div class="ud-tw"><table class="ud-t"><thead><tr><th>Kỳ – Ngày đến hạn</th><th>Nội dung</th><th class="n">Phải trả</th><th class="n">Đã trả</th><th class="n">Còn phải trả</th><th>Tình trạng</th><th></th></tr></thead><tbody>
             ${b.pay_rows.map(r => `<tr><td><b>${esc(r.dot)}</b><div class="small muted">${dmy(r.due_on)}</div></td><td class="small">${esc(r.content)}</td><td class="n">${fm(r.amount)}</td><td class="n">${fm(r.paid)}</td><td class="n">${fm(r.rem)}</td><td>${pill(r.st_l, stc(r.st))}</td><td>${r.rem > 0 && r.loan_pay_id ? `<button class="btn xs" data-pc="${r.loan_pay_id}">${ico('fa-plus')} Chi</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : ''}</section>`;
+      // ---- bảng phiếu thu – chi (ngày, số phiếu mở được, HĐ, thu, chi, phân bổ vào đợt, nội dung, trạng thái)
+      const vtab = vs => `<div class="ud-tw"><table class="ud-t"><thead><tr><th>Ngày</th><th>Số phiếu</th><th>Hợp đồng</th><th class="n">Thu</th><th class="n">Chi</th><th>Phân bổ vào đợt</th><th>Nội dung</th><th>Trạng thái phiếu</th></tr></thead><tbody>
+          ${vs.map(v => `<tr class="${v.ok ? '' : 'void'}"><td>${dmy(v.on)}</td><td><a href="#" data-vch="${v.ent}:${v.id}" title="Mở phiếu để đối chiếu">${esc(v.no || '(chưa số)')}</a></td><td>${esc(v.contract)}</td><td class="n">${v.thu ? fm(v.thu) : ''}</td><td class="n">${v.chi ? fm(v.chi) : ''}</td>
+            <td class="small">${esc(v.alloc)}</td><td class="small">${esc(v.content)}</td><td>${pill(v.st_l, v.ok ? 'g' : 's')}</td></tr>`).join('')}</tbody>
+          <tfoot><tr><td colspan="3">Tổng phiếu hợp lệ</td><td class="n">${fm(vs.filter(v => v.ok).reduce((a, v) => a + v.thu, 0))}</td><td class="n">${fm(vs.filter(v => v.ok).reduce((a, v) => a + v.chi, 0))}</td><td colspan="3"></td></tr></tfoot></table></div>`;
       // ---- nội dung từng tab
       const T = {
-        cn: () => x.blocks.length ? `<div class="ud-cts">${x.blocks.map(b => `<button type="button" class="ud-ct ${b.id === ctSel ? 'on' : ''}" data-ctsel="${b.id}"><b>${esc(b.number)}</b><span>${esc(b.kind_l)} · ${esc(b.status_l)}</span><small>còn phải thu ${fm(b.rem)}${b.overdue ? ` · <em>quá hạn ${fm(b.overdue)}</em>` : ''}</small></button>`).join('')}</div>
-            ${blk(x.blocks.find(b => b.id === ctSel) || x.blocks[0])}` : '<div class="empty">Căn không còn hợp đồng theo dõi công nợ trong sheet này — xem tab «Hợp đồng & trạng thái»</div>',
-        tc: () => x.vouchers.length ? `<div class="ud-tw"><table class="ud-t"><thead><tr><th>Ngày</th><th>Số phiếu</th><th>Hợp đồng</th><th class="n">Thu</th><th class="n">Chi</th><th>Phân bổ vào đợt</th><th>Nội dung</th><th>Trạng thái phiếu</th></tr></thead><tbody>
+        cn: () => { const b0 = ctView && x.blocks.find(b => b.id === ctView);
+          if (b0) { const vs = x.vouchers.filter(v => v.contract === b0.number);
+            return `<div class="row mb"><button type="button" class="btn sm" data-ctback="1">${ico('fa-arrow-left')} Quay lại danh sách hợp đồng</button></div>${blk(b0)}
+              <div class="ud-sec">${ico('fa-money-bill-transfer')} Lịch sử thu – chi của hợp đồng</div>${vs.length ? vtab(vs) : '<div class="empty">Chưa có phiếu thu/chi</div>'}`; }
+          const due = b => { const xs = b.rows.filter(r => r.due_on && r.due_on <= x.asof), sm = k => xs.reduce((a, r) => a + (+r[k] || 0), 0), nx = b.rows.filter(r => r.rem > 0).map(r => r.due_on).sort()[0];
+            return { amount: sm('amount'), paid: sm('paid'), rem: sm('rem'), lai: xs.reduce((a, r) => a + (r.lai || 0), 0), noLai: xs.filter(r => r.lai == null).length, next: nx }; };
+          return (x.blocks.length ? x.blocks.map(b => { const z = due(b);
+            return `<div class="ud-sum"><div class="ud-sum-h"><b>${esc(b.kind_l)} · ${esc(b.status_l)}</b><a href="#" data-uct="${b.id}" class="small" title="Mở hồ sơ hợp đồng">${esc(b.number)}</a></div>
+              <div>${esc(b.customer)}${b.phone ? ' · ' + esc(b.phone) : ''}</div>
+              <div>Ngày đến hạn: ${z.next ? dmy(z.next) : '—'}</div>
+              <div>Phải thu: <b>${fm(z.amount)}</b> · Đã thu: <b>${fm(z.paid)}</b></div>
+              <div>Còn phải thu: <b class="${z.rem ? 'neg' : ''}">${fm(z.rem)}</b> · Lãi quá hạn: ${z.noLai ? `${fm(z.lai)} <span class="ud-wn">${ico('fa-triangle-exclamation')} ${z.noLai} đợt chưa đủ thông tin tính lãi</span>` : fm(z.lai)}</div>
+              <div class="small muted">Số đến hạn tính đến ngày chốt ${dmy(x.asof)} · cả hợp đồng: phải thu ${fm(b.total)}, đã thu ${fm(b.paid)}, còn ${fm(b.rem)}${b.src_note ? ' · ' + esc(b.src_note) : ''}</div>
+              <div class="row mt"><button type="button" class="btn sm pri" data-ctview="${b.id}">${ico('fa-table-list')} Xem chi tiết công nợ</button></div></div>`; }).join('')
+            : '<div class="empty">Căn không còn hợp đồng theo dõi công nợ trong sheet này</div>')
+            + `<div class="ud-sec">${ico('fa-folder-tree')} Hợp đồng &amp; trạng thái của căn</div>` + T.hd(); },
+        tc: () => x.vouchers.length ? vtab(x.vouchers) : '<div class="empty">Chưa có phiếu thu/chi</div>',
+        _tc: () => x.vouchers.length ? `<div class="ud-tw"><table class="ud-t"><thead><tr><th>Ngày</th><th>Số phiếu</th><th>Hợp đồng</th><th class="n">Thu</th><th class="n">Chi</th><th>Phân bổ vào đợt</th><th>Nội dung</th><th>Trạng thái phiếu</th></tr></thead><tbody>
             ${x.vouchers.map(v => `<tr class="${v.ok ? '' : 'void'}"><td>${dmy(v.on)}</td><td><a href="#" data-vch="${v.ent}:${v.id}" title="Mở phiếu để đối chiếu">${esc(v.no || '(chưa số)')}</a></td><td>${esc(v.contract)}</td><td class="n">${v.thu ? fm(v.thu) : ''}</td><td class="n">${v.chi ? fm(v.chi) : ''}</td>
               <td class="small">${esc(v.alloc)}</td><td class="small">${esc(v.content)}</td><td>${pill(v.st_l, v.ok ? 'g' : 's')}</td></tr>`).join('')}</tbody>
             <tfoot><tr><td colspan="3">Tổng phiếu hợp lệ</td><td class="n">${fm(x.vouchers.filter(v => v.ok).reduce((t, v) => t + v.thu, 0))}</td><td class="n">${fm(x.vouchers.filter(v => v.ok).reduce((t, v) => t + v.chi, 0))}</td><td colspan="3"></td></tr></tfoot></table></div>` : '<div class="empty">Chưa có phiếu thu/chi</div>',
@@ -2806,16 +2826,17 @@ V.duedebt = async main => {
         hd: () => `<div class="ud-tw"><table class="ud-t"><thead><tr><th>Số hợp đồng</th><th>Loại</th><th>Khách hàng</th><th>Ngày ký</th><th>Trạng thái hiện tại</th><th>Lịch sử chuyển trạng thái</th></tr></thead><tbody>
             ${x.contracts.map(c => `<tr><td><a href="#" data-uct="${c.id}" title="Mở hồ sơ hợp đồng">${esc(c.number)}</a></td><td>${esc(c.kind_l)}</td><td>${esc(c.customer)}</td><td>${c.signed_on ? dmy(c.signed_on) : ''}</td><td>${pill(c.status_l, c.closed ? 's' : 'g')}${c.status === 'thanh_ly' ? `<div class="small muted">Đã đóng theo dõi công nợ${c.liquidated_on ? ' từ ' + dmy(c.liquidated_on) : ''} — không cộng vào phải thu hiện tại</div>` : ''}</td>
               <td class="small">${c.hist.length ? c.hist.map(z => `<div>${dmyhm(z.at)} · ${esc(z.who)}: ${z.from ? esc(z.from) + ' → ' : ''}<b>${esc(z.to)}</b></div>`).join('') : '<span class="muted">—</span>'}</td></tr>`).join('')}</tbody></table></div>` };
-      const TL = () => [['cn', 'Công nợ'], ['tc', 'Lịch sử thu – chi'], ['nn', `Lịch sử nhắc nợ (${h.calls.length})`], ['kh', `Lịch sử kế hoạch (${h.plans.length})`], ['hd', 'Hợp đồng & trạng thái']];
+      const TL = () => [['cn', 'Công nợ'], ['tc', 'Lịch sử thu'], ['nn', `Lịch sử nhắc nợ (${h.calls.length})`], ['kh', `Lịch sử kế hoạch (${h.plans.length})`]];
       const cust = x.blocks[0] ? `${x.blocks[0].customer}${x.blocks[0].phone ? ' · ' + x.blocks[0].phone : ''}` : u.customer;
-      const m = modal({ wide: true, title: `${ico('fa-building')} Chi tiết căn hộ · ${esc(x.unit || u.unit)}`,
-        body: `<div class="ud"><div class="ud-top"><div class="ud-cu">${esc(cust)}<span>${s.tab === 'thue' ? 'Công nợ cho thuê' : 'Công nợ bán hàng'} · ngày chốt ${dmy(x.asof)} · đồng bộ ${dmyhm(x.synced_at)}</span></div><div class="ud-tabs" id="udTabs"></div></div><div id="udBody"></div></div>` });
+      const m = modal({ wide: true, title: `Chi tiết căn hộ · ${esc(x.unit || u.unit)}`,
+        body: `<div class="ud"><div class="ud-top"><div class="ud-cu">${s.tab === 'thue' ? 'Công nợ cho thuê' : 'Công nợ bán hàng'} · ${esc(cust)} · ngày chốt ${dmy(x.asof)} · đồng bộ ${dmyhm(x.synced_at)}</div><div class="ud-tabs" id="udTabs"></div></div><div id="udBody"></div></div>` });
       m.el.querySelector('.modal')?.classList.add('ud-modal');
       const show = () => { $('#udTabs', m.el).innerHTML = TL().map(([k, l]) => `<button type="button" class="${tabU === k ? 'on' : ''}" data-udtab="${k}">${l}</button>`).join(''); $('#udBody', m.el).innerHTML = T[tabU](); $('.mb', m.el).scrollTop = 0; };
       show();
       m.el.addEventListener('click', run(async ev => {
-        const tb = ev.target.closest('[data-udtab]'); if (tb) { tabU = tb.dataset.udtab; return show(); }
-        const cs = ev.target.closest('[data-ctsel]'); if (cs) { ctSel = +cs.dataset.ctsel; return show(); }
+        const tb = ev.target.closest('[data-udtab]'); if (tb) { tabU = tb.dataset.udtab; if (tabU !== 'cn') ctView = null; return show(); }
+        const cv = ev.target.closest('[data-ctview]'); if (cv) { ctView = +cv.dataset.ctview; return show(); }
+        if (ev.target.closest('[data-ctback]')) { ctView = null; return show(); }
         const a = ev.target.closest('[data-uct]'); if (a) { ev.preventDefault(); return openDetail('contract', +a.dataset.uct, 'debt'); }
         const vc = ev.target.closest('[data-vch]'); if (vc) { ev.preventDefault(); const [en, id] = vc.dataset.vch.split(':'); return openDetail(en, +id); }
         if (ev.target.closest('[data-addcall2]')) return openForm('debt_call', { preset: { contract_id: u.main_ct, contract_id__l: u.main_no }, onSaved: async () => { h = await api('GET', '/api/due-debt/unit-history?' + q); show(); load(); } });
