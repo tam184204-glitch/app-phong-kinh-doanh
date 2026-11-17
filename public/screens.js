@@ -1697,7 +1697,7 @@ V.mau4 = async (main, params) => {
       const more = await m4Ask(`Chuyển <b>${sel.size}</b> hồ sơ sang <b>${M4_ST[status][0]}</b>?`, status, pre); if (!more) return;
       const r = await api('POST', '/api/mau4/status', { ids: [...sel], status, ...more });
       toast(`Đã chuyển ${r.n} hồ sơ sang «${M4_ST[status][0]}»`); sel.clear(); await load();
-      undo = r.prev; $('#m4UT', main).innerHTML = `Vừa chuyển <b>${r.n}</b> hồ sơ sang <b>${M4_ST[status][0]}</b>.`; $('#m4U', main).hidden = false;
+      undo = r.prev; $('#m4UT', main).innerHTML = `Vừa chuyển <b>${r.n}</b> hồ sơ sang <b>${M4_ST[status][0]}</b>.${r.warnings?.length ? `<div class="small" style="margin-top:4px">${r.warnings.map(w => `<div class="${/chưa|thiếu|không/i.test(w) ? 'neg' : ''}">• ${esc(w)}</div>`).join('')}</div>` : ''}`; $('#m4U', main).hidden = false;   // kết quả tự lập hợp đồng / cảnh báo
     });
     // hoàn tác lần chuyển gần nhất (giữ tới khi chuyển lần khác / rời màn hình)
     let undo = null;
@@ -1860,7 +1860,7 @@ V.debtsum = async main => {
       <span class="small muted">Số liệu đến ngày</span>${segDate('dsTo', s.to || today())}
       <span class="grow"></span><span class="small muted" id="dsN"></span></div>
     <div class="flt-wrap ${s.flt ? '' : 'flt-off'}" id="dsW" style="padding:0 12px"><aside class="flt" id="dsF"></aside><div class="flt-main"><div id="dsT"><div class="empty">Đang tính công nợ…</div></div></div></div>
-    <div class="small muted mt">Tiền nhà = tiền sau thuế không gồm hệ số góc · Hệ số lô góc tính sau thuế · Phát sinh = giá trị hoàn thiện (gộp HĐMB + HĐ hoàn thiện riêng) · Bảo trì = phí bảo trì 2%. Thu tiền Bravo không ghi theo khoản → mỗi kỳ thu chia theo cơ cấu của kỳ (đợt thu phí bảo trì gánh trọn phí bảo trì). «Theo tiến độ» = các kỳ đến hạn tới ngày chốt. Bấm 1 căn để mở hợp đồng & lịch thanh toán, bấm dòng tòa để thu gọn.</div></div></div>`;
+    <div class="small muted mt">Tiền nhà = tiền sau thuế không gồm hệ số góc · Hệ số lô góc tính sau thuế · Hoàn thiện căn hộ = giá trị hoàn thiện (gộp HĐMB + HĐ hoàn thiện riêng) · Bảo trì = phí bảo trì 2%. Thu tiền Bravo không ghi theo khoản → mỗi kỳ thu chia theo cơ cấu của kỳ (đợt thu phí bảo trì gánh trọn phí bảo trì). «Theo tiến độ» = các kỳ đến hạn tới ngày chốt. Bấm 1 căn để mở hợp đồng & lịch thanh toán, bấm dòng tòa để thu gọn.</div></div></div>`;
   wireFilter(main, f, load); wireSegDate(main);
   $('#dsQ', main).oninput = debounce(e => { s.q = e.target.value; draw(); }, 250);
   const pg = $('.page', main);   // 16/11/2026: gắn vào trang của màn này, không gắn vào khung chung — trước gõ ngày ở tab khác vẫn chạy tải lại bảng tổng hợp → lỗi «Cannot set properties of null»

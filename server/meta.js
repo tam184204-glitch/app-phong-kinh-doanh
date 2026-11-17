@@ -387,6 +387,9 @@ def('noxh_check', {
     { k: 'sale_check', l: 'Thông báo mở bán / cho thuê', t: 'text', ro: 1 },   // căn có trong thông báo đã duyệt gần nhất (hồ sơ thuê: thông báo cho thuê)? (cảnh báo, không chặn)
     { k: 'received_on', l: 'Ngày nộp hồ sơ', t: 'date', def: 'today' },
     { k: 'reg_kind', l: 'Hình thức', t: 'sel', def: 'mua', o: M4.hinh_thuc, help: 'Gắn phiếu đăng ký thì tự theo phiếu (đăng ký thuê → Thuê). Hồ sơ thuê chuyển «Chờ xét duyệt» → tự lập HĐ thuê' },
+    // 16/11/2026: hồ sơ thuê theo phương án bán căn hộ → chuyển «Chờ xét duyệt» tự lập HĐ thuê (bản chất Bán căn hộ, có tiến độ thu tiền HĐMB theo chính sách bán) + HĐ hoàn thiện căn hộ
+    { k: 'sale_plan', l: 'Phương án', t: 'sel', def: 'thue', o: [['thue', 'Cho thuê'], ['ban', 'Bán căn hộ (thuê theo phương án bán)']], show: { reg_kind: ['thue'] },
+      help: 'Bán căn hộ: hồ sơ chuyển «Chờ xét duyệt» → tự lập HĐ thuê (bản chất Bán căn hộ, tiến độ thu tiền HĐMB theo chính sách bán hàng) và HĐ hoàn thiện căn hộ (gói hoàn thiện, tiến độ theo chính sách bán hàng)' },
     { k: 'unit_text', l: 'Mã căn hộ ngoài danh mục', t: 'text', help: 'Chỉ ghi khi căn chưa có trong Danh mục sản phẩm (VD CTS-L-0511)' },
     { k: 'plan_sign', l: 'Ngày dự kiến ký', t: 'date', sec: 'Lịch ký', help: 'Tự sang hợp đồng và màn Lịch ký hợp đồng' },
     { k: 'sign_place', l: 'Địa điểm ký', t: 'text' },
@@ -507,7 +510,8 @@ def('contract', {
   lists: {
     // HĐ thuê (tab riêng ở danh sách chung cư): cột theo BRAVO
     thue: secList([['Hợp đồng', ['number', 'contract_on', 'unit_id']], ['Bên thuê nhà', ['b_name', 'b_id_no', 'b_id_date', 'b_id_place', 'b_addr', 'b_phone', 'b_email'], 'Xem thông tin khách hàng'],
-      ['Thông tin căn hộ', ['area_floor', 'area_tt']], ['Thời hạn thuê', ['eff_on', 'exp_on', 'term_months', 'pay_times']], ['Tiền thuê', ['rent_house', 'rent_furn', 'rent'], 'Xem tiền thuê'], ['Giá trị HĐ thuê', ['value', 'deposit']],
+      ['Thông tin căn hộ', ['area_floor', 'area_tt']], ['Thời hạn thuê', ['eff_on', 'exp_on', 'term_months', 'pay_times']], ['Tiền thuê', ['rent_unit_price', 'rent_unit_l', 'rent_house', 'rent_furn', 'rent'], 'Xem tiền thuê'], ['Giá trị HĐ thuê', ['value', 'deposit']],
+      ['Chính sách cho thuê', ['rent_policy_txt', 'rent_promo_txt', 'rent_cycle_txt', 'rent_fees_txt'], 'Xem chính sách cho thuê', false],
       ['Giá trị HĐMB', ['unit_total', 'discount'], 'Xem giá trị HĐMB'], ['', ['nature', 'status']]],
       { dates: [['contract_on', 'Ngày ký'], ['eff_on', 'Ngày bắt đầu thuê'], ['exp_on', 'Ngày kết thúc thuê']], label: { contract_on: 'Ngày ký', unit_id: 'Mã căn hộ', b_name: 'Họ và tên', b_id_no: 'Số CMND / CCCD', b_id_date: 'Ngày cấp', b_id_place: 'Nơi cấp', b_addr: 'Địa chỉ', b_phone: 'Điện thoại', b_email: 'Email', area_floor: 'Diện tích sàn', area_tt: 'Diện tích nền (T.thủy)', value: 'Giá trị HĐ thuê', rent: 'Tổng giá thuê/tháng' } }),
     vay: secList([['Hợp đồng', ['number', 'contract_on', 'unit_id']], ['Bên cho vay (khách hàng)', ['b_name', 'b_id_no', 'b_phone'], 'Xem thông tin khách hàng'], ['Khoản vay', ['value', 'paid', 'loan_recv_on']],
@@ -539,6 +543,9 @@ def('contract', {
     // 15/11/2026: HĐ tự lập khi hồ sơ mua / thuê NOXH chuyển «Chờ xét duyệt» — mỗi hồ sơ 1 HĐ; noxh_wait = «Dự thảo – Chờ duyệt hồ sơ» (chưa trình / ký được tới khi SXD duyệt đủ điều kiện)
     { k: 'noxh_id', l: 'Hồ sơ NOXH', t: 'ref', ref: 'noxh_check', ro: 1 },
     { k: 'noxh_wait', l: 'Chờ duyệt hồ sơ NOXH', t: 'bool', ro: 1, noForm: 1 },
+    // 16/11/2026: hồ sơ NOXH của HĐ được Sở Xây dựng xét duyệt KHÔNG đủ điều kiện → «Dự thảo – Hồ sơ không đủ điều kiện», chặn trình / duyệt / ký cho tới khi hồ sơ được duyệt đủ điều kiện
+    { k: 'noxh_fail', l: 'Hồ sơ NOXH không đủ điều kiện', t: 'bool', ro: 1, noForm: 1 },
+    { k: 'noxh_fail_txt', l: 'Kết quả xét duyệt hồ sơ NOXH', t: 'text', ro: 1, show: { noxh_fail: [true] } },
     // bên mua nhà ở
     { k: 'customer_id', l: 'Khách hàng (chủ hợp đồng)', t: 'ref', ref: 'customer', req: 1, sec: 'Bên mua nhà ở', byUnit: 'unit_id',   // HĐMB: chọn trong khách gắn với căn (15/11/2026)
       fill: { b_id_no: 'id_no', b_id_date: 'id_date', b_id_place: 'id_place', b_addr: 'address', b_phone: 'phone', b_email: 'email', b_bank_acc: 'bank_account' } },
@@ -610,6 +617,12 @@ def('contract', {
     { k: 'term_months', l: 'Thời hạn thuê (tháng)', t: 'int', show: RENT_VAY, help: 'Tự tính theo ngày bắt đầu – kết thúc' },
     { k: 'pay_times', l: 'Số kỳ thanh toán', t: 'int', show: RENT_ONLY, help: 'Mỗi kỳ thu = số tháng của kỳ × tiền thuê/tháng, hạn thanh toán là ngày đầu mỗi kỳ' },
     // HĐ thuê (04/11/2026): tiền thuê tách tiền thuê nhà + tiền thuê nội thất; Tổng giá thuê/tháng (rent) = 2 khoản cộng lại → tổng tiền thuê = rent × số tháng
+    // 16/11/2026: chi tiết giá thuê theo chính sách cho thuê áp dụng (bản lưu trên HĐ) — xem / sửa / in / xuất thống nhất
+    money('rent_unit_price', 'Đơn giá thuê nhà', { show: RENT_ONLY, ro: 1, help: 'Theo chính sách cho thuê áp dụng cho căn (bản lưu trên hợp đồng)' }),
+    { k: 'rent_unit_l', l: 'Đơn vị tính', t: 'text', ro: 1, show: RENT_ONLY },
+    { k: 'rent_promo_txt', l: 'Ưu đãi', t: 'text', ro: 1, show: RENT_ONLY },
+    { k: 'rent_cycle_txt', l: 'Chu kỳ thanh toán', t: 'text', ro: 1, show: RENT_ONLY },
+    { k: 'rent_fees_txt', l: 'Các khoản phí', t: 'text', ro: 1, show: RENT_ONLY },
     money('rent_house', 'Tiền thuê nhà/tháng', { show: RENT_ONLY }),
     money('rent_furn', 'Tiền thuê nội thất/tháng', { show: RENT_ONLY }),
     money('rent', 'Tiền thuê/tháng', { show: RENT_ONLY, help: 'Giá trị HĐ thuê = tổng giá thuê/tháng × thời hạn thuê' }),
@@ -636,6 +649,7 @@ def('contract', {
     // HĐ thuê / HĐ vay bản chất bán căn (07/11/2026): tiến độ khách trả tiền mua nhà theo Giá trị HĐMB → lên Bảng tổng hợp công nợ.
     //  Đã thu = phiếu thu của chính hợp đồng (HĐ vay: gốc khách đã chuyển tính là tiền mua nhà). Khi ký HĐMB thật: thanh lý HĐ thuê / vay, lập HĐMB mới.
     { k: 'sale_on', l: 'Có tiến độ thu tiền HĐMB', t: 'bool', show: RENT_VAY, help: 'Tick khi HĐ thuê / HĐ vay là để bán căn — sổ ra bảng tiến độ thu tiền HĐMB' },   // 07/11/2026
+    { k: 'sale_policy_txt', l: 'Chính sách bán hàng áp dụng (tiến độ HĐMB)', t: 'text', ro: 1, show: { kind: ['thue', 'vay'], sale_on: [true] } },   // 16/11/2026: mã + phiên bản chính sách bán của tiến độ HĐMB
     { k: 'sale_sched', l: 'Đợt · % · Giá trị VND (theo Giá trị HĐMB)', t: 'json', show: { kind: ['thue', 'vay'], sale_on: [true] }, help: 'Nhập tỷ lệ % → giá trị tự tính theo Giá trị HĐMB. Số phải thu lên Bảng tổng hợp ở Theo dõi công nợ; đã thu = phiếu thu của hợp đồng này (HĐ vay: gốc khách đã chuyển)' },
     { k: 'pay_method', l: 'Phương thức thanh toán', t: 'text' },
     { k: 'plan_sign', l: 'Ngày dự kiến ký', t: 'date', show: LK_ONLY },   // chung cư: nhập ở Hồ sơ mua NOXH, tự sang hợp đồng
@@ -655,7 +669,7 @@ def('contract', {
     { k: 'pay_period', l: 'Kỳ thanh toán', t: 'sel', o: [['thang', 'Tháng'], ['quy', 'Quý'], ['nam', 'Năm']], hide: 1 },
     { k: 'free_months', l: 'Miễn tiền thuê (tháng)', t: 'int', hide: 1 },
     owner('Nhân viên KD'),
-    { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'du_thao', alt: { flag: 'noxh_wait', v: 'du_thao', l: 'Dự thảo – Chờ duyệt hồ sơ', c: 'a' }, o: [['du_thao', 'Dự thảo', 's'], ['cho_duyet', 'Đang rà soát', 'a'], ['cho_ky', 'Chờ ký', 'b'], ['tu_choi', 'Trả lại dự thảo', 'r'], ['da_ky', 'Đã ký', 'g'], ['thanh_ly', 'Đã thanh lý', 't'], ['huy', 'Đã hủy', 's']] },
+    { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'du_thao', alt: [{ flag: 'noxh_fail', v: 'du_thao', l: 'Dự thảo – Hồ sơ không đủ điều kiện', c: 'r' }, { flag: 'noxh_wait', v: 'du_thao', l: 'Dự thảo – Chờ duyệt hồ sơ', c: 'a' }], o: [['du_thao', 'Dự thảo', 's'], ['cho_duyet', 'Đang rà soát', 'a'], ['cho_ky', 'Chờ ký', 'b'], ['tu_choi', 'Trả lại dự thảo', 'r'], ['da_ky', 'Đã ký', 'g'], ['thanh_ly', 'Đã thanh lý', 't'], ['huy', 'Đã hủy', 's']] },
     { k: 'appr_by', l: 'Người duyệt', t: 'user', ro: 1 },   // 16/11/2026: ghi khi duyệt (kể cả duyệt trực tiếp) — lịch sử đầy đủ ở tab Phê duyệt / Lịch sử
     { k: 'appr_at', l: 'Thời gian duyệt', t: 'dt', ro: 1 },
   ], list: ['number', 'contract_on', 'kind', 'unit_id', 'customer_id', 'value', 'plan_sign', 'sign_status', 'signed_on', 'status'],

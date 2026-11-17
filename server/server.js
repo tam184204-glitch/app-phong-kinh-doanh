@@ -215,8 +215,13 @@ R('GET', '/api/e/:ent/:id', async (req, res, u, p) => send(res, 200, await C.get
 R('POST', '/api/e/:ent', async (req, res, u, p, qs) => { const b = await readJson(req);
   { const miss = (M.E[p.ent]?.fields || []).filter(f => f.reqForm && (b[f.k] == null || b[f.k] === ''));   // phiếu khách hàng: khai báo đủ thông tin (07/11/2026)
     if (miss.length) bad('Thiếu thông tin bắt buộc: ' + miss.map(f => f.l).join(', '), { fields: miss.map(f => f.k) }); }
+  if (qs.submit === '1' && qs.check !== '1') return send(res, 200, await saveSubmit(db => C.create(p.ent, b, u, { copyOf: +qs.copy_of || 0, db }), p.ent, u));
   send(res, 200, await C.create(p.ent, b, u, { check: qs.check === '1', copyOf: +qs.copy_of || 0 })); });
-R('PUT', '/api/e/:ent/:id', async (req, res, u, p, qs) => { const b = await readJson(req); send(res, 200, await C.update(p.ent, p.id, b, u, { check: qs.check === '1' })); });
+R('PUT', '/api/e/:ent/:id', async (req, res, u, p, qs) => { const b = await readJson(req);
+  if (qs.submit === '1' && qs.check !== '1') return send(res, 200, await saveSubmit(db => C.update(p.ent, p.id, b, u, { db }), p.ent, u));
+  send(res, 200, await C.update(p.ent, p.id, b, u, { check: qs.check === '1' })); });
+// 16/11/2026: «Lưu và trình duyệt» — lưu + tạo đề nghị duyệt trong CÙNG một giao dịch: trình không được (thiếu điều kiện) thì không lưu gì, form giữ nguyên để sửa
+async function saveSubmit(save, ent, u) { return tx(async db => { const r = await save(db), s = await C.submit(ent, r.row.id, u, { db }); return { ...r, row: s.row, submitted: true }; }); }
 R('DELETE', '/api/e/:ent/:id', async (req, res, u, p) => send(res, 200, await C.remove(p.ent, p.id, u)));
 R('POST', '/api/e/:ent/:id/submit', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await C.submit(p.ent, p.id, u, b)); });
 R('POST', '/api/e/:ent/:id/approve', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await C.approve(p.ent, p.id, u, { ok: !!b.ok, comment: b.comment })); });
@@ -400,6 +405,12 @@ R('GET', '/api/contract-buyer/:cust', async (req, res, u, p, qs) => { if (!can(u
   if (!M.PII_ROLES.includes(u.role)) for (const o of [d.carry, d.spouse || {}]) for (const k of ['co_owner_id_no', 'co_owner_id_date', 'co_owner_id_place']) delete o[k];
   send(res, 200, d); });
 R('GET', '/api/contract-prefill/:unit', async (req, res, u, p, qs) => { if (!can(u, M.E.contract, 'c') && !can(u, M.E.contract, 'u')) C.deny(); send(res, 200, await B.contractPrefill({ q, one }, p.unit, qs.on)); });
+// 16/11/2026: các hợp đồng của căn — trạng thái thật + công nợ tách từng HĐ (tab công nợ của HĐ / xem chi tiết căn ở Bảng tổng hợp công nợ)
+R('GET', '/api/unit-contracts/:unit', async (req, res, u, p) => { if (!can(u, M.E.contract, 'r')) C.deny(); send(res, 200, await B.unitDeals({ q, one }, p.unit)); });
+// 16/11/2026: HĐ thuê / vay — tiến độ thu tiền HĐMB theo chính sách bán đã ban hành áp cho căn (đã tính hạn theo ngày ký, đợt bàn giao / GCN theo thông báo đã phát hành)
+R('GET', '/api/sale-sched/:unit', async (req, res, u, p, qs) => { if (!can(u, M.E.contract, 'c') && !can(u, M.E.contract, 'u')) C.deny();
+  const D = { q, one }, on = /^\d{4}-\d{2}-\d{2}$/.test(qs.on || '') ? qs.on : C.today(), pol = await B.saleSchedPolicy(D, +p.unit, on, +qs.res || 0);
+  send(res, 200, pol ? { policy: `${pol.code} v${pol.version}`, rows: await B.saleSchedRows(D, pol, +p.unit, on) } : { policy: null, rows: [] }); });
 R('GET', '/api/res-policy', async (req, res, u, p, qs) => { if (!can(u, M.E.reservation, 'c') && !can(u, M.E.reservation, 'u')) C.deny(); send(res, 200, await B.resPolicy({ q, one }, qs)); });   // phiếu đăng ký: chính sách duyệt gần nhất + hoàn thiện theo chính sách (14/11/2026)
 R('GET', '/api/policy-units', async (req, res, u, p, qs) => { if (!can(u, M.E.price_policy, 'c') && !can(u, M.E.price_policy, 'u')) C.deny(); send(res, 200, await B.policyUnits({ q, one }, qs)); });
 R('GET', '/api/sale-check/:id', async (req, res, u, p, qs) => { const sc = await B.saleCheck({ q, one }, p.id, new Map(), qs.deal === 'thue' ? 'thue' : 'ban'); send(res, 200, sc ? { ok: sc.ok, text: sc.text } : {}); });   // đăng ký thuê / hồ sơ thuê: thông báo cho thuê
@@ -590,7 +601,7 @@ R('GET', '/api/rent-prices', async (req, res, u, p, qs) => { if (!can(u, M.E.sal
 R('GET', '/api/sale-notice/:id/units-xlsx', async (req, res, u, p) => {
   const { row: n } = await C.get('sale_notice', p.id, u), thue = n.deal === 'thue';
   const us = await B.noticeUnits({ q, one }, n), rows = thue ? await B.noticeRent({ q, one }, n.project_id, n.policy_id, us) : us;
-  const sn = thue ? await B.saleNotes({ q, one }, n.project_id) : null; if (sn) for (const x of rows) x.note = sn.get(x.id) || '';   // căn đang mở bán: «Đang mở bán – Thông báo số …»
+  const sn = thue ? await B.unitNotes({ q, one }, n.project_id, us, n.id) : null; if (sn) for (const x of rows) x.note = (sn.get(x.id) || []).map(t => t.t).join('; ');   // ghi chú: trạng thái hiện tại của căn
   const KIND = Object.fromEntries(M.E.unit.fields.find(f => f.k === 'kind').o.map(o => [o[0], o[1]])), ST = Object.fromEntries(M.E.unit.fields.find(f => f.k === 'status').o.map(o => [o[0], o[1]]));
   for (const x of rows) { x.kind_l = KIND[x.kind] || x.kind || ''; x.st_l = thue && x.status === 'con_ban' ? 'Còn cho thuê' : ST[x.status] || x.status || ''; if (thue && !x.rent_house) { x.rent_house = 'Chưa thiết lập'; x.rent_total = ''; x.rent_unit = ''; } }
   const cols = [['code', 'Mã căn'], ['b', 'Tòa'], ['floor', 'Tầng', 'int'], ['kind_l', 'Loại căn'], ['area_tt', 'DT thông thủy (m²)', 'num'], ['area_xd', 'DT xây dựng (m²)', 'num'],
@@ -739,6 +750,8 @@ async function start() {
   if (!n) { console.log('CSDL trống — nạp dữ liệu gốc…'); await require('./seed').seedBase(); }
   await require('./seed').ensureTemplates();
   await B.fixLiquidated({ q, one }).catch(e => console.error('fixLiquidated', e.message));
+  await tx(db => B.rentBackfill(db)).then(n => n && console.log(`Bổ sung chi tiết giá thuê cho ${n} HĐ thuê`)).catch(e => console.error('rentBackfill', e.message));   // 16/11/2026
+  await tx(db => B.noxhSyncAll(db)).catch(e => console.error('noxhSyncAll', e.message));   // 16/11/2026: HĐ chưa ký theo kết quả xét duyệt hồ sơ NOXH hiện tại (kể cả «không đủ điều kiện»)
   await tx(db => B.fixBaseDiscount(db)).catch(e => console.error('fixBaseDiscount', e.message));
   await tx(db => B.loanPayVouchers(db)).catch(e => console.error('loanPayVouchers', e.message));
   await tx(db => B.fillVoucherInfo(db)).catch(e => console.error('fillVoucherInfo', e.message));   // phiếu thu / chi cũ: điền mã căn, khách hàng… theo hợp đồng   // kỳ HĐ vay ghi nhận tay cũ → phiếu chi (1 lần)
