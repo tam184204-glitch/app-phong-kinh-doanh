@@ -988,8 +988,13 @@ table.t tr.clk { cursor: pointer; }
 [data-ssched] .sched-add td { padding-top: 4px; padding-bottom: 4px; }
 [data-ssched] .sched tfoot td { line-height: 20px; vertical-align: middle; }
 [data-ssched] > .mt { margin-top: 8px; }
-/* thông báo cho thuê: ghi chú căn đang mở bán */
-table.t td.sn-note { color: var(--amber-d); font-weight: 600; white-space: normal; min-width: 150px; line-height: 1.3; }
+/* thông báo cho thuê: cột Ghi chú = trạng thái hiện tại của căn (mỗi trạng thái một dòng, màu theo loại) */
+table.t td.sn-note { white-space: normal; min-width: 200px; line-height: 1.3; }
+table.t.upick-rn th { white-space: normal; } table.t.upick-rn th.num { min-width: 92px; } table.t.upick-rn td.sn-note { min-width: 210px; overflow-wrap: anywhere; } table.t.upick-rn td .neg { white-space: normal; }
+.sn-note > div + div { margin-top: 2px; }
+.sn-ban { color: var(--amber-d); font-weight: 600; } .sn-thue { color: var(--cobalt-l); font-weight: 600; }
+.sn-res { color: var(--v); } .sn-hs { color: var(--a); } .sn-hd { color: var(--g); font-weight: 600; } .sn-tl, .sn-free { color: var(--muted); }
+.upick-t tr.off td { background: #fafbfc; } .upick-t tr.off td:nth-child(-n+6) { color: var(--muted2); }
 
 /* CN-08 bảng tổng hợp công nợ: 2 tầng tiêu đề dính cùng nhau, dòng mục / tòa / tổng như file Excel */
 .main .card .tbl-wrap table.dsum thead { position: sticky; top: 0; z-index: 3; }
@@ -1955,8 +1960,7 @@ label.tplr { display: flex; gap: 8px; align-items: center; padding: 7px 0; }
 .vt.vt-one{grid-template-columns:minmax(0,1fr)} .vt.vt-one .vt-side{display:none}
 .hsb-u .s.ni{color:var(--amber-d,#C98210);font-weight:700}
 
-/* =====================================================================================
-   GIAO DIỆN MATERIAL · SWISS (17/11/2026) — theo skill ui-ux-pro-max (Minimalism & Swiss Style,
+/* ==============================================================================   GIAO DIỆN MATERIAL · SWISS (17/11/2026) — theo skill ui-ux-pro-max (Minimalism & Swiss Style,
    «internal admin dashboard data-dense»: xanh dữ liệu + điểm nhấn hổ phách) + nguyên tắc Material Design
    (độ nổi theo tầng, lớp trạng thái khi rê / bấm, chip, snackbar). CHỈ đổi hiển thị — không đổi chức năng.
    Bỏ cả khối này = về giao diện cũ (tag chua-giao-dien-material).
@@ -2046,3 +2050,8 @@ table.t td.wrap { min-width: 260px; }
   background: repeating-linear-gradient(180deg, #EDF1F6 0 14px, transparent 14px 30px); -webkit-mask: linear-gradient(90deg, #000 0 70%, rgba(0,0,0,.4)); }
 .empty.sk::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.65), transparent); animation: skm 1.2s linear infinite; }
 @keyframes skm { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+=======
+/* 16/11/2026: «Các hợp đồng của căn» ở tab công nợ của hợp đồng — dòng tiến độ HĐMB của HĐ thuê / vay bán căn */
+.uc-t tr.uc-sub td { background: #fafbfc; font-size: 12.5px; }
+table.t.uc-t { table-layout: fixed; width: 100%; } table.t.uc-t td, table.t.uc-t th { vertical-align: top; white-space: normal; overflow-wrap: anywhere; padding-left: 7px; padding-right: 7px; }
+table.t.uc-t td.num, table.t.uc-t th.num { white-space: nowrap; overflow-wrap: normal; font-size: 12px; padding-left: 4px; padding-right: 5px; }
