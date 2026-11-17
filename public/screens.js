@@ -1889,7 +1889,7 @@ const planFlow = async (main, params) => {
 };
 // 17/11/2026: KẾ HOẠCH THU TUẦN/THÁNG (màn collect_plan, thiết kế lại) — 1 bộ lọc chung (Theo tháng / Theo tuần, năm, tháng, tuần, dự án, tòa, ngày thực hiện);
 // dải 3 chỉ tiêu (kế hoạch – thực hiện – tỷ lệ của kỳ đang chọn); biểu đồ thanh ngang theo đúng chế độ (tuần của tháng / 12 tháng của năm), trạng thái kỳ Đã chốt / Đang thực hiện /
-// Chưa đến kỳ / Chưa có kế hoạch, bấm kỳ để xem báo cáo; BÁO CÁO THỰC HIỆN KẾ HOẠCH THU 6 cột, Nhóm thu → Tòa → Căn (1 dòng / mã căn), bấm mã căn xem chi tiết + lịch sử, điều chỉnh;
+// Chưa đến kỳ / Chưa có kế hoạch, bấm kỳ để xem báo cáo; CHI TIẾT THỰC HIỆN KẾ HOẠCH THU 6 cột, Nhóm thu → Tòa → Căn (1 dòng / mã căn), bấm mã căn xem chi tiết + lịch sử, điều chỉnh;
 // Xuất Excel, In / PDF (A4 ngang, lặp tiêu đề bảng, ngày lập, ký Người lập – Trưởng bộ phận)
 const planWeek = async main => {
   const s = ST.planrep ||= { by: 'thang', ym: today().slice(0, 7), week: '', project: '', building: '', from: '', to: '', shut: {} }; s.shut ||= {};
@@ -1938,7 +1938,7 @@ const planWeek = async main => {
       <div class="pw-kp"><span class="small muted">${esc(period())}${d.closed ? ' · đã chốt' : ''}</span></div></div>`;
     const hid = r => r.lv === 1 ? s.shut[r.par] : r.lv === 2 ? s.shut[r.gpar] || s.shut[r.par] : false;
     const tw = r => r.lv === 0 || r.lv === 1 ? `<span class="pr-tg" data-prtg="${esc(r.key)}">${ico(s.shut[r.key] ? 'fa-caret-right' : 'fa-caret-down')}</span> ` : '';
-    box.innerHTML = `<div class="pr-h"><span class="pr-tt">BÁO CÁO THỰC HIỆN KẾ HOẠCH THU</span><div>${esc(period())}</div><div class="small muted">${esc(done())} · ${esc(scope())} · Đơn vị: đồng</div></div>
+    box.innerHTML = `<div class="pr-h"><span class="pr-tt">CHI TIẾT THỰC HIỆN KẾ HOẠCH THU</span><div>${esc(period())}</div><div class="small muted">${esc(done())} · ${esc(scope())} · Đơn vị: đồng</div></div>
       <div style="overflow-x:auto"><table class="pr-t"><colgroup><col style="width:9%"><col style="width:14%"><col><col style="width:16%"><col style="width:16%"><col style="width:13%"></colgroup>
         <thead><tr><th>Tòa</th><th>Căn hộ</th><th>Tên khách hàng</th><th class="n">Tiền kế hoạch</th><th class="n">Tiền thực hiện</th><th class="n">Tỷ lệ hoàn thành</th></tr></thead><tbody>
         ${F.map(r => hid(r) ? '' : r.lv === 2 ? `<tr class="u"><td>${esc(r.b)}</td><td><a href="#" data-pru="${r.uid}" data-prsc="${r.scope}" title="Xem chi tiết khoản thu và lịch sử">${esc(r.unit)}</a></td><td>${esc(r.cust)}</td><td class="n">${fm(r.plan)}</td><td class="n">${fm(r.act)}</td><td class="n">${pct(r.act, r.plan)}</td></tr>`
@@ -2005,11 +2005,11 @@ const planWeek = async main => {
   const xrows = () => flat().map(r => ({ ...r, pct: pct(r.act, r.plan), _b: r.lv !== 2 ? 1 : 0 }));
   const xnote = () => `${period()} · ${done()} · ${scope()} · Đơn vị: đồng`;
   const printIt = () => { const w = window.open('', '_blank'); if (!w) return toast('Trình duyệt chặn cửa sổ in', true); const t = today();
-    w.document.write(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Báo cáo thực hiện kế hoạch thu</title><style>@page{size:A4 landscape;margin:12mm}body{font:12px Arial,sans-serif;color:#000}h2{text-align:center;margin:0;font-size:16px}.c{text-align:center;margin:3px 0}
+    w.document.write(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Chi tiết thực hiện kế hoạch thu</title><style>@page{size:A4 landscape;margin:12mm}body{font:12px Arial,sans-serif;color:#000}h2{text-align:center;margin:0;font-size:16px}.c{text-align:center;margin:3px 0}
       table{border-collapse:collapse;width:100%;margin-top:8px}thead{display:table-header-group}tr{page-break-inside:avoid}th,td{border:1px solid #777;padding:4px 6px}th{background:#e8eef7}td.n{text-align:right;white-space:nowrap}
       tr.g td{font-weight:bold;background:#eaf1fb}tr.b td{font-weight:bold;background:#f3f4f6}tr.t td{font-weight:bold;background:#1e4e8c;color:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
       .sg{display:flex;justify-content:space-around;margin-top:18px;text-align:center;page-break-inside:avoid}.sg div{width:40%}.sg i{display:block;font-style:italic;margin-bottom:60px}.dt{text-align:right;margin-top:14px;font-style:italic}</style></head><body>
-      <h2>BÁO CÁO THỰC HIỆN KẾ HOẠCH THU</h2><div class="c">${esc(period())}</div><div class="c">${esc(done())} · ${esc(scope())} · Đơn vị: đồng</div>
+      <h2>CHI TIẾT THỰC HIỆN KẾ HOẠCH THU</h2><div class="c">${esc(period())}</div><div class="c">${esc(done())} · ${esc(scope())} · Đơn vị: đồng</div>
       <table><thead><tr>${XC.map(c => `<th>${esc(c[1])}</th>`).join('')}</tr></thead><tbody>
       ${xrows().map(r => r._b ? `<tr class="${r.lv === 0 ? 'g' : r.lv === 1 ? 'b' : 't'}"><td colspan="3">${esc(r.b)}</td><td class="n">${fm(r.plan)}</td><td class="n">${fm(r.act)}</td><td class="n">${r.pct}</td></tr>` : `<tr><td>${esc(r.b)}</td><td>${esc(r.unit)}</td><td>${esc(r.cust)}</td><td class="n">${fm(r.plan)}</td><td class="n">${fm(r.act)}</td><td class="n">${r.pct}</td></tr>`).join('')}
       </tbody></table><div class="dt">Ngày lập: ngày ${+t.slice(8)} tháng ${+t.slice(5, 7)} năm ${t.slice(0, 4)}</div>
@@ -2020,7 +2020,7 @@ const planWeek = async main => {
     const tg = e.target.closest('[data-prtg]'); if (tg) { const k = tg.dataset.prtg; s.shut[k] = !s.shut[k]; return draw(); }
     const u = e.target.closest('[data-pru]'); if (u) { e.preventDefault(); return detail(+u.dataset.pru, u.dataset.prsc); }
     if (e.target.closest('#prNew')) return openForm('collect_plan', { onSaved: () => load() });
-    if (e.target.closest('#prX')) return download('/api/export-rows', { file: 'Bao_cao_thuc_hien_ke_hoach_thu', title: 'BÁO CÁO THỰC HIỆN KẾ HOẠCH THU', sheets: [{ name: 'Báo cáo thực hiện KH thu', title: 'BÁO CÁO THỰC HIỆN KẾ HOẠCH THU', note: xnote(), cols: XC, rows: xrows(), noNo: 1 }] });
+    if (e.target.closest('#prX')) return download('/api/export-rows', { file: 'Chi_tiet_thuc_hien_ke_hoach_thu', title: 'CHI TIẾT THỰC HIỆN KẾ HOẠCH THU', sheets: [{ name: 'Chi tiết thực hiện KH thu', title: 'CHI TIẾT THỰC HIỆN KẾ HOẠCH THU', note: xnote(), cols: XC, rows: xrows(), noNo: 1 }] });
     if (e.target.closest('#prPr')) return printIt(); }));
   main.addEventListener('change', run(async e => { const t = e.target;
     if (t.id === 'prY' || t.id === 'prM') { s.ym = `${$('#prY', main).value}-${String($('#prM', main).value).padStart(2, '0')}`; s.week = ''; return load(); }
