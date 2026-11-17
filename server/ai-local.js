@@ -6,6 +6,7 @@ const { q, one } = require('./db');
 const C = require('./core');
 const V = require('./views');
 const M = require('./meta');
+const AQ = require('./ai-query');   // 17/11/2026: hỏi tổng quát trên mọi loại hồ sơ
 
 const db = { q, one };
 const fold = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
@@ -70,6 +71,13 @@ const INTENTS = [
     return { steps: [`Hồ sơ khách ${code}`], answer: [`**${link('customer', k.id, cu.full_name || code)}** (${code})${cu.phone ? ' · ' + cu.phone : ''}`,
       cts.length ? table(['Hợp đồng', 'Căn', 'Trạng thái', 'Giá trị'], cts.map(h => [link('contract', h.id, h.number || h.code), h.unit || h.unit_code || '', h.status, big(h.value)])) : '- Chưa có hợp đồng.'].join('\n') };
   } },
+  // 17/11/2026: hỏi tổng quát — đếm / liệt kê / tổng tiền / nhóm «theo …» trên mọi loại hồ sơ (khách hàng, hợp đồng, phiếu thu…), lọc của tôi · dự án · tòa · trạng thái · thời gian
+  { key: 'tong_quat', test: c => { const h = AQ.detectEnt(c.t); if (!h) return false;
+      if (has(c.t, 'qua han', 'den han', 'cong no', 'no kho doi', 'cham thanh toan', 'doanh so', 'chi tieu', 'du dieu kien', 'cho toi duyet', 'ton dong', 'canh bao', 'sap het han', 'lich ky', 'hen ky')) return false;
+      if (h.ent === 'unit' && !/ban giao|\d ?pn|phong ngu|studio|huong|tang \d|dien tich|lien ke|shophouse|lon nhat|nho nhat|trung binh|theo |tren \d|duoi \d/.test(c.t)) return false;   // giỏ hàng có trả lời riêng
+      if (h.ent === 'unit' || h.ent === 'handover') return true;
+      return AQ.looksLikeQuery(c.t) || !!AQ.detectTime(c.t, C.today()) || /\b(cua toi|cua minh|toi dang co|toi phu trach)\b/.test(c.t); },
+    run: (c, raw, user) => AQ.run(c, raw, user) },
   // kỳ thu sắp đến hạn
   { key: 'den_han', test: c => has(c.t, 'den han', 'sap toi han', 'sap den', 'phai thu tuan', '7 ngay toi') && !has(c.t, 'qua han'), async run(c, raw, user) {
     const D = await V.ledger(db, user, { project: c.f.project, building: c.f.building, owner: c.mine ? user.id : undefined });
@@ -102,7 +110,7 @@ const INTENTS = [
     return { steps: ['Số liệu Dashboard'], answer: L.join('\n') };
   } },
   // bàn giao đủ điều kiện
-  { key: 'ban_giao', test: c => has(c.t, 'ban giao', 'du dieu kien'), async run(c, raw, user) {
+  { key: 'ban_giao', test: c => has(c.t, 'du dieu kien') || c.t.includes('ban giao') && has(c.t, 'chua co lich', 'chua co ke hoach', 'chua len lich', 'chua hen'), async run(c, raw, user) {
     const rs = (await V.readyList(db, { project: c.f.project, building: c.f.building })).filter(r => r.eligible);
     const no = rs.filter(r => !r.handover_id), yes = rs.length - no.length;
     if (!rs.length) return { steps: ['Căn đủ điều kiện bàn giao'], answer: 'Chưa có căn nào đủ điều kiện bàn giao.' };
@@ -172,12 +180,16 @@ const HELP = `Tôi là trợ lý tra cứu **chạy ngay trong app** (không g�
 - **Bàn giao**: «Căn nào đủ điều kiện bàn giao mà chưa có lịch?»
 - **Việc cần làm**: «Việc tồn đọng của tôi hôm nay» · «Giữ chỗ sắp hết hạn» · «HĐ thuê sắp hết hạn» · «Chính sách sắp hết hiệu lực»
 - **Duyệt / lịch ký**: «Hồ sơ chờ tôi duyệt» · «Lịch ký tuần này»
+- **Đếm / liệt kê mọi hồ sơ**: «Tôi đang có bao nhiêu khách hàng?» · «Khách hàng tiềm năng theo nguồn» · «Hợp đồng thuê ký tháng này» · «Tổng tiền phiếu thu tuần này» · «Danh sách phiếu đăng ký đang giữ chỗ tòa G» · «Hồ sơ NOXH theo trạng thái» · «Phản ánh chưa xử lý» · «Căn đã bàn giao»
 - Hoặc gõ **tên khách, số điện thoại, số hợp đồng** để tìm.`;
 
 async function answer(user, text) {
   const c = await context(text, user);
   for (const it of INTENTS) if (it.test(c, text)) return { ...(await it.run(c, text, user)), intent: it.key };
-  return (await freeSearch(text, user)) || { steps: [], answer: `Tôi chưa hiểu câu hỏi «${cell(text)}».\n\n${HELP}`, intent: 'help' };
+  const fs = await freeSearch(text, user); if (fs) return fs;
+  if (AQ.detectEnt(c.t)) return { ...(await AQ.run(c, text, user)), intent: 'tong_quat' };
+  if (String(text).trim().split(/\s+/).length <= 6 && !/\?/.test(text)) return { steps: [`Tìm «${cell(text)}»`], answer: `Không tìm thấy căn / khách hàng / hợp đồng / phiếu nào khớp **«${cell(text)}»**. Thử gõ mã căn, mã KH, số điện thoại hoặc số hợp đồng.\n\n${HELP}`, intent: 'search_none' };
+  return { steps: [], answer: `Tôi chưa hiểu câu hỏi «${cell(text)}».\n\n${HELP}`, intent: 'help' };
 }
 
 async function ask(user, { conv, text }) {
