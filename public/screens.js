@@ -2184,8 +2184,8 @@ V.planyear = async main => {
   const cell = (src, m) => sum(its().filter(i => i.src === src && i.month === m));
   const drawF = () => { const t0 = +today().slice(0, 4), ys = [...new Set([t0 - 1, t0, t0 + 1, t0 + 2, s.year])].sort();
     $('#apY', main).innerHTML = ys.map(y => `<option value="${y}" ${y === s.year ? 'selected' : ''}>${y}</option>`).join('');
-    const ps = [...new Set([...(d?.projects || []), ...(s.project ? [s.project] : [])])];
-    $('#apP', main).innerHTML = `<option value="">Tất cả dự án</option>` + ps.map(p => `<option value="${esc(p)}" ${s.project === p ? 'selected' : ''}>${esc(M.projects.find(x => x.code === p)?.name || p)}</option>`).join(''); };
+    // 17/11/2026: danh sách dự án lấy theo Danh mục dự án (mọi dự án, kể cả chưa có kế hoạch — chọn thì hiện trạng thái trống)
+    $('#apP', main).innerHTML = `<option value="">Tất cả dự án</option>` + M.projects.map(p => `<option value="${esc(p.code)}" ${s.project === p.code ? 'selected' : ''}>${esc(p.name || p.code)}</option>`).join(''); };
   const draw = () => { $('#apAsof', main).textContent = dmy(d.asof);
     const tot = Object.fromEntries(SRC.map(([k]) => [k, d.months.reduce((a, m) => a + cell(k, m), 0)])), all = SRC.reduce((a, [k]) => a + tot[k], 0);
     $('#apS', main).innerHTML = [['Tổng kế hoạch năm', all], ...SRC.map(([k, l]) => [l, tot[k]])].map(([l, v]) => `<div class="ap-stat"><div class="ap-sub">${l}</div><div class="ap-big">${ty(v)} <small>tỷ</small></div></div>`).join('');
