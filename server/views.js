@@ -815,8 +815,9 @@ const planAll = async (db, f = {}, user = null) => { const p = [], w = [];
   if (f.project) { p.push(+f.project); w.push(`coalesce(u.project_id, x.project_id) = $${p.length}`); }
   if (f.building) { p.push(+f.building); w.push(`coalesce(u.building_id, x.building_id) = $${p.length}`); }
   if (user && C.own(user, E.customer)) w.push(`(coalesce(c.owner_id, x.owner_id) = ${+user.id} OR coalesce(c.created_by, x.created_by) = ${+user.id})`);
-  return db.q(`SELECT x.*, c.number, c.kind, u.code unit, u.id unit_id, b.code building, b.id building_id, coalesce(k.full_name, k2.full_name) customer, us.full_name owner
+  return db.q(`SELECT x.*, c.number, c.kind, u.code unit, u.id unit_id, b.code building, b.id building_id, pr.code project, coalesce(k.full_name, k2.full_name) customer, us.full_name owner
     FROM kd_collect_plan x LEFT JOIN kd_contract c ON c.id = x.contract_id LEFT JOIN kd_unit u ON u.id = coalesce(c.unit_id, x.unit_id) LEFT JOIN kd_building b ON b.id = coalesce(u.building_id, x.building_id)
+      LEFT JOIN kd_project pr ON pr.id = coalesce(u.project_id, x.project_id)
       LEFT JOIN kd_customer k ON k.id = c.customer_id LEFT JOIN kd_customer k2 ON k2.id = x.customer_id LEFT JOIN kd_user us ON us.id = x.owner_id
     WHERE x.status NOT IN ('thay_the','tu_choi') ${w.length ? ' AND ' + w.join(' AND ') : ''} ORDER BY x.expected_on, x.id`, p); };
 // TỰ ĐỘNG CHUYỂN TIẾP khi hết tuần / tháng: khoản còn hiệu lực đã qua ngày cuối kỳ → chốt kỳ (lưu kế hoạch, thực thu trong kỳ, chưa thu, đã chuyển tiếp — giữ nguyên báo cáo kỳ cũ)
@@ -835,7 +836,7 @@ async function planRollover(db, asOf = today()) {
         `Chốt ${lbl}: kế hoạch ${fmtMoney(x.expected)}, thực thu ${fmtMoney(act)}, chưa thu ${fmtMoney(rem)}${rem > 0 ? ` → chuyển tiếp sang ${lbl2}` : ' — đã thu đủ'}`);
       if (rem > 0) { const W2 = monthWeeks(nx.ym);
         await C.create('collect_plan', { contract_id: x.contract_id, src_cts: x.src_cts, src_key: x.src_key, scope: x.scope, month: nx.ym,
-          project_id: x.project_id, building_id: x.building_id, title: x.title, units_n: x.units_n, grp_key: x.grp_key, ...(x.contract_id ? {} : { unit_id: x.unit_id, customer_id: x.customer_id }), plan_week: nx.wk, expected: rem, carry_in: rem,
+          project_id: x.project_id, building_id: x.building_id, title: x.title, units_n: x.units_n, unit_price: x.unit_price, rate: x.rate, grp_key: x.grp_key, ...(x.contract_id ? {} : { unit_id: x.unit_id, customer_id: x.customer_id }), plan_week: nx.wk, expected: rem, carry_in: rem,
           expected_on: nx.wk ? W2[nx.wk - 1].to : W2[W2.length - 1].to, basis: x.basis || 'khac', fund_src: x.fund_src, owner_id: x.owner_id, ability: x.ability, prev_id: x.id, carry_from: lbl,
           basis_note: `Chuyển tiếp từ ${lbl}`, explain: `Chuyển tiếp phần chưa thu của ${lbl}` }, C.SYS, { db, system: true }); }
       n++; }
@@ -862,7 +863,7 @@ async function planReport(db, user, f) {
     // tháng: số chuyển tiếp RA khỏi tháng (khoản chốt mà kỳ kế tiếp thuộc tháng khác); tuần: số chuyển sang tuần sau
     const nx = nextPeriod(x.ym, x.wk), carry = x.status === 'da_chot' && (by === 'tuan' || nx.ym !== ym) ? +x.carry_amt || 0 : 0;
     return { id: x.id, scope: x.scope || (x.kind === 'thue' ? 'thue' : 'ban'), unit_id: x.unit_id, unit: x.unit, building: x.building, building_id: x.building_id, customer: x.customer,
-      title: x.title || '', units_n: x.units_n, grp_key: x.grp_key || '', project_id: x.project_id,
+      title: x.title || '', units_n: x.units_n, grp_key: x.grp_key || '', project_id: x.project_id, project: x.project || '', unit_price: x.unit_price != null ? +x.unit_price : null, rate: x.rate != null ? +x.rate : null,
       number: x.number, contract_id: x.contract_id, month: x.ym, week: x.wk, period_l: periodL(x.ym, x.wk), expected_on: x.expected_on, expected: +x.expected, plan_v, actual: x.actual, carry,
       carry_in: x.carry_in != null ? +x.carry_in : 0, cin_m: x.carry_in != null && !inMonth ? +x.carry_in : 0,   // nhận chuyển tiếp (tuần) / nhận chuyển tiếp từ tháng trước (tháng)
       closed: x.status === 'da_chot', act_snap: +x.act_snap || 0, carry_amt: +x.carry_amt || 0, carry_to: x.carry_to || '', carry_from: x.carry_from || '', closed_on: x.closed_on ? ddDay(x.closed_on) : null,
@@ -962,19 +963,35 @@ async function ddUnitHist(db, user, f) {
 }
 // 17/11/2026: TẠO DÒNG THU BÁN MỚI — tháng, dự án, tòa, nội dung, số căn dự kiến bán, số tiền; phân bổ nhiều tuần (tổng các tuần = kế hoạch tháng) hoặc «Chưa phân bổ tuần» (không tự chia đều);
 // mỗi tuần 1 khoản kế hoạch cùng nhóm grp_key → báo cáo tuần / tháng dùng chung dữ liệu, không cộng trùng; chưa cần căn / khách hàng
+// 17/11/2026 (bản nhiều dòng): mỗi dòng = dự án, tòa, số căn dự kiến bán, đơn giá bình quân, tỷ lệ dự kiến thu (%), tổng dự kiến thu (= số căn × đơn giá × tỷ lệ, cho sửa theo số thực tế);
+// phân bổ tuần nhập cho tổng tháng (tổng các tuần = tổng các dòng) → chia cho từng dòng theo tỷ trọng tổng dự kiến thu của dòng (dòng cuối nhận phần làm tròn); mỗi dòng 1 nhóm grp_key
 async function salePlanCreate(db, user, b) {
   if (!can(user, E.collect_plan, 'c')) deny('Bạn không được lập kế hoạch thu');
-  const ym = /^\d{4}-\d{2}$/.test(b.month || '') ? b.month : bad('Chọn tháng / năm kế hoạch'), W = monthWeeks(ym), amt = +b.amount;
-  if (!(+b.project_id)) bad('Chọn dự án'); const title = String(b.title || '').trim(); if (!title) bad('Nhập nội dung kế hoạch'); if (!(amt > 0)) bad('Số tiền dự kiến thu phải > 0');
-  if (b.building_id && !(await db.one('SELECT 1 FROM kd_building WHERE id = $1 AND project_id = $2', [+b.building_id, +b.project_id]))) bad('Tòa không thuộc dự án đã chọn');
-  const ws = (Array.isArray(b.weeks) ? b.weeks : []).map(x => ({ n: +x.n, amt: +x.amount || 0 })).filter(x => x.amt > 0);
+  const ym = /^\d{4}-\d{2}$/.test(b.month || '') ? b.month : bad('Chọn tháng / năm kế hoạch'), W = monthWeeks(ym), title0 = String(b.title || '').trim();
+  const L = (Array.isArray(b.lines) && b.lines.length ? b.lines : [{ project_id: b.project_id, building_id: b.building_id, units_n: b.units_n, amount: b.amount }])
+    .map(x => ({ project_id: +x.project_id || null, building_id: +x.building_id || null, units_n: x.units_n ? +x.units_n : null, unit_price: x.unit_price ? +x.unit_price : null, rate: x.rate != null && x.rate !== '' ? +x.rate : null, amount: Math.round(+x.amount || 0) }));
+  if (!L.length) bad('Thêm ít nhất 1 dòng kế hoạch');
+  for (const [i, x] of L.entries()) { if (!x.project_id) bad(`Dòng ${i + 1}: chọn dự án`); if (!(x.amount > 0)) bad(`Dòng ${i + 1}: tổng dự kiến thu phải > 0`);
+    if (x.rate != null && (x.rate <= 0 || x.rate > 100)) bad(`Dòng ${i + 1}: tỷ lệ dự kiến thu phải trong 0 – 100%`);
+    if (x.building_id && !(await db.one('SELECT 1 FROM kd_building WHERE id = $1 AND project_id = $2', [x.building_id, x.project_id]))) bad(`Dòng ${i + 1}: tòa không thuộc dự án đã chọn`); }
+  const total = L.reduce((t, x) => t + x.amount, 0);
+  const ws = (Array.isArray(b.weeks) ? b.weeks : []).map(x => ({ n: +x.n, amt: Math.round(+x.amount || 0) })).filter(x => x.amt > 0);
   for (const x of ws) if (!W[x.n - 1]) bad(`Tuần ${x.n} không thuộc tháng đã chọn`);
-  if (ws.length && Math.round(ws.reduce((t, x) => t + x.amt, 0)) !== Math.round(amt)) bad(`Tổng tiền các tuần (${fmtMoney(ws.reduce((t, x) => t + x.amt, 0))}) phải bằng kế hoạch tháng (${fmtMoney(amt)})`);
-  const grp = `moi:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, base = { scope: 'moi', month: ym, project_id: +b.project_id, building_id: b.building_id ? +b.building_id : null, title, units_n: b.units_n ? +b.units_n : null,
-    owner_id: b.owner_id ? +b.owner_id : null, basis: 'khac', fund_src: 'khach_tu_tra', basis_note: String(b.note || '').trim() || null, explain: 'Kế hoạch thu bán mới', grp_key: grp };
-  const lines = ws.length ? ws.map(x => ({ ...base, plan_week: x.n, expected: x.amt, expected_on: W[x.n - 1].to })) : [{ ...base, plan_week: 0, expected: amt, expected_on: W[W.length - 1].to }];
-  for (const l of lines) await C.create('collect_plan', l, user, { db, system: true, note: `Tạo dòng thu bán mới «${title}» — ${periodL(ym, l.plan_week)} · ${fmtMoney(l.expected)}${ws.length ? ` (phân bổ ${ws.length} tuần, tổng ${fmtMoney(amt)})` : ''}` });
-  return { ok: true, grp_key: grp, msg: `Đã tạo dòng thu bán mới «${title}» · ${fmtMoney(amt)}đ${ws.length ? ` · phân bổ ${ws.length} tuần` : ' · chưa phân bổ tuần'}` };
+  if (ws.length && ws.reduce((t, x) => t + x.amt, 0) !== total) bad(`Tổng phân bổ tuần (${fmtMoney(ws.reduce((t, x) => t + x.amt, 0))}) phải bằng tổng kế hoạch tháng (${fmtMoney(total)})`);
+  const PJ = new Map((await db.q('SELECT id, code FROM kd_project')).map(x => [x.id, x.code])), BD = new Map((await db.q('SELECT id, code FROM kd_building')).map(x => [x.id, x.code]));
+  // chia tuần cho từng dòng theo tỷ trọng; mỗi tuần: các dòng trước làm tròn xuống, dòng cuối = phần còn lại của tuần → tổng từng tuần và tổng tháng giữ đúng (lệch làm tròn giữa các dòng ≤ vài đồng)
+  const split = ws.length ? L.map(() => ws.map(() => 0)) : null;
+  if (split) { ws.forEach((w, j) => { let left = w.amt; L.forEach((x, i) => { const v = i === L.length - 1 ? left : Math.floor(w.amt * x.amount / total); split[i][j] = v; left -= v; }); }); }
+  let n = 0;
+  for (const [i, x] of L.entries()) {
+    const grp = `moi:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}${i}`, lbl = `${PJ.get(x.project_id) || ''}${x.building_id ? ' · Tòa ' + BD.get(x.building_id) : ''}`;
+    const title = `${title0 || 'Thu bán mới'}${x.units_n ? ` — ${x.units_n} căn` : ''}`;
+    const base = { scope: 'moi', month: ym, project_id: x.project_id, building_id: x.building_id, title, units_n: x.units_n, unit_price: x.unit_price, rate: x.rate,
+      owner_id: b.owner_id ? +b.owner_id : null, basis: 'khac', fund_src: 'khach_tu_tra', basis_note: String(b.note || '').trim() || null, explain: 'Kế hoạch thu bán mới', grp_key: grp };
+    const recs = split ? ws.map((w, j) => ({ ...base, plan_week: w.n, expected: split[i][j], expected_on: W[w.n - 1].to })).filter(r => r.expected > 0) : [{ ...base, plan_week: 0, expected: x.amount, expected_on: W[W.length - 1].to }];
+    for (const r of recs) { await C.create('collect_plan', r, user, { db, system: true, note: `Tạo dòng thu bán mới «${title}» (${lbl}${x.units_n && x.unit_price ? ` · ${x.units_n} căn × ${fmtMoney(x.unit_price)}${x.rate != null ? ` × ${x.rate}%` : ''}` : ''}) — ${periodL(ym, r.plan_week)} · ${fmtMoney(r.expected)}` }); n++; }
+  }
+  return { ok: true, msg: `Đã tạo ${L.length} dòng thu bán mới · tổng ${fmtMoney(total)}đ${ws.length ? ` · phân bổ ${ws.length} tuần` : ' · chưa phân bổ tuần'}` };
 }
 // liên kết dòng thu bán mới với giao dịch thực tế: căn (bắt buộc), hợp đồng (không bắt buộc — có thì khách hàng theo HĐ); áp dụng cho mọi khoản còn hiệu lực cùng nhóm; lưu lịch sử
 async function planLink(db, user, id, b) {

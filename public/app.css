@@ -2014,3 +2014,6 @@ table.t.uc-t td.num, table.t.uc-t th.num { white-space: nowrap; overflow-wrap: n
 .dd2 .dd-rule summary{cursor:pointer;color:var(--cobalt);font-weight:600}
 @media (max-width:1100px){.dd2 .dd-k{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (max-width:640px){.dd2 .dd-k{grid-template-columns:repeat(2,minmax(0,1fr))}.dd2 .dd-t .s2{position:static;box-shadow:none}}
+.pw2 .pr-t tr.p td{font-weight:700;background:#f2f6fc}
+.pw2 .pr-t tr.p td:first-child{padding-left:22px}
+.pw2 .pr-t tr.b td:first-child{padding-left:36px}
