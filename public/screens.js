@@ -2170,7 +2170,7 @@ V.planyear = async main => {
   main.innerHTML = `<div class="page ap"><div class="ap-hd"><div><div class="ap-eb">CÁT TƯỜNG · KẾ HOẠCH DÒNG THU</div><h2>Kế hoạch dòng thu năm</h2><div class="ap-sub">Công nợ còn lại · Bán mới · Cho thuê</div></div>
       <div class="ap-act"><span class="ap-dd"><button type="button" id="apX">Xuất báo cáo ${ico('fa-caret-down')}</button><span class="ap-menu" hidden><button type="button" data-apx="xlsx" data-apdet="0">${ico('fa-file-excel')} Excel — bản tổng hợp</button><button type="button" data-apx="xlsx" data-apdet="1">${ico('fa-file-excel')} Excel — bản chi tiết</button><button type="button" data-apx="pdf" data-apdet="0">${ico('fa-print')} In / PDF — bản tổng hợp</button><button type="button" data-apx="pdf" data-apdet="1">${ico('fa-print')} In / PDF — bản chi tiết</button></span></span>
         <button type="button" class="ap-pri" id="apNew">+ Kế hoạch bán mới</button></div></div>
-    <div class="ap-box"><div class="ap-flt"><label>Năm kế hoạch<select id="apY"></select></label><label>Dự án<select id="apP"></select></label><label>Từ ngày<span id="apFr"></span></label><label>Đến ngày<span id="apTo"></span></label><span class="ap-sub" id="apRg"></span></div><div class="ap-stats" id="apS"></div></div>
+    <div class="ap-box"><div class="ap-flt"><label>Năm kế hoạch<select id="apY"></select></label><label>Dự án<select id="apP"></select></label><label>Từ ngày<span id="apFr"></span></label><label>Đến ngày<span id="apTo"></span></label><span class="ap-sub" id="apRg"></span></div><div class="ap-st" id="apSt" hidden></div><div class="ap-stats" id="apS"></div></div>
     <div class="ap-box"><div class="ap-row"><h3>Phân bổ dòng thu theo tháng</h3><span class="ap-sub">Tỷ đồng · Tổng từng tháng · bấm cột để xem chi tiết tháng</span></div><div class="ap-chart" id="apC"></div>
       <div class="ap-lg">${SRC.map(([, l, c]) => `<span><i style="background:${c}"></i>${l}</span>`).join('')}</div><div class="ap-tip" hidden></div></div>
     <div class="ap-box"><div class="ap-row"><h3>Bảng kế hoạch</h3><span class="ap-sub">Bấm số tiền của căn để xem các khoản cấu thành · bấm số tiền dòng tổng hợp để xem chi tiết tháng</span><span class="ap-tga"><button type="button" data-apall="1">${ico('fa-plus')} Mở rộng tất cả</button><button type="button" data-apall="0">${ico('fa-minus')} Thu gọn tất cả</button></span></div>
@@ -2186,7 +2186,7 @@ V.planyear = async main => {
   const ml = m => d.months.some(x => x.slice(0, 4) !== d.months[0].slice(0, 4)) ? `${m.slice(5)}/${m.slice(2, 4)}` : `T${+m.slice(5)}`;
   const rgL = () => `Số liệu kế hoạch từ ngày ${dmy(d.from)} đến ngày ${dmy(d.to)}`, asL = () => `Số dư công nợ / thực thu chốt ngày ${dmy(d.asof)}`;
   const drawF = () => { const t0 = +today().slice(0, 4), ys = [...new Set([t0 - 1, t0, t0 + 1, t0 + 2, s.year])].sort();
-    $('#apFr', main).innerHTML = segDate('apF', s.from || `${s.year}-01-01`); $('#apTo', main).innerHTML = segDate('apT2', s.to || `${s.year}-12-31`); wireSegDate($('.ap-flt', main));
+    if (!$('#apF', main)) { $('#apFr', main).innerHTML = segDate('apF', s.from); $('#apTo', main).innerHTML = segDate('apT2', s.to); wireSegDate($('.ap-flt', main)); }   /* không đặt lại ô ngày khi vẽ lại (người dùng có thể đang gõ dở) — chỉ đặt lại khi đổi Năm kế hoạch */
     $('#apY', main).innerHTML = ys.map(y => `<option value="${y}" ${y === s.year ? 'selected' : ''}>${y}</option>`).join('');
     // 17/11/2026: danh sách dự án lấy theo Danh mục dự án (mọi dự án, kể cả chưa có kế hoạch — chọn thì hiện trạng thái trống)
     $('#apP', main).innerHTML = `<option value="">Tất cả dự án</option>` + M.projects.map(p => `<option value="${esc(p.code)}" ${s.project === p.code ? 'selected' : ''}>${esc(p.name || p.code)}</option>`).join(''); };
@@ -2241,7 +2241,17 @@ V.planyear = async main => {
       <div class="ap-dg">${SRC.map(([k, l, , n]) => `<button type="button" class="ap-di ${s.src === k ? 'on' : ''}" data-apsrc="${k}"><div class="ap-sub">${l}</div><div class="ap-big">${ty(sum(xs.filter(i => i.src === k)))} tỷ</div><div class="ap-sub">${n}</div></button>`).join('')}</div>
       <div class="ap-note">Tổng ${lab}: <b>${ty(sum(xs))} tỷ</b> (${fm(sum(xs))} đ) · thực thu ${fm(sum(xs, 'act'))} đ${s.src ? ` · đang xem: ${esc(SRC.find(x => x[0] === s.src)[1])} — <a href="#" data-apsrc="">xem cả 3 nguồn</a>` : ''}${m ? ` · <a href="#" data-apweek="${m}">Mở kế hoạch thu tuần/tháng ${+m.slice(5)}/${m.slice(0, 4)}</a>` : ''}</div>
       ${cur.length ? `<div class="ap-tree">${tree(cur)}</div>` : '<div class="ap-empty">Không có khoản thu trong kỳ này</div>'}`; };
-  const load = async () => { const q = new URLSearchParams({ year: s.year, from: s.from || `${s.year}-01-01`, to: s.to || `${s.year}-12-31` }); d = await api('GET', '/api/plan-year?' + q); if (!s.month || s.month.slice(0, 4) !== String(s.year)) s.month = d.months[today().slice(0, 4) === String(s.year) ? +today().slice(5, 7) - 1 : 0]; drawF(); draw(); };
+  let seq = 0;
+  const busy = (on, msg = '') => { main.querySelector('.ap')?.classList.toggle('ap-ld', on); const st = $('#apSt', main); if (st) { st.hidden = !msg; st.innerHTML = msg; } };
+  const fail = msg => { d = null; for (const id of ['#apS', '#apC', '#apT', '#apD']) { const el = $(id, main); if (el) el.innerHTML = id === '#apT' ? '' : `<div class="ap-empty ap-errb">${msg}</div>`; } const u = $('#apU b', main); if (u) u.textContent = '—'; const rc = $('#apRc', main); if (rc) rc.innerHTML = ''; };
+  const load = async () => { const my = ++seq;
+    if (!s.from || !s.to || s.from > s.to) { busy(false, `${ico('fa-triangle-exclamation')} «Từ ngày» phải nhỏ hơn hoặc bằng «Đến ngày» — chưa tính lại báo cáo`); return fail('Khoảng thời gian không hợp lệ: «Từ ngày» phải nhỏ hơn hoặc bằng «Đến ngày».'); }
+    busy(true, `${ico('fa-spinner fa-spin')} Đang tính lại số liệu từ ${dmy(s.from)} đến ${dmy(s.to)}…`);
+    try { const q = new URLSearchParams({ year: s.year, from: s.from, to: s.to }), r = await api('GET', '/api/plan-year?' + q);
+      if (my !== seq) return;   // đã có lựa chọn mới hơn — bỏ kết quả cũ
+      d = r; if (!d.months.includes(s.month)) s.month = d.months.includes(today().slice(0, 7)) ? today().slice(0, 7) : d.months[0];
+      busy(false); drawF(); draw(); }
+    catch (er) { if (my !== seq) return; busy(false, `${ico('fa-circle-exclamation')} Không lấy được dữ liệu: ${esc(er.message)} — <a href="#" data-apre="1">Thử lại</a>`); fail('Không lấy được dữ liệu cho khoảng thời gian đã chọn — số liệu cũ đã được ẩn.'); } };
   // tooltip cột chồng
   const tip = $('.ap-tip', main);
   $('#apC', main).addEventListener('mousemove', e => { const c = e.target.closest('.ap-col'); if (!c) { tip.hidden = true; return; } const m = c.dataset.apm, rc = $('#apC', main).getBoundingClientRect();
@@ -2273,6 +2283,8 @@ V.planyear = async main => {
       ${rows.map(r => `<tr class="${r._c === 'tot' ? 'x' : r._c || ''}">${C.map(c => `<td class="${c[2] === 'money' ? 'n' : ''}">${c[2] === 'money' ? (r[c[0]] ? fm(r[c[0]]) : '') : esc(r[c[0]] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table>
       <div style="text-align:right;margin-top:10px;font-style:italic">Ngày lập: ngày ${+t0.slice(8)} tháng ${+t0.slice(5, 7)} năm ${t0.slice(0, 4)}</div><div class="sg"><div><b>NGƯỜI LẬP</b><i>(Ký, ghi rõ họ tên)</i></div><div><b>TRƯỞNG BỘ PHẬN</b><i>(Ký, ghi rõ họ tên)</i></div></div><script>setTimeout(() => print(), 300)</` + `script></body></html>`); w.document.close(); };
   main.addEventListener('click', run(async e => {
+    if (e.target.closest('[data-apre]')) { e.preventDefault(); return load(); }
+    if (!d && e.target.closest('[data-apx], #apX, [data-apm], [data-apleaf], #apU')) return toast('Chưa có số liệu cho khoảng thời gian đang chọn', true);
     if (e.target.closest('#apX')) { const mn = $('.ap-menu', main); mn.hidden = !mn.hidden; return; }
     const x = e.target.closest('[data-apx]'); if (x) { $('.ap-menu', main).hidden = true; return exp(x.dataset.apx, x.dataset.apdet === '1'); }
     const tg = e.target.closest('[data-aptg]'); if (tg) { s.shut[tg.dataset.aptg] = !s.shut[tg.dataset.aptg]; return draw(); }
@@ -2286,8 +2298,8 @@ V.planyear = async main => {
     const mm = e.target.closest('[data-apm]'); if (mm) { s.month = mm.dataset.apm; s.src = mm.dataset.aps || ''; draw(); return $('#apD', main).scrollIntoView({ behavior: 'smooth', block: 'start' }); }
     if (!e.target.closest('.ap-dd')) $('.ap-menu', main).hidden = true;
   }));
-  main.addEventListener('sdchange', run(async e => { const v = segVal(e.target); if (v === null) return; if (e.target.id === 'apF') s.from = v || `${s.year}-01-01`; else if (e.target.id === 'apT2') s.to = v || `${s.year}-12-31`; else return; await load(); }));
-  main.addEventListener('change', run(async e => { if (e.target.id === 'apY') { s.year = +e.target.value; s.from = `${s.year}-01-01`; s.to = `${s.year}-12-31`; return load(); } if (e.target.id === 'apP') { s.project = e.target.value; draw(); } }));
+  main.addEventListener('sdchange', async e => { const v = segVal(e.target); if (v === null) return; if (e.target.id === 'apF') s.from = v || `${s.year}-01-01`; else if (e.target.id === 'apT2') s.to = v || `${s.year}-12-31`; else return; await load(); });
+  main.addEventListener('change', run(async e => { if (e.target.id === 'apY') { s.year = +e.target.value; s.from = `${s.year}-01-01`; s.to = `${s.year}-12-31`; segSet($('#apF', main), s.from); segSet($('#apT2', main), s.to); return load(); } if (e.target.id === 'apP') { s.project = e.target.value; if (d) draw(); } }));
   try { await load(); } catch (er) { $('#apD', main).innerHTML = `<div class="ap-empty">${esc(er.message)}</div>`; }
 };
 V.unitstatus = async main => {

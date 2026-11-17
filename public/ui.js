@@ -255,13 +255,14 @@ function segVal(el) {
 function segSet(el, v) {
   const [y, m, d] = /^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v.split('-') : ['', '', ''];
   $('[data-p="d"]', el).value = d; $('[data-p="m"]', el).value = m; $('[data-p="y"]', el).value = y;
+  el._last = segVal(el); el.classList.remove('bad');
 }
 function wireSegDate(root) {
   $$('.sdate', root).forEach(el => {
     if (el._sd) return; el._sd = 1;
     const ps = $$('.sd-p', el), nat = $('input[type=date]', el);
-    let last = segVal(el);
-    const fire = () => { const v = segVal(el); el.classList.toggle('bad', v === null); if (v !== null && v !== last) { last = v; el.dispatchEvent(new Event('sdchange', { bubbles: true })); } };
+    el._last = segVal(el);   // giá trị đã phát gần nhất — segSet (đặt bằng chương trình) cũng cập nhật
+    const fire = () => { const v = segVal(el); el.classList.toggle('bad', v === null); if (v !== null && v !== el._last) { el._last = v; el.dispatchEvent(new Event('sdchange', { bubbles: true })); } };
     ps.forEach((p, i) => {
       p.addEventListener('input', () => {
         p.value = p.value.replace(/\D/g, '').slice(0, +p.maxLength);
@@ -269,7 +270,11 @@ function wireSegDate(root) {
         fire();
       });
       p.addEventListener('keydown', e => {
-        if (/^\d$/.test(e.key) && p.value.length >= +p.maxLength && p.selectionStart === p.selectionEnd) p.value = '';   // ô đã đủ số: gõ số mới thì thay cả phần đó
+        // 17/11/2026: tự xử lý chữ số — thay đúng phần đang bôi đen / ô đã đủ số thì thay cả phần (trước đây chữ số đầu gõ vào phần năm sau khi tự nhảy ô có thể bị mất: «2027» thành «027»)
+        if (/^\d$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault();
+          const a = p.selectionStart ?? p.value.length, b = p.selectionEnd ?? a, full = p.value.length >= +p.maxLength && a === b;
+          const v = full ? e.key : (p.value.slice(0, a) + e.key + p.value.slice(b)).slice(0, +p.maxLength), c = full ? 1 : Math.min(a + 1, v.length);
+          p.value = v; try { p.setSelectionRange(c, c); } catch {} p.dispatchEvent(new Event('input', { bubbles: true })); return; }
         if (e.key === 'Backspace' && !p.value && ps[i - 1]) { e.preventDefault(); ps[i - 1].focus(); ps[i - 1].select(); }   // ô trống: lùi về phần trước
         else if (['/', '.', '-'].includes(e.key) || (e.key === 'ArrowRight' && p.selectionStart === p.value.length)) { e.preventDefault(); if (ps[i + 1]) { ps[i + 1].focus(); ps[i + 1].select(); } }
         else if (e.key === 'ArrowLeft' && p.selectionStart === 0 && ps[i - 1]) { e.preventDefault(); ps[i - 1].focus(); }

@@ -2191,3 +2191,8 @@ table.t.uc-t td.num, table.t.uc-t th.num { white-space: nowrap; overflow-wrap: n
 .ap .ap-t tr.tot td.ap-x{background:#254b80}
 .ap .ap-ok{color:#1d7a46;font-weight:700}
 .ap .ap-bad{color:#b42318;font-weight:700}
+/* 17/11/2026: trạng thái đang tải / lỗi của Kế hoạch dòng thu năm */
+.ap.ap-ld #apS,.ap.ap-ld .ap-box:not(:has(.ap-flt)){opacity:.35;pointer-events:none;transition:opacity .15s}
+.ap .ap-st{margin-top:10px;font-size:12.5px;color:#254f89;font-weight:600}
+.ap .ap-st a{color:#295ba0}
+.ap .ap-errb{color:#b42318}
