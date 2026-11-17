@@ -2290,3 +2290,9 @@ table.t.uc-t td.num, table.t.uc-t th.num { white-space: nowrap; overflow-wrap: n
 .sc3-t tfoot td{background:#f1f5fb;font-weight:700;padding:8px;border-top:2px solid #d6dfec}.sc3-t tfoot tr.sc3-sub td{font-weight:500;background:#f8fafd;border-top:1px solid var(--line2)}
 .sc3-bt{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:10px}
 @media (max-width:700px){.sc3-hd{grid-template-columns:1fr}}
+/* 17/11/2026: lịch thu bán mới dạng đợt thanh toán HĐMB */
+.sc4-t td{vertical-align:top}.sc4-t .sc4-c{width:100%;min-height:54px;height:auto;resize:vertical;line-height:1.4;padding:6px 8px;font:inherit}
+.sc4-t .sdate{width:100%}.sc4-t input.c{text-align:center}
+.sc4-t tr.sc4-m td{background:#fbf8f1}
+.sc3-hd small{display:block;font-size:11.5px;color:var(--muted)}
+.sc3-hd{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
