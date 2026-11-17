@@ -309,7 +309,8 @@ R('POST', '/api/export-rows', async (req, res, u) => {
   const b = await readJson(req);
   if (!EXPORT_ROLES.includes(u.role)) deny();
   await C.audit({ q }, 'view', null, 'xuat_du_lieu', null, null, u, b.title);
-  sendFile(res, IO.sheet(String(b.title || 'Bao cao').slice(0, 80), b.cols || [], b.rows || [], { sum: b.sum, note: b.note, groups: b.groups }), `${safeName(b.file || 'bao-cao')}_${C.today()}.xlsx`, MIME['.xlsx']);
+  const x = Array.isArray(b.sheets) && b.sheets.length ? IO.sheets(b.sheets) : IO.sheet(String(b.title || 'Bao cao').slice(0, 80), b.cols || [], b.rows || [], { sum: b.sum, note: b.note, groups: b.groups, noNo: b.noNo });   // sheets: nhiều sheet trong 1 tệp (17/11/2026)
+  sendFile(res, x, `${safeName(b.file || 'bao-cao')}_${C.today()}.xlsx`, MIME['.xlsx']);
 });
 
 // --- tệp ---
@@ -370,7 +371,11 @@ R('GET', '/api/debt-status', async (req, res, u, p, qs) => send(res, 200, await 
 R('PUT', '/api/debt-status/days', async (req, res, u) => { const b = await readJson(req); send(res, 200, await tx(db => V.setDebtDays(db, u, b.days))); });
 R('PUT', '/api/debt-status/:id/class', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await tx(db => V.setDebtClass(db, u, p.id, b))); });
 R('GET', '/api/unit-status', async (req, res, u, p, qs) => send(res, 200, await V.unitStatus({ q, one }, u, qs)));
-R('GET', '/api/due-debt', async (req, res, u, p, qs) => send(res, 200, await V.dueDebt({ q, one }, u, qs)));   // Theo dõi công nợ đến hạn (17/11/2026)
+R('GET', '/api/due-debt', async (req, res, u, p, qs) => { await tx(db => V.planRollover(db)); send(res, 200, await V.dueDebt({ q, one }, u, qs)); });   // chuyển tiếp kế hoạch hết kỳ trước khi xem
+R('POST', '/api/due-debt/plan', async (req, res, u) => { const b = await readJson(req); send(res, 200, await tx(db => V.ddPlanToggle(db, u, b))); });   // tích / bỏ «Đưa vào kế hoạch thu» (17/11/2026)
+R('GET', '/api/collect-plans', async (req, res, u, p, qs) => send(res, 200, await V.planList({ q, one }, u, qs)));
+R('GET', '/api/plan-report', async (req, res, u, p, qs) => { await tx(db => V.planRollover(db)); send(res, 200, await V.planReport({ q, one }, u, qs)); });   // Báo cáo kế hoạch thu tuần / tháng (17/11/2026)
+R('POST', '/api/collect-plans/:id/adjust', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await tx(db => V.planAdjust(db, u, p.id, b))); });   // kế hoạch thu tuần / tháng   // Theo dõi công nợ đến hạn (17/11/2026)
 R('GET', '/api/finish-pay', async (req, res, u, p, qs) => send(res, 200, await V.finishPay({ q, one }, u, qs)));
 R('GET', '/api/loans', async (req, res, u, p, qs) => send(res, 200, await V.loans({ q, one }, u, qs)));
 R('GET', '/api/price-sheet/:id', async (req, res, u, p) => send(res, 200, await V.priceSheet({ q, one }, u, p.id)));
@@ -405,6 +410,8 @@ R('GET', '/api/contract-buyer/:cust', async (req, res, u, p, qs) => { if (!can(u
   if (!M.PII_ROLES.includes(u.role)) for (const o of [d.carry, d.spouse || {}]) for (const k of ['co_owner_id_no', 'co_owner_id_date', 'co_owner_id_place']) delete o[k];
   send(res, 200, d); });
 R('GET', '/api/contract-prefill/:unit', async (req, res, u, p, qs) => { if (!can(u, M.E.contract, 'c') && !can(u, M.E.contract, 'u')) C.deny(); send(res, 200, await B.contractPrefill({ q, one }, p.unit, qs.on)); });
+// 17/11/2026: thành phần giá bán của căn theo chính sách bán (HĐ vay / thuê bán căn)
+R('GET', '/api/sale-values/:unit', async (req, res, u, p, qs) => { if (!can(u, M.E.contract, 'c') && !can(u, M.E.contract, 'u')) C.deny(); send(res, 200, await B.saleValues({ q, one }, +p.unit, /^d{4}-d{2}-d{2}$/.test(qs.on || '') ? qs.on : undefined)); });
 // 16/11/2026: các hợp đồng của căn — trạng thái thật + công nợ tách từng HĐ (tab công nợ của HĐ / xem chi tiết căn ở Bảng tổng hợp công nợ)
 R('GET', '/api/unit-contracts/:unit', async (req, res, u, p) => { if (!can(u, M.E.contract, 'r')) C.deny(); send(res, 200, await B.unitDeals({ q, one }, p.unit)); });
 // 16/11/2026: HĐ thuê / vay — tiến độ thu tiền HĐMB theo chính sách bán đã ban hành áp cho căn (đã tính hạn theo ngày ký, đợt bàn giao / GCN theo thông báo đã phát hành)
@@ -758,7 +765,8 @@ async function start() {
   await tx(async db => B.fixRentValue(db, await db.one("SELECT * FROM kd_user WHERE role = 'admin' ORDER BY id LIMIT 1"))).catch(e => console.error('fixRentValue', e.message));
   const srv = http.createServer(handle);
   srv.listen(PORT, HOST, () => console.log(`App Phòng Kinh doanh: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`));
-  const job = async () => { try { await tx(db => B.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.error('Việc chạy nền lỗi:', e.message); } };
+  const job = async () => { try { await tx(db => V.planRollover(db)); } catch (e) { console.error('Chuyển tiếp kế hoạch thu lỗi:', e.message); }   // 17/11/2026: hết tuần / tháng → chốt kỳ + chuyển tiếp
+    try { await tx(db => B.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.error('Việc chạy nền lỗi:', e.message); } };
   if (!process.env.NO_JOBS) { setTimeout(job, 3000); setInterval(job, 2 * 60e3); }
   require('./misa-watch').startMisaWatch();   // MISA_DIR: tự nhập phiếu thu MISA từ thư mục chung
   return srv;

@@ -546,6 +546,9 @@ def('contract', {
     // 16/11/2026: hồ sơ NOXH của HĐ được Sở Xây dựng xét duyệt KHÔNG đủ điều kiện → «Dự thảo – Hồ sơ không đủ điều kiện», chặn trình / duyệt / ký cho tới khi hồ sơ được duyệt đủ điều kiện
     { k: 'noxh_fail', l: 'Hồ sơ NOXH không đủ điều kiện', t: 'bool', ro: 1, noForm: 1 },
     { k: 'noxh_fail_txt', l: 'Kết quả xét duyệt hồ sơ NOXH', t: 'text', ro: 1, show: { noxh_fail: [true] } },
+    // 17/11/2026: HĐ hoàn thiện tự lập (từ hồ sơ NOXH / HĐ vay bán căn) — HĐ vay, HĐ thuê đi kèm cùng giao dịch + nguồn tạo, chính sách để tra cứu
+    { k: 'rel_ids', l: 'Hợp đồng liên quan (vay / thuê)', t: 'refs', ref: 'contract', ro: 1, show: { kind: ['hoan_thien'] } },
+    { k: 'auto_src', l: 'Nguồn tạo tự động', t: 'text', ro: 1, show: { kind: ['hoan_thien'] } },
     // bên mua nhà ở
     { k: 'customer_id', l: 'Khách hàng (chủ hợp đồng)', t: 'ref', ref: 'customer', req: 1, sec: 'Bên mua nhà ở', byUnit: 'unit_id',   // HĐMB: chọn trong khách gắn với căn (15/11/2026)
       fill: { b_id_no: 'id_no', b_id_date: 'id_date', b_id_place: 'id_place', b_addr: 'address', b_phone: 'phone', b_email: 'email', b_bank_acc: 'bank_account' } },
@@ -638,7 +641,11 @@ def('contract', {
     { k: 'link_ids', l: 'Hợp đồng thuê / vay đi kèm', t: 'refs', ref: 'contract', show: RENT_VAY, help: 'HĐ vay tick chọn HĐ thuê đi kèm và ngược lại — chọn ở bên nào bên kia tự cập nhật' },
     money('value', 'Tổng tiền (giá trị hợp đồng)', { req: 1, help: 'Chung cư có giá nền: tự tính = tiền sau thuế + phí bảo trì + giá trị hoàn thiện' }),
     { k: 'closed', l: 'Hợp đồng đóng', t: 'bool', show: RENT_VAY, noForm: 1 },   // HĐMB bỏ ô này (03/11/2026); HĐ thuê / vay bỏ khỏi form 04/11/2026 (giữ cột dữ liệu cũ)
-    money('sale_price', 'Giá bán căn hộ', { show: { kind: ['thue', 'vay'], nature: ['ban'] }, help: 'Giá bán của giao dịch (chưa có HĐMB) — để trống: lấy theo Danh mục sản phẩm' }),
+    // 17/11/2026: HĐ vay / thuê bán căn — thành phần giá theo chính sách bán (sửa được): Giá trị HĐMB = căn hộ + phí bảo trì − giảm giá; Giá bán căn hộ = Giá trị HĐMB + hoàn thiện
+    money('sale_unit_val', 'Giá trị căn hộ (sau thuế)', { show: { kind: ['thue', 'vay'], nature: ['ban'] }, help: 'Theo chính sách bán hàng đang áp dụng cho căn — sửa thì Giá trị HĐMB, Giá bán căn hộ tự tính lại' }),
+    money('sale_maint', 'Phí bảo trì', { show: { kind: ['thue', 'vay'], nature: ['ban'] } }),
+    money('sale_finish', 'Giá trị hoàn thiện / nội thất', { show: { kind: ['thue', 'vay'], nature: ['ban'] }, help: 'Gói hoàn thiện theo chính sách — không nằm trong Giá trị HĐMB (thuộc HĐ hoàn thiện)' }),
+    money('sale_price', 'Giá bán căn hộ', { show: { kind: ['thue', 'vay'], nature: ['ban'] }, help: '= Giá trị HĐMB + Giá trị hoàn thiện / nội thất (tự tính)' }),
     { k: 'plan_hdmb', l: 'Dự kiến ký HĐMB', t: 'date', show: { kind: ['thue', 'vay'], nature: ['ban'] }, noForm: 1 },   // bỏ khỏi form + CN-06 04/11/2026 (giữ cột dữ liệu cũ)
     { k: 'prev_id', l: 'Chuyển tiếp từ hợp đồng', t: 'ref', ref: 'contract', hide: 1,   // bỏ khỏi form (03/11/2026) — máy tự nối khi lưu HĐMB
       help: 'HĐ vay / HĐ thuê (bản chất bán) trước đó của căn — chỉ để nối giao dịch, tiền đã thu theo hợp đồng đó KHÔNG trừ vào giá mua. Để trống: tự nối khi căn có' },
@@ -814,7 +821,7 @@ def('collect_plan', {
   how: 'Lọc công nợ → nhập dự kiến từng căn → Trưởng phòng duyệt → theo dõi thực thu → chốt chênh lệch',
   rules: 'Không dự kiến âm; vượt công nợ phải giải trình; kế hoạch có phiên bản và ngày chốt',
   c: ['cong_no', 'truong_phong'], a: ['truong_phong'], own: [], order: 't.month desc, t.expected_on', bulk: 1, fields: [
-    { k: 'month', l: 'Tháng kế hoạch', t: 'month', req: 1 },
+    { k: 'month', l: 'Tháng kế hoạch', t: 'month', help: 'Để trống = tự lấy theo ngày dự kiến thu' },
     { k: 'contract_id', l: 'Hợp đồng / mã căn', t: 'ref', ref: 'contract', req: 1, filter: 'da_ky' },
     { k: 'unit_id', l: 'Mã căn', t: 'ref', ref: 'unit', ro: 1 },
     { k: 'customer_id', l: 'Khách hàng', t: 'ref', ref: 'customer', ro: 1 },
@@ -822,17 +829,35 @@ def('collect_plan', {
     money('expected', 'Số dự kiến thu', { req: 1 }),
     { k: 'expected_on', l: 'Ngày dự kiến thu', t: 'date', req: 1 },
     { k: 'basis', l: 'Căn cứ dự kiến', t: 'sel', req: 1, o: [['cam_ket', 'Cam kết khách hàng'], ['lich_hd', 'Lịch hợp đồng'], ['khac', 'Khác']] },
-    { k: 'basis_note', l: 'Ghi chú căn cứ', t: 'text' },
+    { k: 'basis_note', l: 'Ghi chú', t: 'text' },
+    // 17/11/2026: nguồn tiền, thuộc công nợ bán hàng / cho thuê, liên kết lần nhắc nợ (đưa cam kết vào kế hoạch), đổi lịch = bản mới (giữ bản cũ «Đã thay thế» + lý do)
+    { k: 'fund_src', l: 'Nguồn tiền', t: 'sel', def: 'khach_tu_tra', o: [['khach_tu_tra', 'Khách tự thanh toán'], ['vay_ngan_hang', 'Vay ngân hàng giải ngân'], ['ho_tro', 'Hỗ trợ / bên thứ ba'], ['khac', 'Khác']] },
+    { k: 'scope', l: 'Thuộc công nợ', t: 'sel', o: [['ban', 'Bán hàng'], ['thue', 'Cho thuê']] },
+    { k: 'call_id', l: 'Từ lần nhắc nợ', t: 'ref', ref: 'debt_call', noForm: 1 },
+    { k: 'prev_id', l: 'Kế hoạch trước khi đổi lịch', t: 'ref', ref: 'collect_plan', ro: 1 },
+    { k: 'resched_reason', l: 'Lý do đổi lịch', t: 'text', ro: 1 },
+    { k: 'plan_week', l: 'Tuần trong tháng', t: 'int', help: 'Tuần 1, 2, … của tháng kế hoạch (Thứ 2 – Chủ nhật, cắt theo ranh giới tháng); 0 / trống = chưa phân bổ tuần' },   // 17/11/2026
+    { k: 'src_key', l: 'Nguồn tự lập', t: 'text', hide: 1 },
+    { k: 'src_cts', l: 'Các HĐ của căn trong kế hoạch', t: 'text', hide: 1 },
+    // 17/11/2026: chuyển tiếp kỳ — hết tuần / tháng chưa thu đủ: chốt kỳ (lưu số liệu lúc hết kỳ) + tạo khoản kỳ kế tiếp liên kết kỳ trước
+    { k: 'carry_from', l: 'Chuyển tiếp từ', t: 'text', ro: 1 },
+    money('carry_in', 'Số chuyển tiếp sang', { ro: 1, hide: 1 }),
+    { k: 'closed_on', l: 'Chốt kỳ ngày', t: 'date', ro: 1 },
+    money('act_snap', 'Thực thu trong kỳ (lúc chốt)', { ro: 1 }),
+    money('carry_amt', 'Đã chuyển tiếp (chưa thu lúc chốt)', { ro: 1 }),
+    { k: 'carry_to', l: 'Chuyển tiếp sang', t: 'text', ro: 1 },   // id HĐ, phân cách «,» — tính thực thu theo căn, không trùng giữa HĐ thuê / vay / HĐMB   // dd:<ban|thue>:<id căn> — tích «Đưa vào kế hoạch thu» ở Báo cáo công nợ đến hạn
     { k: 'ability', l: 'Khả năng thu', t: 'sel', def: 'vua', o: [['cao', 'Cao', 'g'], ['vua', 'Vừa', 'a'], ['thap', 'Thấp', 'r']] },
     { k: 'explain', l: 'Giải trình (khi vượt công nợ)', t: 'long' },
     owner(),
     { k: 'version', l: 'Phiên bản', t: 'int', ro: 1, def: 1 },
     { k: 'reason_miss', l: 'Nguyên nhân chưa thu được', t: 'long' },
-    { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'nhap', o: [...S.duyet, ['thay_the', 'Đã thay thế', 's'], ['dong', 'Đã đóng (HĐ thanh lý)', 's']] },
+    { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'nhap', o: [...S.duyet, ['thay_the', 'Đã thay thế', 's'], ['dong', 'Đã đóng (HĐ thanh lý)', 's'], ['da_chot', 'Đã chốt kỳ', 's']] },
   ], list: ['month', 'project', 'building', 'unit_id', 'customer_id', 'debt_left', 'expected', 'expected_on', 'basis', 'ability', 'actual', 'gap', 'owner_id', 'status'],
   lock: ['cho_duyet', 'da_duyet', 'thay_the', 'dong'], lockKeep: ['reason_miss'],
   flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'da_duyet' } },
-  acts: [{ k: 'revise', l: 'Lập phiên bản mới', icon: 'fa-code-branch', from: ['da_duyet'], roles: ['cong_no', 'truong_phong'] }],
+  acts: [{ k: 'revise', l: 'Lập phiên bản mới', icon: 'fa-code-branch', from: ['da_duyet'], roles: ['cong_no', 'truong_phong'] },
+    { k: 'doi_lich', l: 'Chuyển lịch', icon: 'fa-calendar-plus', from: ['nhap', 'cho_duyet', 'da_duyet', 'tu_choi'], roles: ['cong_no', 'truong_phong', 'ho_so'],
+      ask: [{ k: 'expected_on', l: 'Ngày dự kiến thu mới', t: 'date', req: 1 }, money('expected', 'Số tiền dự kiến (để trống = giữ nguyên)'), { k: 'reason', l: 'Lý do chuyển lịch', t: 'long', req: 1 }] }],
 });
 def('debt_call', {
   title: 'Nhật ký nhắc nợ – cam kết', one: 'lần gọi', code: 'CN-04', mod: '06', icon: 'fa-phone-volume', disp: "to_char(t.at,'DD/MM/YYYY')",
@@ -841,14 +866,18 @@ def('debt_call', {
   rules: 'Cam kết không đồng nghĩa thực thu; lịch sử không được ghi đè',
   c: ['cong_no', 'truong_phong'], u: [], d: [], order: 't.at desc', fields: [
     { k: 'contract_id', l: 'Hợp đồng / mã căn', t: 'ref', ref: 'contract', req: 1 },
-    { k: 'at', l: 'Ngày gọi', t: 'dt', req: 1, def: 'now' },
+    { k: 'at', l: 'Ngày giờ nhắc', t: 'dt', req: 1, def: 'now' },
+    // 17/11/2026: hình thức nhắc, phản hồi của khách, ghi chú — mỗi lần lưu là 1 bản ghi riêng (không sửa / ghi đè lần trước)
+    { k: 'channel', l: 'Hình thức nhắc', t: 'sel', req: 1, def: 'goi_dien', o: [['goi_dien', 'Gọi điện'], ['tin_nhan', 'Tin nhắn SMS'], ['zalo', 'Zalo'], ['email', 'Email'], ['gap_truc_tiep', 'Gặp trực tiếp'], ['van_ban', 'Gửi văn bản / thông báo']] },
     { k: 'contact_person', l: 'Người nghe máy', t: 'text' },
     { k: 'result', l: 'Kết quả liên hệ', t: 'sel', req: 1, o: [['da_trao_doi', 'Đã trao đổi', 'g'], ['khong_nghe', 'Không nghe máy', 'r'], ['hen_goi_lai', 'Hẹn gọi lại', 'a'], ['tu_choi', 'Từ chối thanh toán', 'r'], ['sai_so', 'Sai số', 's']] },
-    { k: 'content', l: 'Nội dung', t: 'long', req: 1 },
-    money('promise_amount', 'Số cam kết'),
-    { k: 'promise_on', l: 'Ngày cam kết', t: 'date' },
-    { k: 'next_on', l: 'Lần theo dõi tiếp', t: 'date' },
-    owner('Người gọi'),
+    { k: 'content', l: 'Nội dung nhắc', t: 'long', req: 1 },
+    { k: 'feedback', l: 'Phản hồi của khách hàng', t: 'long' },
+    money('promise_amount', 'Số tiền cam kết'),
+    { k: 'promise_on', l: 'Ngày cam kết thanh toán', t: 'date' },
+    { k: 'next_on', l: 'Lịch hẹn nhắc tiếp', t: 'date' },
+    owner('Người thực hiện'),
+    { k: 'note', l: 'Ghi chú', t: 'long' },
   ], list: ['at', 'contract_id', 'result', 'content', 'promise_amount', 'promise_on', 'promise_st', 'next_on', 'owner_id'],
 });
 def('refund', {
@@ -1181,7 +1210,7 @@ const MENU = [
   ['03', 'Khách hàng tiềm năng', 'fa-users', [['e:contact_log']]],   // hồ sơ khách tự sinh từ kênh liên hệ (Website, Messenger, Zalo, Hotline, trực tiếp)
   ['04', 'Giao dịch bán hàng', 'fa-handshake-angle', [['e:sale_notice'], ['e:reservation'], ['e:noxh_check'], ['signing', 'Lịch ký hợp đồng'], ['payouts', 'Theo dõi thanh lý & chi trả', 'GD-04']]],
   ['05', 'Hồ sơ & hợp đồng', 'fa-file-contract', [['e:contract?group=can_ho', 'Hợp đồng căn hộ chung cư'], ['e:contract?group=lien_ke', 'Hợp đồng nhà liền kề'], ['loans', 'Theo dõi hợp đồng 3 bên', 'HD-05'], ['e:contract_change'], ['vault', 'Hồ sơ & lưu trữ theo căn', 'HD-06']]],
-  ['06', 'Công nợ & kế hoạch thu', 'fa-sack-dollar', [['vouchers', 'Phiếu thu – Phiếu chi', 'CN-09'], ['loantrack', 'Theo dõi công nợ', 'CN-07'], ['duedebt', 'Theo dõi công nợ đến hạn', 'CN-11'], ['unitstatus', 'Tình trạng công nợ đến hạn', 'CN-06'], ['ledger', 'Sổ công nợ căn hộ'], ['e:collect_plan']]],   // bỏ menu Nhật ký nhắc nợ (07/11/2026): ghi ở Tình trạng công nợ đến hạn, tự hiện ở Hồ sơ 360°
+  ['06', 'Công nợ & kế hoạch thu', 'fa-sack-dollar', [['vouchers', 'Phiếu thu – Phiếu chi', 'CN-09'], ['loantrack', 'Theo dõi công nợ', 'CN-07'], ['duedebt', 'Báo cáo công nợ đến hạn', 'CN-11'], ['ledger', 'Sổ công nợ căn hộ'], ['e:collect_plan']]],   // bỏ menu Nhật ký nhắc nợ (07/11/2026): ghi ở Tình trạng công nợ đến hạn, tự hiện ở Hồ sơ 360°
   ['07', 'Bàn giao căn hộ', 'fa-key', [['ready', 'Căn đủ điều kiện'], ['e:handover_notice'], ['e:handover'], ['e:defect']]],
   ['08', 'Cấp sổ hồng', 'fa-book', [['e:gcn_notice'], ['e:pinkbook']]],   // 17/11/2026: Thông báo bàn giao Giấy chứng nhận
   ['09', 'Chăm sóc khách hàng', 'fa-headset', [['e:ticket'], ['e:notice']]],

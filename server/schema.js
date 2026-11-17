@@ -80,7 +80,12 @@ const SPECIAL = [
   // không tính trùng hoa hồng cho 1 hợp đồng
   `CREATE UNIQUE INDEX IF NOT EXISTS kd_commission_one ON kd_commission (contract_id) WHERE status NOT IN ('huy')`,
   // kế hoạch thu: mỗi hợp đồng 1 dòng hiệu lực / tháng
-  `CREATE UNIQUE INDEX IF NOT EXISTS kd_collect_plan_one ON kd_collect_plan (month, contract_id) WHERE status <> 'thay_the'`,
+  // 17/11/2026: bản «Đã đóng» (bỏ tích ở báo cáo công nợ, đã có thực thu — giữ lịch sử) / bị từ chối không chặn kế hoạch mới cùng tháng
+  `DROP INDEX IF EXISTS kd_collect_plan_one`,
+  // 17/11/2026: kế hoạch theo tuần + chuyển tiếp kỳ → 1 HĐ có thể có nhiều khoản trong tháng (mỗi tuần / kỳ chuyển tiếp 1 khoản); chống trùng kiểm tra ở hook (cùng HĐ + tháng + tuần)
+  `DROP INDEX IF EXISTS kd_collect_plan_one2`,
+  // khoản chuyển tiếp: mỗi kỳ trước chỉ sinh 1 kỳ kế tiếp
+  `CREATE UNIQUE INDEX IF NOT EXISTS kd_collect_plan_carry ON kd_collect_plan (prev_id) WHERE carry_in IS NOT NULL`,
   // kỳ thu hiệu lực không trùng số kỳ
   `CREATE UNIQUE INDEX IF NOT EXISTS kd_installment_seq ON kd_installment (contract_id, seq) WHERE active`,
   `CREATE INDEX IF NOT EXISTS kd_installment_c ON kd_installment (contract_id) WHERE active`,

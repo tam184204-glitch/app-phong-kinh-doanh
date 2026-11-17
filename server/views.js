@@ -668,26 +668,257 @@ async function voucherList(db, user, f = {}) {
 // mỗi dòng = 1 đợt thu (kể cả phí bảo trì, tiền thuê, hoàn thiện…) của hợp đồng còn hiệu lực (đã ký; HĐ đã thanh lý / hủy không có), hạn ≤ hôm nay, chưa thu đủ.
 // Đã thu từng đợt chia theo phiếu thu như B.debtOf (phiếu chọn đợt vào đợt đó trước, còn lại vào đợt hạn sớm nhất) → thu một phần còn số thiếu, thu đủ thì khỏi bảng.
 // Tính trực tiếp từ lịch thu hiện hành + phiếu thu hợp lệ mỗi lần xem (không lưu bảng riêng) → đổi hạn / ghi thu là cập nhật, không trùng khoản. HĐ vay (công ty vay khách) không có ở đây
+// ======================= BÁO CÁO CÔNG NỢ ĐẾN HẠN TỰ ĐỘNG (CN-11, 17/11/2026) =======================
+// Tại ngày chốt: mỗi dòng = 1 khoản đến hạn (hạn ≤ ngày chốt) còn chưa thanh toán đủ của 1 hợp đồng đã ký còn theo dõi (HĐ thanh lý đã đóng công nợ — hoàn trả xem «Theo dõi thanh lý & chi trả»).
+//  Phải thu khách: đợt HĐMB / thuê mua (gồm phí bảo trì), kỳ tiền thuê + khoản thu của HĐ thuê, đợt HĐ hoàn thiện, tiến độ HĐMB của HĐ thuê / HĐ vay bán căn (HĐ thuê + HĐ vay đi kèm dùng chung
+//  1 tiến độ — tính 1 lần, đã thu = gốc vay còn phải trả khách, chỉ là số liệu liên kết), đợt gốc khách phải chuyển của HĐ vay (HĐ vay không có tiến độ HĐMB).
+//  Phải trả khách: gốc + lãi HĐ vay đến hạn chưa trả (lịch trả lãi & gốc). Phải thu / phải trả tách riêng, không bù trừ.
+//  Lãi quá hạn: «Lãi suất quá hạn (%/năm)» của hợp đồng × còn nợ × số ngày quá hạn / 365; HĐ không ghi lãi suất → «Chưa đủ thông tin tính lãi».
+const DD_GRP = [['den_han', 'Đến hạn hôm nay'], ['qh30', 'Quá hạn 1–30 ngày'], ['qh60', 'Quá hạn 31–60 ngày'], ['qh90', 'Quá hạn 61–90 ngày'], ['qh90p', 'Quá hạn trên 90 ngày']];
+const ddGrp = d => d <= 0 ? 'den_han' : d <= 30 ? 'qh30' : d <= 60 ? 'qh60' : d <= 90 ? 'qh90' : 'qh90p';
+const ddDay = v => v ? String(v instanceof Date ? v.toISOString() : v).slice(0, 10) : null;
 async function dueDebt(db, user, f = {}) {
   if (!can(user, E.installment, 'r')) deny();
-  const t = today(), KL = Object.fromEntries(E.contract.fields.find(x => x.k === 'kind').o.map(o => [o[0], o[1]]));
-  const cs = await signedContracts(db, f, "AND c.status = 'da_ky' AND c.kind <> 'vay'" + mine(user, 'c'));
+  const t = isoDay(f.to) || today(), from = isoDay(f.from) || null;
+  if (from && from > t) bad('«Từ ngày» sau ngày chốt');
+  const opt = (e, k) => Object.fromEntries(E[e].fields.find(x => x.k === k).o.map(o => [o[0], o[1]]));
+  const KL = opt('contract', 'kind'), SL = opt('contract', 'status'), LS = opt('contract', 'loan_status'), CR = opt('debt_call', 'result'), PB = opt('collect_plan', 'basis'), PS = opt('collect_plan', 'status');
+  const p = [];
+  const cs = await db.q(`SELECT c.*, u.code unit, u.project_id, u.building_id, k.code kcode, k.full_name customer, coalesce(c.b_phone, k.phone) phone, pr.code project, b.code building, own.full_name owner
+    FROM kd_contract c JOIN kd_unit u ON u.id = c.unit_id JOIN kd_customer k ON k.id = c.customer_id JOIN kd_project pr ON pr.id = u.project_id JOIN kd_building b ON b.id = u.building_id
+    LEFT JOIN kd_user own ON own.id = c.owner_id
+    WHERE c.kind IN ('hdmb','thue_mua','thue','vay','hoan_thien') AND c.status = 'da_ky' ${uf(f, p)}${mine(user, 'c')} ORDER BY pr.code, b.code, u.code, c.id`, p);
+  const ids = cs.map(c => c.id), D = await B.debtOf(db, ids, t);
+  const CALL = new Map((await db.q(`SELECT DISTINCT ON (contract_id) contract_id, at, result, (SELECT count(*) FROM kd_debt_call x WHERE x.contract_id = d.contract_id) n FROM kd_debt_call d WHERE contract_id = ANY($1) ORDER BY contract_id, at DESC, id DESC`, [ids])).map(x => [x.contract_id, x]));
+  const PLAN = new Map((await db.q(`SELECT DISTINCT ON (p.contract_id) p.contract_id, p.expected_on, p.expected, p.basis, p.basis_note, p.status, us.full_name owner FROM kd_collect_plan p LEFT JOIN kd_user us ON us.id = p.owner_id
+    WHERE p.contract_id = ANY($1) AND p.status NOT IN ('thay_the','dong') ORDER BY p.contract_id, p.expected_on DESC, p.id DESC`, [ids])).map(x => [x.contract_id, x]));
+  const LP = await db.q('SELECT * FROM kd_loan_pay WHERE contract_id = ANY($1) AND due_on <= $2 AND coalesce(paid_amt, 0) < amount ORDER BY contract_id, due_on, seq', [ids, t]);
+  // HĐ thuê ↔ HĐ vay đi kèm dùng chung tiến độ HĐMB: tiến độ lấy ở HĐ thuê (đã thu = gốc vay còn phải trả khách); bỏ tiến độ + đợt gốc của HĐ vay để không tính trùng
+  const hasSale = c => ['thue', 'vay'].includes(c.kind) && c.sale_on && Array.isArray(c.sale_sched) && c.sale_sched.length;
+  const vays = cs.filter(c => c.kind === 'vay'), shared = new Set();
+  for (const c of cs.filter(c => c.kind === 'thue' && hasSale(c))) for (const v of B.loanPairOf(c, vays)) shared.add(v.id);
   const rows = [];
+  const base = c => ({ contract_id: c.id, unit_id: c.unit_id, project: c.project, building: c.building, unit: c.unit, kcode: c.kcode || '', customer: c.customer, phone: c.phone || '',
+    kind: c.kind, kind_l: KL[c.kind] || c.kind, number: c.number || '', status_l: SL[c.status] || c.status, owner: c.owner || '',
+    loan_l: c.loan_status ? LS[c.loan_status] || c.loan_status : '', bank: c.loan_bank || '', loan_plan: c.loan_status === 'co_vay' ? 'Chưa có thông tin giải ngân' : '' });
+  const extra = (r, c) => { const k = CALL.get(c.id), pl = PLAN.get(c.id);
+    Object.assign(r, { call_on: k?.at || null, call_l: k ? CR[k.result] || k.result : '', call_n: k ? +k.n : 0,
+      plan_on: pl ? ddDay(pl.expected_on) : null, plan_amt: pl ? +pl.expected : null, plan_src: pl ? PB[pl.basis] || pl.basis : '', plan_owner: pl?.owner || '', plan_st: pl ? PS[pl.status] || pl.status : '', plan_note: pl?.basis_note || '' }); };
+  const push = (c, o) => {
+    o.due_on = ddDay(o.due_on);
+    if (!(o.rem > 0) || !o.due_on || o.due_on > t || (from && o.due_on < from)) return;
+    const days = Math.max(0, dayDiff(o.due_on, t)), rate = c.late_rate != null && c.late_rate !== '' ? +c.late_rate : null;
+    const lai = o.dir === 'thu' && days > 0 ? (rate != null ? Math.round(o.rem * rate / 100 * days / 365) : null) : 0;
+    const g = ddGrp(days), r = { ...base(c), ...o, days, grp: g, grp_l: DD_GRP.find(x => x[0] === g)[1], dir_l: o.dir === 'thu' ? 'Phải thu khách hàng' : 'Phải trả khách hàng',
+      lai, lai_l: lai == null ? 'Chưa đủ thông tin tính lãi' : '', total_rem: o.rem + (lai || 0) };
+    extra(r, c); rows.push(r);
+  };
   for (const c of cs) {
-    if (c.d.closed) continue;
-    const no = new Map(); let k = 0; for (const i of [...c.d.inst].sort((a, b) => a.seq - b.seq)) if (!i.is_maint) no.set(i.id, ++k);
-    for (const i of c.d.inst) {
-      if (!(i.rem > 0) || !i.due_on || i.due_on > t) continue;
-      const days = dayDiff(i.due_on, t), dot = i.is_maint ? 'Phí bảo trì' : `Đợt ${no.get(i.id)}`;
-      rows.push({ contract_id: c.id, inst_id: i.id, unit_id: c.unit_id, unit: c.unit, project: c.project, building: c.building, customer: c.customer, phone: c.b_phone || c.phone || '', owner: c.owner || '',
-        number: c.number || '', kind: c.kind, kind_l: KL[c.kind] || c.kind, dot, name: i.name || '', content: `${dot}${i.name ? ' — ' + i.name : ''}`, maint: !!i.is_maint,
-        due_on: i.due_on, amount: +i.amount, paid: +i.paid, rem: +i.rem, days, st: days > 0 ? 'qua_han' : 'den_han',
-        st_l: `${days > 0 ? `Quá hạn ${days} ngày` : 'Đến hạn hôm nay'}${i.paid > 0 ? ' · thu một phần' : ''}` });
+    const d = D.get(c.id); if (d.closed) continue;
+    const skipInst = c.kind === 'vay' && (hasSale(c) || shared.has(c.id));   // HĐ vay bán căn có tiến độ HĐMB: gốc khách chuyển chính là khoản thu tiến độ HĐMB — không tính 2 lần
+    if (!skipInst) {
+      const no = new Map(); let k = 0; for (const i of [...d.inst].sort((a, b) => a.seq - b.seq)) if (!i.is_maint) no.set(i.id, ++k);
+      for (const i of d.inst) {
+        const dot = i.is_maint ? 'Phí bảo trì' : c.kind === 'vay' ? `Đợt gốc ${no.get(i.id)}` : c.kind === 'thue' ? `Kỳ ${no.get(i.id)}` : `Đợt ${no.get(i.id)}`;
+        push(c, { dir: 'thu', src: c.kind === 'vay' ? 'goc_vay' : 'lich', inst_id: i.id, dot, content: i.name || '', due_on: i.due_on, amount: +i.amount, paid: +i.paid, rem: +i.rem, maint: !!i.is_maint });
+      }
+    }
+    if (hasSale(c) && !(c.kind === 'vay' && shared.has(c.id))) {   // tiến độ HĐMB của HĐ thuê / HĐ vay bán căn
+      const tk = (await B.saleTrack(db, c, t)).sale, lk = c.kind === 'thue' ? B.loanPairOf(c, vays).map(v => v.number).filter(Boolean) : [];
+      for (const i of tk.rows) push(c, { dir: 'thu', src: 'hdmb', inst_id: null, dot: i.maint ? 'Phí bảo trì (HĐMB)' : `Đợt HĐMB ${i.seq}`,
+        content: (i.name || '') + (lk.length ? ` — đã thu = gốc vay còn phải trả theo HĐ vay ${lk.join(', ')} (liên kết, không tạo phiếu thu)` : ''), due_on: i.due_on, amount: i.amount, paid: i.paid, rem: i.rem, maint: !!i.maint });
     }
   }
-  rows.sort((a, b) => b.days - a.days || String(a.unit).localeCompare(String(b.unit), 'vi', { numeric: true }) || String(a.due_on).localeCompare(String(b.due_on)));
-  return { rows, asof: t, kinds: [...new Set(rows.map(r => r.kind))].map(k => [k, KL[k] || k]), can_thu: can(user, E.receipt, 'c') };
+  for (const l of LP) {   // HĐ vay: gốc / lãi công ty đến hạn trả khách
+    const c = cs.find(x => x.id === l.contract_id); if (!c || D.get(c.id).closed) continue;
+    push(c, { dir: 'tra', src: l.kind === 'lai' ? 'lai_vay' : 'tra_goc', inst_id: null, loan_pay_id: l.id, dot: `${l.kind === 'lai' ? 'Lãi' : 'Gốc'} kỳ ${l.seq}`,
+      content: l.kind === 'lai' ? `Trả lãi vay${l.period_from ? ` ${C.dmy(l.period_from)} – ${C.dmy(l.period_to)}` : ''}` : 'Trả gốc vay', due_on: l.due_on, amount: +l.amount, paid: +(l.paid_amt || 0), rem: +l.amount - +(l.paid_amt || 0) });
+  }
+  rows.sort((a, b) => (a.dir === b.dir ? 0 : a.dir === 'thu' ? -1 : 1) || b.days - a.days || String(a.unit).localeCompare(String(b.unit), 'vi', { numeric: true }) || String(a.due_on).localeCompare(String(b.due_on)));
+  // kế hoạch trong kỳ (tháng của ngày chốt): dự kiến thu = kế hoạch thu đã lập; dự kiến chi = lãi + gốc HĐ vay đến hạn trong tháng chưa trả
+  const m0 = t.slice(0, 8) + '01', m1 = addDays(t.slice(0, 8) + '28', 5).slice(0, 8) + '01', pp = [m0, m1], pq = [m0, m1];
+  const planIn = +(await db.one(`SELECT coalesce(sum(p.expected), 0) s FROM kd_collect_plan p JOIN kd_contract c ON c.id = p.contract_id JOIN kd_unit u ON u.id = c.unit_id WHERE p.status NOT IN ('thay_the','dong','tu_choi','da_chot') AND p.expected_on >= $1 AND p.expected_on < $2 ${uf(f, pp)}`, pp)).s;
+  const planOut = +(await db.one(`SELECT coalesce(sum(l.amount - coalesce(l.paid_amt, 0)), 0) s FROM kd_loan_pay l JOIN kd_contract c ON c.id = l.contract_id JOIN kd_unit u ON u.id = c.unit_id WHERE c.status = 'da_ky' AND l.due_on >= $1 AND l.due_on < $2 AND coalesce(l.paid_amt, 0) < l.amount ${uf(f, pq)}`, pq)).s;
+  return { rows, asof: t, from, synced_at: new Date().toISOString(), kinds: [...new Set(rows.map(r => r.kind))].map(k => [k, KL[k] || k]), grps: DD_GRP,
+    banks: [...new Set(rows.map(r => r.bank).filter(Boolean))], owners: [...new Set(rows.map(r => r.owner).filter(Boolean))], plan: { month: t.slice(0, 7), in: planIn, out: planOut }, can_thu: can(user, E.receipt, 'c'),
+    planned: Object.fromEntries((await db.q("SELECT id, src_key, month, plan_week, expected FROM kd_collect_plan WHERE src_key LIKE 'dd:%' AND status NOT IN ('thay_the','dong','tu_choi','da_chot') ORDER BY id")).map(x => [x.src_key,
+      { id: x.id, month: String(x.month).slice(0, 7), week: +x.plan_week || 0, amt: +x.expected, l: periodL(String(x.month).slice(0, 7), +x.plan_week || 0) }])),
+    promises: Object.fromEntries((await db.q('SELECT c.unit_id, min(k.promise_on) d FROM kd_debt_call k JOIN kd_contract c ON c.id = k.contract_id WHERE k.promise_on >= $1 GROUP BY c.unit_id', [today()])).map(x => [x.unit_id, ddDay(x.d)])),
+    can_call: can(user, E.debt_call, 'c'), can_plan: can(user, E.collect_plan, 'c') };
 }
+
+// 17/11/2026: kế hoạch thu theo căn (tab báo cáo công nợ đến hạn) — mọi kế hoạch còn hiệu lực (không gồm bản «Đã thay thế» / đã đóng / bị từ chối) của các HĐ trong phạm vi lọc,
+// ngày dự kiến từ «Từ ngày» (trống = đầu tháng của «Đến ngày») trở đi + kế hoạch cũ hơn còn chưa thu đủ. Thực thu = phiếu thu hợp lệ của HĐ (từ ngày lập kế hoạch, đến «Đến ngày»)
+// phân bổ lần lượt cho các kế hoạch theo ngày dự kiến (không đếm 1 phiếu 2 lần); giữ nguyên số kế hoạch để đối chiếu. Tuần ISO / tháng theo ngày dự kiến
+// 17/11/2026: tuần trong tháng — Thứ 2 → Chủ nhật, cắt theo ranh giới tháng (tuần 1 bắt đầu ngày 01); kỳ kế hoạch = tháng (+ tuần, không bắt buộc)
+const monthWeeks = ym => { const [y, m] = ym.split('-').map(Number), last = new Date(Date.UTC(y, m, 0)).getUTCDate(), W = [];
+  for (let d = 1; d <= last;) { const dow = (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7, e = Math.min(last, d + 6 - dow); W.push({ n: W.length + 1, from: `${ym}-${String(d).padStart(2, '0')}`, to: `${ym}-${String(e).padStart(2, '0')}` }); d = e + 1; }
+  return W; };
+const weekIn = (ym, day) => day && day.slice(0, 7) === ym ? (monthWeeks(ym).find(w => w.from <= day && day <= w.to)?.n || 0) : 0;
+const periodL = (ym, wk) => { const w = wk ? monthWeeks(ym)[wk - 1] : null, ml = `Tháng ${ym.slice(5, 7)}/${ym.slice(0, 4)}`;
+  return w ? `Tuần ${wk} – ${ml}` : `${ml} – Chưa phân bổ tuần`; };
+const isoWeek = s => { const d = new Date(s + 'T00:00:00Z'), day = (d.getUTCDay() + 6) % 7; d.setUTCDate(d.getUTCDate() - day + 3); const y = d.getUTCFullYear(), w1 = new Date(Date.UTC(y, 0, 4));
+  const w = 1 + Math.round(((d - w1) / 864e5 - 3 + ((w1.getUTCDay() + 6) % 7)) / 7), mon = addDays(s, -day); return { key: `${y}-W${String(w).padStart(2, '0')}`, l: `Tuần ${w}/${y} (${C.dmy(mon).slice(0, 5)}–${C.dmy(addDays(mon, 6)).slice(0, 5)})` }; };
+async function planRows(db, user, f, t) {
+  const from = isoDay(f.from) || t.slice(0, 8) + '01', p = [];
+  const ps = await db.q(`SELECT p.*, c.number, c.kind, c.status c_status, u.code unit, u.id unit_id, pr.code project, b.code building, k.full_name customer, us.full_name owner
+    FROM kd_collect_plan p JOIN kd_contract c ON c.id = p.contract_id JOIN kd_unit u ON u.id = c.unit_id JOIN kd_project pr ON pr.id = u.project_id JOIN kd_building b ON b.id = u.building_id
+      JOIN kd_customer k ON k.id = c.customer_id LEFT JOIN kd_user us ON us.id = p.owner_id
+    WHERE p.status NOT IN ('thay_the','tu_choi') AND c.status <> 'thanh_ly' ${uf(f, p)}${mine(user, 'c')} ORDER BY p.expected_on, p.id`, p);
+  if (!ps.length) return [];
+  const ids = [...new Set(ps.map(x => x.contract_id))], RC = await db.q("SELECT contract_id, voucher_date, amount FROM kd_receipt WHERE status = 'hop_le' AND contract_id = ANY($1) AND voucher_date <= $2 ORDER BY voucher_date, id", [ids, t]);
+  const PL = Object.fromEntries(E.collect_plan.fields.find(x => x.k === 'fund_src').o.map(o => [o[0], o[1]])), ST = Object.fromEntries(E.collect_plan.fields.find(x => x.k === 'status').o.map(o => [o[0], o[1]]));
+  for (const x of ps) { x.expected_on = ddDay(x.expected_on); x.actual = 0; x.from = ddDay(x.created_at); x.until = x.status === 'dong' ? ddDay(x.updated_at) : '9999'; }
+  for (const r of RC) { let left = +r.amount; const vd = ddDay(r.voucher_date);
+    for (const x of ps.filter(x => x.contract_id === r.contract_id && x.from <= vd && vd <= x.until)) { if (left <= 0) break; const take = Math.min(left, +x.expected - x.actual); if (take > 0) { x.actual += take; left -= take; } } }
+  // lịch sử chuyển lịch: chuỗi kế hoạch trước (prev_id)
+  const prevIds = ps.map(x => x.prev_id).filter(Boolean), prev = new Map();
+  let q = prevIds; while (q.length) { const xs = await db.q('SELECT id, prev_id, expected_on, expected, resched_reason, created_at FROM kd_collect_plan WHERE id = ANY($1)', [q]); xs.forEach(x => prev.set(x.id, x)); q = xs.map(x => x.prev_id).filter(id => id && !prev.has(id)); }
+  // bản «Đã đóng» (bỏ tích khi đã có thực thu) chỉ giữ để xem lịch sử: số kế hoạch = phần đã thu, không còn phải thu, không cảnh báo
+  for (const x of ps) if (x.status === 'dong') { x.closed = 1; x.expected = x.actual; }
+  return ps.filter(x => x.closed ? x.actual > 0 : x.expected_on >= from || x.actual < +x.expected).map(x => { const ym = x.month ? String(x.month).slice(0, 7) : x.expected_on.slice(0, 7),
+      wk = x.plan_week == null ? weekIn(ym, x.expected_on) : +x.plan_week || 0, ws = wk ? monthWeeks(ym)[wk - 1] : null,
+      w = { key: `${ym}-T${wk}`, l: periodL(ym, wk) + (ws ? ` (${C.dmy(ws.from).slice(0, 5)}–${C.dmy(ws.to).slice(0, 5)})` : '') }, rem = Math.max(0, +x.expected - x.actual), late = x.expected_on < t && rem > 0, hist = [];
+    for (let id = x.prev_id; id && prev.get(id); id = prev.get(id).prev_id) hist.push({ on: ddDay(prev.get(id).expected_on), amt: +prev.get(id).expected });
+    return { id: x.id, contract_id: x.contract_id, unit_id: x.unit_id, unit: x.unit, project: x.project, building: x.building, customer: x.customer, number: x.number, tab: x.scope || (x.kind === 'thue' ? 'thue' : 'ban'),
+      expected_on: x.expected_on, week: w.key, week_l: w.l, plan_week: wk, month: ym, month_l: ym.slice(5, 7) + '/' + ym.slice(0, 4), expected: +x.expected, actual: x.actual, rem, pct: +x.expected ? Math.round(x.actual / +x.expected * 1000) / 10 : 0,
+      src_l: PL[x.fund_src] || '', owner: x.owner || '', note: x.basis_note || '', status: x.status, st_l: ST[x.status] || x.status, call_id: x.call_id, version: x.version, resched: x.resched_reason || '',
+      hist, warn: late ? `Quá ngày kế hoạch ${C.dmy(x.expected_on)}, chưa thu đủ (còn ${fmtMoney(rem)})` : '' }; });
+}
+
+// 17/11/2026: tích «Đưa vào kế hoạch thu» ở Báo cáo công nợ đến hạn — 1 khoản kế hoạch / căn / sheet (khóa src_key = dd:<ban|thue>:<id căn>): số tiền = còn phải thu đến hạn
+// của căn trong sheet đến «Đến ngày», ngày dự kiến = ngày cam kết thanh toán gần nhất (từ hôm nay) của các HĐ của căn, chưa có thì ngày đang chọn; HĐ gắn = HĐ còn nợ nhiều nhất.
+// Tích lại không tạo trùng; bỏ chọn: chưa có thực thu → gỡ khỏi kế hoạch, đã có thực thu → giữ lịch sử (đóng kế hoạch)
+const ddTab = r => r.dir !== 'thu' ? null : r.kind === 'thue' && r.src === 'lich' ? 'thue' : 'ban';
+async function ddPlanToggle(db, user, b) {
+  if (!can(user, E.collect_plan, 'c')) deny('Bạn không được lập kế hoạch thu');
+  const uid = +b.unit_id, tab = b.tab === 'thue' ? 'thue' : 'ban', key = `dd:${tab}:${uid}`, t = isoDay(b.to) || today();
+  const ex = await db.q("SELECT * FROM kd_collect_plan WHERE src_key = $1 AND status NOT IN ('thay_the','dong','tu_choi','da_chot') ORDER BY id", [key]);
+  if (b.on) {
+    // 17/11/2026: kỳ do người dùng chọn ở hộp thoại — tháng (bắt buộc) + tuần trong tháng (không bắt buộc; 0 = chưa phân bổ tuần), số tiền mặc định = còn phải thu đến hạn
+    const ym = /^\d{4}-\d{2}$/.test(b.month || '') ? b.month : null, W = ym ? monthWeeks(ym) : [], wk = +b.week || 0;
+    if (b.month !== undefined) { if (!ym) bad('Chọn tháng / năm đưa vào kế hoạch thu'); if (wk && !W[wk - 1]) bad('Tuần không thuộc tháng đã chọn'); }
+    const amt = b.amount != null && b.amount !== '' ? +b.amount : null; if (amt != null && !(amt > 0)) bad('Số tiền dự kiến thu phải > 0');
+    if (ex.length) { if (!ym) return { ok: true, plan_id: ex[0].id, msg: 'Căn đã có trong kế hoạch thu' };
+      const lbl = periodL(ym, wk), patch = { month: ym, plan_week: wk, expected_on: wk ? W[wk - 1].to : W[W.length - 1].to, ...(amt ? { expected: amt } : {}) };
+      await C.sys(db, 'collect_plan', ex[0].id, patch, user, 'sua_ky', `Sửa kỳ kế hoạch thu: ${lbl}${amt ? ' · ' + fmtMoney(amt) : ''}`);
+      return { ok: true, plan_id: ex[0].id, msg: `Đã sửa kỳ kế hoạch thu: ${lbl}${amt ? ' · ' + fmtMoney(amt) + 'đ' : ''}` }; }
+    const rows = (await dueDebt(db, user, { to: t })).rows.filter(r => r.unit_id === uid && ddTab(r) === tab), rem = rows.reduce((s, r) => s + (+r.rem || 0), 0);
+    if (!(rem > 0)) bad('Căn không còn khoản đến hạn chưa thu trong sheet này');
+    const byC = new Map(); for (const r of rows) byC.set(r.contract_id, (byC.get(r.contract_id) || 0) + +r.rem);
+    const ct = [...byC.entries()].sort((a, b2) => b2[1] - a[1])[0][0], cids = [...byC.keys()];
+    const pr = await db.one('SELECT promise_on, promise_amount FROM kd_debt_call WHERE contract_id = ANY($1) AND promise_on >= $2 ORDER BY promise_on, id DESC LIMIT 1', [cids, today()]);
+    const pon = pr?.promise_on ? ddDay(pr.promise_on) : t, m2 = ym || pon.slice(0, 7), W2 = monthWeeks(m2), wk2 = ym ? wk : weekIn(m2, pon), on = wk2 ? W2[wk2 - 1].to : W2[W2.length - 1].to, lbl = periodL(m2, wk2), val = amt || rem;
+    const p = (await C.create('collect_plan', { contract_id: ct, src_cts: cids.join(','), scope: tab, month: m2, plan_week: wk2, expected: val, expected_on: on, basis: pr ? 'cam_ket' : 'lich_hd', fund_src: 'khach_tu_tra', src_key: key,
+      basis_note: `Từ Báo cáo công nợ đến hạn (${tab === 'thue' ? 'cho thuê' : 'bán hàng'}) · ${lbl}${pr ? ` · khách cam kết ${C.dmy(pon)}` : ''}`, explain: 'Còn phải thu đến hạn của cả căn (có thể gồm nhiều hợp đồng)' }, user, { db, system: true })).row;
+    return { ok: true, plan_id: p.id, msg: `Đã đưa căn vào kế hoạch thu: ${lbl} · ${fmtMoney(val)}đ` };
+  }
+  let del = 0, keep = 0;
+  for (const p of ex) {
+    const got = +(await db.one("SELECT coalesce(sum(amount), 0) s FROM kd_receipt WHERE status = 'hop_le' AND contract_id = $1 AND voucher_date >= $2::date", [p.contract_id, ddDay(p.created_at)])).s;
+    if (got > 0) { await C.sys(db, 'collect_plan', p.id, { status: 'dong' }, user, 'bo_chon', 'Bỏ chọn ở Báo cáo công nợ đến hạn — đã có thực thu, giữ lịch sử'); keep++; }
+    else { await db.q('DELETE FROM kd_collect_plan WHERE id = $1', [p.id]); await C.audit(db, 'collect_plan', p.id, 'xoa', p, null, user, 'Bỏ chọn ở Báo cáo công nợ đến hạn — chưa có thực thu, gỡ khỏi kế hoạch'); del++; }
+  }
+  return { ok: true, msg: keep ? `Đã bỏ chọn — ${keep} khoản đã có thực thu được giữ lịch sử (đóng kế hoạch)` : 'Đã gỡ căn khỏi kế hoạch thu' };
+}
+// 17/11/2026: kỳ của khoản kế hoạch (tháng + tuần trong tháng; tuần 0 = chỉ theo tháng) và kỳ kế tiếp — tuần cuối tháng → tuần 1 tháng sau; chỉ tháng → tháng sau
+const ymAdd = (ym, k) => { const [y, m] = ym.split('-').map(Number), d = new Date(Date.UTC(y, m - 1 + k, 1)); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`; };
+const pPeriod = x => { const ym = String(x.month || ddDay(x.expected_on)).slice(0, 7), wk = x.plan_week == null ? weekIn(ym, ddDay(x.expected_on)) : +x.plan_week || 0, W = monthWeeks(ym), w = wk ? W[wk - 1] : null;
+  return { ym, wk, p_from: w ? w.from : `${ym}-01`, p_to: w ? w.to : W[W.length - 1].to }; };
+const nextPeriod = (ym, wk) => !wk ? { ym: ymAdd(ym, 1), wk: 0 } : wk < monthWeeks(ym).length ? { ym, wk: wk + 1 } : { ym: ymAdd(ym, 1), wk: 1 };
+const PLAN_LIVE = x => !['thay_the', 'tu_choi', 'dong', 'da_chot'].includes(x.status);
+// phân bổ phiếu thu cho các khoản kế hoạch: mỗi khoản chỉ nhận phiếu trong cửa sổ kỳ của nó — khoản gốc: từ ngày lập (hoặc đầu kỳ nếu sớm hơn) đến hết kỳ;
+// khoản chuyển tiếp: đúng kỳ mới (tiền thu kỳ sau ghi vào kỳ sau). Khoản «Đã chốt kỳ» chỉ nhận đúng số thực thu đã chốt (không cập nhật ngược). Mỗi phiếu tính 1 lần (lần lượt theo ngày dự kiến).
+async function planAlloc(db, all, { from = null, to }) {
+  const pool = x => [...new Set([+x.contract_id, ...String(x.src_cts || '').split(',').map(Number).filter(Boolean)])];
+  for (const x of all) { Object.assign(x, pPeriod(x)); x.expected_on = ddDay(x.expected_on); x.cts = pool(x); x.actual = 0; x.rc = [];
+    const made = ddDay(x.created_at); x.w_from = x.prev_id && x.carry_in != null ? x.p_from : made < x.p_from ? made : x.p_from;
+    x.w_to = x.status === 'dong' ? ddDay(x.updated_at) : x.p_to; x.cap = x.status === 'da_chot' ? +x.act_snap || 0 : +x.expected; }
+  const ids = [...new Set(all.flatMap(x => x.cts))];
+  const RC = ids.length ? await db.q(`SELECT r.id, r.contract_id, r.voucher_date, r.amount, r.voucher_no, c.number FROM kd_receipt r JOIN kd_contract c ON c.id = r.contract_id
+    WHERE r.status = 'hop_le' AND r.contract_id = ANY($1) AND r.voucher_date <= $2 ORDER BY r.voucher_date, r.id`, [ids, to]) : [];
+  const ord = [...all].sort((a, b) => (a.status === 'da_chot' ? 0 : 1) - (b.status === 'da_chot' ? 0 : 1) || a.expected_on.localeCompare(b.expected_on) || a.id - b.id);
+  for (const r of RC) { let left = +r.amount; const vd = ddDay(r.voucher_date);
+    for (const x of ord) { if (left <= 0) break; if (!x.cts.includes(+r.contract_id) || vd < x.w_from || vd > x.w_to) continue;
+      if (x.status !== 'da_chot' && from && vd < from) continue;
+      const take = Math.min(left, x.cap - x.actual); if (take > 0) { x.actual += take; left -= take; x.rc.push({ id: r.id, no: r.voucher_no || '', on: vd, amt: take, full: +r.amount, number: r.number }); } } }
+  for (const x of all) { if (x.status === 'da_chot') x.actual = +x.act_snap || 0; if (x.status === 'dong') x.expected = x.actual; }
+  return all;
+}
+const planAll = async (db, f = {}, user = null) => { const p = [];
+  return db.q(`SELECT x.*, c.number, c.kind, u.code unit, u.id unit_id, b.code building, b.id building_id, k.full_name customer, us.full_name owner
+    FROM kd_collect_plan x JOIN kd_contract c ON c.id = x.contract_id JOIN kd_unit u ON u.id = c.unit_id JOIN kd_building b ON b.id = u.building_id
+      JOIN kd_customer k ON k.id = c.customer_id LEFT JOIN kd_user us ON us.id = x.owner_id
+    WHERE x.status NOT IN ('thay_the','tu_choi') ${uf(f, p)}${user ? mine(user, 'c') : ''} ORDER BY x.expected_on, x.id`, p); };
+// TỰ ĐỘNG CHUYỂN TIẾP khi hết tuần / tháng: khoản còn hiệu lực đã qua ngày cuối kỳ → chốt kỳ (lưu kế hoạch, thực thu trong kỳ, chưa thu, đã chuyển tiếp — giữ nguyên báo cáo kỳ cũ)
+// và tạo khoản kỳ kế tiếp = phần còn thiếu, liên kết kỳ trước (prev_id), ghi «Chuyển tiếp từ …». Chạy nền + trước khi xem báo cáo; khóa để không chạy song song / không tạo trùng.
+async function planRollover(db, asOf = today()) {
+  await db.q('SELECT pg_advisory_xact_lock(84211)');
+  let n = 0;
+  for (let guard = 0; guard < 400; guard++) {
+    const all = await planAll(db); for (const x of all) Object.assign(x, pPeriod(x));
+    const due = all.filter(x => PLAN_LIVE(x) && x.p_to < asOf); if (!due.length) break;
+    await planAlloc(db, all, { to: asOf });
+    for (const x of due) {
+      if (await db.one('SELECT id FROM kd_collect_plan WHERE prev_id = $1 AND carry_in IS NOT NULL LIMIT 1', [x.id])) continue;   // đã chuyển tiếp rồi — không tạo trùng
+      const act = Math.min(x.actual, +x.expected), rem = Math.max(0, +x.expected - act), nx = nextPeriod(x.ym, x.wk), lbl = periodL(x.ym, x.wk), lbl2 = periodL(nx.ym, nx.wk);
+      await C.sys(db, 'collect_plan', x.id, { status: 'da_chot', act_snap: act, carry_amt: rem, closed_on: x.p_to, carry_to: rem > 0 ? lbl2 : null }, null, 'chot_ky',
+        `Chốt ${lbl}: kế hoạch ${fmtMoney(x.expected)}, thực thu ${fmtMoney(act)}, chưa thu ${fmtMoney(rem)}${rem > 0 ? ` → chuyển tiếp sang ${lbl2}` : ' — đã thu đủ'}`);
+      if (rem > 0) { const W2 = monthWeeks(nx.ym);
+        await C.create('collect_plan', { contract_id: x.contract_id, src_cts: x.src_cts, src_key: x.src_key, scope: x.scope, month: nx.ym, plan_week: nx.wk, expected: rem, carry_in: rem,
+          expected_on: nx.wk ? W2[nx.wk - 1].to : W2[W2.length - 1].to, basis: x.basis || 'khac', fund_src: x.fund_src, owner_id: x.owner_id, ability: x.ability, prev_id: x.id, carry_from: lbl,
+          basis_note: `Chuyển tiếp từ ${lbl}`, explain: `Chuyển tiếp phần chưa thu của ${lbl}` }, C.SYS, { db, system: true }); }
+      n++; }
+  }
+  return n;
+}
+// BÁO CÁO KẾ HOẠCH THU (tháng / tuần trong tháng) — Nhóm thu → Tòa → Căn hộ, 1 dòng / mã căn. Kế hoạch tuần = số kế hoạch của các khoản thuộc tuần (gốc + chuyển tiếp vào tuần);
+// kế hoạch tháng = khoản gốc trong tháng + khoản chuyển tiếp từ tháng trước (+ phần điều chỉnh của khoản chuyển tiếp trong tháng) — không cộng lặp 1 khoản tiền qua nhiều tuần.
+// Kỳ đã chốt: thực thu = số đã chốt lúc hết kỳ (tiền thu kỳ sau không cập nhật ngược).
+async function planReport(db, user, f) {
+  if (!can(user, E.collect_plan, 'r')) deny();
+  const by = f.by === 'tuan' ? 'tuan' : 'thang', ym = /^\d{4}-\d{2}$/.test(f.ym || '') ? f.ym : today().slice(0, 7), W = monthWeeks(ym);
+  const wk = by === 'tuan' ? (f.week !== undefined && f.week !== '' ? +f.week : weekIn(ym, today()) || 1) : null;
+  if (wk && !W[wk - 1]) bad('Tuần không thuộc tháng đã chọn');
+  const to = isoDay(f.to) || today(), from = isoDay(f.from) || null;
+  const all = await planAlloc(db, await planAll(db, f, user), { from, to }), byId = new Map(all.map(x => [x.id, x]));
+  const inP = x => x.ym === ym && (by === 'thang' || x.wk === wk) && (x.status !== 'dong' || x.actual > 0);
+  const ps = all.filter(inP), hist = ps.length ? await db.q(`SELECT a.rec_id, a.action, a.at, a.note, u.full_name who FROM kd_audit a LEFT JOIN kd_user u ON u.id = a.user_id
+    WHERE a.ent = 'collect_plan' AND a.rec_id = ANY($1) ORDER BY a.at`, [ps.map(x => x.id)]) : [];
+  const ST = Object.fromEntries(E.collect_plan.fields.find(x => x.k === 'status').o.map(o => [o[0], o[1]]));
+  const rows = ps.map(x => { const pv = x.prev_id ? byId.get(x.prev_id) : null, inMonth = x.carry_in != null && pv && pv.ym === ym;
+    // tháng: khoản chuyển tiếp trong cùng tháng chỉ tính phần điều chỉnh thêm / bớt so với số chuyển sang; tuần: tính đủ số kế hoạch của tuần
+    const plan_v = by === 'thang' && inMonth ? +x.expected - +x.carry_in : +x.expected;
+    // tháng: số chuyển tiếp RA khỏi tháng (khoản chốt mà kỳ kế tiếp thuộc tháng khác); tuần: số chuyển sang tuần sau
+    const nx = nextPeriod(x.ym, x.wk), carry = x.status === 'da_chot' && (by === 'tuan' || nx.ym !== ym) ? +x.carry_amt || 0 : 0;
+    return { id: x.id, scope: x.scope || (x.kind === 'thue' ? 'thue' : 'ban'), unit_id: x.unit_id, unit: x.unit, building: x.building, building_id: x.building_id, customer: x.customer,
+      number: x.number, contract_id: x.contract_id, month: x.ym, week: x.wk, period_l: periodL(x.ym, x.wk), expected_on: x.expected_on, expected: +x.expected, plan_v, actual: x.actual, carry,
+      closed: x.status === 'da_chot', act_snap: +x.act_snap || 0, carry_amt: +x.carry_amt || 0, carry_to: x.carry_to || '', carry_from: x.carry_from || '', closed_on: x.closed_on ? ddDay(x.closed_on) : null,
+      owner: x.owner || '', owner_id: x.owner_id, status: x.status, st_l: ST[x.status] || x.status, note: x.basis_note || '', src_key: x.src_key || '', rc: x.rc,
+      hist: hist.filter(h => h.rec_id === x.id).map(h => ({ at: h.at, action: h.action, who: h.who || '', note: h.note || '' })) }; });
+  const ws = wk ? W[wk - 1] : null, pf = ws ? ws.from : `${ym}-01`, pt = ws ? ws.to : W[W.length - 1].to;
+  return { by, ym, week: wk, weeks: W, from, to, closed: pt < today(),
+    title: wk === 0 ? `Tháng ${+ym.slice(5)} năm ${ym.slice(0, 4)} — các khoản chưa phân bổ tuần` : `${wk ? `Tuần ${wk} tháng` : 'Tháng'} ${+ym.slice(5)} năm ${ym.slice(0, 4)}, từ ngày ${C.dmy(pf)} đến ngày ${C.dmy(pt)}`,
+    rows, users: (await db.q('SELECT id, full_name FROM kd_user WHERE active ORDER BY full_name')).map(u => [u.id, u.full_name]), can_edit: can(user, E.collect_plan, 'u') || can(user, E.collect_plan, 'c') };
+}
+// điều chỉnh kỳ (tháng / tuần), số tiền, người phụ trách ngay tại báo cáo — sửa tại chỗ, nhật ký ghi giá trị cũ → mới + lý do (lịch sử điều chỉnh)
+async function planAdjust(db, user, id, b) {
+  if (!(can(user, E.collect_plan, 'u') || can(user, E.collect_plan, 'c'))) deny();
+  const x = await db.one('SELECT * FROM kd_collect_plan WHERE id = $1', [+id]); if (!x) bad('Không tìm thấy khoản kế hoạch');
+  if (['thay_the', 'dong', 'tu_choi', 'da_chot'].includes(x.status)) bad('Khoản kế hoạch đã đóng / thay thế — không điều chỉnh');
+  const ym = /^\d{4}-\d{2}$/.test(b.month || '') ? b.month : bad('Chọn tháng / năm'), W = monthWeeks(ym), wk = +b.week || 0; if (wk && !W[wk - 1]) bad('Tuần không thuộc tháng đã chọn');
+  const amt = +b.amount; if (!(amt > 0)) bad('Số tiền kế hoạch phải > 0');
+  const owner = b.owner_id ? +b.owner_id : null, oldYm = String(x.month).slice(0, 7), oldWk = x.plan_week == null ? weekIn(oldYm, ddDay(x.expected_on)) : +x.plan_week || 0;
+  const ch = [];
+  if (ym !== oldYm || wk !== oldWk) ch.push(`kỳ ${periodL(oldYm, oldWk)} → ${periodL(ym, wk)}`);
+  if (amt !== +x.expected) ch.push(`số tiền ${fmtMoney(x.expected)} → ${fmtMoney(amt)}`);
+  if ((owner || null) !== (x.owner_id || null)) { const nm = async i => i ? (await db.one('SELECT full_name FROM kd_user WHERE id = $1', [i]))?.full_name || '#' + i : '(trống)'; ch.push(`người phụ trách ${await nm(x.owner_id)} → ${await nm(owner)}`); }
+  if (!ch.length) return { ok: true, msg: 'Không có thay đổi' };
+  await C.sys(db, 'collect_plan', x.id, { month: ym, plan_week: wk, expected_on: wk ? W[wk - 1].to : W[W.length - 1].to, expected: amt, owner_id: owner,
+    ...(amt > (+x.debt_left || 0) && !x.explain ? { explain: 'Điều chỉnh tại Báo cáo kế hoạch thu' } : {}) }, user, 'dieu_chinh', `Điều chỉnh: ${ch.join('; ')}${b.reason ? ' · Lý do: ' + String(b.reason).slice(0, 300) : ''}`);
+  return { ok: true, msg: 'Đã điều chỉnh: ' + ch.join('; ') };
+}
+async function planList(db, user, f) { if (!can(user, E.collect_plan, 'r')) deny(); const t = isoDay(f.to) || today(); return { rows: await planRows(db, user, f, t), asof: t }; }
 
 // ======================= THEO DÕI HỢP ĐỒNG THUÊ / MUA BÁN / HOÀN THIỆN (CN-07) =======================
 // công nợ khách phải trả công ty theo lịch thu (kd_installment) + phiếu thu hợp lệ (kd_receipt); HĐ vay xem loanTrack
@@ -1405,4 +1636,4 @@ async function monthly(db, period, projectId) {
   };
 }
 
-module.exports = { dueDebt, debtStatus, setDebtClass, setDebtDays, debtCfg, debtGrpOf, debtGrpL, customerLedger, myDay, debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, voucherList, contractTrack, setLateRate, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
+module.exports = { dueDebt, ddPlanToggle, planList, planReport, planAdjust, planRollover, debtStatus, setDebtClass, setDebtDays, debtCfg, debtGrpOf, debtGrpL, customerLedger, myDay, debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, voucherList, contractTrack, setLateRate, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };

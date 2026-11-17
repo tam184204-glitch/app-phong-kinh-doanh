@@ -226,7 +226,7 @@ function show(f, row, { plain } = {}) {
 const RET_COLS = ['doc_ret', 'doc_ret_on', 'ret_files'];
 function retCell(k, r) {
   if (k === 'doc_ret') return `<select class="ret-st ${r.doc_ret === 'da_tra' ? 'g' : 'a'}" data-ret="doc_ret">${[['chua_tra', 'Chưa trả hồ sơ'], ['da_tra', 'Đã trả hồ sơ']].map(([v, l]) => `<option value="${v}" ${(r.doc_ret || 'chua_tra') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
-  if (k === 'doc_ret_on') return `<input type="text" class="ret-d" data-ret="doc_ret_on" data-dp value="${esc(dmy(r.doc_ret_on))}" placeholder="dd/mm/yyyy" autocomplete="off" style="width:130px">`;
+  if (k === 'doc_ret_on') return `<input class="ret-d" data-ret="doc_ret_on" value="${esc(dmy(r.doc_ret_on) || '')}" placeholder="dd/mm/yyyy" maxlength="10" inputmode="numeric" autocomplete="off" title="Ngày trả hồ sơ (dd/mm/yyyy)">`;   // 17/11/2026: dd/mm/yyyy
   const fs = r.ret_files || [];
   return `<div class="ret-f">${fs.map(f => `<span class="ret-fi"><a href="/api/file/${f.id}" target="_blank" rel="noopener" title="${esc(f.name)}">${ico(/\.pdf$/i.test(f.name) ? 'fa-file-pdf' : /\.(png|jpe?g|webp)$/i.test(f.name) ? 'fa-file-image' : 'fa-file')} ${esc(f.name)}</a><button type="button" data-retdel="${f.id}" title="Xóa tệp">×</button></span>`).join('')}<button type="button" class="btn sm" data-retup>${ico('fa-paperclip')} ${fs.length ? 'Thêm' : 'Đính kèm'}</button></div>`;
 }
@@ -693,6 +693,7 @@ const HD_LAYOUT = [
     { t: 'Bên bán nhà ở', rows: [['s_name'], ['s_addr'], ['s_phone', 's_tax'], ['s_bank_acc'], ['s_bank_name'], ['s_rep'], ['s_title'], ['s_poa'], ['owner_id'], ['commission_amt', 'commission_pct'], ['common_area_amt', 'all_signed']] }] },
   { t: 'Thông tin chi tiết', cols: 4, rows: [['number', 'contract_on'], ['ptype', 'building_id', 'kind', 'nature'], ['base_price', 'area_tt', 'area_floor'], ['area_land', 'land_price', 'land_amt'], ['area_build', 'build_price', 'build_amt'],
     ['pretax', 'vat_pct', 'vat_amt', 'after_tax'], ['finish_value', 'maint_fee', 'corner_pct', 'corner_amt'],
+    ['sale_unit_val', 'sale_maint', 'sale_finish'],   // 17/11/2026: HĐ vay / thuê bán căn — thành phần giá theo chính sách bán
     ['unit_total', 'discount', 'late_rate'],   // late_rate: lãi suất quá hạn HĐMB (sau ô Tổng tiền) · giảm giá cạnh tổng tiền: HĐMB ô Tổng tiền (value) được đưa về cạnh ô này (hdPair.view); HĐ thuê: Tổng tiền (giá trị căn hộ) − giảm giá
     ['loan_recv_on', 'loan_tranches', 'int_mode'],   // HĐ vay
     ['eff_on', 'exp_on', 'term_months', 'pay_times'],   // HĐ thuê (BRAVO) · HĐ vay: bắt đầu tính lãi / đáo hạn / thời hạn vay
@@ -906,7 +907,7 @@ function hdPair(form, { ht, locked, tab, draft, oldFinish, kind, debt, rec0 }) {
     if (g === 'thue') { rentSum(true); rentCalc(); } else if (rT) rT.readOnly = false;
     else if (u) api('GET', `/api/e/unit/${u}`).then(({ row: x }) => { const t = +x.total_price || 0, f = +x.finish_value || 0, pr = f > 0 && t > f ? t - f : t; if (!pr) return;
       if (g === 'mb' && !v.value) { v.value = moneyStr(pr); v.dispatchEvent(new Event('input', { bubbles: true })); }
-      if (g === 'vay' && form.elements.sale_price && !form.elements.sale_price.value) form.elements.sale_price.value = moneyStr(pr); }).catch(() => {});
+    }).catch(() => {});   // HĐ vay: Giá bán căn hộ tính theo thành phần (svCalc)
     loanDraw();
   };
   const show = p => { if (p === 'thue') setKind('thue'); else if (p === 'vay') setKind('vay'); else if (p === 'mb' && grpOf() !== 'mb') setKind('hdmb'); view(p); };   // người dùng bấm tab
@@ -1028,10 +1029,22 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   { const ps = $('[data-psched]', form); if (ps) paySchedEditor(ps, rec.pay_sched || [], form, rec); }
   { const fs = $('[data-fsched]', form); if (fs) paySchedEditor(fs, rec.fin_sched || [], form, rec, { fin: true }); }
   if (sch) schedEditor(sch, rec.new_schedule || [], { nt: rec.kind === 'hoan_thien' || preset.kind === 'hoan_thien', finish: () => ent === 'contract' ? (form.elements.finish_value ? readField(form, E.fields.find(f => f.k === 'finish_value')) : rec.finish_value) || 0 : 0, bgBase: () => rec._bg_base, mdot: () => form._mdot ?? rec.maint_dot ?? 3, maint: () => ent === 'contract' && ['hdmb', 'thue_mua'].includes(form.elements.kind?.value ?? rec.kind) ? (form.elements.maint_fee ? readField(form, E.fields.find(f => f.k === 'maint_fee')) : rec.maint_fee) || 0 : null, total: () => ent === 'contract' ? (form.elements.value ? readField(form, E.fields.find(f => f.k === 'value')) : rec.value) || 0 : readField(form, E.fields.find(f => f.k === 'value_after')) || rec.value_before || 0, first: ent === 'contract' ? () => { const kd = $('[name=kind]', form)?.value ?? rec.kind; const fk = kd === 'thue' ? 'eff_on' : kd === 'vay' && form.elements.loan_recv_on?.value ? 'loan_recv_on' : 'contract_on'; return form.elements[fk] ? readField(form, E.fields.find(f => f.k === fk)) : rec[fk]; } : null });
+  // 17/11/2026: HĐ vay / thuê bán căn — Giá trị HĐMB = Giá trị căn hộ + Phí bảo trì − Tiền giảm giá; Giá bán căn hộ = Giá trị HĐMB + Giá trị hoàn thiện (tính lại ngay khi sửa);
+  // chọn / đổi căn → thành phần theo chính sách bán đang áp dụng cho căn
+  if (ent === 'contract' && form.elements.sale_unit_val) {
+    const mv = k => +(readField(form, { k, t: 'money' }) || 0), sv = (k, v) => { const el = form.elements[k]; if (el) el.value = v == null ? '' : moneyStr(v); };
+    const svCalc = () => { if (!form.elements.sale_unit_val.value.trim() && !form.elements.sale_maint?.value.trim()) return; const t = Math.max(0, mv('sale_unit_val') + mv('sale_maint') - mv('discount'));
+      sv('unit_total', t); sv('sale_price', t + mv('sale_finish')); form.elements.unit_total?.dispatchEvent(new Event('change', { bubbles: true })); };
+    const svLoad = async () => { const u = form.elements.unit_id?.value; if (!u) return; const d = await api('GET', `/api/sale-values/${u}`).catch(() => null); if (!d) return;
+      sv('sale_unit_val', d.sale_unit_val); sv('sale_maint', d.sale_maint); sv('sale_finish', d.sale_finish); svCalc(); };
+    form.addEventListener('input', e => { if (['sale_unit_val', 'sale_maint', 'sale_finish', 'discount'].includes(e.target.name)) svCalc(); });
+    form.addEventListener('change', e => { if (e.target.name === 'unit_id' || (e.target.name === 'nature' && e.target.value === 'ban' && !form.elements.sale_unit_val.value.trim())) svLoad(); });
+    if (!id && form.elements.unit_id?.value && !form.elements.sale_unit_val.value.trim()) svLoad();
+  }
   const ssch = $('[data-ssched]', form);   // tiến độ thu tiền HĐMB của HĐ thuê / vay bán căn: % theo Giá trị HĐMB
   if (ssch) {   // 16/11/2026: như «Lần thanh toán» HĐMB — chọn đợt gợi ý nội dung, hạn theo ngày ký HĐ, dòng phí bảo trì (theo căn), cột đợt bàn giao
     let sm = null, ut = null;
-    const getM = async () => { const u = form.elements.unit_id?.value || rec.unit_id, row = u ? (await api('GET', `/api/e/unit/${u}`)).row : null; sm = +(row?.maint_fee || 0); ut = row?.total_price != null ? +row.total_price : null; utFill(); ssch._redraw?.(); };
+    const getM = async () => { const u = form.elements.unit_id?.value || rec.unit_id, row = u ? (await api('GET', `/api/e/unit/${u}`)).row : null; sm = +(row?.maint_fee || 0); ut = row?.price_net != null ? +row.price_net + (+row.maint_fee || 0) : row?.total_price != null ? +row.total_price - (+row.finish_value || 0) : null; /* 17/11/2026: Giá trị HĐMB không gồm hoàn thiện */ utFill(); ssch._redraw?.(); };
     // 16/11/2026: bật «Có tiến độ thu tiền HĐMB» mà Giá trị HĐMB còn trống (HĐ thuê thuần không mang giá bán) → điền theo Tổng giá căn hộ − tiền giảm giá
     const utFill = () => { const on = form.elements.sale_on ? form.elements.sale_on.checked : rec.sale_on, el = form.elements.unit_total;
       if (on && el && !el.value.trim() && ut > 0) { el.value = fm(ut - (+readField(form, { k: 'discount', t: 'money' }) || 0)); ssch._redraw?.(); } };
@@ -1257,8 +1270,9 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
         if (htp && !(fv > 0)) htp.noFin();
         if (htp && fv > 0 && form.elements.ptype.value !== 'lien_ke') { htp.finish(fv); form.elements.finish_value.value = ''; const tv = readField(form, fields.find(x => x.k === 'value')); if (tv > fv) form.elements.value.value = moneyStr(tv - fv); }
         contractCalc();
-        form._ut0?.(src.total_price != null ? +src.total_price : src.price_net != null ? +src.price_net + (+src.maint_fee || 0) + (+src.finish_value || 0) : null);   // HĐ thuê: giá trị căn hộ theo danh mục − giảm giá (thông tin)
-        const kd = form.elements.kind?.value; if (['vay', 'thue'].includes(kd) && form.elements.sale_price) { form.elements.sale_price.value = form.elements.value.value; if (kd === 'vay') form.elements.value.value = ''; }
+        const kd = form.elements.kind?.value, svOn = ['vay', 'thue'].includes(kd) && form.elements.sale_unit_val && (form.elements.nature?.value || (kd === 'vay' ? 'ban' : '')) === 'ban';   // 17/11/2026: bán căn — Giá trị HĐMB / Giá bán căn hộ theo thành phần (svCalc)
+        if (!svOn) form._ut0?.(src.total_price != null ? +src.total_price : src.price_net != null ? +src.price_net + (+src.maint_fee || 0) + (+src.finish_value || 0) : null);   // HĐ thuê: giá trị căn hộ theo danh mục − giảm giá (thông tin)
+        if (['vay', 'thue'].includes(kd) && form.elements.sale_price) { if (!svOn) form.elements.sale_price.value = form.elements.value.value; if (kd === 'vay') form.elements.value.value = ''; }
         htp?.rentValue();
       }
       if (ent === 'reservation' && f.ref === 'unit' && form.elements.unit_value) {   // giá trị căn hộ = sau thuế + bảo trì; hoàn thiện theo chính sách được duyệt gần nhất (không có thì theo căn)
@@ -1350,7 +1364,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     form._ut0 = v => { ut0 = v; if (form.elements.unit_total) form.elements.unit_total.value = moneyStr(v != null ? v - (+rdn('discount') || 0) : null); };
     if (form.elements.unit_total) form.addEventListener('input', e => {
       if (e.target.name === 'unit_total') ut0 = rdn('unit_total') != null ? +rdn('unit_total') + (+rdn('discount') || 0) : null;
-      if (e.target.name === 'discount' && ut0 != null) form.elements.unit_total.value = moneyStr(ut0 - (+rdn('discount') || 0));
+      if (e.target.name === 'discount' && ut0 != null && !form.elements.sale_unit_val?.value.trim()) form.elements.unit_total.value = moneyStr(ut0 - (+rdn('discount') || 0));
     });
     let b0 = +rec.base_orig > 0 ? +rec.base_orig : +rec.base_price > 0 ? +rec.base_price + (+rec.discount > 0 && +rec.area_tt > 0 ? +rec.discount / +rec.area_tt : 0) : null;
     form._b0 = () => b0;
@@ -2332,8 +2346,8 @@ async function listView(main, ent, params = {}) {
   });
   main.onchange = run(async e => {
     const t = e.target.closest('[data-ret]'); if (!t) return;
-    const k = t.dataset.ret, v = k === 'doc_ret_on' ? (t.value.trim() ? parseDmy(t.value) : null) : t.value || null;
-    if (k === 'doc_ret_on' && t.value.trim() && !v) return toast('Ngày không hợp lệ — nhập dd/mm/yyyy', true);
+    const k = t.dataset.ret; let v = t.value || null;
+    if (k === 'doc_ret_on' && v) { v = parseDmy(v); if (!v) return toast('Ngày trả hồ sơ nhập theo dd/mm/yyyy', true); t.value = dmy(v); }   // 17/11/2026: ô ngày dd/mm/yyyy
     if (k === 'doc_ret') t.className = `ret-st ${v === 'da_tra' ? 'g' : 'a'}`;
     const patch = { [k]: v };
     if (k === 'doc_ret' && v === 'da_tra' && !t.closest('tr').querySelector('[data-ret=doc_ret_on]').value) patch.doc_ret_on = today();   // chọn Đã trả mà chưa có ngày → lấy hôm nay
