@@ -348,9 +348,9 @@ async function printHs(unitId, codes, user, bo, custId) {
   const hasAnx = isHdSet(docs.map(d => d.t.code)) && docs.some(d => ANNEX(tplKey(d.t.code)));
   const body = docs.map(d => `<section class="hs${hasAnx && ANNEX(tplKey(d.t.code)) ? ' pl' : ''}" data-code="${escH(d.t.code)}"><div class="hs-t" contenteditable="false">${escH(d.t.name)}</div>${d.html}</section>`).join('');
   // nút «Lưu bản đã sửa vào kho»: gửi đúng nội dung đang thấy (kể cả chữ đã sửa tay) → file Word trong Kho, gắn vào HĐ của căn (12/11/2026)
-  const saveBtn = `<button id="hsSave" title="Lưu đúng bản đang thấy (kể cả chỗ đã sửa) thành file Word trong Kho hồ sơ của căn — mở lại lúc nào cũng còn">💾 Lưu bản đã sửa vào kho</button>`;
+  const saveBtn = `<button type="button" class="pt-b" id="hsSave" title="Lưu đúng bản đang thấy (kể cả chỗ đã sửa) thành file Word trong Kho hồ sơ của căn — mở lại lúc nào cũng còn (Ctrl+S)">${IO.ICON.save}<span class="t">Lưu vào kho</span></button>`;
   const saveJs = `<script>(() => { const b = document.getElementById('hsSave'); if (!b) return;
-    b.onclick = async () => { b.disabled = true; const t = b.textContent; b.textContent = 'Đang lưu…';
+    const L = b.querySelector('.t') || b; b.onclick = async () => { if (b.disabled) return; b.disabled = true; const t = L.textContent; L.textContent = 'Đang lưu…';
       try { const secs = [...document.querySelectorAll('section.hs')].map(s => { const c = s.cloneNode(true); c.querySelectorAll('.hs-t').forEach(x => x.remove()); c.querySelectorAll('[data-pvb],[data-pva]').forEach(x => { x.removeAttribute('data-pvb'); x.removeAttribute('data-pva'); }); return { code: s.dataset.code, html: c.innerHTML }; });
         const url = '/api/hs/${+unitId}/save-html', init = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bo: ${JSON.stringify(bo || '')}, cust: ${+custId || 0}, docs: secs }) };
         // tab in mở tách riêng (noopener) để hộp «In» không làm đơ tab app → bản demo (trang blob:) nhờ tab app chạy máy chủ qua BroadcastChannel
@@ -359,9 +359,9 @@ async function printHs(unitId, codes, user, bo, custId) {
             ch.onmessage = e => { const m = e.data || {}; if (m.t !== 'res' || m.id !== id) return; clearTimeout(tm); ch.close(); m.ok ? ok(m.body) : no(new Error((m.body && m.body.error) || 'Không lưu được')); };
             ch.postMessage({ t: 'req', id, url, init }); })
           : await fetch(url, init).then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Không lưu được'); return j; });
-        b.textContent = '✓ Đã lưu «' + j.file.name + '»'; try { const ch = new BroadcastChannel('ctg-hs'); ch.postMessage({ t: 'saved' }); ch.close(); } catch (e) {}
-        setTimeout(() => { b.textContent = t; b.disabled = false; }, 4000);
-      } catch (e) { alert(e.message); b.textContent = t; b.disabled = false; } };
+        L.textContent = '✓ Đã lưu'; b.title = 'Đã lưu «' + j.file.name + '» vào Kho hồ sơ'; window.__ptSaved && window.__ptSaved(); try { const ch = new BroadcastChannel('ctg-hs'); ch.postMessage({ t: 'saved' }); ch.close(); } catch (e) {}
+        setTimeout(() => { L.textContent = t; b.disabled = false; }, 4000);
+      } catch (e) { alert(e.message); L.textContent = t; b.disabled = false; } };
   })()</` + `script>`;
   const isHd = isHdSet(docs.map(d => d.t.code));   // HĐMB: «Trang HĐ: x/y» góc dưới phải như bản HĐMB chuẩn; văn bản khác: số trang giữa lề trên từ trang 2 (NĐ 30)
   const MB = ['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right'];
@@ -384,7 +384,7 @@ async function printHs(unitId, codes, user, bo, custId) {
     window.addEventListener('beforeprint', count); window.addEventListener('load', count);
   })()</` + `script>` : '';
   return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Hồ sơ ${escH(D.map.ma_can)}</title><style>${HS_CSS} ${isHd ? HD_CSS : ''} ${pageCss} ${anxCss}
-    ${IO.EDIT_CSS}</style></head><body>${IO.editBar(`Bộ hồ sơ căn <b>${escH(D.map.ma_can)}</b> · ${docs.length} hồ sơ — số liệu lấy theo dữ liệu đã khai báo; chỗ «${DOTS}» là dữ liệu còn trống`)}${IO.editDoc(body)}${saveJs}${anxJs}</body></html>`.replace('<button class="pri" onclick="print()">', saveBtn + '<button class="pri" onclick="print()">');
+    ${IO.EDIT_CSS}</style></head><body>${IO.editBar(`Bộ hồ sơ căn <b>${escH(D.map.ma_can)}</b> · ${docs.length} hồ sơ — số liệu lấy theo dữ liệu đã khai báo; chỗ «${DOTS}» là dữ liệu còn trống`, { extra: saveBtn, docx: `/print/hs/${+unitId}?fmt=docx&cust=${+custId || ''}&tpl=${encodeURIComponent(docs.map(d => d.t.code).join(','))}` })}${IO.editDoc(body)}${saveJs}${anxJs}</body></html>`;
 }
 // bản đã sửa trên trang in → Word (bỏ script / thuộc tính on…, contenteditable)
 async function wordFromHtml(unitId, docs, user) {
@@ -615,7 +615,7 @@ async function printBatch(units, bo, keys, user) {
   // in liền nhiều căn: không đánh số trang chung (số trang từng căn đánh lại từ 1 có ở bản Word)
   const pageCss = `@page{${['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right'].map(k => `@${k}{content:""}`).join('')}}`;
   return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>In hàng loạt ${nc} căn</title><style>${HS_CSS} ${pageCss}
-    ${IO.EDIT_CSS}</style></head><body>${IO.editBar(`In hàng loạt <b>${nc} căn</b>${list.length > nc ? ` · <b>${list.length} bản</b>` : ''} · ${n} hồ sơ (${escH(codes.slice(0, 8).join(', '))}${codes.length > 8 ? '…' : ''}) — mỗi hồ sơ sang trang mới. Cần số trang «Trang HĐ: x/y» riêng từng căn thì dùng «Tải Word»`)}${IO.editDoc(body)}</body></html>`;
+    ${IO.EDIT_CSS}</style></head><body>${IO.editBar(`In hàng loạt <b>${nc} căn</b>${list.length > nc ? ` · <b>${list.length} bản</b>` : ''} · ${n} hồ sơ (${escH(codes.slice(0, 8).join(', '))}${codes.length > 8 ? '…' : ''}) — mỗi hồ sơ sang trang mới. Cần số trang «Trang HĐ: x/y» riêng từng căn thì dùng «Word»`, { docx: `/print/hs-batch?fmt=docx&bo=${encodeURIComponent(bo || '')}&keys=${encodeURIComponent(keys || '')}&units=${encodeURIComponent(units || '')}` })}${IO.editDoc(body)}</body></html>`;
 }
 async function wordBatch(units, bo, keys, user) {
   const list = await batchDocs(units, bo, keys, user), flat = list.flatMap(u => u.docs);

@@ -1701,7 +1701,23 @@ table.t tfoot td { background: var(--paper); border-top-color: var(--line); }
 
 /* 11/11/2026: mẫu theo dự án / tòa */
 .tplsc { background: var(--sf-lav-50, #f4f6fb); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; font-size: 13px; }
-label.tplr { display: flex; gap: 8px; align-items: center; padding: 7px 0; }
+/* 17/11/2026: hộp chọn mẫu in dùng chung (tplPickModal) */
+.tpk { display: flex; flex-direction: column; gap: 6px; max-height: min(52vh, 420px); overflow: auto; padding: 2px; margin: 4px -2px 0; }
+.tpk-q { width: 100%; margin-bottom: 8px; }
+.tpk-h { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin: 8px 2px 0; }
+.tpk-h:first-child { margin-top: 0; }
+.tpk-i { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line, #dfe5ee); border-radius: 10px; cursor: pointer; background: var(--card, #fff); transition: border-color .15s, background .15s, box-shadow .15s; }
+.tpk-i:hover { border-color: var(--cobalt); background: color-mix(in srgb, var(--cobalt) 4%, transparent); }
+.tpk-i:has(input:checked) { border-color: var(--cobalt); background: color-mix(in srgb, var(--cobalt) 8%, transparent); box-shadow: 0 0 0 1px var(--cobalt) inset; }
+.tpk-i input { accent-color: var(--cobalt); width: 16px; height: 16px; flex: none; margin: 0; }
+.tpk-i input:focus-visible { outline: 2px solid var(--cobalt); outline-offset: 2px; }
+.tpk-n { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.tpk-n b { font-weight: 600; line-height: 1.35; }
+.tpk-n small { color: var(--muted); font-size: 12px; }
+.tpk-last { flex: none; font-size: 11px; color: var(--cobalt); background: color-mix(in srgb, var(--cobalt) 10%, transparent); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.tpk-hint { margin-top: 10px; }
+.tpk-none { padding: 14px; }
+.tpk [hidden], .tpk-none[hidden] { display: none !important; }
 .tplsp { background: var(--sf-lav-50, #f4f6fb); border: 1px solid var(--line, #e3e8f0); border-radius: 10px; padding: 10px 12px; }
 .tplsp-l { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow: auto; }
 .tplsp-p { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; }

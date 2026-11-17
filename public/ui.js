@@ -1830,20 +1830,45 @@ function tplUrl(ent, id, t) {
 // --- mẫu theo dự án / tòa: dòng «căn … thuộc …», danh sách chọn, nút «Tạo mẫu riêng cho tòa / dự án này» (điền sẵn phạm vi)
 const scLabel = sc => sc?.pcode ? `${sc.pname || sc.pcode}${sc.bcode ? ' › ' + (sc.bname || 'Tòa ' + sc.bcode) : ''}` : '';
 const tplScopeBar = sc => sc?.pcode ? `<div class="tplsc">${ico('fa-location-dot')} ${sc.unit ? `Căn <b>${esc(sc.unit)}</b> · ` : ''}${esc(scLabel(sc))} — chỉ hiện mẫu của dự án / tòa này và mẫu chung</div>` : '';
-const LV_L = { 2: 'mẫu riêng của tòa', 1: 'mẫu riêng của dự án', 0: 'mẫu chung' };
-const tplRadios = (ts, pre) => ts.map(t => `<label class="chk tplr"><input type="radio" name="tpl" value="${esc(t.code)}" ${t === pre ? 'checked' : ''}><span><b>${esc(t.name)}</b> <span class="muted small">${esc(t.code)}${t.lv != null ? ' · ' + LV_L[t.lv] : ''}</span></span></label>`).join('');
 const tplNewBtn = sc => M.ents.template?.perm?.c && sc?.pcode ? `<button class="btn" id="pNew" title="Tạo mẫu mới, tự gắn với ${esc(scLabel(sc))}">${ico('fa-plus')} Tạo mẫu cho ${esc(sc.bcode ? (sc.bname || 'tòa ' + sc.bcode) : (sc.pname || sc.pcode))}</button>` : '';
 function tplNewWire(m, sc, ent, kind, reopen) {
   const b = $('#pNew', m.el); if (!b) return;
   b.onclick = () => { m.close(); openForm('template', { preset: { ent, kind, active: true, scope: sc.bcode ? `${sc.pcode}-${sc.bcode}` : sc.pcode, code: `${({ dang_ky_can: 'DK', dang_ky_noi_that: 'DK-NT', bien_ban_giao_nhan: 'BBGN', hop_dong: 'HD' })[kind] || 'MAU'}-${sc.pcode}${sc.bcode ? '-' + sc.bcode : ''}`.toUpperCase(), name: `Mẫu – ${scLabel(sc)}` }, title: `Tạo mẫu · ${esc(scLabel(sc))}`, onSaved: () => reopen() }); };
 }
 document.addEventListener('click', e => { const b = e.target.closest('[data-tpls]'); if (b) tplManager(b.dataset.tpls); });   // nút «Mẫu biểu» ở màn tự dựng (khách hàng, sản phẩm)
+// 17/11/2026: hộp chọn mẫu in dùng chung (In theo mẫu / In đơn đăng ký / In biên bản giao nhận) — mẫu nhóm theo tòa / dự án / chung,
+// ô tìm khi nhiều mẫu, tự chọn sẵn mẫu đã in lần trước ở màn đó, bấm đúp hoặc Enter để in ngay
+const LV_H = { 2: 'Mẫu riêng của tòa', 1: 'Mẫu riêng của dự án', 0: 'Mẫu chung' };
+function tplPickModal({ title, icon = 'fa-print', sc, ts, pre, memo, emptyMsg, onGo, newWire }) {
+  const MK = 'ctg-kd-tpl-' + memo; let last = null; try { last = localStorage.getItem(MK); } catch {}
+  const p0 = ts.find(t => t.code === last) || pre || ts[0];
+  const grp = [2, 1, 0, -9].map(lv => [lv, ts.filter(t => (t.lv ?? -9) === lv)]).filter(([, a]) => a.length);
+  const item = t => `<label class="tpk-i" data-q="${esc(`${t.name} ${t.code}`.toLowerCase())}"><input type="radio" name="tpl" value="${esc(t.code)}" ${t === p0 ? 'checked' : ''}><span class="tpk-n"><b>${esc(t.name)}</b><small>${esc(t.code)}</small></span>${t.code === last ? `<span class="tpk-last">${ico('fa-clock-rotate-left')} In lần trước</span>` : ''}</label>`;
+  const m = modal({ title: `${ico(icon)} ${esc(title)}`, narrow: true,
+    body: `${tplScopeBar(sc)}${ts.length ? `${ts.length > 5 ? `<input class="inp tpk-q" type="search" placeholder="Tìm mẫu theo tên hoặc mã…" autocomplete="off" aria-label="Tìm mẫu">` : ''}
+      <div class="tpk" role="radiogroup" aria-label="Chọn mẫu in">${grp.map(([lv, a]) => `${grp.length > 1 && LV_H[lv] ? `<div class="tpk-h">${LV_H[lv]}</div>` : ''}${a.map(item).join('')}`).join('')}</div>
+      <div class="tpk-none empty" hidden>Không có mẫu khớp</div><div class="small muted tpk-hint">${ico('fa-keyboard')} Bấm đúp vào mẫu hoặc nhấn Enter để in ngay</div>` : `<div class="empty">${emptyMsg}</div>`}`,
+    foot: `<button class="btn" data-x>Hủy</button>${tplNewBtn(sc)}${ts.length ? `<button class="btn pri" id="pOk">${ico('fa-print')} In</button>` : ''}` });
+  newWire && newWire(m);
+  if (!ts.length) return m;
+  const go = () => { const c = $('input[name=tpl]:checked', m.el)?.value, t = ts.find(x => x.code === c); if (!t) return;
+    try { localStorage.setItem(MK, c); } catch {} m.close(); onGo(t); };
+  $('#pOk', m.el).onclick = go;
+  $('.tpk', m.el).ondblclick = e => { if (e.target.closest('.tpk-i')) go(); };
+  m.el.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing && e.target.closest('.tpk, .tpk-q')) { e.preventDefault(); go(); } });
+  const q = $('.tpk-q', m.el);
+  if (q) q.oninput = () => { const v = q.value.trim().toLowerCase(); let first = null;
+    $$('.tpk-i', m.el).forEach(l => { const on = !v || l.dataset.q.includes(v); l.hidden = !on; if (on && !first) first = l; });
+    $$('.tpk-h', m.el).forEach(h => { let n = h.nextElementSibling, any = false; while (n && !n.classList.contains('tpk-h')) { if (!n.hidden) any = true; n = n.nextElementSibling; } h.hidden = !any; });
+    if (first && $('input[name=tpl]:checked', m.el)?.closest('.tpk-i')?.hidden) first.querySelector('input').checked = true;
+    $('.tpk-none', m.el).hidden = !!first; $('#pOk', m.el).disabled = !first; };
+  setTimeout(() => (q || $('input[name=tpl]:checked', m.el))?.focus(), 40);
+  return m;
+}
 async function tplPrint(ent, id) {
   const [ts, sc] = await Promise.all([api('GET', `/api/templates?ent=${ent}&active=1&rec=${id}`), api('GET', `/api/template-scope/${ent}/${id}`)]);
-  const m = modal({ title: `${ico('fa-print')} In theo mẫu`, narrow: true, body: `${tplScopeBar(sc)}${ts.length ? `<div class="small muted mb">Chọn mẫu in</div>${tplRadios(ts, ts[0])}` : `<div class="empty">Chưa có mẫu cho ${esc(scLabel(sc) || tplPlace(ent))}.</div>`}`,
-    foot: `<button class="btn" data-x>Hủy</button>${tplNewBtn(sc)}${ts.length ? `<button class="btn pri" id="pOk">${ico('fa-print')} In</button>` : ''}` });
-  tplNewWire(m, sc, ent, TPL_KIND0[ent] || 'thong_bao', () => tplPrint(ent, id));
-  $('#pOk', m.el) && ($('#pOk', m.el).onclick = () => { const c = $('input[name=tpl]:checked', m.el).value; m.close(); window.open(tplUrl(ent, id, ts.find(t => t.code === c)), '_blank'); });
+  tplPickModal({ title: 'In theo mẫu', sc, ts, pre: ts[0], memo: ent, emptyMsg: `Chưa có mẫu cho ${esc(scLabel(sc) || tplPlace(ent))}.`,
+    onGo: t => window.open(tplUrl(ent, id, t), '_blank'), newWire: m => tplNewWire(m, sc, ent, TPL_KIND0[ent] || 'thong_bao', () => tplPrint(ent, id)) });
 }
 async function tplManager(ent) {
   const E = M.ents[ent], TE = M.ents.template, canC = !!TE.perm?.c;
@@ -1960,25 +1985,18 @@ async function scheduleModal(contractId, after) {
 async function printPick(id, kind) {   // bấm In → chọn 1 trong các mẫu đơn đăng ký (mẫu hợp với căn được chọn sẵn)
   const nt = kind === 'dang_ky_noi_that';   // nút Nội thất: mẫu có chữ «hoàn thiện căn hộ»; nút Căn hộ: các mẫu còn lại
   const [all, sc] = await Promise.all([api('GET', `/api/templates?all=1&res=${id}`), api('GET', `/api/template-scope/reservation/${id}`)]);
-  const ts = all.filter(t => (t.kind === 'dang_ky_noi_that' || /hoàn thiện căn hộ/i.test(t.label)) === nt && t.lv >= 0).sort((a, b) => b.lv - a.lv);   // chỉ mẫu của đúng dự án / tòa và mẫu chung
-  const pre = ts.find(t => t.fit) || ts[0];
-  const m = modal({ title: `${ico('fa-print')} In đơn đăng ký`, narrow: true, body: `${tplScopeBar(sc)}${ts.length ? `<div class="small muted mb">Chọn mẫu in</div>${tplRadios(ts.map(t => ({ ...t, name: t.label })), pre)}` : `<div class="empty">Chưa có mẫu đơn đăng ký cho ${esc(scLabel(sc))}.</div>`}`,
-    foot: `<button class="btn" data-x>Hủy</button>${tplNewBtn(sc)}${ts.length ? `<button class="btn pri" id="pOk">${ico('fa-print')} In</button>` : ''}` });
-  tplNewWire(m, sc, 'reservation', kind, () => printPick(id, kind));
-  $('#pOk', m.el) && ($('#pOk', m.el).onclick = () => { const c = $('input[name=tpl]:checked', m.el); const t = ts.find(x => x.code === c.value); m.close(); window.open(`/print/reservation/${id}?kind=${t.kind}&tpl=${encodeURIComponent(t.code)}`, '_blank'); });
+  const ts = all.filter(t => (t.kind === 'dang_ky_noi_that' || /hoàn thiện căn hộ/i.test(t.label)) === nt && t.lv >= 0).sort((a, b) => b.lv - a.lv).map(t => ({ ...t, name: t.label }));   // chỉ mẫu của đúng dự án / tòa và mẫu chung
+  tplPickModal({ title: nt ? 'In đơn đăng ký nội thất' : 'In đơn đăng ký căn hộ', sc, ts, pre: ts.find(t => t.fit) || ts[0], memo: 'res-' + kind, emptyMsg: `Chưa có mẫu đơn đăng ký cho ${esc(scLabel(sc))}.`,
+    onGo: t => window.open(`/print/reservation/${id}?kind=${t.kind}&tpl=${encodeURIComponent(t.code)}`, '_blank'), newWire: m => tplNewWire(m, sc, 'reservation', kind, () => printPick(id, kind)) });
 }
 
 // in biên bản giao nhận hồ sơ (từ phiếu đăng ký / hồ sơ NOXH): chọn mẫu theo công ty — Cát Tường, Thống Nhất… (Quản trị › Mẫu biểu)
 async function handoverPick(kind, id) {
   const ent = kind === 'reservation' ? 'reservation' : 'noxh_check';
   const [all, sc] = await Promise.all([api('GET', `/api/handover-templates?${kind}=${id}`), api('GET', `/api/template-scope/${ent}/${id}`)]);
-  const go = code => window.open(`/print/handover/${kind}/${id}${code ? '?tpl=' + encodeURIComponent(code) : ''}`, '_blank');
   const ts = all.filter(t => t.fit).sort((a, b) => b.lv - a.lv);   // chỉ mẫu của đúng dự án / tòa và mẫu chung
-  const pre = ts.find(t => t.best) || ts[0];
-  const m = modal({ title: `${ico('fa-file-signature')} In biên bản giao nhận hồ sơ`, narrow: true, body: `${tplScopeBar(sc)}${ts.length ? `<div class="small muted mb">Chọn mẫu in</div>${tplRadios(ts, pre)}` : `<div class="empty">Chưa có mẫu biên bản cho ${esc(scLabel(sc))}.</div>`}`,
-    foot: `<button class="btn" data-x>Hủy</button>${tplNewBtn(sc)}${ts.length ? `<button class="btn pri" id="pOk">${ico('fa-print')} In</button>` : ''}` });
-  tplNewWire(m, sc, ent, 'bien_ban_giao_nhan', () => handoverPick(kind, id));
-  $('#pOk', m.el) && ($('#pOk', m.el).onclick = () => { const c = $('input[name=tpl]:checked', m.el); m.close(); go(c.value); });
+  tplPickModal({ title: 'In biên bản giao nhận hồ sơ', icon: 'fa-file-signature', sc, ts, pre: ts.find(t => t.best) || ts[0], memo: 'bbgn-' + kind, emptyMsg: `Chưa có mẫu biên bản cho ${esc(scLabel(sc))}.`,
+    onGo: t => window.open(`/print/handover/${kind}/${id}?tpl=${encodeURIComponent(t.code)}`, '_blank'), newWire: m => tplNewWire(m, sc, ent, 'bien_ban_giao_nhan', () => handoverPick(kind, id)) });
 }
 
 // ---------- ngăn chi tiết ----------

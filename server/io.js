@@ -492,14 +492,58 @@ async function printContract(id, user, tplCode) {
     ${EDIT_CSS}</style></head><body>${editBar(`Bản in từ mẫu «${escH(tpl.name)}» · ${c.status === 'da_ky' ? 'Hợp đồng đã ký — bản in tham khảo' : 'Dự thảo'}`)}${editDoc(body)}</body></html>`;
 }
 
-// bản in sửa được trực tiếp trên trang trước khi in (chỉ sửa bản in này, không đổi dữ liệu gốc)
-const EDIT_CSS = `.bar{font:13px system-ui;background:#f5f8fc;border:1px solid #d4deea;padding:8px 12px;border-radius:8px;margin:12px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-    .bar .tip{flex:1 1 220px;color:#5b6b7f} .bar button{font:600 13px system-ui;padding:6px 12px;border-radius:7px;border:1px solid #c7d4e4;background:#fff;cursor:pointer} .bar button.pri{background:#1e4e8c;color:#fff;border-color:#1e4e8c}
-    .doc{outline:1px dashed #b8c7da;outline-offset:8px;border-radius:2px} .doc:focus{outline:2px solid #f2a65a} .doc *:focus{outline:none}
-    @media screen and (max-width:640px){body{padding:0 14px} table.kv3 td{display:block;white-space:normal!important} table.b td{padding:3pt 4pt}}
-    @media print{.bar{display:none} .doc,.doc:focus{outline:none} .pvs{display:none!important}}
-    @media screen{html.pv body{max-width:none!important;margin:0!important;padding:0 0 40px!important;background:#d9dee5}
-      html.pv .bar{position:sticky;top:0;z-index:5;max-width:230mm;margin:0 auto 14px;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+// ===== Khung trang in (17/11/2026 — làm lại giao diện in ấn): mọi trang /print/… dùng chung =====
+// Thanh công cụ cố định trên cùng (In / PDF, Tải Word, Bản gốc, hoàn tác / làm lại, thu phóng, xem trang giấy, ô trống cần điền, khóa sửa),
+// mục lục văn bản bên trái khi bản in có nhiều hồ sơ, thanh trạng thái dưới cùng (đã sửa chưa lưu, trang đang xem / tổng số trang).
+// Bản in vẫn sửa được trực tiếp trước khi in — chỉ áp dụng cho bản in này, không đổi dữ liệu gốc.
+const SVG = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const ICON = {
+  print: SVG('<path d="M6 9V3h12v6"/><rect x="6" y="14" width="12" height="7" rx="1"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>'),
+  undo: SVG('<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>'),
+  redo: SVG('<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>'),
+  minus: SVG('<path d="M5 12h14"/>'), plus: SVG('<path d="M5 12h14M12 5v14"/>'),
+  page: SVG('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>'),
+  pen: SVG('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
+  word: SVG('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>'),
+  reset: SVG('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>'),
+  list: SVG('<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>'),
+  blank: SVG('<path d="M4 7V4h16v3M9 20h6M12 4v16"/>'),
+  up: SVG('<path d="m18 15-6-6-6 6"/>'), down: SVG('<path d="m6 9 6 6 6-6"/>'),
+  save: SVG('<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/>'),
+};
+const EDIT_CSS = `.pt{position:fixed;top:0;left:0;right:0;z-index:50;display:flex;align-items:center;gap:10px;min-height:58px;padding:0 14px;background:#fff;border-bottom:1px solid #dfe5ee;box-shadow:0 1px 10px rgba(20,40,80,.07);font:13px/1.3 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#1d2a3d;text-align:left;box-sizing:border-box}
+    .pt *,.pt-st *,.pt-side *{box-sizing:border-box} .pt [hidden],.pt-st [hidden]{display:none!important}
+    .pt-l{display:flex;align-items:center;gap:8px;min-width:0;flex:1 1 180px} .pt-ttl{min-width:0;display:flex;flex-direction:column;gap:1px}
+    .pt-name{font-weight:650;font-size:14px;color:#1F3A68;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .pt-info{font-size:12px;color:#66758a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .pt-info b{color:#3b4a60}
+    .pt-c{display:flex;align-items:center;gap:6px;flex:0 1 auto} .pt-r{display:flex;align-items:center;gap:6px;flex:0 0 auto;justify-content:flex-end}
+    .pt-g{display:inline-flex;border:1px solid #d5dde8;border-radius:9px;overflow:hidden;background:#fff}
+    .pt-b{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;min-width:36px;padding:0 11px;border:1px solid #d5dde8;border-radius:9px;background:#fff;color:#1d2a3d;font:600 13px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;cursor:pointer;white-space:nowrap;transition:background .15s,border-color .15s,color .15s}
+    .pt-g .pt-b{border:0;border-radius:0;height:34px} .pt-g .pt-b + .pt-b{border-left:1px solid #e6ebf2}
+    .pt-b:hover{background:#f1f5fb;border-color:#b9c7da} .pt-b:focus-visible{outline:2px solid #2A4F8A;outline-offset:2px} .pt-b:disabled{opacity:.55;cursor:default}
+    .pt-b svg{width:17px;height:17px;flex:none} .pt-b.on{background:#e8eef8;border-color:#9DB3D9;color:#1F3A68}
+    .pt-b.pri{background:#2A4F8A;border-color:#2A4F8A;color:#fff;padding:0 16px} .pt-b.pri:hover{background:#1F3A68;border-color:#1F3A68}
+    .pt-zl{min-width:54px!important;font-variant-numeric:tabular-nums}
+    .pt-bc{display:inline-block;min-width:20px;padding:0 6px;border-radius:10px;background:#F5A623;color:#fff;font-size:11px;line-height:18px;text-align:center}
+    .pt-bc.ok{background:#2e9d5b}
+    .pt-st{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;gap:14px;align-items:center;height:30px;padding:0 14px;background:#f7f9fc;border-top:1px solid #e1e7ef;font:12px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#66758a;text-align:left}
+    .pt-sp{flex:1} .pt-dirty{color:#b45309;font-weight:600;white-space:nowrap} .pt-pg{font-variant-numeric:tabular-nums;white-space:nowrap;color:#3b4a60;font-weight:600}
+    .pt-tip{overflow:hidden;white-space:nowrap;text-overflow:ellipsis} .pt-st kbd{font:11px system-ui;border:1px solid #d5dde8;border-bottom-width:2px;border-radius:4px;padding:0 4px;background:#fff;color:#3b4a60}
+    .pt-side{position:fixed;top:58px;bottom:30px;left:0;width:264px;z-index:40;background:#fff;border-right:1px solid #dfe5ee;overflow:auto;padding:10px 8px;font:13px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;text-align:left;transform:translateX(-102%);transition:transform .2s ease;box-shadow:2px 0 12px rgba(20,40,80,.06)}
+    html.pt-sideon .pt-side{transform:none}
+    .pt-sh{padding:4px 8px 8px;font-weight:600;color:#66758a;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+    .pt-side button{display:flex;align-items:flex-start;gap:8px;width:100%;text-align:left;padding:7px 8px;margin:1px 0;border:0;border-radius:7px;background:none;font:13px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#1d2a3d;cursor:pointer}
+    .pt-side button i{flex:none;font-style:normal;min-width:22px;height:20px;border-radius:5px;background:#eef2f8;color:#4a5b73;font-size:11px;font-weight:600;display:inline-flex;align-items:center;justify-content:center}
+    .pt-side button:hover{background:#f1f5fb} .pt-side button.on{background:#e8eef8;color:#1F3A68;font-weight:600} .pt-side button.on i{background:#2A4F8A;color:#fff}
+    .doc{outline:1px dashed #b8c7da;outline-offset:8px;border-radius:2px} .doc:focus{outline:2px solid #f2a65a} .doc *:focus{outline:none} .doc[contenteditable=false]{outline:1px solid #e3e8ef}
+    @media screen{body{padding-top:76px!important;padding-bottom:48px!important} section.hs{scroll-margin-top:76px} ::highlight(pt-blank){background-color:#fff0bf} ::highlight(pt-cur){background-color:#ffc94d}}
+    @media screen and (min-width:1180px){html.pt-sideon body{padding-left:280px!important}}
+    @media screen and (max-width:1180px){.pt-b .t{display:none} .pt-b.pri .t,.pt-b.keep .t{display:inline}}
+    @media screen and (max-width:760px){.pt{flex-wrap:wrap;padding:8px 10px;gap:6px} .pt-c{order:3;width:100%;overflow-x:auto;padding-bottom:2px} .pt-info{display:none} .pt-l{flex-basis:120px}
+      body{padding-top:118px!important} section.hs{scroll-margin-top:122px} .pt-side{top:110px} .pt-keys,.pt-tip{display:none} .pt-b.pri .t{display:none}}
+    @media screen and (max-width:640px){body{padding-left:14px;padding-right:14px} table.kv3 td{display:block;white-space:normal!important} table.b td{padding:3pt 4pt}}
+    @media print{.pt,.pt-st,.pt-side,.pvs{display:none!important} body{padding:0!important} .doc,.doc:focus,.doc[contenteditable=false]{outline:none!important} .pvw{zoom:1!important}}
+    @media screen{html.pv body{max-width:none!important;margin:0!important;padding-left:0;padding-right:0;background:#d9dee5}
       html.pv .pvw{position:relative;margin:0 auto} html.pv .pvs{position:absolute;inset:0;pointer-events:none;z-index:0}
       html.pv .pvp{position:absolute;left:0;right:0;background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.28)}
       html.pv .pvm{position:absolute;white-space:pre;color:#000;line-height:1} html.pv .pvn{position:absolute;left:0;right:0;text-align:center;font:11px system-ui;color:#6b7785}
@@ -507,11 +551,12 @@ const EDIT_CSS = `.bar{font:13px system-ui;background:#f5f8fc;border:1px solid #
       html.pv [data-pvb]{break-before:column} html.pv [data-pva]{break-after:column} html:not(.pv) .pvs{display:none}}`;
 // 13/11/2026: «Xem dạng trang giấy» — màn sửa hiện đúng từng tờ A4 như bản in (lề lấy từ @page của trang, ngắt trang = ngắt cột của khối nhiều cột xuống dòng,
 // số trang / «Trang HĐ x/y» vẽ ở lề), sửa chữ đến đâu trang tự dàn lại đến đó. Trình duyệt chưa hỗ trợ column-wrap thì giữ màn cũ.
+// 17/11/2026: nút bật / tắt chuyển lên thanh công cụ (window.__pv), tính cả mức thu phóng (window.__ptZ).
 function pvView() {
   const d = document.querySelector('.doc'), H = document.documentElement; if (!d || !window.CSS || !CSS.supports('column-wrap', 'wrap')) return;
   const MM = (() => { const e = document.createElement('div'); e.style.cssText = 'position:absolute;visibility:hidden;width:100mm'; document.body.append(e); const w = e.getBoundingClientRect().width / 100; e.remove(); return w; })();
   const mm = v => { const e = document.createElement('div'); e.style.cssText = 'position:absolute;visibility:hidden;height:0;width:' + v; document.body.append(e); const w = e.getBoundingClientRect().width; e.remove(); return w / MM; };
-  const G = 8, wrap = document.createElement('div'), lay = document.createElement('div'), st = document.createElement('style');
+  const G = 8, wrap = document.createElement('div'), lay = document.createElement('div'), st = document.createElement('style'), geo = { n: 1, ph: 297 };
   wrap.className = 'pvw'; lay.className = 'pvs'; lay.setAttribute('contenteditable', 'false'); lay.setAttribute('aria-hidden', 'true');
   d.before(wrap); wrap.append(lay, d); document.head.append(st);
   const rules = () => { const o = { mg: [20, 15, 20, 30], land: false, box: {}, first: {} };
@@ -526,13 +571,13 @@ function pvView() {
   let busy = false;
   const draw = () => { if (busy || !H.classList.contains('pv')) return; busy = true;
     try {
-      const R = rules(), [t, r, b, l] = R.mg, pw = R.land ? 297 : 210, ph = R.land ? 210 : 297, W = pw - l - r, Hc = ph - t - b, gap = b + G + t;
+      const Z = window.__ptZ || 1, R = rules(), [t, r, b, l] = R.mg, pw = R.land ? 297 : 210, ph = R.land ? 210 : 297, W = pw - l - r, Hc = ph - t - b, gap = b + G + t;
       st.textContent = '@media screen{html.pv .pvw{width:' + W + 'mm;padding:' + t + 'mm ' + r + 'mm ' + b + 'mm ' + l + 'mm} html.pv .doc{width:' + W + 'mm;column-width:' + W + 'mm;column-height:' + Hc + 'mm;row-gap:' + gap + 'mm}}';
       for (const e of d.querySelectorAll('*')) { const cs = getComputedStyle(e);
         if (cs.breakBefore === 'page' || cs.pageBreakBefore === 'always') e.dataset.pvb = ''; if (cs.breakAfter === 'page' || cs.pageBreakAfter === 'always') e.dataset.pva = ''; }
-      const n = Math.max(1, Math.round((d.getBoundingClientRect().height / MM + gap) / (Hc + gap)));
+      const n = Math.max(1, Math.round((d.getBoundingClientRect().height / Z / MM + gap) / (Hc + gap)));
       const top0 = wrap.getBoundingClientRect().top, skip = new Set();   // trang phụ lục / bản vẽ: không in số trang HĐ
-      for (const s of d.querySelectorAll('section.pl, .bv-page')) for (const q of s.getClientRects()) skip.add(Math.floor((q.top - top0) / MM / (ph + G)));
+      for (const s of d.querySelectorAll('section.pl, .bv-page')) for (const q of s.getClientRects()) skip.add(Math.floor((q.top - top0) / Z / MM / (ph + G)));
       let h = '';
       for (let i = 0; i < n; i++) { const y = i * (ph + G); let mb = '';
         if (!skip.has(i)) for (const k of Object.keys(R.box)) { const bx = (i === 0 && R.first[k]) || R.box[k], v = txt(bx.c, i, n); if (!v) continue;
@@ -540,18 +585,136 @@ function pvView() {
           const pos = hp === 'left' ? 'left:' + l + 'mm' : hp === 'right' ? 'right:' + r + 'mm' : 'left:' + l + 'mm;right:' + r + 'mm;text-align:center';
           mb += '<div class="pvm" style="top:' + ty + 'mm;transform:translateY(-50%);' + pos + ';font:' + (bx.f || '10pt serif') + '">' + String(v).replace(/</g, '&lt;') + '</div>'; }
         h += '<div class="pvp" style="top:' + y + 'mm;height:' + ph + 'mm">' + mb + '</div><div class="pvn" style="top:' + (y + ph + 1) + 'mm">Trang ' + (i + 1) + ' / ' + n + '</div>'; }
-      lay.innerHTML = h;
-    } finally { busy = false; } };
+      lay.innerHTML = h; geo.n = n; geo.ph = ph;
+    } finally { busy = false; dispatchEvent(new Event('pt-pages')); } };
   let tm = 0; const later = () => { clearTimeout(tm); tm = setTimeout(draw, 120); };
-  const btn = document.createElement('button'), lab = () => { btn.textContent = H.classList.contains('pv') ? '📄 Đang xem dạng trang giấy — bấm để tắt' : '📄 Xem dạng trang giấy (như bản in)'; };
-  btn.onclick = () => { H.classList.toggle('pv'); try { localStorage.setItem('ctg-pv', H.classList.contains('pv') ? '1' : '0'); } catch (e) {} lab(); draw(); };
-  const bar = document.querySelector('.bar'); if (bar) bar.insertBefore(btn, bar.querySelector('button'));
+  const set = on => { H.classList.toggle('pv', on); try { localStorage.setItem('ctg-pv', on ? '1' : '0'); } catch (e) {} draw(); dispatchEvent(new Event('pt-pages')); };
+  // trang đang xem (theo toạ độ y trên màn hình)
+  const page = y => Math.min(geo.n, Math.max(1, Math.floor((y - wrap.getBoundingClientRect().top) / (window.__ptZ || 1) / MM / (geo.ph + G)) + 1));
+  window.__pv = { draw, set, page, geo, on: () => H.classList.contains('pv') };
   let on = innerWidth >= 900; try { const v = localStorage.getItem('ctg-pv'); if (v) on = v === '1'; } catch (e) {}
-  H.classList.toggle('pv', on); lab(); draw();
+  H.classList.toggle('pv', on); draw();
   new ResizeObserver(later).observe(d); d.addEventListener('input', later);
   if (document.fonts) document.fonts.ready.then(() => setTimeout(draw, 300)); addEventListener('load', () => setTimeout(draw, 400));
 }
-const editBar = info => `<div class="bar"><span class="tip">${info}<br>✎ Bấm vào chữ để sửa trực tiếp, xong bấm <b>In</b>. Sửa ở đây chỉ áp dụng cho bản in này.</span><button onclick="location.reload()">Hoàn tác</button><button class="pri" onclick="print()">In / Lưu PDF</button></div>`;
+// thanh công cụ + mục lục + thanh trạng thái (chạy sau pvView)
+function ptShell() {
+  const H = document.documentElement, d = document.querySelector('.doc'), bar = document.querySelector('.pt'); if (!d || !bar) return;
+  const B = k => bar.querySelector('[data-pt="' + k + '"]'), Q = s => bar.querySelector(s);
+  const ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } };
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  Q('.pt-name').textContent = document.title; Q('.pt-info').title = Q('.pt-info').textContent;
+  bar.addEventListener('mousedown', e => { if (e.target.closest('button')) e.preventDefault(); });   // bấm nút không làm mất con trỏ đang ở trong văn bản
+  // --- thanh trạng thái, đã sửa / chưa lưu
+  const st = document.createElement('div'); st.className = 'pt-st'; st.setAttribute('contenteditable', 'false');
+  st.innerHTML = '<span class="pt-dirty" hidden>● Đã sửa — chưa in / lưu</span><span class="pt-tip">✎ Bấm vào chữ để sửa trực tiếp — chỉ áp dụng cho bản in này, không đổi dữ liệu gốc</span><span class="pt-sp"></span><span class="pt-pg"></span><span class="pt-keys"><kbd>F3</kbd> ô trống tiếp · <kbd>Ctrl</kbd>+<kbd>P</kbd> in' + (document.getElementById('hsSave') ? ' · <kbd>Ctrl</kbd>+<kbd>S</kbd> lưu vào kho' : '') + '</span>';
+  document.body.append(st);
+  let dirty = false, warn = false;
+  const setDirty = v => { dirty = v; warn = v; st.querySelector('.pt-dirty').hidden = !v; };
+  d.addEventListener('input', () => setDirty(true));
+  window.__ptSaved = () => setDirty(false);
+  addEventListener('beforeunload', e => { if (warn && !H.dataset.ptLeave) { e.preventDefault(); e.returnValue = ''; } });
+  // --- mục lục (bản in có từ 2 hồ sơ trở lên)
+  const secs = [...d.querySelectorAll('section.hs')];
+  if (secs.length > 1) {
+    const sd = document.createElement('nav'); sd.className = 'pt-side'; sd.setAttribute('aria-label', 'Văn bản trong bản in');
+    sd.innerHTML = '<div class="pt-sh">Văn bản trong bản in · ' + secs.length + '</div>' + secs.map((s, i) => '<button type="button" data-i="' + i + '"><i>' + (i + 1) + '</i><span>' + esc((s.querySelector('.hs-t') || {}).textContent || s.dataset.code || 'Văn bản ' + (i + 1)) + '</span></button>').join('');
+    document.body.append(sd); B('side').hidden = false;
+    const wide = () => innerWidth >= 1180, side = on => { H.classList.toggle('pt-sideon', on); B('side').classList.toggle('on', on); if (wide()) ls('ctg-pt-side', on ? '1' : '0'); };
+    side(wide() && ls('ctg-pt-side') !== '0');
+    B('side').onclick = () => side(!H.classList.contains('pt-sideon'));
+    sd.onclick = e => { const b = e.target.closest('[data-i]'); if (!b) return; secs[+b.dataset.i].scrollIntoView({ block: 'start' }); if (!wide()) side(false); };
+    addEventListener('keydown', e => { if (e.key === 'Escape' && !wide()) side(false); });
+    const btns = [...sd.querySelectorAll('[data-i]')];
+    const act = () => { const y = innerHeight * .35; let k = 0; secs.forEach((s, i) => { if (s.getBoundingClientRect().top <= y) k = i; });
+      btns.forEach((b, i) => b.classList.toggle('on', i === k)); };
+    addEventListener('scroll', () => requestAnimationFrame(act), { passive: true }); act();
+  }
+  // --- thu phóng (nhớ theo máy)
+  const zEl = () => document.querySelector('.pvw') || d;
+  const setZ = (z, keep = true) => { const Z = Math.min(2, Math.max(.3, Math.round(z * 20) / 20)); window.__ptZ = Z; zEl().style.zoom = Z === 1 ? '' : Z;
+    Q('.pt-zl').textContent = Math.round(Z * 100) + '%'; if (keep) ls('ctg-pt-zoom', String(Z)); window.__pv && window.__pv.draw(); };
+  B('zo').onclick = () => setZ((window.__ptZ || 1) - .1); B('zi').onclick = () => setZ((window.__ptZ || 1) + .1); B('z1').onclick = () => setZ(1);
+  // màn hẹp (điện thoại) + xem trang giấy: tự thu nhỏ cho vừa bề ngang tờ giấy
+  const fit = () => { const w = document.querySelector('.pvw'); if (innerWidth < 760 && w && window.__pv && window.__pv.on()) setZ(Math.floor((innerWidth - 16) / (w.offsetWidth || 794) * 20) / 20, false); };
+  setZ(+ls('ctg-pt-zoom') || 1); fit();
+  // --- xem dạng trang giấy + số trang
+  const pg = st.querySelector('.pt-pg');
+  const pages = () => { const P = window.__pv; if (!P || !P.on()) { pg.textContent = ''; return; } pg.textContent = 'Trang ' + P.page(innerHeight * .4) + ' / ' + P.geo.n; };
+  if (window.__pv) { const sync = () => B('pv').classList.toggle('on', window.__pv.on()); B('pv').onclick = () => { window.__pv.set(!window.__pv.on()); sync(); fit(); }; sync(); }
+  else B('pv').hidden = true;
+  addEventListener('pt-pages', pages); addEventListener('scroll', () => requestAnimationFrame(pages), { passive: true }); pages();
+  // --- khóa / mở sửa chữ
+  const lockSync = () => { const on = d.isContentEditable; B('lock').classList.toggle('on', on); B('lock').querySelector('.t').textContent = on ? 'Đang sửa' : 'Đã khóa sửa';
+    B('lock').title = on ? 'Đang cho sửa chữ trực tiếp — bấm để khóa (tránh gõ nhầm)' : 'Đang khóa — bấm để cho sửa chữ trực tiếp';
+    st.querySelector('.pt-tip').textContent = on ? '✎ Bấm vào chữ để sửa trực tiếp — chỉ áp dụng cho bản in này, không đổi dữ liệu gốc' : '🔒 Đang khóa sửa — chỉ xem và in'; B('undo').disabled = B('redo').disabled = !on; };
+  B('lock').onclick = () => { d.contentEditable = d.isContentEditable ? 'false' : 'true'; lockSync(); }; lockSync();
+  // --- hoàn tác / làm lại
+  const cmd = c => { d.focus({ preventScroll: true }); document.execCommand(c); };
+  B('undo').onclick = () => cmd('undo'); B('redo').onclick = () => cmd('redo');
+  // --- ô trống cần điền («……», «.....»): tô vàng trên màn (không đổi nội dung, không in ra), F3 / nút ▼ nhảy tới ô kế và chọn sẵn để gõ đè
+  const HL = window.CSS && CSS.highlights && window.Highlight, RE = /\.{5,}|…{2,}|[.…]{4,}/g;
+  let blanks = [], bi = -1, had = false;
+  const scan = () => { blanks = []; const w = document.createTreeWalker(d, NodeFilter.SHOW_TEXT, { acceptNode: n => n.parentElement && n.parentElement.closest('.hs-t,.pvs') ? 2 : 1 });
+    for (let n; (n = w.nextNode());) { RE.lastIndex = 0; let m; while ((m = RE.exec(n.data))) { const r = new Range(); r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length); blanks.push(r); } }
+    if (HL) CSS.highlights.set('pt-blank', new Highlight(...blanks));
+    had = had || blanks.length > 0; Q('.pt-blank').hidden = !had;
+    const c = Q('.pt-bc'); c.textContent = blanks.length; c.classList.toggle('ok', !blanks.length);
+    B('bnext').title = blanks.length ? 'Còn ' + blanks.length + ' chỗ trống «……» — bấm (hoặc F3) để tới chỗ tiếp theo, chữ được chọn sẵn để gõ đè' : 'Đã điền hết chỗ trống'; };
+  const go = dir => { scan(); if (!blanks.length) return;
+    const sel = getSelection(), cur = sel.rangeCount ? sel.getRangeAt(0) : null;
+    if (cur && d.contains(cur.startContainer)) { const i = blanks.findIndex(r => dir > 0 ? r.compareBoundaryPoints(Range.START_TO_START, cur) > 0 : r.compareBoundaryPoints(Range.START_TO_START, cur) < 0);
+      bi = dir > 0 ? (i < 0 ? 0 : i) : (() => { let k = -1; blanks.forEach((r, j) => { if (r.compareBoundaryPoints(Range.START_TO_START, cur) < 0) k = j; }); return k < 0 ? blanks.length - 1 : k; })(); }
+    else bi = dir > 0 ? (bi + 1) % blanks.length : (bi - 1 + blanks.length) % blanks.length;
+    const r = blanks[bi]; if (d.isContentEditable) d.focus({ preventScroll: true }); sel.removeAllRanges(); sel.addRange(r.cloneRange());
+    if (HL) CSS.highlights.set('pt-cur', new Highlight(r));
+    const box = r.getBoundingClientRect(); if (box.top < 90 || box.bottom > innerHeight - 50) scrollBy({ top: box.top - innerHeight / 3, behavior: 'smooth' }); };
+  let stm = 0; d.addEventListener('input', () => { clearTimeout(stm); stm = setTimeout(() => { scan(); if (HL) CSS.highlights.delete('pt-cur'); }, 250); });
+  B('bnext').onclick = () => go(1); B('bprev').onclick = () => go(-1);
+  addEventListener('beforeprint', () => { if (HL) { CSS.highlights.delete('pt-blank'); CSS.highlights.delete('pt-cur'); } });
+  addEventListener('afterprint', () => { warn = false; scan(); });
+  scan();
+  // --- In / Bản gốc / Word
+  B('print').onclick = () => print();
+  B('reset').onclick = () => { if (dirty && !confirm('Bỏ mọi chỗ đã sửa trên bản in này và tải lại bản gốc theo dữ liệu?')) return; H.dataset.ptLeave = '1'; location.reload(); };
+  const safe = s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').replace(/[^\w.-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'ban-in';
+  const dl = (blob, name) => { const a = document.createElement('a'), u = URL.createObjectURL(blob); a.href = u; a.download = name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 6e4); };
+  const docx = bar.dataset.docx;
+  // Word đúng mẫu (máy chủ dựng .docx, có số trang) khi chưa sửa; đã sửa trên bản in thì xuất đúng nội dung đang thấy
+  const wordNow = () => { const c = d.cloneNode(true); c.querySelectorAll('.hs-t,.pvs').forEach(x => x.remove()); c.querySelectorAll('[data-pvb],[data-pva]').forEach(x => { x.removeAttribute('data-pvb'); x.removeAttribute('data-pva'); });
+    const css = [...document.querySelectorAll('style')].map(s => s.textContent).filter(t => !/\.pt\{|html\.pv/.test(t)).join('\n');
+    const html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>' + esc(document.title) + '</title><style>' + css + '</style></head><body>' + c.innerHTML + '</body></html>';
+    dl(new Blob(['﻿', html], { type: 'application/msword' }), safe(document.title) + (dirty ? '_da-sua' : '') + '.doc'); warn = false; };
+  const wordSrv = async () => {
+    if (location.protocol !== 'blob:') { H.dataset.ptLeave = '1'; location.href = docx; setTimeout(() => delete H.dataset.ptLeave, 1000); return; }
+    // bản demo (trang blob:) — nhờ tab ứng dụng dựng tệp
+    const b = B('word'), t = b.querySelector('.t'), t0 = t.textContent; b.disabled = true; t.textContent = 'Đang dựng…';
+    try { const r = await new Promise((ok, no) => { const ch = new BroadcastChannel('ctg-hs'), id = Math.random().toString(36).slice(2);
+        const tm = setTimeout(() => { ch.close(); no(new Error('Không kết nối được tab ứng dụng')); }, 60000);
+        ch.onmessage = e => { const m = e.data || {}; if (m.t !== 'res' || m.id !== id) return; clearTimeout(tm); ch.close(); m.ok && m.blob ? ok(m) : no(new Error((m.body && m.body.error) || 'Không tải được')); };
+        ch.postMessage({ t: 'req', id, url: docx, init: {}, bin: true }); });
+      dl(r.blob, r.name || safe(document.title) + '.docx');
+    } catch (e) { wordNow(); } finally { b.disabled = false; t.textContent = t0; } };
+  B('word').onclick = () => (docx && !dirty ? wordSrv() : wordNow());
+  B('word').title = docx ? 'Tải file Word: chưa sửa gì → bản Word chuẩn của mẫu (có số trang); đã sửa → đúng nội dung đang thấy' : 'Tải file Word đúng nội dung đang thấy (kể cả chỗ đã sửa)';
+  // --- phím tắt
+  addEventListener('keydown', e => {
+    if (e.key === 'F3') { e.preventDefault(); go(e.shiftKey ? -1 : 1); }
+    else if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 's') { e.preventDefault(); const s = document.getElementById('hsSave'); s ? s.click() : B('word').click(); }
+  });
+}
+const ptBtn = (k, ico, label, title, cls = '') => `<button type="button" class="pt-b ${cls}" data-pt="${k}" title="${title}">${ICON[ico]}${label ? `<span class="t">${label}</span>` : ''}</button>`;
+// info: dòng mô tả dưới tên bản in (HTML). extra: nút riêng của trang (VD «Lưu vào kho»). docx: đường dẫn tải Word chuẩn do máy chủ dựng (nếu có)
+const editBar = (info, { extra = '', docx = '' } = {}) => `<div class="pt" contenteditable="false" role="toolbar" aria-label="Công cụ bản in"${docx ? ` data-docx="${escH(docx)}"` : ''}>
+  <div class="pt-l">${ptBtn('side', 'list', '', 'Mục lục — các văn bản trong bản in').replace('<button', '<button hidden')}<div class="pt-ttl"><span class="pt-name"></span><span class="pt-info">${info}</span></div></div>
+  <div class="pt-c">
+    <span class="pt-g">${ptBtn('undo', 'undo', '', 'Hoàn tác (Ctrl+Z)')}${ptBtn('redo', 'redo', '', 'Làm lại (Ctrl+Y)')}</span>
+    <span class="pt-g pt-blank" hidden>${ptBtn('bprev', 'up', '', 'Chỗ trống trước (Shift+F3)')}<button type="button" class="pt-b keep" data-pt="bnext">${ICON.blank}<span class="t">Chỗ trống</span><span class="pt-bc">0</span></button></span>
+    <span class="pt-g">${ptBtn('zo', 'minus', '', 'Thu nhỏ')}<button type="button" class="pt-b pt-zl" data-pt="z1" title="Về 100%">100%</button>${ptBtn('zi', 'plus', '', 'Phóng to')}</span>
+    ${ptBtn('pv', 'page', 'Trang giấy', 'Xem đúng từng tờ A4 như khi in')}${ptBtn('lock', 'pen', 'Đang sửa', '')}
+  </div>
+  <div class="pt-r">${extra}${ptBtn('word', 'word', 'Word', '')}${ptBtn('reset', 'reset', 'Bản gốc', 'Bỏ mọi chỗ đã sửa, tải lại bản in theo dữ liệu')}${ptBtn('print', 'print', 'In / PDF', 'In hoặc lưu PDF (Ctrl+P)', 'pri')}</div>
+</div>`;
 const editDoc = body => `<div class="doc" contenteditable="true" spellcheck="false">${body}</div>
 <script>(() => { ${MONEY_SRC}
   const d = document.querySelector('.doc');   // sửa số tiền → dòng bằng chữ cùng trường tự đổi
@@ -564,7 +727,7 @@ const editDoc = body => `<div class="doc" contenteditable="true" spellcheck="fal
     if (!cur.s.isConnected && el && el !== cur.blk && cur.blk.contains(el) && /^[0-9.,\\s]*$/.test(el.textContent)) { el.dataset.so = cur.k; cur.s = el; }
     const v = cur.s.isConnected ? +cur.s.textContent.replace(/[^0-9]/g, '') : 0;
     d.querySelectorAll('[data-chu="' + cur.k + '"]').forEach(w => w.textContent = v ? moneyWords(v) : ''); });
-})(); (${pvView.toString()})()</script>`;
+})(); (${pvView.toString()})(); (${ptShell.toString()})()</script>`;
 
 // bản đăng ký căn hộ / nội thất từ phiếu đăng ký (GD-01) — chọn mẫu ở Quản trị › Mẫu biểu
 const DOTS = '..............................';     // ô trống trên bản in → để khách / nhân viên điền tay
@@ -889,4 +1052,4 @@ async function previewTemplate(b, user) {
 }
 
 module.exports = { sheets, fillToday, recScope, tplFitLevel, scopeKeys, tplFields, printGeneric, previewTemplate,
-  misaSample, printSaleNotice, printCancelReq, EDIT_CSS, editBar, editDoc, A, strip, mapRows, exportList, sheet, importFile, importTemplate, IMPORTS, createUser, hashPw, checkPw, printContract, printReservation, regTemplates, moneyWords };
+  misaSample, printSaleNotice, printCancelReq, EDIT_CSS, ICON, editBar, editDoc, A, strip, mapRows, exportList, sheet, importFile, importTemplate, IMPORTS, createUser, hashPw, checkPw, printContract, printReservation, regTemplates, moneyWords };

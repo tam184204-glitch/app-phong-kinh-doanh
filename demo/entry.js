@@ -408,7 +408,11 @@ async function boot(pgliteUrl) {
   window.open = (url, target, feat) => { if (!isApi(url)) return realOpen(url, target, feat); if (isPrint(url)) { openPrint(url); return null; } const w = realOpen('about:blank', target || '_blank', feat); openBlob(url, w); return w; };
   // tab in (blob, noopener) nhờ tab này chạy máy chủ: «Lưu bản đã sửa vào kho»
   if (window.BroadcastChannel) { const ch = new BroadcastChannel('ctg-hs'); ch.onmessage = async e => { const m = e.data || {}; if (m.t !== 'req') return;
-    try { const r = await window.fetch(m.url, m.init); ch.postMessage({ t: 'res', id: m.id, ok: r.ok, body: await r.json() }); } catch (er) { ch.postMessage({ t: 'res', id: m.id, ok: false, body: { error: er.message } }); } }; }
+    try { const r = await window.fetch(m.url, m.init);
+      if (m.bin && r.ok) {   // tải tệp (Word) cho tab in: trả nguyên tệp + tên tệp
+        const cd = r.headers.get('content-disposition') || '', fn = /filename\*=UTF-8''([^;]+)/i.exec(cd), f0 = /filename="?([^";]+)"?/i.exec(cd);
+        return ch.postMessage({ t: 'res', id: m.id, ok: true, blob: await r.blob(), name: fn ? decodeURIComponent(fn[1]) : f0 ? f0[1] : '' }); }
+      ch.postMessage({ t: 'res', id: m.id, ok: r.ok, body: await r.json() }); } catch (er) { ch.postMessage({ t: 'res', id: m.id, ok: false, body: { error: er.message } }); } }; }
   document.addEventListener('click', e => {
     const a = e.target.closest && e.target.closest('a[href]'); if (!a) return;
     const href = a.getAttribute('href'); if (!isApi(href)) return;
