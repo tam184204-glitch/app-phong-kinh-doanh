@@ -836,7 +836,8 @@ def('collect_plan', {
     { k: 'prev_id', l: 'Kế hoạch trước khi đổi lịch', t: 'ref', ref: 'collect_plan', ro: 1 },
     { k: 'resched_reason', l: 'Lý do đổi lịch', t: 'text', ro: 1 },
     { k: 'plan_week', l: 'Tuần trong tháng', t: 'int', help: 'Tuần 1, 2, … của tháng kế hoạch (Thứ 2 – Chủ nhật, cắt theo ranh giới tháng); 0 / trống = chưa phân bổ tuần' },   // 17/11/2026
-    { k: 'src_key', l: 'Nguồn tự lập', t: 'text', hide: 1 },   // dd:<ban|thue>:<id căn> — tích «Đưa vào kế hoạch thu» ở Báo cáo công nợ đến hạn
+    { k: 'src_key', l: 'Nguồn tự lập', t: 'text', hide: 1 },
+    { k: 'src_cts', l: 'Các HĐ của căn trong kế hoạch', t: 'text', hide: 1 },   // id HĐ, phân cách «,» — tính thực thu theo căn, không trùng giữa HĐ thuê / vay / HĐMB   // dd:<ban|thue>:<id căn> — tích «Đưa vào kế hoạch thu» ở Báo cáo công nợ đến hạn
     { k: 'ability', l: 'Khả năng thu', t: 'sel', def: 'vua', o: [['cao', 'Cao', 'g'], ['vua', 'Vừa', 'a'], ['thap', 'Thấp', 'r']] },
     { k: 'explain', l: 'Giải trình (khi vượt công nợ)', t: 'long' },
     owner(),

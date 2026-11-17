@@ -13,7 +13,11 @@ const { bad, deny, can, fmtMoney, dmy } = C;
 // ---------- xuất ----------
 const cellOf = (v, t) => v == null || v === '' ? '' : t === 'money' || t === 'num' || t === 'int' ? +v : t === 'date' ? dmy(v) : t === 'dt' ? new Date(v).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : t === 'bool' ? (v ? 'Có' : '') : typeof v === 'object' ? JSON.stringify(v) : v;
 // groups: nhãn nhóm của từng cột (cùng thứ tự cols, '' = không nhóm) → 2 tầng tiêu đề: cột cùng nhóm liền nhau gộp ô nhóm, cột không nhóm gộp dọc 2 dòng
-function sheet(title, cols, rows, { sum, note, groups } = {}) {
+// noNo: bỏ cột STT; dòng có _b: in đậm (dòng nhóm / tổng tòa / tổng cộng của báo cáo phân cấp)
+function sheet(title, cols, rows, { sum, note, groups, noNo } = {}) {
+  if (noNo) { const out = [[title], [note || ''], [], cols.map(c => c[1])], bold = [0, 3];
+    rows.forEach(r => { if (r._b) bold.push(out.length); out.push(cols.map(c => cellOf(r[c[0]], c[2]))); });
+    return buildXlsx({ sheet: title.slice(0, 31), rows: out, boldRows: bold, widths: cols.map(c => c[2] === 'money' ? 18 : c[3] || 22) }); }
   groups = Array.isArray(groups) ? cols.map((c, i) => String(groups[i] || '')) : null;
   const g2 = groups?.some(Boolean), merges = [], L = i => { let s = ''; i++; while (i) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = (i - m - 1) / 26; } return s; };
   const out = [[title], note ? [note] : [`Xuất lúc ${new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`], []];
@@ -387,7 +391,7 @@ function importTemplate(kind) {
 // 17/11/2026: nhiều sheet trong 1 tệp — mỗi phần tử { name, title, cols, rows, sum, note, groups } dựng như sheet() rồi ghép (chuỗi ghi inline nên ghép an toàn)
 function sheets(list) {
   const { zip, unzip } = require('./xlsx');
-  const parts = list.map(x => unzip(sheet(String(x.title || x.name || 'Sheet').slice(0, 80), x.cols || [], x.rows || [], { sum: x.sum, note: x.note, groups: x.groups })));
+  const parts = list.map(x => unzip(sheet(String(x.title || x.name || 'Sheet').slice(0, 80), x.cols || [], x.rows || [], { sum: x.sum, note: x.note, groups: x.groups, noNo: x.noNo })));
   const files = Object.entries(parts[0]).filter(([k]) => !/^xl\/worksheets\/sheet\d+\.xml$/.test(k));
   const nm = (s, i) => (String(s || `Sheet${i + 1}`).replace(/[\\/?*[\]:]/g, ' ').slice(0, 31)) || `Sheet${i + 1}`;
   parts.forEach((p, i) => files.push([`xl/worksheets/sheet${i + 1}.xml`, p['xl/worksheets/sheet1.xml']]));

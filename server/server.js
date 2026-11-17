@@ -306,7 +306,7 @@ R('POST', '/api/export-rows', async (req, res, u) => {
   const b = await readJson(req);
   if (!EXPORT_ROLES.includes(u.role)) deny();
   await C.audit({ q }, 'view', null, 'xuat_du_lieu', null, null, u, b.title);
-  const x = Array.isArray(b.sheets) && b.sheets.length ? IO.sheets(b.sheets) : IO.sheet(String(b.title || 'Bao cao').slice(0, 80), b.cols || [], b.rows || [], { sum: b.sum, note: b.note, groups: b.groups });   // sheets: nhiều sheet trong 1 tệp (17/11/2026)
+  const x = Array.isArray(b.sheets) && b.sheets.length ? IO.sheets(b.sheets) : IO.sheet(String(b.title || 'Bao cao').slice(0, 80), b.cols || [], b.rows || [], { sum: b.sum, note: b.note, groups: b.groups, noNo: b.noNo });   // sheets: nhiều sheet trong 1 tệp (17/11/2026)
   sendFile(res, x, `${safeName(b.file || 'bao-cao')}_${C.today()}.xlsx`, MIME['.xlsx']);
 });
 
@@ -370,7 +370,9 @@ R('PUT', '/api/debt-status/:id/class', async (req, res, u, p) => { const b = awa
 R('GET', '/api/unit-status', async (req, res, u, p, qs) => send(res, 200, await V.unitStatus({ q, one }, u, qs)));
 R('GET', '/api/due-debt', async (req, res, u, p, qs) => send(res, 200, await V.dueDebt({ q, one }, u, qs)));
 R('POST', '/api/due-debt/plan', async (req, res, u) => { const b = await readJson(req); send(res, 200, await tx(db => V.ddPlanToggle(db, u, b))); });   // tích / bỏ «Đưa vào kế hoạch thu» (17/11/2026)
-R('GET', '/api/collect-plans', async (req, res, u, p, qs) => send(res, 200, await V.planList({ q, one }, u, qs)));   // kế hoạch thu tuần / tháng   // Theo dõi công nợ đến hạn (17/11/2026)
+R('GET', '/api/collect-plans', async (req, res, u, p, qs) => send(res, 200, await V.planList({ q, one }, u, qs)));
+R('GET', '/api/plan-report', async (req, res, u, p, qs) => send(res, 200, await V.planReport({ q, one }, u, qs)));   // Báo cáo kế hoạch thu tuần / tháng (17/11/2026)
+R('POST', '/api/collect-plans/:id/adjust', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await tx(db => V.planAdjust(db, u, p.id, b))); });   // kế hoạch thu tuần / tháng   // Theo dõi công nợ đến hạn (17/11/2026)
 R('GET', '/api/finish-pay', async (req, res, u, p, qs) => send(res, 200, await V.finishPay({ q, one }, u, qs)));
 R('GET', '/api/loans', async (req, res, u, p, qs) => send(res, 200, await V.loans({ q, one }, u, qs)));
 R('GET', '/api/price-sheet/:id', async (req, res, u, p) => send(res, 200, await V.priceSheet({ q, one }, u, p.id)));
