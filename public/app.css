@@ -2070,3 +2070,50 @@ table.t.uc-t td.num, table.t.uc-t th.num { white-space: nowrap; overflow-wrap: n
 .ud .ud-ct small{font-size:12px}
 .ud .ud-ct small em{color:#c0392b;font-style:normal;font-weight:600}
 .ud .ud-ct.on{border-color:#1e4e8c;box-shadow:inset 0 0 0 1px #1e4e8c;background:#eaf1fb}
+
+/* 17/11/2026: Kế hoạch dòng thu năm (2 nguồn) */
+.py2 .pw-fr select{height:34px;width:auto;min-width:130px;padding:0 10px;border:1px solid var(--line2);border-radius:8px;background:var(--card);font:inherit;font-size:13.5px;color:var(--text)}
+.py2 .py-kk{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+.py2 .py-kk>div{background:var(--card);border:1px solid var(--line2);border-radius:10px;padding:8px 12px;display:flex;flex-direction:column;min-width:0}
+.py2 .py-kk span{font-size:12px;color:var(--muted)}
+.py2 .py-kk b{font-size:15.5px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.py2 .py-kk .tot{border-color:#1e4e8c;background:#eaf1fb}
+.py2 .py-kk .mut b{color:var(--muted)}
+.py2 .pr-chart{position:relative;padding:14px 18px 12px}
+.py2 .hb-top{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline;justify-content:space-between;margin-bottom:6px}
+.py2 .hb-ttl{font-weight:700;font-size:15px}
+.py2 .hb-lg{display:flex;gap:16px;font-size:13px}
+.py2 .hb-lg i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.py2 .hb-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:0 36px}
+.py2 .hb-k{padding:5px 8px;border-radius:8px;cursor:pointer}
+.py2 .hb-k:hover{background:rgba(46,102,194,.05)}
+.py2 .hb-hd{display:flex;justify-content:space-between;gap:10px;margin-bottom:2px}
+.py2 .hb-t{font-weight:600;font-size:13px}
+.py2 .hb-n{font-size:12px;color:var(--muted)}
+.py2 .hb-r{display:grid;grid-template-columns:1fr 64px;align-items:center;gap:8px;margin:2px 0}
+.py2 .hb-tr{height:10px;background:rgba(148,163,184,.22);border-radius:3px;overflow:hidden;display:block}
+.py2 .hb-f{display:block;height:100%;border-radius:0 3px 3px 0}
+.py2 .hb-v{font-size:12.5px;text-align:right;font-variant-numeric:tabular-nums}
+.py2 .py-t{padding:14px 16px}
+.py2 .pr-h{text-align:center;margin:2px 0 10px}
+.py2 .pr-tt{display:block;font-weight:800;font-size:18px;letter-spacing:.5px}
+.py2 .py-tw{overflow:auto;max-height:calc(100vh - 220px);border:1px solid var(--line2);border-radius:8px}
+.py2 .py-tb{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-size:12.5px}
+.py2 .py-tb th,.py2 .py-tb td{padding:6px 8px;border-bottom:1px solid var(--line2);background:var(--card);white-space:nowrap;vertical-align:top}
+.py2 .py-tb thead th{position:sticky;top:0;z-index:2;background:#f1f5fb;font-weight:700}
+.py2 .py-tb th.mh{cursor:pointer;color:#1e4e8c;text-decoration:underline dotted}
+.py2 .py-tb .n{text-align:right;font-variant-numeric:tabular-nums}
+.py2 .py-tb .s1{position:sticky;left:0;z-index:1;min-width:230px;max-width:280px;white-space:normal;box-shadow:2px 0 0 var(--line2)}
+.py2 .py-tb thead th.s1{z-index:3}
+.py2 .py-tb tr.g td{font-weight:700;background:#eaf1fb}
+.py2 .py-tb tr.p td{font-weight:700;background:#f2f6fc}
+.py2 .py-tb tr.b td{font-weight:600;background:#f6f7f9}
+.py2 .py-tb tr.p td.s1{padding-left:20px}
+.py2 .py-tb tr.b td.s1{padding-left:32px}
+.py2 .py-tb tr.u td.s1{padding-left:46px}
+.py2 .py-tb tr.t td{font-weight:700;background:#1e4e8c;color:#fff;position:sticky;bottom:0}
+.py2 .py-tb td.mut{color:var(--muted)}
+.py2 .pr-tg{cursor:pointer;display:inline-block;width:14px}
+.py2 .pw-rule{margin-top:10px;font-size:12.5px;color:var(--muted)}
+.py2 .pw-rule summary{cursor:pointer;color:var(--cobalt);font-weight:600}
+@media (max-width:1100px){.py2 .py-kk{grid-template-columns:repeat(3,minmax(0,1fr))}}
