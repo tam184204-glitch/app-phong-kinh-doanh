@@ -821,7 +821,7 @@ def('collect_plan', {
   rules: 'Không dự kiến âm; vượt công nợ phải giải trình; kế hoạch có phiên bản và ngày chốt',
   c: ['cong_no', 'truong_phong'], a: ['truong_phong'], own: [], order: 't.month desc, t.expected_on', bulk: 1, fields: [
     { k: 'month', l: 'Tháng kế hoạch', t: 'month', help: 'Để trống = tự lấy theo ngày dự kiến thu' },
-    { k: 'contract_id', l: 'Hợp đồng / mã căn', t: 'ref', ref: 'contract', req: 1, filter: 'da_ky' },
+    { k: 'contract_id', l: 'Hợp đồng / mã căn', t: 'ref', ref: 'contract', filter: 'da_ky', help: 'Bắt buộc, trừ dòng thu bán mới (liên kết sau khi có giao dịch)' },
     { k: 'unit_id', l: 'Mã căn', t: 'ref', ref: 'unit', ro: 1 },
     { k: 'customer_id', l: 'Khách hàng', t: 'ref', ref: 'customer', ro: 1 },
     money('debt_left', 'Công nợ còn lại', { ro: 1, help: 'Tại ngày lập' }),
@@ -831,7 +831,13 @@ def('collect_plan', {
     { k: 'basis_note', l: 'Ghi chú', t: 'text' },
     // 17/11/2026: nguồn tiền, thuộc công nợ bán hàng / cho thuê, liên kết lần nhắc nợ (đưa cam kết vào kế hoạch), đổi lịch = bản mới (giữ bản cũ «Đã thay thế» + lý do)
     { k: 'fund_src', l: 'Nguồn tiền', t: 'sel', def: 'khach_tu_tra', o: [['khach_tu_tra', 'Khách tự thanh toán'], ['vay_ngan_hang', 'Vay ngân hàng giải ngân'], ['ho_tro', 'Hỗ trợ / bên thứ ba'], ['khac', 'Khác']] },
-    { k: 'scope', l: 'Thuộc công nợ', t: 'sel', o: [['ban', 'Bán hàng'], ['thue', 'Cho thuê']] },
+    { k: 'scope', l: 'Thuộc công nợ', t: 'sel', o: [['ban', 'Bán hàng'], ['thue', 'Cho thuê'], ['moi', 'Thu bán mới']] },
+    // 17/11/2026: dòng THU BÁN MỚI — kế hoạch thu từ giao dịch bán mới chưa xác định căn / khách hàng (liên kết sau); mỗi tuần phân bổ 1 bản ghi cùng nhóm grp_key
+    { k: 'project_id', l: 'Dự án', t: 'ref', ref: 'project', noForm: 1 },
+    { k: 'building_id', l: 'Tòa', t: 'ref', ref: 'building', noForm: 1 },
+    { k: 'title', l: 'Nội dung kế hoạch', t: 'text', noForm: 1 },
+    { k: 'units_n', l: 'Số căn dự kiến bán', t: 'int', noForm: 1 },
+    { k: 'grp_key', l: 'Nhóm dòng kế hoạch', t: 'text', hide: 1 },
     { k: 'call_id', l: 'Từ lần nhắc nợ', t: 'ref', ref: 'debt_call', noForm: 1 },
     { k: 'prev_id', l: 'Kế hoạch trước khi đổi lịch', t: 'ref', ref: 'collect_plan', ro: 1 },
     { k: 'resched_reason', l: 'Lý do đổi lịch', t: 'text', ro: 1 },
