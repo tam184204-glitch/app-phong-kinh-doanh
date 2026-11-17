@@ -815,7 +815,7 @@ def('payment', {
   acts: [{ k: 'void', l: 'Hủy phiếu chi', icon: 'fa-ban', from: ['hop_le'], roles: ['cong_no', 'ho_so', 'truong_phong'], danger: 1, ask: [{ k: 'reason', l: 'Lý do hủy', t: 'long', req: 1 }] }],
 });
 def('collect_plan', {
-  title: 'Kế hoạch dự kiến dòng thu-chi', one: 'dòng kế hoạch', code: 'CN-03', mod: '06', icon: 'fa-chart-line', disp: "t.month||' · #'||t.id",
+  title: 'Kế hoạch dự kiến dòng thu tuần/ tháng', one: 'dòng kế hoạch', code: 'CN-03', mod: '06', icon: 'fa-chart-line', disp: "t.month||' · #'||t.id",
   purpose: 'Dự báo số tiền có khả năng thu trong kỳ', users: 'Nhân viên công nợ / Trưởng phòng',
   how: 'Lọc công nợ → nhập dự kiến từng căn → Trưởng phòng duyệt → theo dõi thực thu → chốt chênh lệch',
   rules: 'Không dự kiến âm; vượt công nợ phải giải trình; kế hoạch có phiên bản và ngày chốt',
