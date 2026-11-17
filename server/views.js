@@ -860,6 +860,27 @@ async function planReport(db, user, f) {
     title: wk === 0 ? `Tháng ${+ym.slice(5)} năm ${ym.slice(0, 4)} — các khoản chưa phân bổ tuần` : `${wk ? `Tuần ${wk} tháng` : 'Tháng'} ${+ym.slice(5)} năm ${ym.slice(0, 4)}, từ ngày ${C.dmy(pf)} đến ngày ${C.dmy(pt)}`,
     rows, users: (await db.q('SELECT id, full_name FROM kd_user WHERE active ORDER BY full_name')).map(u => [u.id, u.full_name]), can_edit: can(user, E.collect_plan, 'u') || can(user, E.collect_plan, 'c') };
 }
+// 17/11/2026: KẾ HOẠCH DÒNG THU NĂM (CN-12) — 12 tháng × (bán hàng / cho thuê):
+//  · Còn phải thu theo lịch HĐ: phần chưa thu của các khoản đến hạn trong tháng (theo cùng nguồn Báo cáo công nợ đến hạn, 2 sheet; tháng đã qua = số còn nợ của tháng đó)
+//  · Kế hoạch thu: từ kế hoạch tuần / tháng — khoản gốc + chuyển tiếp từ tháng trước (không cộng lặp qua các tuần, như báo cáo tháng)
+//  · Thực thu theo kế hoạch: phiếu thu phân bổ cho các khoản kế hoạch của tháng (kỳ đã chốt giữ số lúc chốt); Tỷ lệ = thực thu theo kế hoạch ÷ kế hoạch
+//  · Tổng thu trong tháng: mọi phiếu thu hợp lệ trong tháng (HĐ thuê → cho thuê, HĐ khác → bán hàng)
+async function planYear(db, user, f) {
+  if (!can(user, E.collect_plan, 'r')) deny();
+  const y = /^\d{4}$/.test(String(f.year || '')) ? +f.year : +today().slice(0, 4), M12 = Array.from({ length: 12 }, (_, i) => `${y}-${String(i + 1).padStart(2, '0')}`);
+  const Z = () => ({ due: 0, plan: 0, act: 0, rc: 0, cin: 0, cout: 0 }), R = Object.fromEntries(M12.map(m => [m, { ban: Z(), thue: Z() }]));
+  const all = await planAlloc(db, await planAll(db, f, user), { to: today() }), byId = new Map(all.map(x => [x.id, x]));
+  for (const x of all) { const r = R[x.ym]; if (!r || (x.status === 'dong' && !(x.actual > 0))) continue; const sc = (x.scope || (x.kind === 'thue' ? 'thue' : 'ban')) === 'thue' ? 'thue' : 'ban', g = r[sc];
+    const pv = x.prev_id ? byId.get(x.prev_id) : null, inMonth = x.carry_in != null && pv && pv.ym === x.ym;
+    g.plan += inMonth ? +x.expected - +x.carry_in : +x.expected; g.act += x.actual;
+    if (x.carry_in != null && !inMonth) g.cin += +x.carry_in;
+    if (x.status === 'da_chot' && nextPeriod(x.ym, x.wk).ym !== x.ym) g.cout += +x.carry_amt || 0; }
+  if (can(user, E.installment, 'r')) for (const r of (await dueDebt(db, user, { ...f, from: `${y}-01-01`, to: `${y}-12-31` })).rows) { const tb = ddTab(r); if (!tb) continue; const m = String(r.due_on).slice(0, 7); if (R[m]) R[m][tb].due += +r.rem || 0; }
+  const p = [y];
+  for (const x of await db.q(`SELECT to_char(r.voucher_date, 'YYYY-MM') m, CASE WHEN c.kind = 'thue' THEN 'thue' ELSE 'ban' END sc, sum(r.amount) s FROM kd_receipt r JOIN kd_contract c ON c.id = r.contract_id JOIN kd_unit u ON u.id = c.unit_id
+    WHERE r.status = 'hop_le' AND extract(year FROM r.voucher_date) = $1 ${uf(f, p)}${mine(user, 'c')} GROUP BY 1, 2`, p)) if (R[x.m]) R[x.m][x.sc].rc += +x.s;
+  return { year: y, months: M12.map(m => ({ m, ...R[m] })), asof: today() };
+}
 // điều chỉnh kỳ (tháng / tuần), số tiền, người phụ trách ngay tại báo cáo — sửa tại chỗ, nhật ký ghi giá trị cũ → mới + lý do (lịch sử điều chỉnh)
 async function planAdjust(db, user, id, b) {
   if (!(can(user, E.collect_plan, 'u') || can(user, E.collect_plan, 'c'))) deny();
@@ -1595,4 +1616,4 @@ async function monthly(db, period, projectId) {
   };
 }
 
-module.exports = { dueDebt, ddPlanToggle, planList, planReport, planAdjust, planRollover, debtStatus, setDebtClass, setDebtDays, debtCfg, debtGrpOf, debtGrpL, customerLedger, myDay, debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, voucherList, contractTrack, setLateRate, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
+module.exports = { dueDebt, ddPlanToggle, planList, planReport, planAdjust, planRollover, planYear, debtStatus, setDebtClass, setDebtDays, debtCfg, debtGrpOf, debtGrpL, customerLedger, myDay, debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, voucherList, contractTrack, setLateRate, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };

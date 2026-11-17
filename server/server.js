@@ -372,6 +372,7 @@ R('GET', '/api/due-debt', async (req, res, u, p, qs) => { await tx(db => V.planR
 R('POST', '/api/due-debt/plan', async (req, res, u) => { const b = await readJson(req); send(res, 200, await tx(db => V.ddPlanToggle(db, u, b))); });   // tích / bỏ «Đưa vào kế hoạch thu» (17/11/2026)
 R('GET', '/api/collect-plans', async (req, res, u, p, qs) => send(res, 200, await V.planList({ q, one }, u, qs)));
 R('GET', '/api/plan-report', async (req, res, u, p, qs) => { await tx(db => V.planRollover(db)); send(res, 200, await V.planReport({ q, one }, u, qs)); });   // Báo cáo kế hoạch thu tuần / tháng (17/11/2026)
+R('GET', '/api/plan-year', async (req, res, u, p, qs) => { await tx(db => V.planRollover(db)); send(res, 200, await V.planYear({ q, one }, u, qs)); });   // Kế hoạch dòng thu năm (17/11/2026)
 R('POST', '/api/collect-plans/:id/adjust', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await tx(db => V.planAdjust(db, u, p.id, b))); });   // kế hoạch thu tuần / tháng   // Theo dõi công nợ đến hạn (17/11/2026)
 R('GET', '/api/finish-pay', async (req, res, u, p, qs) => send(res, 200, await V.finishPay({ q, one }, u, qs)));
 R('GET', '/api/loans', async (req, res, u, p, qs) => send(res, 200, await V.loans({ q, one }, u, qs)));
