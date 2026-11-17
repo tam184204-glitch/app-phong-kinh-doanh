@@ -851,6 +851,7 @@ async function planReport(db, user, f) {
     const nx = nextPeriod(x.ym, x.wk), carry = x.status === 'da_chot' && (by === 'tuan' || nx.ym !== ym) ? +x.carry_amt || 0 : 0;
     return { id: x.id, scope: x.scope || (x.kind === 'thue' ? 'thue' : 'ban'), unit_id: x.unit_id, unit: x.unit, building: x.building, building_id: x.building_id, customer: x.customer,
       number: x.number, contract_id: x.contract_id, month: x.ym, week: x.wk, period_l: periodL(x.ym, x.wk), expected_on: x.expected_on, expected: +x.expected, plan_v, actual: x.actual, carry,
+      carry_in: x.carry_in != null ? +x.carry_in : 0, cin_m: x.carry_in != null && !inMonth ? +x.carry_in : 0,   // nhận chuyển tiếp (tuần) / nhận chuyển tiếp từ tháng trước (tháng)
       closed: x.status === 'da_chot', act_snap: +x.act_snap || 0, carry_amt: +x.carry_amt || 0, carry_to: x.carry_to || '', carry_from: x.carry_from || '', closed_on: x.closed_on ? ddDay(x.closed_on) : null,
       owner: x.owner || '', owner_id: x.owner_id, status: x.status, st_l: ST[x.status] || x.status, note: x.basis_note || '', src_key: x.src_key || '', rc: x.rc,
       hist: hist.filter(h => h.rec_id === x.id).map(h => ({ at: h.at, action: h.action, who: h.who || '', note: h.note || '' })) }; });
