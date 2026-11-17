@@ -2350,8 +2350,7 @@ V.duedebt = async main => {
   main.innerHTML = `<div class="page">${head('06', 'Báo cáo công nợ đến hạn', 'fa-calendar-xmark', `<button class="btn" id="ddX">${ico('fa-file-excel')} Xuất Excel</button><button class="btn" id="ddP">${ico('fa-print')} In / PDF</button>`, 'CN-11')}${filterBar(f, { period: false })}
     <div class="grid g5 mb" id="ddK" style="grid-template-columns:repeat(5,minmax(0,1fr))"></div>
     <div class="card"><div class="tabs" id="ddTabs" style="margin:-4px 0 8px"></div><div class="toolbar" style="flex-wrap:wrap;gap:6px"><div class="search"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="ddQ" placeholder="Tìm mã căn, khách hàng, số HĐ, nội dung…" value="${esc(s.q)}"></div>
-      <label class="small muted" title="Ngày đến hạn thanh toán từ ngày — để trống = mọi khoản còn nợ có hạn đến «Đến ngày»">Từ ngày</label><input type="date" class="inp" id="ddFr" value="${esc(s.from)}" style="width:auto;height:30px">
-      <label class="small muted" title="Đã thu, còn phải thu, lãi quá hạn tính đến ngày này (mặc định hôm nay)">Đến ngày</label><input type="date" class="inp" id="ddTo" value="${esc(s.to || today())}" style="width:auto;height:30px">
+      <span id="ddDates" style="display:contents"><span class="small muted" title="Ngày đến hạn thanh toán từ ngày — để trống = mọi khoản còn nợ có hạn đến «Đến ngày»">Từ ngày</span>${segDate('ddFr', s.from)}<span class="small muted" title="Đã thu, còn phải thu, lãi quá hạn tính đến ngày này (mặc định hôm nay)">Đến ngày</span>${segDate('ddTo', s.to || today())}</span>
 
       <select class="inp" id="ddKind" style="width:auto;height:30px"></select><select class="inp" id="ddGrp" style="width:auto;height:30px"></select>
       <select class="inp" id="ddBank" style="width:auto;height:30px"></select><select class="inp" id="ddOwn" style="width:auto;height:30px"></select>
@@ -2368,7 +2367,7 @@ V.duedebt = async main => {
     const g = e.target.closest('[data-pgrp]'); if (g) { s.pgrp = g.dataset.pgrp; return drawPlan(); }
     const rs = e.target.closest('[data-resched]'); if (rs) return doAct('collect_plan', +rs.dataset.resched, 'doi_lich', () => load());
   }));
-  $('#ddTo', main).onchange = run(async e => { s.to = e.target.value; await load(); }); $('#ddFr', main).onchange = run(async e => { s.from = e.target.value; await load(); });
+  wireSegDate(main); $('#ddDates', main).addEventListener('sdchange', run(async e => { const v = segVal(e.target); if (v === null) return; if (e.target.id === 'ddFr') s.from = v; else s.to = v || today(); await load(); }));   // ô ngày dd/mm/yyyy
   const note = (k = s.tab) => `Tổng hợp theo mã căn hộ · ngày chốt báo cáo ${dmy(d.asof)}${d.from ? ` · hạn từ ${dmy(d.from)}` : ''} · đồng bộ dữ liệu lúc ${dmyhm(d.synced_at)} · ${byUnit(shown(k)).length} căn, ${shown(k).length} khoản · phải thu và phải trả tách riêng, không bù trừ`;
   $('#ddX', main).onclick = () => { const tab0 = s.tab, plansOf = k => { s.tab = k; const x = plansIn(); s.tab = tab0; return x; };
     download('/api/export-rows', { file: 'Bao_cao_cong_no_den_han_' + d.asof, title: 'BÁO CÁO CÔNG NỢ ĐẾN HẠN',
