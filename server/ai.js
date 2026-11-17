@@ -183,6 +183,8 @@ const CONV = new Map();   // id → { user_id, messages, turns, at }
 setInterval(() => { const lim = Date.now() - 3 * 3600e3; for (const [k, c] of CONV) if (c.at < lim) CONV.delete(k); }, 10 * 60e3).unref?.();   // ?. — bản demo chạy trong trình duyệt không có unref
 
 async function ask(user, { conv, text }) {
+  // 17/11/2026: chế độ agent — câu LỆNH (sửa, gán, gia hạn, trình / duyệt, ghi chú, hẹn gọi, tạo…) xử lý trong app, có xác nhận; câu hỏi đi tiếp như cũ
+  { const ag = await require('./ai-agent').handle(user, text); if (ag) return { conv: conv || 'agent', ...ag, steps: [] }; }
   if (!enabled()) return require('./ai-local').ask(user, { conv, text });   // 17/11/2026: chưa có khóa API → trợ lý tra cứu nội sinh (chạy trong app)
   text = String(text || '').trim();
   if (!text) bad('Nhập câu hỏi');

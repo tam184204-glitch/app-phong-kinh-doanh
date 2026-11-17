@@ -102,6 +102,7 @@ function detectTime(t, T) {
 }
 
 const UL = u => ({ ty: 'tỷ', trieu: 'triệu', tr: 'triệu', nghin: 'nghìn' })[u] || u;
+const LASTQ = new Map();   // user.id → danh sách vừa tra (cho lệnh «… tất cả» của trợ lý thao tác)
 async function run(c, raw, user) {
   const t = c.t, hit = detectEnt(t); if (!hit) return null;
   const E = C.E[hit.ent]; if (!E) return null;
@@ -181,6 +182,7 @@ async function run(c, raw, user) {
     rows = [...rows].sort((a, b) => (v(a) > v(b) ? 1 : v(a) < v(b) ? -1 : 0) * (asc ? 1 : -1));
     notes.push(`xếp theo ${byMoney ? F[mk0].l.toLowerCase() : (F[dkey]?.l || 'ngày tạo').toLowerCase()} ${asc ? 'tăng dần' : 'giảm dần'}`);
   }
+  LASTQ.set(user.id, { ent: hit.ent, ids: rows.map(x => x.id), at: Date.now(), label: `${total} ${E.one || ''}` });
   const one = E.one || E.title.toLowerCase(), scopeTxt = [c.p ? c.p.code : '', c.f.bname || ''].filter(Boolean).join(' · ');
   const filt = [mine ? 'của bạn' : '', scopeTxt, ...notes].filter(Boolean).join(' · ');
   const L = [`**${total} ${one}**${filt ? ' — ' + filt : ''}.`];
@@ -240,4 +242,4 @@ async function run(c, raw, user) {
   return { steps: [`${E.title}${filt ? ' · ' + filt : ''}`], answer: L.join('\n') };
 }
 const looksLikeQuery = t => COUNT_W.concat(SUM_W, LIST_W).some(w => hasW(t, w)) || /\b(dang co|hien co|co bao)\b/.test(t);
-module.exports = { run, detectEnt, detectTime, looksLikeQuery };
+module.exports = { run, detectEnt, detectTime, looksLikeQuery, LASTQ };
