@@ -2007,14 +2007,14 @@ const planWeek = async main => {
   // 17/11/2026 (bản nhiều dòng): TẠO DÒNG THU BÁN MỚI — bảng Dự án · Tòa · Số căn dự kiến bán · Đơn giá bình quân · Tỷ lệ dự kiến thu (%) · Tổng dự kiến thu
   // (= số căn × đơn giá × tỷ lệ, tự tính, sửa được theo số thực tế); thêm / xóa dòng; tòa lọc theo dự án; cuối bảng cộng tổng số căn + tổng dự kiến thu; phân bổ tuần = tổng tháng
   const saleDlg = () => { const ym0 = s.ym, months = [...new Set([...Array.from({ length: 15 }, (_, i) => { const x = new Date(Date.UTC(+today().slice(0, 4), +today().slice(5, 7) - 3 + i, 1)); return `${x.getUTCFullYear()}-${String(x.getUTCMonth() + 1).padStart(2, '0')}`; }), ym0])].sort();
-    const wk = ym => MW(ym).map(w => `<div class="sp-w"><span>Tuần ${w.n} <span class="small muted">(${dmy(w.from).slice(0, 5)} – ${dmy(w.to).slice(0, 5)})</span></span><input class="inp" data-spw="${w.n}" inputmode="numeric" autocomplete="off" placeholder="0"></div>`).join('');
+    const wk = ym => MW(ym).map(w => `<div class="sp-w"><span>Tuần ${w.n} <span class="small muted">(${dmy(w.from).slice(0, 5)} – ${dmy(w.to).slice(0, 5)})</span><span class="small sp-ty" data-spty="${w.n}"></span></span><input class="inp" data-spw="${w.n}" inputmode="numeric" autocomplete="off" placeholder="0 đồng"></div>`).join('');
     const pOpts = sel => `<option value="">— Chọn dự án —</option>` + M.projects.map(p => `<option value="${p.id}" ${+sel === p.id ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('');
     const bOpts = (pid, sel) => `<option value="">— Tất cả / chưa xác định —</option>` + M.buildings.filter(b => b.project_id === +pid).map(b => `<option value="${b.id}" ${+sel === b.id ? 'selected' : ''}>Tòa ${esc(b.code)}</option>`).join('');
     const row = (pid = s.project || '', bid = '') => `<tr class="sp-r"><td><select class="inp" data-k="p">${pOpts(pid)}</select></td><td><select class="inp" data-k="b">${bOpts(pid, bid)}</select></td>
       <td><input class="inp n" data-k="u" inputmode="numeric" autocomplete="off"></td><td><input class="inp n" data-k="price" inputmode="numeric" autocomplete="off"></td><td><input class="inp n" data-k="rate" inputmode="decimal" autocomplete="off" value="100"></td>
       <td><input class="inp n" data-k="amt" inputmode="numeric" autocomplete="off" title="Tự tính = số căn × đơn giá × tỷ lệ; sửa được theo số tiền thực tế dự kiến thu"></td><td><button type="button" class="btn sm ghost" data-del title="Xóa dòng">${ico('fa-trash')}</button></td></tr>`;
     const m = modal({ title: `${ico('fa-bullhorn')} Tạo dòng thu bán mới`, wide: true,
-      body: `<style>.sp-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:4px 14px}.sp-w{display:grid;grid-template-columns:1fr 150px;gap:8px;align-items:center;margin:4px 0}.sp-w .inp,.sp-t .n{text-align:right}
+      body: `<style>.sp-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:4px 14px}.sp-w{display:grid;grid-template-columns:1fr 160px;gap:8px;align-items:center;margin:4px 0}.sp-ty{display:block;color:var(--cobalt);font-weight:600}.sp-w .inp,.sp-t .n{text-align:right}
         .sp-t{width:100%;border-collapse:collapse}.sp-t th{font-size:12.5px;text-align:left;padding:4px 6px;white-space:nowrap}.sp-t th.n{text-align:right}.sp-t td{padding:3px 4px}.sp-t .inp{height:34px;width:100%;min-width:0}
         .sp-t tfoot td{font-weight:700;background:#eaf1fb;padding:7px 8px}.sp-t tfoot .n{text-align:right}</style>
         <div class="sp-g"><div class="fld"><label>Tháng / năm kế hoạch<span class="req">*</span></label><select class="inp" id="spM">${months.map(x => `<option value="${x}" ${x === ym0 ? 'selected' : ''}>Tháng ${x.slice(5)}/${x.slice(0, 4)}</option>`).join('')}</select></div>
@@ -2026,7 +2026,7 @@ const planWeek = async main => {
           <tbody id="spL">${row()}</tbody><tfoot><tr><td colspan="2">Tổng cộng · <span id="spNL">1</span> dòng</td><td class="n" id="spTU">0</td><td></td><td></td><td class="n" id="spTA">0</td><td></td></tr></tfoot></table></div>
         <button type="button" class="btn sm mt" id="spAdd">${ico('fa-plus')} Thêm dòng</button>
         <div class="small muted mt">Tổng dự kiến thu = Số căn × Đơn giá bình quân × Tỷ lệ dự kiến thu (đơn giá là giá bán cả căn → tỷ lệ là phần dự kiến thu được trong tháng, VD 30% cọc + đợt 1). Có thể sửa trực tiếp theo số tiền thực tế dự kiến thu.</div>
-        <div class="sec-title">Phân bổ tuần dự kiến thu <span class="small muted">(không bắt buộc — để trống tất cả = «Chưa phân bổ tuần», không tự chia đều)</span></div>
+        <div class="sec-title">Phân bổ tuần dự kiến thu <span class="small muted">(nhập số tiền theo <b>đồng</b>, VD 3 tỷ = 3.000.000.000 · không bắt buộc — để trống tất cả = «Chưa phân bổ tuần», không tự chia đều)</span></div>
         <div id="spWs" class="sp-g"></div><div class="small mt" id="spSum"></div>
         <div class="fld mt"><label>Ghi chú</label><textarea id="spR" rows="2"></textarea></div>
         <div class="small muted">Không cần chọn căn / khách hàng khi chưa có giao dịch cụ thể — liên kết sau ở báo cáo (bấm dòng → «Liên kết giao dịch bán»). Phân bổ tuần chia cho từng dòng theo tỷ trọng tổng dự kiến thu.</div>`,
@@ -2035,8 +2035,12 @@ const planWeek = async main => {
     const total = () => L().reduce((t, tr) => t + nv(V(tr, 'amt'), true), 0);
     const sumAll = () => { $('#spNL', m.el).textContent = L().length; $('#spTU', m.el).textContent = fm(L().reduce((t, tr) => t + nv(V(tr, 'u')), 0)); $('#spTA', m.el).textContent = fm(total());
       const ws = $$('[data-spw]', m.el).map(i => num(i.value, true) || 0), w = ws.reduce((a, b) => a + b, 0), a = total();
-      $('#spSum', m.el).innerHTML = w ? `Tổng phân bổ tuần: <b>${fm(w)}</b> / tổng kế hoạch tháng <b>${fm(a)}</b> ${w === a ? '<span class="pos">✓ khớp</span>' : `<span class="neg">— ${w > a ? 'thừa' : 'thiếu'} ${fm(Math.abs(a - w))}</span>`}` : '<span class="muted">Chưa phân bổ tuần</span>'; };
-    const mfmt = el => { const v = num(el.value, true); if (v != null && !isNaN(v)) el.value = moneyStr(v); };
+      $$('[data-spw]', m.el).forEach(i => { const x = $(`[data-spty="${i.dataset.spw}"]`, m.el); if (x) x.textContent = (num(i.value, true) || 0) ? ' = ' + tyL(num(i.value, true)) : ''; });
+      $('#spSum', m.el).innerHTML = w ? `Tổng phân bổ tuần: <b>${fm(w)}</b> đ (${tyL(w)}) / tổng kế hoạch tháng <b>${fm(a)}</b> đ (${tyL(a)}) ${w === a ? '<span class="pos">✓ khớp</span>' : `<span class="neg">— ${w > a ? 'thừa' : 'còn thiếu'} ${fm(Math.abs(a - w))} đ (${tyL(Math.abs(a - w))})</span>`}` : '<span class="muted">Chưa phân bổ tuần</span>'; };
+    // định dạng số tiền khi gõ, giữ nguyên vị trí con trỏ (đếm số chữ số trước con trỏ) — sửa giữa số không bị nhảy về cuối
+    const mfmt = el => { const pos = el.selectionStart ?? el.value.length, nd = el.value.slice(0, pos).replace(/\D/g, '').length, v = num(el.value, true); if (v == null || isNaN(v)) return;
+      el.value = moneyStr(v); let i = 0, c = 0; while (i < el.value.length && c < nd) { if (/\d/.test(el.value[i])) c++; i++; } if (document.activeElement === el) el.setSelectionRange(i, i); };
+    const tyL = v => v >= 1e9 ? (Math.round(v / 1e7) / 100).toLocaleString('vi-VN') + ' tỷ' : v >= 1e6 ? (Math.round(v / 1e4) / 100).toLocaleString('vi-VN') + ' triệu' : v ? fm(v) + ' đ' : '';
     const calc = tr => { const u = nv(V(tr, 'u')), p = nv(V(tr, 'price'), true), r = V(tr, 'rate').value === '' ? 100 : nv(V(tr, 'rate')); if (u && p) V(tr, 'amt').value = moneyStr(Math.round(u * p * r / 100)); };
     $('#spL', m.el).addEventListener('input', e => { const tr = e.target.closest('tr'), k = e.target.dataset.k; if (!tr) return;
       if (k === 'price' || k === 'amt') mfmt(e.target); if (k === 'u' || k === 'price' || k === 'rate') calc(tr); sumAll(); });
