@@ -384,6 +384,21 @@ function importTemplate(kind) {
   // 2 sheet: tự dựng (buildXlsx chỉ 1 sheet) → xuất sheet 1 kèm hướng dẫn, sheet lịch tách tệp riêng là bất tiện; ghép tay 2 sheet
   return twoSheets(rows, [['LỊCH THANH TOÁN'], ['Mỗi dòng 1 đợt; tổng các đợt = giá trị hợp đồng (nhập Tỷ lệ % hoặc Số tiền)'], ['Số hợp đồng', 'Đợt', 'Tên đợt', 'Ngày đến hạn', 'Tỷ lệ (%)', 'Số tiền'], ...I.sample2]);
 }
+// 17/11/2026: nhiều sheet trong 1 tệp — mỗi phần tử { name, title, cols, rows, sum, note, groups } dựng như sheet() rồi ghép (chuỗi ghi inline nên ghép an toàn)
+function sheets(list) {
+  const { zip, unzip } = require('./xlsx');
+  const parts = list.map(x => unzip(sheet(String(x.title || x.name || 'Sheet').slice(0, 80), x.cols || [], x.rows || [], { sum: x.sum, note: x.note, groups: x.groups })));
+  const files = Object.entries(parts[0]).filter(([k]) => !/^xl\/worksheets\/sheet\d+\.xml$/.test(k));
+  const nm = (s, i) => (String(s || `Sheet${i + 1}`).replace(/[\\/?*[\]:]/g, ' ').slice(0, 31)) || `Sheet${i + 1}`;
+  parts.forEach((p, i) => files.push([`xl/worksheets/sheet${i + 1}.xml`, p['xl/worksheets/sheet1.xml']]));
+  const set = (k, v) => { const i = files.findIndex(f => f[0] === k); if (i >= 0) files[i][1] = v; else files.push([k, v]); };
+  set('xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${list.map((x, i) => `<sheet name="${escX(nm(x.name, i))}" sheetId="${i + 1}" r:id="rId${i + 10}"/>`).join('')}</sheets></workbook>`);
+  set('xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>${list.map((x, i) => `<Relationship Id="rId${i + 10}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}</Relationships>`);
+  const ct = parts[0]['[Content_Types].xml'].toString().replace(/<Override PartName="\/xl\/worksheets\/sheet\d+\.xml"[^>]*\/>/g, '');
+  set('[Content_Types].xml', ct.replace('</Types>', list.map((x, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('') + '</Types>'));
+  return zip(files.map(([k, v]) => [k, Buffer.isBuffer(v) ? v : Buffer.from(v)]));
+}
+const escX = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 function twoSheets(a, b) {
   const { zip } = require('./xlsx');
   const one = rows => buildXlsx({ rows, boldRows: [0, 2] });
@@ -869,5 +884,5 @@ async function previewTemplate(b, user) {
   return printGeneric(ent, id, user, null, { name: b.name, code: b.code, content: b.content || '' });
 }
 
-module.exports = { fillToday, recScope, tplFitLevel, scopeKeys, tplFields, printGeneric, previewTemplate,
+module.exports = { sheets, fillToday, recScope, tplFitLevel, scopeKeys, tplFields, printGeneric, previewTemplate,
   misaSample, printSaleNotice, printCancelReq, EDIT_CSS, editBar, editDoc, A, strip, mapRows, exportList, sheet, importFile, importTemplate, IMPORTS, createUser, hashPw, checkPw, printContract, printReservation, regTemplates, moneyWords };
