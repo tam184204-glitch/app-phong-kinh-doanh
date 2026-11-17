@@ -2275,3 +2275,12 @@ table.t.uc-t td.num, table.t.uc-t th.num { white-space: nowrap; overflow-wrap: n
 .yp-tabs button span{display:inline-block;min-width:18px;padding:0 5px;margin-left:3px;border-radius:9px;background:#dbe3ef;font-size:11.5px;text-align:center}
 .yp-tabs button.on{background:#fff;color:#1e4e8c;font-weight:600;box-shadow:0 1px 3px rgba(20,40,80,.12)}.yp-tabs button.on span{background:#254f89;color:#fff}
 .yp-ops{display:flex;gap:4px;flex-wrap:wrap}.yp-ops .btn{white-space:nowrap}
+/* 17/11/2026: thanh thao tác cố định khi chỉnh bản kế hoạch năm */
+.ap .yp-bar{position:sticky;bottom:0;z-index:30;margin-top:18px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 16px;background:#fff;border:1px solid #d6dfec;border-radius:12px;box-shadow:0 -6px 20px rgba(20,40,80,.12)}
+.ap .yp-bar[hidden]{display:none}
+.ap .yp-bl{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13.5px}.ap .yp-br{display:flex;gap:8px;flex-wrap:wrap}
+.yp-dt{color:#b45309;font-weight:600}
+.yp-ed{display:inline-block;font-size:10.5px;line-height:1;padding:2px 6px;border-radius:999px;background:#fff1d6;color:#92400e;font-weight:600;vertical-align:1px}
+.yp-el tr.yp-del td{opacity:.5;text-decoration:line-through}.yp-el tr.yp-del td:last-child{opacity:1;text-decoration:none}
+.yp-el .inp{height:32px}.yp-ss{margin-top:10px;padding:8px 12px;background:#f6f9fd;border-radius:8px;font-size:13px}
+.yp-f .yp-w{grid-column:span 2}

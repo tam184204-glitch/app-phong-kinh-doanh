@@ -83,7 +83,7 @@ async function boot(mustChange) {
   };
   document.addEventListener('click', e => { if (!e.target.closest('.menu-pop')) $('.menu-pop')?.remove(); if (!e.target.closest('.gsearch')) $('#gr')?.classList.add('hidden'); });
   globalSearch();
-  window.onhashchange = route;
+  window.onhashchange = route; window.addEventListener('beforeunload', e => { if (ST.dirtyMsg) { e.preventDefault(); e.returnValue = ''; } });
   route();
   badgeTimer();
   ST.verT ||= setInterval(checkVer, 60e3);
@@ -124,6 +124,8 @@ function globalSearch() {
   inp.onkeydown = e => { const as = $$('[data-i]', box); if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); cur = Math.max(0, Math.min(as.length - 1, cur + (e.key === 'ArrowDown' ? 1 : -1))); as.forEach((a, i) => a.classList.toggle('on', i === cur)); } if (e.key === 'Enter') { e.preventDefault(); if (res[Math.max(cur, 0)]) open(res[Math.max(cur, 0)]); } if (e.key === 'Escape') box.classList.add('hidden'); };
 }
 async function route() {
+  if (ST.skipRoute) { ST.skipRoute = 0; return; }   // 17/11/2026: quay lại trang đang sửa sau khi người dùng chọn ở lại
+  if (ST.dirtyMsg && location.hash !== ST.dirtyHash) { if (!confirm(ST.dirtyMsg)) { ST.skipRoute = 1; location.hash = ST.dirtyHash; return; } ST.dirtyMsg = null; }
   closeDetail(); document.body.classList.remove('nav-open'); ST.reload = null; checkVer();
   const tok = ST.nav = (ST.nav || 0) + 1;   // màn cũ còn tải dở mà người dùng đã chuyển màn: bỏ qua lỗi của nó
   const h = location.hash.slice(1) || homeHash().slice(1);
@@ -2236,13 +2238,16 @@ const saleUnitDlg = (onDone, preset = {}) => {
 // bộ lọc Năm / Dự án dùng chung cho chỉ tiêu, biểu đồ cột chồng 12 tháng, bảng 4 dòng × 12 tháng (bấm ô → chi tiết đúng nguồn + tháng), Chưa phân bổ kỳ, chi tiết tháng Dự án → Tòa → Căn → Đợt/kỳ
 V.planyear = async (main, params = {}) => {
   if (main.id === 'main') { const nm = main.cloneNode(false); main.replaceWith(nm); main = nm; }   // tránh gắn trùng sự kiện khi mở lại màn / chuyển bản kế hoạch
-  const VER = +params.ver || 0; let P = null, ACT = null, G = null;   // 17/11/2026: VER = xem bản kế hoạch đã lưu (số liệu cố định)
-  const s = ST.planyear2 ||= { year: +today().slice(0, 4), project: '', month: today().slice(0, 7), src: '' }; s.shut ||= {}; s.from ||= `${s.year}-01-01`; s.to ||= `${s.year}-12-31`; s.asof ||= today();
+  // 17/11/2026: VER = bản kế hoạch đã lưu (Nháp / Yêu cầu chỉnh sửa → sửa trực tiếp; đã trình / đã duyệt → chỉ xem); EDK = bản mới chưa lưu: new · copy (bản sao) · ver (phiên bản điều chỉnh), SRCID = bản nguồn
+  ST.dirtyMsg = null; const VER = +params.ver || 0, EDK = ['new', 'copy', 'ver'].includes(params.edit) ? params.edit : '', SRCID = +params.src || 0;
+  let P = null, ACT = null, G = null, SP = null, EDIT = !!EDK, full = !VER && !EDK, dirty = false;
+  const s0 = ST.planyear2 ||= { year: +today().slice(0, 4), project: '', month: today().slice(0, 7), src: '' }; s0.shut ||= {}; s0.from ||= `${s0.year}-01-01`; s0.to ||= `${s0.year}-12-31`; s0.asof ||= today();
+  const s = VER || EDK ? { year: s0.year, project: s0.project, from: s0.from, to: s0.to, asof: s0.asof, month: '', src: '', shut: {} } : s0;
   const SRC = [['cn', 'Thu công nợ còn lại', '#3568ac', 'Theo từng căn và đợt HĐMB'], ['moi', 'Thu bán mới', '#dba54d', 'Theo căn dự kiến bán và tỷ lệ thu'], ['thue', 'Thu cho thuê', '#14998a', 'Theo kỳ thuê nhà + nội thất']];
   main.innerHTML = `<div class="page ap"><div class="ap-hd"><div><div class="ap-eb">CÁT TƯỜNG · KẾ HOẠCH DÒNG THU</div><h2>Kế hoạch dòng thu năm</h2><div class="ap-sub">Công nợ còn lại · Bán mới · Cho thuê</div></div>
       <div class="ap-act"><span class="ap-dd"><button type="button" id="apX">Xuất báo cáo ${ico('fa-caret-down')}</button><span class="ap-menu" hidden><button type="button" data-apx="xlsx" data-apdet="0">${ico('fa-file-excel')} Excel — bản tổng hợp</button><button type="button" data-apx="xlsx" data-apdet="1">${ico('fa-file-excel')} Excel — bản chi tiết</button><button type="button" data-apx="pdf" data-apdet="0">${ico('fa-print')} In / PDF — bản tổng hợp</button><button type="button" data-apx="pdf" data-apdet="1">${ico('fa-print')} In / PDF — bản chi tiết</button></span></span>
-        ${VER ? `<button type="button" id="apBack">${ico('fa-arrow-left')} Báo cáo trực tiếp</button><button type="button" id="apList">${ico('fa-folder-open')} Danh sách bản kế hoạch</button>` : `<button type="button" id="apNew">+ Kế hoạch bán mới</button><button type="button" id="apList">${ico('fa-folder-open')} Danh sách bản kế hoạch</button><button type="button" class="ap-pri" id="apSv">${ico('fa-file-circle-plus')} Tạo bản kế hoạch</button>`}</div></div>
-    ${VER ? '<div class="ap-box"><div id="apV"></div><div class="ap-sub" id="apRg" style="margin-top:10px"></div><div class="ap-st" id="apSt" hidden></div><div class="ap-stats" id="apS"></div></div>' : ''}<div class="ap-box" ${VER ? 'hidden' : ''}><div class="ap-flt"><label>Năm kế hoạch<select id="apY"></select></label><label>Dự án<select id="apP"></select></label><label>Từ ngày<span id="apFr"></span></label><label>Đến ngày<span id="apTo"></span></label><label title="Đã thu / còn phải thu tính theo giao dịch hợp lệ đến hết ngày này — độc lập với kỳ kế hoạch">Số dư công nợ chốt ngày<span id="apAs"></span></label><span class="ap-sub" id="apRg"></span></div><div class="yp-tip">${ico('fa-circle-info')} Đây là báo cáo tự động theo dữ liệu hiện tại. Để lập kế hoạch chính thức: chọn Năm, Dự án, kỳ và ngày chốt công nợ, rồi bấm <a href="#" id="apSv2"><b>Tạo bản kế hoạch</b></a> — hệ thống cấp mã, phiên bản và chốt số liệu; lưu nháp hoặc trình duyệt ngay.</div>${VER ? '' : '<div class="ap-st" id="apSt" hidden></div><div class="ap-stats" id="apS"></div>'}</div>
+        ${VER || EDK ? `<button type="button" id="apBack">${ico('fa-arrow-left')} Báo cáo trực tiếp</button><button type="button" id="apList">${ico('fa-folder-open')} Danh sách bản kế hoạch</button>` : `<button type="button" id="apNew">+ Kế hoạch bán mới</button><button type="button" id="apList">${ico('fa-folder-open')} Danh sách bản kế hoạch</button><button type="button" class="ap-pri" id="apSv">${ico('fa-file-circle-plus')} Tạo bản kế hoạch</button>`}</div></div>
+    ${VER || EDK ? '<div class="ap-box"><div id="apV"></div></div>' : ''}<div class="ap-box"><div class="ap-flt"><label>Năm kế hoạch<select id="apY"></select></label><label>Dự án<select id="apP"></select></label><label>Từ ngày<span id="apFr"></span></label><label>Đến ngày<span id="apTo"></span></label><label title="Đã thu / còn phải thu tính theo giao dịch hợp lệ đến hết ngày này — độc lập với kỳ kế hoạch">Số dư công nợ chốt ngày<span id="apAs"></span></label><span class="ap-sub" id="apRg"></span></div>${VER || EDK ? '' : `<div class="yp-tip">${ico('fa-circle-info')} Đây là báo cáo tự động theo dữ liệu hiện tại. Để lập kế hoạch chính thức, bấm <a href="#" id="apSv2"><b>Tạo bản kế hoạch</b></a> — mở bản kế hoạch để chỉnh kỳ, ngày chốt công nợ, dự án và từng dòng; lưu nháp hoặc trình duyệt khi xong.</div>`}<div class="ap-st" id="apSt" hidden></div><div class="ap-stats" id="apS"></div></div>
     <div class="ap-box" id="apA" hidden></div>
     <div class="ap-box"><div class="ap-row"><h3>Phân bổ dòng thu theo tháng</h3><span class="ap-sub">Tỷ đồng · Tổng từng tháng · bấm cột để xem chi tiết tháng</span></div><div class="ap-chart" id="apC"></div>
       <div class="ap-lg">${SRC.map(([, l, c]) => `<span><i style="background:${c}"></i>${l}</span>`).join('')}</div><div class="ap-tip" hidden></div></div>
@@ -2250,15 +2255,16 @@ V.planyear = async (main, params = {}) => {
       <div class="ap-scroll ap-tw"><table class="ap-t"><thead><tr><th class="c1">Nguồn thu / Dự án / Tòa / Căn hộ</th><th class="c2">Tên khách hàng</th><th title="Tổng các tháng trong khoảng">Kế hoạch thu trong kỳ</th><span id="apMH"></span><th title="Công nợ còn lại: = «Còn lại theo hợp đồng» của Bảng tổng hợp công nợ">Tổng công nợ còn lại</th></tr></thead><tbody id="apT"></tbody></table></div>
       <div class="ap-note">Chưa phân bổ kỳ: <a href="#" id="apU"><b></b> tỷ</a> · Theo dõi riêng, chưa cộng vào kế hoạch thu trong kỳ (khoản chưa có ngày đến hạn / chưa có lịch thu, giá trị bán chưa phân bổ tháng). Công nợ quá hạn trước Từ ngày hiển thị riêng ở cột «Công nợ chuyển sang».</div><div class="ap-note" id="apRc"></div>
       <details><summary>Nguyên tắc tổng hợp và lưu lịch sử</summary><p>Công nợ còn lại lấy đúng «Còn lại theo hợp đồng» của Bảng tổng hợp công nợ (cùng ngày chốt): số còn nợ hiện tại của từng đợt (đã trừ tiền thu đúng đợt) xếp theo ngày đến hạn — đến hạn trong năm vào tháng, quá hạn chưa thu là công nợ chuyển sang (chọn kỳ thu để xếp tháng), lấy theo khoảng Từ ngày – Đến ngày (gồm cả 2 đầu; ngày dự kiến thu đã điều chỉnh được ưu tiên): quá hạn trước Từ ngày là «Công nợ chuyển sang», ngày đến hạn ngoài khoảng là «Ngoài kỳ», chưa có ngày / chưa có lịch thu là «Chưa phân bổ kỳ»; Tổng công nợ còn lại = Kế hoạch thu trong kỳ + Công nợ chuyển sang + Ngoài kỳ + Chưa phân bổ kỳ (HĐ mua bán, thuê mua, hoàn thiện; giao dịch bán căn bằng HĐ thuê / HĐ vay lấy tiến độ HĐMB liên kết, chỉ tính một lần). Bán mới lấy theo tháng thu đã phân bổ (giá trị dự kiến bán × tỷ lệ thu). Cho thuê lấy theo kỳ thu tiền nhà và nội thất; tiền cọc và gốc / lãi vay phải trả không cộng vào tiền thuê. Công nợ quá hạn từ năm trước xếp vào kỳ dự kiến thu đã chọn; chưa chọn kỳ, chưa có ngày đến hạn hoặc giá trị bán chưa phân bổ tháng → «Chưa phân bổ kỳ», không cộng vào tổng năm. «Số dư công nợ chốt ngày» (mặc định hôm nay) xác định đã thu / còn phải thu theo giao dịch hợp lệ đến hết ngày đó, độc lập với kỳ kế hoạch — chỉ phục vụ tính toán, tra cứu, không ghi đè kế hoạch đã chốt. «Số dư công nợ chốt ngày» (mặc định hôm nay) xác định đã thu / còn phải thu theo giao dịch hợp lệ đến hết ngày đó, độc lập với kỳ kế hoạch — chỉ phục vụ tính toán, tra cứu, không ghi đè kế hoạch đã chốt. Phần chưa thu tự chuyển kỳ sau ở Kế hoạch thu tuần/tháng, giữ nguyên báo cáo đã chốt và lưu lịch sử; tổng năm không cộng lặp khoản chuyển tiếp. Hợp đồng ký từ kế hoạch bán mới được tính ở nguồn bán mới, không trùng với công nợ.</p></details></div>
-    <div class="ap-box" id="apD" aria-live="polite"></div></div>`;
+    <div class="ap-box" id="apD" aria-live="polite"></div><div class="yp-bar" id="apBar" hidden></div></div>`;
   const ty = v => (v / 1e9).toLocaleString('vi-VN', { maximumFractionDigits: 3 }), sum = (xs, k = 'plan') => xs.reduce((a, r) => a + (+r[k] || 0), 0);
   let d = null;
-  const its = () => VER ? d.items : d.items.filter(i => !s.project || i.project === s.project);
+  const its = () => full ? d.items.filter(i => !s.project || i.project === s.project) : d.items;
   const isCarry = i => i.zone === 'carry', isOut = i => i.zone === 'out', isUn = i => !i.month && !isOut(i) && !isCarry(i);
   const cell = (src, m) => sum(its().filter(i => i.src === src && i.month === m));
   const ml = m => d.months.some(x => x.slice(0, 4) !== d.months[0].slice(0, 4)) ? `${m.slice(5)}/${m.slice(2, 4)}` : `T${+m.slice(5)}`;
   const rgL = () => `Kỳ kế hoạch: ${dmy(d.from)} đến ${dmy(d.to)}`, asL = () => `Số dư công nợ chốt đến hết ngày: ${dmy(d.asof)}`;
-  const drawF = () => { if (VER) return; const t0 = +today().slice(0, 4), ys = [...new Set([t0 - 1, t0, t0 + 1, t0 + 2, s.year])].sort();
+  const lockF = () => { const on = EDIT || (!VER && !EDK); $$('.ap-flt select, .ap-flt input, .ap-flt button', main).forEach(x => { x.disabled = !on; }); };
+  const drawF = () => { const t0 = +today().slice(0, 4), ys = [...new Set([t0 - 1, t0, t0 + 1, t0 + 2, s.year])].sort();
     if (!$('#apF', main)) { $('#apFr', main).innerHTML = segDate('apF', s.from); $('#apTo', main).innerHTML = segDate('apT2', s.to); $('#apAs', main).innerHTML = segDate('apA', s.asof); wireSegDate($('.ap-flt', main)); }   /* không đặt lại ô ngày khi vẽ lại (người dùng có thể đang gõ dở) — chỉ đặt lại khi đổi Năm kế hoạch */
     $('#apY', main).innerHTML = ys.map(y => `<option value="${y}" ${y === s.year ? 'selected' : ''}>${y}</option>`).join('');
     // 17/11/2026: danh sách dự án lấy theo Danh mục dự án (mọi dự án, kể cả chưa có kế hoạch — chọn thì hiện trạng thái trống)
@@ -2276,7 +2282,7 @@ V.planyear = async (main, params = {}) => {
     // bảng phân cấp Nguồn thu → Dự án → Tòa → Căn hộ / khách hàng (+ / − từng cấp); mỗi cấp = tổng dòng con (chỉ khoản đã phân bổ tháng — «Chưa phân bổ kỳ» theo dõi riêng)
     const RM = ['I', 'II', 'III'], H = hier(), shut = r => (r.anc || []).some(k => s.shut[k]);
     { const tr = $('.ap-t thead tr', main), hd = `<th class="c1">Nguồn thu / Dự án / Tòa / Căn hộ</th><th class="c2">Tên khách hàng</th><th title="Tổng các tháng trong khoảng">Kế hoạch thu trong kỳ</th>${d.months.map(m => `<th>${ml(m)}</th>`).join('')}<th title="Quá hạn trước Từ ngày, chưa chọn kỳ dự kiến thu">Công nợ chuyển sang</th><th>Ngoài kỳ</th><th>Chưa phân bổ kỳ</th><th title="= «Còn lại theo hợp đồng» của Bảng tổng hợp công nợ">Tổng công nợ còn lại</th>`; tr.innerHTML = hd; }
-    $('#apT', main).innerHTML = H.map(r => shut(r) ? '' : `<tr class="${r.lv === -1 ? 'tot' : 'l' + r.lv}"><td class="c1"><span style="padding-left:${Math.max(0, r.lv) * 16}px">${r.lv >= 0 && r.lv <= 2 ? `<button type="button" class="ap-tg" data-aptg="${esc(r.key)}" aria-label="${s.shut[r.key] ? 'Mở rộng' : 'Thu gọn'}">${s.shut[r.key] ? '+' : '−'}</button>` : r.lv === 3 ? '<i class="ap-dot"></i>' : ''}${esc(r.l)}</span></td><td class="c2">${esc(r.cust || '')}</td>
+    $('#apT', main).innerHTML = H.map(r => shut(r) ? '' : `<tr class="${r.lv === -1 ? 'tot' : 'l' + r.lv}"><td class="c1"><span style="padding-left:${Math.max(0, r.lv) * 16}px">${r.lv >= 0 && r.lv <= 2 ? `<button type="button" class="ap-tg" data-aptg="${esc(r.key)}" aria-label="${s.shut[r.key] ? 'Mở rộng' : 'Thu gọn'}">${s.shut[r.key] ? '+' : '−'}</button>` : r.lv === 3 ? '<i class="ap-dot"></i>' : ''}${esc(r.l)}${r.ed ? ' <span class="yp-ed">đã chỉnh</span>' : ''}</span></td><td class="c2">${esc(r.cust || '')}</td>
       <td><b>${r.leaf ? `<button type="button" data-apleaf="${esc(r.leaf)}" data-apmm="">${r.tot ? ty(r.tot) : '–'}</button>` : ty(r.tot)}</b></td>${r.v.map((v, i) => `<td>${!v ? '<span class="ap-z">–</span>' : r.leaf ? `<button type="button" data-apleaf="${esc(r.leaf)}" data-apmm="${d.months[i]}" title="Các khoản cấu thành tháng ${i + 1}">${ty(v)}</button>` : `<button type="button" data-aps="${r.src || ''}" data-apm="${d.months[i]}" title="Chi tiết tháng ${i + 1}">${ty(v)}</button>`}</td>`).join('')}
       ${[['carry', r.carry], ['out', r.out], ['un', r.un]].map(([z, v]) => `<td class="ap-x">${!v ? '<span class="ap-z">–</span>' : r.leaf ? `<button type="button" data-apleaf="${esc(r.leaf)}" data-apmm="${z}">${ty(v)}</button>` : ty(v)}</td>`).join('')}<td class="ap-x"><b>${r.tl == null ? '<span class="ap-z">—</span>' : ty(r.tl)}</b></td></tr>`).join('');
     $('#apU b', main).textContent = ty(sum(its().filter(isUn)));
@@ -2292,7 +2298,7 @@ V.planyear = async (main, params = {}) => {
     SRC.forEach(([k, l], n) => { const s1 = xs.filter(i => i.src === k); out.push(mk(s1, { lv: 0, key: k, anc: [], src: k, l: `${['I', 'II', 'III'][n]}. ${l}` }));
       for (const [p, ps] of by(s1, i => i.project || '—')) { const pk = k + '|' + p; out.push(mk(ps, { lv: 1, key: pk, anc: [k], src: k, l: p === '—' ? 'Chưa chọn dự án' : M.projects.find(x => x.code === p)?.name || p }));
         for (const [b, bs] of by(ps, i => i.building || '—')) { const bk = pk + '|' + b; out.push(mk(bs, { lv: 2, key: bk, anc: [k, pk], src: k, l: b === '—' ? 'Chưa chọn tòa' : 'Tòa ' + b }));
-          for (const [u, us] of by(bs, keyU)) out.push(mk(us, { lv: 3, anc: [k, pk, bk], src: k, leaf: u, l: us[0].unit, cust: us[0].customer || (k === 'moi' ? 'Chưa xác định' : '') })); } } });
+          for (const [u, us] of by(bs, keyU)) out.push(mk(us, { lv: 3, anc: [k, pk, bk], src: k, leaf: u, ed: us.some(i => i.edited), l: us[0].unit, cust: us[0].customer || (k === 'moi' ? 'Chưa xác định' : '') })); } } });
     out.push(mk(xs, { lv: -1, l: 'TỔNG CỘNG' })); return out; };
   // các khoản cấu thành của 1 căn (cả năm hoặc 1 tháng): hợp đồng, đợt/kỳ, ngày đến hạn / dự kiến thu, kế hoạch, thực thu, còn lại, nguồn chuyển tiếp (+ bán mới: tháng bán, giá trị, tỷ lệ)
   const leafDlg = (leaf, m) => { const xs = its().filter(i => keyU(i) === leaf && (m === 'out' ? isOut(i) : m === 'un' ? isUn(i) : m === 'carry' ? isCarry(i) : m ? i.month === m : true)), x0 = xs[0]; if (!x0) return; const moi = x0.src === 'moi';
@@ -2317,13 +2323,17 @@ V.planyear = async (main, params = {}) => {
   let seq = 0;
   const busy = (on, msg = '') => { main.querySelector('.ap')?.classList.toggle('ap-ld', on); const st = $('#apSt', main); if (st) { st.hidden = !msg; st.innerHTML = msg; } };
   const fail = msg => { d = null; for (const id of ['#apS', '#apC', '#apT', '#apD']) { const el = $(id, main); if (el) el.innerHTML = id === '#apT' ? '' : `<div class="ap-empty ap-errb">${msg}</div>`; } const u = $('#apU b', main); if (u) u.textContent = '—'; const rc = $('#apRc', main); if (rc) rc.innerHTML = ''; };
-  const load = async () => { const my = ++seq;
-    if (!s.from || !s.to || s.from > s.to) { busy(false, `${ico('fa-triangle-exclamation')} «Từ ngày» phải nhỏ hơn hoặc bằng «Đến ngày» — chưa tính lại báo cáo`); return fail('Khoảng thời gian không hợp lệ: «Từ ngày» phải nhỏ hơn hoặc bằng «Đến ngày».'); }
-    busy(true, VER ? `${ico('fa-spinner fa-spin')} Đang tải bản kế hoạch…` : `${ico('fa-spinner fa-spin')} Đang tính lại: kỳ kế hoạch ${dmy(s.from)} đến ${dmy(s.to)} | số dư công nợ chốt đến hết ngày ${dmy(s.asof)}…`);
-    try { const q = new URLSearchParams({ year: s.year, from: s.from, to: s.to, asof: s.asof || today() }), r = await api('GET', VER ? '/api/year-plans/' + VER : '/api/plan-year?' + q);
+  const load = async how => { const my = ++seq, saved = how !== 'src' && (VER || (EDK && SRCID && !d));
+    if (!saved && !s.from || !s.to || s.from > s.to) { busy(false, `${ico('fa-triangle-exclamation')} «Từ ngày» phải nhỏ hơn hoặc bằng «Đến ngày» — chưa tính lại báo cáo`); return fail('Khoảng thời gian không hợp lệ: «Từ ngày» phải nhỏ hơn hoặc bằng «Đến ngày».'); }
+    busy(true, saved ? `${ico('fa-spinner fa-spin')} Đang tải bản kế hoạch…` : `${ico('fa-spinner fa-spin')} Đang tính lại: kỳ kế hoạch ${dmy(s.from)} đến ${dmy(s.to)} | số dư công nợ chốt đến hết ngày ${dmy(s.asof)}…`);
+    try { const q = new URLSearchParams({ year: s.year, from: s.from, to: s.to, asof: s.asof || today() }), r = await api('GET', saved ? '/api/year-plans/' + (VER || SRCID) : '/api/plan-year?' + q);
       if (my !== seq) return;   // đã có lựa chọn mới hơn — bỏ kết quả cũ
-      if (VER) { G = r; P = r.plan; ACT = r.actual; d = r.data; if (!d) throw new Error('Bản kế hoạch chưa có số liệu'); } else d = r; if (!d.months.includes(s.month)) s.month = d.months.includes(today().slice(0, 7)) ? today().slice(0, 7) : d.months[0];
-      busy(false); drawF(); draw(); if (VER) { drawV(); ypDoIt(); } }
+      if (saved) { G = r; d = r.data; if (!d) throw new Error('Bản kế hoạch chưa có số liệu'); full = false; const pl = r.plan;
+        if (VER) { P = pl; ACT = r.actual; EDIT = !!r.can.edit; } else { SP = pl; d = JSON.parse(JSON.stringify(d)); }
+        Object.assign(s, { year: +pl.year, from: pl.from_on, to: pl.to_on, asof: pl.asof, project: pl.project || '' }); }
+      else { d = r; d.captured_at = new Date().toISOString(); full = true; }
+      if (EDIT) d.can_plan = false; if (!d.months.includes(s.month)) s.month = d.months.includes(today().slice(0, 7)) ? today().slice(0, 7) : d.months[0];
+      busy(false); drawF(); lockF(); draw(); if (VER || EDK) drawV(); if (EDK && !dirty) setDirty(true); else drawBar(); if (VER) ypDoIt(); }
     catch (er) { if (my !== seq) return; busy(false, `${ico('fa-circle-exclamation')} Không lấy được dữ liệu: ${esc(er.message)} — <a href="#" data-apre="1">Thử lại</a>`); fail('Không lấy được dữ liệu cho khoảng thời gian đã chọn — số liệu cũ đã được ẩn.'); } };
   // tooltip cột chồng
   const tip = $('.ap-tip', main);
@@ -2355,24 +2365,33 @@ V.planyear = async (main, params = {}) => {
       <h2>KẾ HOẠCH DÒNG THU NĂM ${d.year}${full ? ' — CHI TIẾT' : ''}</h2>${VER && P ? `<div class="c"><b>${esc(P.code)} — Phiên bản ${P.version} — ${esc(P.status_l)}</b><br>${esc(P.name)}</div>` : ''}<div class="c">${esc(subT())} · Đơn vị: đồng</div><table><thead><tr>${C.map(c => `<th>${esc(c[1])}</th>`).join('')}</tr></thead><tbody>
       ${rows.map(r => `<tr class="${r._c === 'tot' ? 'x' : r._c || ''}">${C.map(c => `<td class="${c[2] === 'money' ? 'n' : ''}">${c[2] === 'money' ? (r[c[0]] ? fm(r[c[0]]) : '') : esc(r[c[0]] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table>
       <div style="text-align:right;margin-top:10px;font-style:italic">${VER && P ? (x => `Ngày lập: ngày ${+x.slice(8)} tháng ${+x.slice(5, 7)} năm ${x.slice(0, 4)}`)(ddL(P.created_at)) : `Ngày lập: ngày ${+t0.slice(8)} tháng ${+t0.slice(5, 7)} năm ${t0.slice(0, 4)}`}</div><div class="sg"><div><b>NGƯỜI LẬP</b><i>(Ký, ghi rõ họ tên)</i>${VER && P ? esc(P.created_name) : ''}</div><div><b>TRƯỞNG BỘ PHẬN</b><i>(Ký, ghi rõ họ tên)</i></div><div><b>NGƯỜI PHÊ DUYỆT</b><i>(Ký, ghi rõ họ tên)</i>${VER && P ? esc(P.approver_name) : ''}</div></div><script>setTimeout(() => print(), 300)</` + `script></body></html>`); w.document.close(); };
-  // 17/11/2026: BẢN KẾ HOẠCH DÒNG THU NĂM — thông tin bản, thao tác theo trạng thái (Nháp → Chờ duyệt → Đã duyệt / Yêu cầu chỉnh sửa), lịch sử, so sánh thực thu với kế hoạch được duyệt
+  // 17/11/2026 (bản 2): BẢN KẾ HOẠCH DÒNG THU NĂM — mở thẳng giao diện kế hoạch để chỉnh (kỳ, ngày chốt công nợ, dự án, từng dòng); tạo mới / bản sao / phiên bản điều chỉnh ở trạng thái «Bản mới – Chưa lưu»;
+  // thanh thao tác cố định: Lưu nháp · Lưu và trình duyệt (hộp khai báo chỉ mở ở bước lưu); Nháp vẫn sửa được, trình duyệt mới chốt số liệu + khóa; cảnh báo khi rời trang còn thay đổi chưa lưu
   const YPC = { nhap: '#64748b', cho_duyet: '#b45309', da_duyet: '#15803d', yeu_cau_sua: '#b91c1c', thay_the: '#64748b' };
   const ddL = x => { if (!x) return ''; const t = new Date(x); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; };
   const dtL = x => x ? new Date(x).toLocaleString('vi-VN', { hour12: false, day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
-  const drawV = () => { const c = G.can, fx = ['cho_duyet', 'da_duyet', 'thay_the'].includes(P.status), dec = ['da_duyet', 'thay_the'].includes(P.status);
-    $('#apV', main).innerHTML = `<div class="yp-hd"><div><div class="ap-eb">${esc(P.code)} · PHIÊN BẢN ${P.version}</div><h3>${esc(P.name)}</h3></div><span class="yp-st" style="--c:${YPC[P.status]}">${esc(P.status_l)}</span><span class="grow"></span>
-      <span class="yp-act">${[c.edit && `<button type="button" data-ypa="edit">${ico('fa-pen')} Sửa thông tin</button>`, c.edit && `<button type="button" data-ypa="refresh">${ico('fa-rotate')} Cập nhật số liệu nguồn</button>`,
-        c.del && `<button type="button" data-ypa="del">${ico('fa-trash')} Xóa nháp</button>`, c.edit && `<button type="button" class="ap-pri" data-ypa="submit">${ico('fa-paper-plane')} Lưu và trình duyệt</button>`,
-        c.decide && `<button type="button" data-ypa="reject">${ico('fa-reply')} Yêu cầu chỉnh sửa</button>`, c.decide && `<button type="button" class="ap-pri" data-ypa="approve">${ico('fa-check')} Phê duyệt</button>`,
-        c.newver && `<button type="button" data-ypa="newver">${ico('fa-code-branch')} Tạo phiên bản điều chỉnh</button>`, `<button type="button" data-ypa="hist">${ico('fa-clock-rotate-left')} Lịch sử (${(P.hist || []).length})</button>`].filter(Boolean).join('')}</span></div>
+  const nEd = () => d ? d.items.filter(i => i.edited).length : 0;
+  const setDirty = v => { dirty = v; ST.dirtyMsg = v ? 'Bản kế hoạch còn thay đổi chưa lưu — rời trang sẽ mất các thay đổi này. Vẫn rời trang?' : null; ST.dirtyHash = location.hash; drawBar(); };
+  const drawBar = () => { const b = $('#apBar', main); if (!b) return; b.hidden = !EDIT; if (!EDIT) return; const n = nEd();
+    b.innerHTML = `<div class="yp-bl"><span class="yp-st sm" style="--c:${P ? YPC[P.status] : '#b45309'}">${P ? esc(P.status_l) : 'Bản mới – Chưa lưu'}</span><b>${P ? `${esc(P.code)} · v${P.version}` : EDK === 'copy' ? `Bản sao của ${esc(SP.code)} v${SP.version}` : EDK === 'ver' ? `Phiên bản điều chỉnh của ${esc(SP.code)}` : 'Bản kế hoạch mới'}</b>
+      <span class="${dirty ? 'yp-dt' : 'muted'}">${dirty ? '● Có thay đổi chưa lưu' : '✓ Đã lưu'}${n ? ` · ${n} dòng đã chỉnh` : ''}</span></div>
+      <div class="yp-br"><button type="button" data-ypb="exit">Thoát</button><button type="button" data-ypb="refresh" title="Lấy lại số liệu từ nguồn theo kỳ / ngày chốt / dự án đang chọn">${ico('fa-rotate')} Cập nhật số liệu nguồn</button>${P && G?.can?.del ? `<button type="button" data-ypb="del">${ico('fa-trash')} Xóa nháp</button>` : ''}
+      <button type="button" data-ypb="draft">${ico('fa-floppy-disk')} Lưu nháp</button><button type="button" class="ap-pri" data-ypb="submit">${ico('fa-paper-plane')} Lưu và trình duyệt</button></div>`; };
+  const drawV = () => { const box = $('#apV', main); if (!box) return;
+    if (!P) { box.innerHTML = `<div class="yp-hd"><div><div class="ap-eb">${EDK === 'ver' ? `${esc(SP.code)} · PHIÊN BẢN ĐIỀU CHỈNH` : EDK === 'copy' ? `BẢN SAO CỦA ${esc(SP.code)} · v${SP.version}` : 'BẢN KẾ HOẠCH MỚI'}</div><h3>${SP ? esc(SP.name) : 'Kế hoạch dòng thu năm'}</h3></div><span class="yp-st" style="--c:#b45309">Bản mới – Chưa lưu</span></div>
+        <div class="yp-msg">${ico('fa-pen-to-square')} Chỉnh kỳ, ngày chốt công nợ, dự án ở bộ lọc bên dưới; bấm số tiền của căn để sửa / thêm / xóa dòng kế hoạch. ${SP ? `Nội dung kế thừa từ ${esc(SP.code)} v${SP.version}, chỉnh sửa độc lập — không ảnh hưởng bản gốc. ` : ''}Lưu bằng thanh thao tác cuối màn hình; mã kế hoạch, phiên bản, người lập, ngày lập do hệ thống ghi nhận.</div>`; return; }
+    const c = G.can, fx = ['cho_duyet', 'da_duyet', 'thay_the'].includes(P.status), dec = ['da_duyet', 'thay_the'].includes(P.status);
+    box.innerHTML = `<div class="yp-hd"><div><div class="ap-eb">${esc(P.code)} · PHIÊN BẢN ${P.version}</div><h3>${esc(P.name)}</h3></div><span class="yp-st" style="--c:${YPC[P.status]}">${esc(P.status_l)}</span><span class="grow"></span>
+      <span class="yp-act">${[c.decide && `<button type="button" data-ypa="reject">${ico('fa-reply')} Yêu cầu chỉnh sửa</button>`, c.decide && `<button type="button" class="ap-pri" data-ypa="approve">${ico('fa-check')} Phê duyệt</button>`,
+        c.newver && `<button type="button" data-ypa="newver">${ico('fa-code-branch')} Tạo phiên bản điều chỉnh</button>`, c.copy && `<button type="button" data-ypa="copy">${ico('fa-copy')} Tạo bản sao</button>`, `<button type="button" data-ypa="hist">${ico('fa-clock-rotate-left')} Lịch sử (${(P.hist || []).length})</button>`].filter(Boolean).join('')}</span></div>
       <div class="yp-g">${[['Mã kế hoạch', `${P.code} · v${P.version}`], ['Năm / kỳ kế hoạch', `${P.year} · ${dmy(P.from_on)} – ${dmy(P.to_on)}`], ['Dự án áp dụng', P.project_name], ['Ngày chốt công nợ', dmy(P.asof)], ['Người lập', P.created_name], ['Ngày lập', dtL(P.created_at)],
         ['Người duyệt', P.approver_name || '—'], [dec ? 'Ngày duyệt' : 'Ngày trình', dtL(dec ? P.decided_at : P.submitted_at) || '—'], ['Ghi chú', P.note || '—']].map(([l, v]) => `<div><span>${l}</span><b>${esc(v)}</b></div>`).join('')}</div>
       ${P.status === 'yeu_cau_sua' && P.decide_note ? `<div class="yp-msg r">${ico('fa-reply')} Yêu cầu chỉnh sửa — ${esc(P.decided_name)}, ${dtL(P.decided_at)}: <b>${esc(P.decide_note)}</b></div>` : ''}
       ${dec && P.decide_note ? `<div class="yp-msg g">${ico('fa-check')} Ý kiến phê duyệt — ${esc(P.decided_name)}: ${esc(P.decide_note)}</div>` : ''}
-      <div class="yp-msg">${fx ? `${ico('fa-lock')} Số liệu cố định, chốt lúc ${dtL(d.captured_at)} — thay đổi công nợ, chính sách, danh mục sản phẩm hoặc kế hoạch bán mới về sau không ghi đè bản này.${P.status === 'da_duyet' ? ' Muốn điều chỉnh: «Tạo phiên bản mới» và trình duyệt lại.' : P.status === 'thay_the' ? ' Đã có phiên bản mới hơn được duyệt.' : ''}`
-        : `${ico('fa-pen-to-square')} Bản «${esc(P.status_l)}» — số liệu lấy lúc ${dtL(d.captured_at)}; bấm «Cập nhật số liệu nguồn» để lấy lại theo dữ liệu hiện tại. Khi trình duyệt, số liệu được chốt cố định.`}</div>
+      <div class="yp-msg">${fx ? `${ico('fa-lock')} Số liệu cố định, chốt lúc ${dtL(d.frozen_at || d.saved_at || d.captured_at)} — thay đổi công nợ, chính sách, danh mục sản phẩm hoặc kế hoạch bán mới về sau không ghi đè bản này.${P.status === 'da_duyet' ? ' Muốn điều chỉnh: «Tạo phiên bản điều chỉnh» và trình duyệt lại.' : P.status === 'thay_the' ? ' Đã có phiên bản mới hơn được duyệt.' : ''}`
+        : EDIT ? `${ico('fa-pen-to-square')} Bản «${esc(P.status_l)}» — sửa trực tiếp (bộ lọc kỳ / ngày chốt / dự án, từng dòng kế hoạch), lưu ở thanh thao tác cuối màn hình. Số liệu lưu lúc ${dtL(d.saved_at || d.captured_at)}. Khi trình duyệt, số liệu được chốt và khóa.` : `Bản «${esc(P.status_l)}» — chỉ người lập / trưởng phòng được sửa.`}</div>
       ${G.versions.length > 1 ? `<div class="yp-vs"><span>Các phiên bản:</span>${G.versions.map(v => `<button type="button" data-ypv="${v.id}" class="${v.id === P.id ? 'on' : ''}">v${v.version} · ${esc(v.status_l)}</button>`).join('')}</div>` : ''}`;
-    // so sánh với thực thu — chỉ bản đã duyệt / đã thay thế; thực thu cập nhật riêng, không đổi số kế hoạch
+    // so sánh với thực thu — bản đã duyệt / đã thay thế; thực thu cập nhật riêng, không đổi số kế hoạch
     const A = $('#apA', main); A.hidden = !ACT; if (!ACT) return;
     const am = (k, m) => +(ACT.m[k]?.[m] || 0), pc = (a, p) => p ? (a / p * 100).toLocaleString('vi-VN', { maximumFractionDigits: 1 }) + '%' : '–', sm = a => a.reduce((x, y) => x + y, 0);
     const rs = SRC.map(([k, l, col]) => ({ l, col, p: d.months.map(m => cell(k, m)), a: d.months.map(m => am(k, m)) }));
@@ -2383,68 +2402,69 @@ V.planyear = async (main, params = {}) => {
       ${rs.map(r => `<tr class="${r.tot ? 'tot' : 'yp-a'}"><td class="c1" rowspan="3">${r.col ? `<i class="yp-dot" style="background:${r.col}"></i>` : ''}<b>${esc(r.l)}</b></td><td class="c2">Kế hoạch</td><td><b>${ty(sm(r.p))}</b></td>${r.p.map(z).join('')}</tr>
         <tr class="${r.tot ? 'tot' : ''}"><td class="c2">Thực thu</td><td><b>${ty(sm(r.a))}</b></td>${r.a.map(z).join('')}</tr>
         <tr class="${r.tot ? 'tot' : ''} yp-pc"><td class="c2">% thực hiện</td><td><b>${pc(sm(r.a), sm(r.p))}</b></td>${r.p.map((v, j) => `<td>${v || r.a[j] ? pc(r.a[j], v) : ''}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`; };
-  // tạo bản kế hoạch mới / sửa bản Nháp – Yêu cầu chỉnh sửa (ed): được chọn lại Tên, Năm, Từ – Đến ngày, Dự án, Ngày chốt công nợ, Người duyệt, Ghi chú
-  // (bộ lọc ngoài màn hình chỉ để điền mặc định); đổi lựa chọn → tự tính lại số liệu xem trước; tự động, không sửa: Mã, Phiên bản, Người lập, Ngày lập
-  const ypSaveDlg = async (submit, ed) => { const L = await api('GET', '/api/year-plans?year=' + (ed ? ed.year : s.year));
-    if (!L.can_c) return toast('Bạn không được lập kế hoạch thu', true);
-    const f = ed ? { year: +ed.year, from: ed.from_on, to: ed.to_on, project: ed.project_id ? String(ed.project_id) : '', asof: ed.asof }
-      : { year: s.year, from: s.from, to: s.to, project: String(M.projects.find(p => p.code === s.project)?.id || ''), asof: s.asof || today() };
-    const pjN = id => M.projects.find(p => p.id === +id)?.name || '', defName = () => `Kế hoạch dòng thu năm ${f.year}${f.project ? ' — ' + pjN(f.project) : ''}`;
-    let named = !!ed, seqP = 0, pv = null;
-    const t0 = +today().slice(0, 4), ys = [...new Set([t0 - 1, t0, t0 + 1, t0 + 2, f.year])].sort();
-    const m = modal({ wide: true, title: ed ? `Sửa bản kế hoạch ${esc(ed.code)} · v${ed.version} · ${esc(ed.status_l)}` : `${ico('fa-file-circle-plus')} Tạo bản kế hoạch dòng thu năm`, body: `<div class="yp-f3">
-      <div class="fld"><label>Mã kế hoạch</label><div class="yp-ro">${ed ? esc(ed.code) : 'Tự cấp khi lưu'}</div></div>
-      <div class="fld"><label>Phiên bản · trạng thái</label><div class="yp-ro">${ed ? `v${ed.version} · ${esc(ed.status_l)}` : 'v1 · Nháp'}</div></div>
-      <div class="fld"><label>Người lập · ngày lập</label><div class="yp-ro">${esc(ed ? ed.created_name : (M.me?.full_name || M.me?.name || ''))} · ${ed ? dtL(ed.created_at) : dmy(today())}</div></div>
-      <div class="fld yp-w2"><label>Tên kế hoạch<span class="req">*</span></label><input class="inp" id="ypN" autocomplete="off" value="${esc(ed ? ed.name : defName())}"></div>
-      <div class="fld"><label>Năm kế hoạch<span class="req">*</span></label><select class="inp" id="ypY">${ys.map(y => `<option value="${y}" ${y === f.year ? 'selected' : ''}>${y}</option>`).join('')}</select></div>
-      <div class="fld"><label>Từ ngày<span class="req">*</span></label>${segDate('ypF', f.from)}</div>
-      <div class="fld"><label>Đến ngày<span class="req">*</span></label>${segDate('ypT', f.to)}</div>
-      <div class="fld"><label>Dự án áp dụng</label><select class="inp" id="ypP"><option value="">Tất cả dự án</option>${M.projects.map(p => `<option value="${p.id}" ${String(p.id) === f.project ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select></div>
-      <div class="fld"><label>Ngày chốt công nợ<span class="req">*</span></label>${segDate('ypA', f.asof)}</div>
-      <div class="fld"><label>Người duyệt <span class="small muted">(bắt buộc khi trình)</span></label><select class="inp" id="ypR"><option value="">— Chọn người duyệt —</option>${L.approvers.map(([i, n]) => `<option value="${i}" ${ed && +ed.approver_id === i ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></div>
-      <div class="fld yp-w3"><label>Ghi chú</label><input class="inp" id="ypO" autocomplete="off" value="${esc(ed?.note || '')}"></div></div>
-      <div class="yp-pv" id="ypV"></div>
-      <div class="yp-msg">${ico('fa-circle-info')} <b>Lưu nháp</b>: lưu số liệu theo lựa chọn trên, vẫn sửa được và cập nhật lại dữ liệu nguồn. <b>Lưu và trình duyệt</b>: chốt toàn bộ số liệu (3 nguồn, theo tháng, đến từng căn) tại thời điểm trình, chuyển «Chờ duyệt» và khóa chỉnh sửa.</div>`,
-      foot: `<button class="btn" data-x>Hủy</button><button class="btn" id="ypS0">${ico('fa-floppy-disk')} Lưu nháp</button><button class="btn pri" id="ypS1">${ico('fa-paper-plane')} Lưu và trình duyệt</button>` });
-    wireSegDate(m.el);
-    // xem trước số liệu theo lựa chọn trên form — tính lại mỗi khi đổi năm / kỳ / dự án / ngày chốt
-    const calc = async () => { const my = ++seqP, box = $('#ypV', m.el);
-      if (!f.from || !f.to || !f.asof) { pv = null; box.innerHTML = `<span class="neg">${ico('fa-triangle-exclamation')} Nhập đủ Từ ngày, Đến ngày và Ngày chốt công nợ hợp lệ</span>`; return; }
-      if (f.from > f.to) { pv = null; box.innerHTML = `<span class="neg">${ico('fa-triangle-exclamation')} «Từ ngày» phải nhỏ hơn hoặc bằng «Đến ngày»</span>`; return; }
-      box.innerHTML = `<span class="muted">${ico('fa-spinner fa-spin')} Đang lấy số liệu: kỳ ${dmy(f.from)} – ${dmy(f.to)}${f.project ? ' · ' + esc(pjN(f.project)) : ' · tất cả dự án'} · chốt công nợ ${dmy(f.asof)}…</span>`;
-      try { const r = await api('GET', '/api/plan-year?' + new URLSearchParams({ year: f.year, from: f.from, to: f.to, asof: f.asof })); if (my !== seqP) return;
-        const pc = M.projects.find(p => p.id === +f.project)?.code, xs = f.project ? r.items.filter(i => i.project === pc) : r.items, sm = k => xs.filter(i => i.month && (!k || i.src === k)).reduce((a, i) => a + (+i.plan || 0), 0);
-        const un = xs.filter(i => !i.month && i.zone !== 'out' && i.zone !== 'carry').reduce((a, i) => a + (+i.plan || 0), 0), nu = new Set(xs.map(i => i.src + '|' + (i.unit_id || i.grp || i.unit))).size;
-        pv = 1; box.innerHTML = `<div class="yp-pvh">Số liệu theo lựa chọn — kỳ ${dmy(f.from)} – ${dmy(f.to)} · ${f.project ? esc(pjN(f.project)) : 'Tất cả dự án'} · chốt công nợ ${dmy(f.asof)}</div>
-          <div class="yp-pvg">${[['Tổng kế hoạch trong kỳ', sm()], ['Thu công nợ còn lại', sm('cn')], ['Thu bán mới', sm('moi')], ['Thu cho thuê', sm('thue')], ['Chưa phân bổ kỳ', un]].map(([l, v]) => `<div><span>${l}</span><b>${fm(v)}</b></div>`).join('')}<div><span>Số căn / khoản</span><b>${nu} / ${xs.length}</b></div></div>`; }
-      catch (er) { if (my !== seqP) return; pv = null; box.innerHTML = `<span class="neg">Không lấy được số liệu: ${esc(er.message)}</span>`; } };
-    m.el.addEventListener('sdchange', e => { const v = segVal(e.target); if (v === null) return; const k = { ypF: 'from', ypT: 'to', ypA: 'asof' }[e.target.id]; if (!k) return; f[k] = v || ''; calc(); });
-    m.el.addEventListener('change', e => { const id = e.target.id;
-      if (id === 'ypY') { f.year = +e.target.value; f.from = `${f.year}-01-01`; f.to = `${f.year}-12-31`; segSet($('#ypF', m.el), f.from); segSet($('#ypT', m.el), f.to); }
-      else if (id === 'ypP') f.project = e.target.value; else return;
-      if (!named) $('#ypN', m.el).value = defName(); calc(); });
-    $('#ypN', m.el).oninput = () => { named = true; };
-    calc();
-    const go = sub => run(async () => { if (!$('#ypN', m.el).value.trim()) return toast('Nhập tên kế hoạch', true);
-      if (!f.from || !f.to || !f.asof) return toast('Nhập đủ Từ ngày, Đến ngày và Ngày chốt công nợ hợp lệ', true); if (f.from > f.to) return toast('«Từ ngày» phải nhỏ hơn hoặc bằng «Đến ngày»', true);
-      if (sub && !$('#ypR', m.el).value) return toast('Chọn người duyệt trước khi trình', true);
-      if (sub && !await ask('Lưu và trình duyệt', 'Chốt toàn bộ số liệu tại thời điểm trình, chuyển «Chờ duyệt» và khóa chỉnh sửa bản này?')) return;
-      const x = await api('POST', '/api/year-plans', { ...(ed ? { id: ed.id } : {}), name: $('#ypN', m.el).value.trim(), note: $('#ypO', m.el).value.trim(), approver_id: $('#ypR', m.el).value || null,
-        year: f.year, from: f.from, to: f.to, project_id: f.project || null, asof: f.asof, submit: sub });
-      toast(x.msg); m.close(); if (ed && +x.id === VER) await load(); else location.hash = '#/v/planyear?ver=' + x.id; });
-    $('#ypS0', m.el).onclick = go(false); $('#ypS1', m.el).onclick = go(true); };
+  // hộp khai báo ở bước lưu — Lưu nháp: tên + ghi chú; Lưu và trình duyệt: tên + người duyệt + ghi chú + tóm tắt số liệu; năm / kỳ, dự án, ngày chốt lấy từ bản đang chỉnh; Hủy → quay lại bản đang làm
+  const saveDlg = async sub => { if (!d) return toast('Chưa có số liệu kế hoạch', true); if (!s.from || !s.to || s.from > s.to) return toast('Kỳ kế hoạch không hợp lệ: «Từ ngày» phải nhỏ hơn hoặc bằng «Đến ngày»', true);
+    const L = await api('GET', '/api/year-plans?year=' + s.year); if (!L.can_c) return toast('Bạn không được lập kế hoạch thu', true);
+    const xs = its(), pj = M.projects.find(p => p.code === s.project), sm = k => xs.filter(i => i.month && (!k || i.src === k)).reduce((a, i) => a + (+i.plan || 0), 0), ne = xs.filter(i => i.edited).length;
+    const nm0 = P ? P.name : EDK === 'ver' ? SP.name : EDK === 'copy' ? `${SP.name} (bản sao)` : `Kế hoạch dòng thu năm ${s.year}${pj ? ' — ' + pj.name : ''}`, apr0 = String(P?.approver_id || SP?.approver_id || ''), note0 = P?.note || (EDK ? SP?.note || '' : '');
+    const code = P ? `${P.code} · phiên bản ${P.version}` : EDK === 'ver' ? `${SP.code} · phiên bản mới (tự cấp)` : 'Tự cấp khi lưu · phiên bản 1';
+    const m = modal({ wide: !!sub, title: sub ? `${ico('fa-paper-plane')} Lưu và trình duyệt kế hoạch` : `${ico('fa-floppy-disk')} Lưu nháp kế hoạch`, body: `<div class="yp-f">
+      <div class="fld"><label>Mã kế hoạch</label><div class="yp-ro">${esc(code)}</div></div>
+      <div class="fld"><label>Người lập · ngày lập</label><div class="yp-ro">${esc(P ? P.created_name : (M.me?.full_name || M.me?.name || ''))} · ${P ? dtL(P.created_at) : dmy(today())}</div></div>
+      <div class="fld"><label>Năm / kỳ kế hoạch</label><div class="yp-ro">${s.year} · ${dmy(s.from)} – ${dmy(s.to)}</div></div>
+      <div class="fld"><label>Dự án · ngày chốt công nợ</label><div class="yp-ro">${esc(pj?.name || 'Tất cả dự án')} · ${dmy(s.asof)}</div></div>
+      <div class="fld yp-w"><label>Tên kế hoạch<span class="req">*</span></label><input class="inp" id="ypN" autocomplete="off" value="${esc(nm0)}"></div>
+      ${sub ? `<div class="fld"><label>Người duyệt<span class="req">*</span></label><select class="inp" id="ypR"><option value="">— Chọn người duyệt —</option>${L.approvers.map(([i, n]) => `<option value="${i}" ${apr0 === String(i) ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></div>` : ''}
+      <div class="fld ${sub ? '' : 'yp-w'}"><label>Ghi chú</label><input class="inp" id="ypO" autocomplete="off" value="${esc(note0)}"></div></div>
+      ${sub ? `<div class="yp-pv"><div class="yp-pvh">Tóm tắt số liệu trình duyệt</div><div class="yp-pvg">${[['Tổng kế hoạch trong kỳ', fm(sm())], ['Thu công nợ còn lại', fm(sm('cn'))], ['Thu bán mới', fm(sm('moi'))], ['Thu cho thuê', fm(sm('thue'))], ['Chưa phân bổ kỳ', fm(sum(xs.filter(isUn)))], ['Số căn · dòng đã chỉnh', `${new Set(xs.map(i => i.src + '|' + (i.unit_id || i.grp || i.unit))).size} · ${ne}`]].map(([l, v]) => `<div><span>${l}</span><b>${v}</b></div>`).join('')}</div></div>
+        <div class="yp-msg">${ico('fa-lock')} Sau khi trình: chốt toàn bộ số liệu tại thời điểm trình, chuyển «Chờ duyệt» và khóa chỉnh sửa bản này.</div>` : '<div class="yp-msg">Bản nháp vẫn được sửa và cập nhật lại số liệu nguồn sau khi lưu. Không bắt buộc chọn người duyệt.</div>'}`,
+      foot: `<button class="btn" data-x>Hủy — quay lại bản đang làm</button><button class="btn pri" id="ypOk">${sub ? `${ico('fa-paper-plane')} Xác nhận trình duyệt` : `${ico('fa-floppy-disk')} Lưu nháp`}</button>` });
+    $('#ypOk', m.el).onclick = run(async () => { const name = $('#ypN', m.el).value.trim(); if (!name) return toast('Nhập tên kế hoạch', true); const apr = sub ? $('#ypR', m.el).value : (P?.approver_id || null); if (sub && !apr) return toast('Chọn người duyệt', true);
+      const cu = new Set(xs.filter(i => i.src === 'cn').map(i => String(i.unit_id)));
+      const x = await api('POST', '/api/year-plans', { ...(P ? { id: P.id } : { kind: EDK || 'new', base_id: SRCID || null }), name, note: $('#ypO', m.el).value.trim(), approver_id: apr || null, submit: sub,
+        year: s.year, from: s.from, to: s.to, project_id: pj?.id || null, asof: s.asof,
+        data: { months: d.months, from: s.from, to: s.to, asof: s.asof, items: xs, total_left: Object.fromEntries(Object.entries(d.total_left || {}).filter(([k]) => cu.has(String(k)))), captured_at: d.captured_at || null } });
+      setDirty(false); m.close(); toast(`${x.msg}. Đã đưa vào «Danh sách bản kế hoạch».`);
+      if (P && +x.id === P.id) return V.planyear(main, { ver: x.id }); location.hash = '#/v/planyear?ver=' + x.id; }); };
+  // sửa dòng kế hoạch của 1 căn (chỉ trong bản đang lập — không đổi dữ liệu nguồn): tháng kế hoạch, tiền kế hoạch, xóa / thêm dòng
+  const editLeaf = leaf => { const xs = d.items.filter(i => keyU(i) === leaf && (!full || !s.project || i.project === s.project)), x0 = xs[0]; if (!x0) return;
+    const rows = xs.map(i => ({ i, month: i.month || '', plan: Math.round(+i.plan || 0), del: false })), add = [];
+    const mo = v => `<option value="" ${!v ? 'selected' : ''}>Không xếp tháng</option>` + d.months.map(x => `<option value="${x}" ${x === v ? 'selected' : ''}>${x.slice(5)}/${x.slice(0, 4)}</option>`).join('');
+    const zl = i => i.zone === 'out' ? 'Ngoài kỳ' : i.zone === 'carry' ? 'Công nợ chuyển sang' : 'Chưa phân bổ kỳ';
+    const m2 = modal({ wide: true, title: `Chỉnh dòng kế hoạch — ${esc(x0.unit)} · ${esc(SRC.find(z => z[0] === x0.src)[1])}`, body: `<div class="small muted mb">${esc(x0.customer || '')}${x0.project ? ' · Dự án ' + esc(x0.project) : ''}${x0.building ? ' · Tòa ' + esc(x0.building) : ''} — sửa tháng / tiền kế hoạch, xóa hoặc thêm dòng; chỉ áp dụng cho bản đang lập, không đổi dữ liệu nguồn.</div>
+      <div class="tbl-wrap"><table class="t compact noclick yp-el"><thead><tr><th>Hợp đồng</th><th>Đợt / kỳ thu</th><th>Ngày đến hạn</th><th style="width:150px">Tháng kế hoạch</th><th class="num" style="width:170px">Tiền kế hoạch</th><th class="num">Thực thu</th><th>Ghi chú</th><th></th></tr></thead><tbody id="elT"></tbody></table></div>
+      <button type="button" class="btn sm mt" id="elAdd">${ico('fa-plus')} Thêm dòng</button><div class="yp-ss" id="elS"></div>`, foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="elOk">${ico('fa-check')} Áp dụng vào bản kế hoạch</button>` });
+    const all = () => [...rows.map((r, k) => ({ r, k, n: 0 })), ...add.map((r, k) => ({ r, k, n: 1 }))];
+    const sumS = () => { const lv = [...rows.filter(r => !r.del), ...add]; $('#elS', m2.el).innerHTML = `Trong kỳ: <b>${fm(lv.filter(r => r.month).reduce((a, r) => a + r.plan, 0))}</b> · Không xếp tháng: <b>${fm(lv.filter(r => !r.month).reduce((a, r) => a + r.plan, 0))}</b>`; };
+    const dr = () => { $('#elT', m2.el).innerHTML = all().map(({ r, k, n }) => `<tr data-k="${k}" data-n="${n}" class="${r.del ? 'yp-del' : ''}"><td>${n ? '<i class="muted">Dòng mới</i>' : esc(r.i.contract || '')}</td><td>${n ? `<input class="inp" data-f="label" value="${esc(r.label)}" placeholder="Nội dung dòng kế hoạch">` : esc(r.i.label)}</td><td>${!n && r.i.due_on ? dmy(r.i.due_on) : '—'}</td>
+        <td><select class="inp" data-f="month" ${r.del ? 'disabled' : ''}>${mo(r.month)}</select></td><td><input class="inp n" data-f="plan" inputmode="numeric" value="${r.plan ? moneyStr(r.plan) : ''}" ${r.del ? 'disabled' : ''}></td><td class="num">${n ? '—' : fm(r.i.act)}</td>
+        <td class="small">${!n && r.i.edited ? '<span class="yp-ed">đã chỉnh</span> ' : ''}${!n && !r.month ? zl(r.i) : ''}${r.del ? ' <b class="neg">sẽ xóa</b>' : ''}</td><td><button type="button" class="btn sm ghost" data-f="del" title="${r.del ? 'Khôi phục dòng' : 'Xóa dòng'}">${ico(r.del ? 'fa-rotate-left' : 'fa-trash')}</button></td></tr>`).join(''); sumS(); };
+    dr();
+    const RR = tr => tr.dataset.n === '1' ? add[+tr.dataset.k] : rows[+tr.dataset.k];
+    m2.el.addEventListener('input', e => { const tr = e.target.closest('tr[data-k]'); if (!tr) return; const r = RR(tr), f = e.target.dataset.f;
+      if (f === 'plan') { r.plan = num(e.target.value, true) || 0; e.target.value = r.plan ? moneyStr(r.plan) : ''; } if (f === 'label') r.label = e.target.value; sumS(); });
+    m2.el.addEventListener('change', e => { const tr = e.target.closest('tr[data-k]'); if (tr && e.target.dataset.f === 'month') { RR(tr).month = e.target.value; sumS(); } });
+    m2.el.addEventListener('click', e => { const dl = e.target.closest('[data-f=del]'); if (dl) { const tr = dl.closest('tr'); if (tr.dataset.n === '1') add.splice(+tr.dataset.k, 1); else rows[+tr.dataset.k].del = !rows[+tr.dataset.k].del; return dr(); }
+      if (e.target.closest('#elAdd')) { add.push({ label: '', month: d.months.includes(s.month) ? s.month : d.months[0], plan: 0 }); return dr(); }
+      if (e.target.closest('#elOk')) { let n = 0;
+        for (const r of rows) { const i = r.i; if (r.del) { d.items.splice(d.items.indexOf(i), 1); d.dels = (d.dels || 0) + 1; n++; continue; }
+          if (r.month !== (i.month || '') || r.plan !== Math.round(+i.plan || 0)) { i.orig ||= { month: i.month, plan: i.plan, zone: i.zone }; i.month = r.month || null; i.zone = r.month ? 'in' : i.orig.zone && i.orig.zone !== 'in' ? i.orig.zone : 'nodate';
+            i.plan = r.plan; i.rem = i.src === 'moi' ? Math.max(0, r.plan - (+i.act || 0)) : r.plan; i.edited = true; n++; } }
+        for (const r of add) if (r.plan > 0) { d.items.push({ src: x0.src, project: x0.project, building: x0.building, unit: x0.unit, unit_id: x0.unit_id, customer: x0.customer, grp: x0.grp, contract: x0.contract || '', label: (r.label || '').trim() || 'Dòng kế hoạch bổ sung',
+          month: r.month || null, zone: r.month ? 'in' : 'nodate', due_on: null, week_l: '', plan: r.plan, act: 0, rem: r.plan, st: 'Bổ sung khi lập kế hoạch', carry_src: '', edited: true, added: true }); n++; }
+        m2.close(); if (n) { setDirty(true); draw(); toast(`Đã áp dụng ${n} thay đổi vào bản kế hoạch (chưa lưu)`); } } }); };
+  const ypBar = async a => {
+    if (a === 'exit') { location.hash = P ? '#/v/planyear' : '#/v/planyear'; return; }
+    if (a === 'refresh') { if (!await ask('Cập nhật số liệu nguồn', `Lấy lại số liệu từ nguồn theo kỳ ${dmy(s.from)} – ${dmy(s.to)}, ngày chốt công nợ ${dmy(s.asof)}${s.project ? ', dự án ' + s.project : ''}?${nEd() ? ` ${nEd()} dòng đã chỉnh sẽ mất.` : ''}`)) return; setDirty(true); return load('src'); }
+    if (a === 'del') { if (!await ask('Xóa bản nháp', `Xóa bản nháp ${P.code} v${P.version}?`)) return; const x = await api('DELETE', '/api/year-plans/' + P.id); setDirty(false); toast(x.msg); location.hash = '#/v/planyear'; return; }
+    if (a === 'draft' || a === 'submit') return saveDlg(a === 'submit'); };
   const ypAct = async a => {
-    if (a === 'edit' || a === 'submit') return ypSaveDlg(a === 'submit', P);
-    if (a === 'refresh') { if (!await ask('Cập nhật số liệu nguồn', `Lấy lại số liệu 3 nguồn theo dữ liệu hiện tại (ngày chốt công nợ ${dmy(P.asof)})? Số liệu cũ của bản ${P.status_l.toLowerCase()} được thay thế.`)) return;
-      const x = await api('POST', '/api/year-plans', { id: P.id, name: P.name, note: P.note, approver_id: P.approver_id, asof: P.asof, refresh: true }); toast(`${P.code} v${P.version}: đã cập nhật số liệu nguồn`); return load(); }
-    if (a === 'del') { if (!await ask('Xóa bản nháp', `Xóa bản nháp ${P.code} v${P.version}?`)) return; const x = await api('DELETE', '/api/year-plans/' + P.id); toast(x.msg); location.hash = '#/v/planyear'; return; }
-    if (a === 'newver') { if (!await ask('Tạo phiên bản mới', `Tạo phiên bản v${Math.max(...G.versions.map(v => v.version)) + 1} từ ${P.code} v${P.version}? Số liệu nguồn được lấy lại theo dữ liệu hiện tại; bản v${P.version} vẫn là kế hoạch chính thức cho đến khi phiên bản mới được duyệt.`)) return;
-      const x = await api('POST', `/api/year-plans/${P.id}/new-version`); toast(x.msg); location.hash = '#/v/planyear?ver=' + x.id; return; }
+    if (a === 'newver') { location.hash = '#/v/planyear?edit=ver&src=' + P.id; return; }
+    if (a === 'copy') { location.hash = '#/v/planyear?edit=copy&src=' + P.id; return; }
     if (a === 'approve' || a === 'reject') { const ok = a === 'approve';
       const m = modal({ narrow: true, title: `${ok ? 'Phê duyệt' : 'Yêu cầu chỉnh sửa'} — ${esc(P.code)} v${P.version}`, body: `<div class="small muted mb">${ok ? 'Bản kế hoạch trở thành kế hoạch chính thức để theo dõi thực hiện.' : 'Bản kế hoạch trả về người lập để sửa, cập nhật và trình lại.'}</div>
         <div class="fld"><label>Ý kiến xử lý${ok ? '' : '<span class="req">*</span>'}</label><textarea class="inp" id="ypC" rows="3"></textarea></div>`, foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="ypOk">${ok ? `${ico('fa-check')} Phê duyệt` : `${ico('fa-reply')} Gửi yêu cầu chỉnh sửa`}</button>` });
-      $('#ypOk', m.el).onclick = run(async () => { const cm = $('#ypC', m.el).value.trim(); if (!ok && !cm) return toast('Nhập ý kiến yêu cầu chỉnh sửa', true); const x = await api('POST', `/api/year-plans/${P.id}/decide`, { ok, comment: cm }); toast(x.msg); m.close(); await load(); }); return; }
+      $('#ypOk', m.el).onclick = run(async () => { const cm = $('#ypC', m.el).value.trim(); if (!ok && !cm) return toast('Nhập ý kiến yêu cầu chỉnh sửa', true); const x = await api('POST', `/api/year-plans/${P.id}/decide`, { ok, comment: cm }); toast(x.msg); m.close(); return V.planyear(main, { ver: P.id }); }); return; }
     if (a === 'hist') modal({ wide: true, title: `Lịch sử xử lý — ${esc(P.code)} · v${P.version}`, body: `<div class="tbl-wrap"><table class="t compact noclick"><thead><tr><th>Thời gian</th><th>Người thực hiện</th><th>Thao tác</th><th>Ý kiến / ghi chú</th></tr></thead><tbody>
       ${[...(P.hist || [])].reverse().map(h => `<tr><td>${dtL(h.at)}</td><td>${esc(h.by_name || '')}</td><td><b>${esc(h.act)}</b></td><td>${esc(h.note || '')}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">Chưa có</td></tr>'}</tbody></table></div>` }); };
   // danh sách bản kế hoạch: tab Tất cả | Nháp | Chờ duyệt | Đã duyệt | Yêu cầu chỉnh sửa (kèm số lượng), lọc năm;
@@ -2459,7 +2479,7 @@ V.planyear = async (main, params = {}) => {
       const inY = rows.filter(r => !f.year || String(r.year) === f.year), cnt = k => inY.filter(r => !k || r.status === k).length;
       $('#ylTb', m.el).innerHTML = TABS.map(([k, l]) => `<button type="button" data-yltab="${k}" class="${f.tab === k ? 'on' : ''}">${l} <span>${cnt(k)}</span></button>`).join('');
       const xs = inY.filter(r => !f.tab || r.status === f.tab), ap = f.tab === 'da_duyet';
-      const act = x => `<span class="yp-ops"><button type="button" class="btn sm" data-ylv="${x.id}">${ico('fa-eye')} Xem</button>${['da_duyet', 'thay_the'].includes(x.status) ? `<button type="button" class="btn sm ghost" data-ylx="xlsx" data-id="${x.id}" title="Xuất Excel bản đã duyệt">${ico('fa-file-excel')} Excel</button><button type="button" class="btn sm ghost" data-ylx="pdf" data-id="${x.id}" title="In / PDF bản đã duyệt">${ico('fa-print')} In/PDF</button>` : ''}${x.status === 'da_duyet' && x.version === x.last_ver ? `<button type="button" class="btn sm ghost" data-ylnv="${x.id}" title="Tạo phiên bản điều chỉnh từ bản này">${ico('fa-code-branch')} Phiên bản điều chỉnh</button>` : ''}</span>`;
+      const act = x => `<span class="yp-ops"><button type="button" class="btn sm" data-ylv="${x.id}">${ico('fa-eye')} Xem</button>${['da_duyet', 'thay_the'].includes(x.status) ? `<button type="button" class="btn sm ghost" data-ylx="xlsx" data-id="${x.id}" title="Xuất Excel bản đã duyệt">${ico('fa-file-excel')} Excel</button><button type="button" class="btn sm ghost" data-ylx="pdf" data-id="${x.id}" title="In / PDF bản đã duyệt">${ico('fa-print')} In/PDF</button>` : ''}${x.status === 'da_duyet' && x.version === x.last_ver ? `<button type="button" class="btn sm ghost" data-ylnv="${x.id}" title="Tạo phiên bản điều chỉnh từ bản này">${ico('fa-code-branch')} Phiên bản điều chỉnh</button>` : ''}<button type="button" class="btn sm ghost" data-ylcp="${x.id}" title="Tạo bản sao (mã mới, chỉnh sửa độc lập)">${ico('fa-copy')} Bản sao</button></span>`;
       const per = x => `${x.year} · ${dmy(x.from_on)} – ${dmy(x.to_on)}`;
       $('#ylT', m.el).innerHTML = !xs.length ? `<div class="empty">Không có bản kế hoạch${f.tab ? ' «' + TABS.find(t => t[0] === f.tab)[1] + '»' : ''}${f.year ? ' năm ' + f.year : ''}</div>`
         : ap ? `<table class="t compact noclick"><thead><tr><th>Mã kế hoạch</th><th>Tên kế hoạch</th><th>Năm / kỳ</th><th>Dự án</th><th>Phiên bản</th><th class="num">Tổng kế hoạch thu</th><th>Người duyệt</th><th>Ngày duyệt</th><th>Thao tác</th></tr></thead><tbody>
@@ -2470,13 +2490,12 @@ V.planyear = async (main, params = {}) => {
     const dl = async () => { rows = (await api('GET', '/api/year-plans')).rows; draw(); };
     m.el.addEventListener('change', e => { if (e.target.id === 'ylY') { f.year = e.target.value; draw(); } });
     m.el.addEventListener('click', run(async e => { const tb = e.target.closest('[data-yltab]'); if (tb) { f.tab = tb.dataset.yltab; return draw(); }
-      if (e.target.closest('#ylNew')) { m.close(); return ypSaveDlg(false); }
+      if (e.target.closest('#ylNew')) { m.close(); location.hash = '#/v/planyear?edit=new'; return; }
+      const cp = e.target.closest('[data-ylcp]'); if (cp) { m.close(); location.hash = '#/v/planyear?edit=copy&src=' + cp.dataset.ylcp; return; }
       const v = e.target.closest('[data-ylv]'); if (v) { m.close(); location.hash = '#/v/planyear?ver=' + v.dataset.ylv; return; }
       const x = e.target.closest('[data-ylx]'); if (x) { if (x.dataset.ylx === 'pdf') { ST.ypPw = window.open('', '_blank'); if (ST.ypPw) ST.ypPw.document.write('<p style="font:14px Arial">Đang chuẩn bị bản in…</p>'); }
         m.close(); ST.ypDo = x.dataset.ylx; if (+x.dataset.id === VER) return ypDoIt(); location.hash = '#/v/planyear?ver=' + x.dataset.id; return; }
-      const nv = e.target.closest('[data-ylnv]'); if (nv) { const r = rows.find(z => z.id === +nv.dataset.ylnv);
-        if (!await ask('Tạo phiên bản điều chỉnh', `Tạo phiên bản v${r.last_ver + 1} (Nháp) từ ${r.code} v${r.version}? Bản đã duyệt giữ nguyên để tra cứu và vẫn là kế hoạch chính thức cho đến khi phiên bản mới được duyệt.`)) return;
-        const y = await api('POST', `/api/year-plans/${r.id}/new-version`); toast(y.msg); m.close(); location.hash = '#/v/planyear?ver=' + y.id; } }));
+      const nv = e.target.closest('[data-ylnv]'); if (nv) { m.close(); location.hash = '#/v/planyear?edit=ver&src=' + nv.dataset.ylnv; } }));
     await dl(); };
   // thao tác chờ từ danh sách (xuất Excel / in PDF bản đã duyệt) — chạy sau khi bản đã tải
   const ypDoIt = () => { const k = ST.ypDo; ST.ypDo = null; if (k && d) exp(k, false); };
@@ -2487,10 +2506,11 @@ V.planyear = async (main, params = {}) => {
     const x = e.target.closest('[data-apx]'); if (x) { $('.ap-menu', main).hidden = true; return exp(x.dataset.apx, x.dataset.apdet === '1'); }
     const tg = e.target.closest('[data-aptg]'); if (tg) { s.shut[tg.dataset.aptg] = !s.shut[tg.dataset.aptg]; return draw(); }
     const al = e.target.closest('[data-apall]'); if (al) { s.shut = {}; if (al.dataset.apall === '0') for (const r of hier()) if (r.lv >= 0 && r.lv <= 2) s.shut[r.key] = true; return draw(); }
-    const lf = e.target.closest('[data-apleaf]'); if (lf) return leafDlg(lf.dataset.apleaf, lf.dataset.apmm);
+    const lf = e.target.closest('[data-apleaf]'); if (lf) return EDIT ? editLeaf(lf.dataset.apleaf) : leafDlg(lf.dataset.apleaf, lf.dataset.apmm);
     if (e.target.closest('#apList')) return ypListDlg();
     if (e.target.closest('#apBack')) { location.hash = '#/v/planyear'; return; }
-    if (e.target.closest('#apSv, #apSv2')) { e.preventDefault(); return ypSaveDlg(false); }
+    if (e.target.closest('#apSv, #apSv2')) { e.preventDefault(); location.hash = '#/v/planyear?edit=new'; return; }
+    const yb = e.target.closest('[data-ypb]'); if (yb) return ypBar(yb.dataset.ypb);
     const ya = e.target.closest('[data-ypa]'); if (ya) return ypAct(ya.dataset.ypa);
     const yv = e.target.closest('[data-ypv]'); if (yv) { location.hash = '#/v/planyear?ver=' + yv.dataset.ypv; return; }
     if (e.target.closest('#apNew')) return saleUnitDlg(load, { project: M.projects.find(p => p.code === s.project)?.id || '' });
@@ -2501,8 +2521,15 @@ V.planyear = async (main, params = {}) => {
     const mm = e.target.closest('[data-apm]'); if (mm) { s.month = mm.dataset.apm; s.src = mm.dataset.aps || ''; draw(); return $('#apD', main).scrollIntoView({ behavior: 'smooth', block: 'start' }); }
     if (!e.target.closest('.ap-dd')) $('.ap-menu', main).hidden = true;
   }));
-  main.addEventListener('sdchange', async e => { const v = segVal(e.target); if (v === null) return; if (e.target.id === 'apF') s.from = v || `${s.year}-01-01`; else if (e.target.id === 'apT2') s.to = v || `${s.year}-12-31`; else if (e.target.id === 'apA') s.asof = v || today(); else return; await load(); });
-  main.addEventListener('change', run(async e => { if (e.target.id === 'apY') { s.year = +e.target.value; s.from = `${s.year}-01-01`; s.to = `${s.year}-12-31`; segSet($('#apF', main), s.from); segSet($('#apT2', main), s.to); return load(); } if (e.target.id === 'apP') { s.project = e.target.value; if (d) draw(); } }));
+  // đổi kỳ / ngày chốt / năm / dự án — báo cáo trực tiếp: tính lại; bản đang chỉnh: lấy lại số liệu nguồn (hỏi trước nếu đã chỉnh dòng / đang dùng số liệu kế thừa — Hủy thì giữ nguyên)
+  const reSrc = async (what, revert) => { if (EDIT && d && (!full || nEd())) { if (!await ask('Lấy lại số liệu nguồn', `Đổi ${what} sẽ lấy lại số liệu từ nguồn theo lựa chọn mới${!full ? ' (thay số liệu đang có của bản này)' : ''}${nEd() ? `; ${nEd()} dòng đã chỉnh sẽ mất` : ''}. Tiếp tục?`)) { revert(); return; } }
+    if (EDIT) setDirty(true); await load(EDIT ? 'src' : undefined); };
+  main.addEventListener('sdchange', run(async e => { const v = segVal(e.target); if (v === null) return; const k = { apF: 'from', apT2: 'to', apA: 'asof' }[e.target.id]; if (!k) return; const old = s[k];
+    s[k] = v || (k === 'from' ? `${s.year}-01-01` : k === 'to' ? `${s.year}-12-31` : today()); if (s[k] === old) return;
+    await reSrc(k === 'asof' ? 'ngày chốt công nợ' : 'kỳ kế hoạch', () => { s[k] = old; segSet(e.target, old); }); }));
+  main.addEventListener('change', run(async e => { if (e.target.id === 'apY') { const o = { year: s.year, from: s.from, to: s.to }; s.year = +e.target.value; s.from = `${s.year}-01-01`; s.to = `${s.year}-12-31`; segSet($('#apF', main), s.from); segSet($('#apT2', main), s.to);
+      return reSrc('năm kế hoạch', () => { Object.assign(s, o); e.target.value = o.year; segSet($('#apF', main), o.from); segSet($('#apT2', main), o.to); }); }
+    if (e.target.id === 'apP') { const o = s.project; s.project = e.target.value; if (full) { if (EDIT) setDirty(true); if (d) draw(); return; } return reSrc('dự án', () => { s.project = o; e.target.value = o; }); } }));
   try { await load(); } catch (er) { $('#apD', main).innerHTML = `<div class="ap-empty">${esc(er.message)}</div>`; }
 };
 V.unitstatus = async main => {

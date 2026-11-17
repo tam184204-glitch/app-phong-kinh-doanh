@@ -999,34 +999,47 @@ async function ypGet(db, user, id) {
     data: p.data, actual: ['da_duyet', 'thay_the'].includes(p.status) ? await ypActual(db, p.data) : null,
     versions: vers.map(v => ({ ...v, status_l: YP_ST[v.status] })),
     approvers: (await ypUsers(db)).filter(u => YP_BOSS.includes(u.role)).map(u => [u.id, u.full_name]),
-    can: { edit: ypEdit(user, p), decide: ypDecider(user, p), newver: p.status === 'da_duyet' && p.version === last && !open && can(user, E.collect_plan, 'c'), del: p.status === 'nhap' && ypEdit(user, p) && !p.submitted_at } };
+    can: { edit: ypEdit(user, p), decide: ypDecider(user, p), newver: p.status === 'da_duyet' && p.version === last && !open && can(user, E.collect_plan, 'c'), del: p.status === 'nhap' && ypEdit(user, p) && !p.submitted_at, copy: can(user, E.collect_plan, 'c') } };
 }
-// lưu nháp / lưu và trình duyệt (tạo mới hoặc sửa bản Nháp / Yêu cầu chỉnh sửa); trình duyệt luôn chốt lại số liệu tại thời điểm trình
+// 17/11/2026 (bản 2): LƯU BẢN KẾ HOẠCH TỪ GIAO DIỆN CHỈNH SỬA — số liệu do giao diện gửi lên (đã lấy từ nguồn / kế thừa bản nguồn / đã chỉnh từng dòng);
+// kind: new (bản mới) · copy (bản sao — mã mới, độc lập bản gốc) · ver (phiên bản điều chỉnh của bản đã duyệt — cùng mã, phiên bản +1) · id (sửa bản Nháp / Yêu cầu chỉnh sửa);
+// Lưu nháp: vẫn sửa được; Lưu và trình duyệt: chốt số liệu (frozen_at), chuyển Chờ duyệt, khóa sửa. Mã, phiên bản, người lập, ngày lập do hệ thống ghi nhận
 async function ypSave(db, user, b) {
   if (!can(user, E.collect_plan, 'c')) deny('Bạn không được lập kế hoạch thu');
-  const name = String(b.name || '').trim().slice(0, 200), note = String(b.note || '').trim().slice(0, 2000), asof = isoDay(b.asof) || today(), apr = b.approver_id ? +b.approver_id : null, submit = !!b.submit;
-  if (!name) bad('Nhập tên kế hoạch');
+  const name = String(b.name || '').trim().slice(0, 200), note = String(b.note || '').trim().slice(0, 2000), asof = isoDay(b.asof), apr = b.approver_id ? +b.approver_id : null, submit = !!b.submit;
+  if (!name) bad('Nhập tên kế hoạch'); if (!asof) bad('Nhập ngày chốt công nợ');
   if (apr) { const a = await db.one('SELECT role, active FROM kd_user WHERE id = $1', [apr]); if (!a?.active || !YP_BOSS.includes(a.role)) bad('Người duyệt không có thẩm quyền phê duyệt'); }
   if (submit && !apr) bad('Chọn người duyệt trước khi trình');
-  const per = b.year != null || b.from || b.to ? (() => { const y = /^\d{4}$/.test(String(b.year || '')) ? +b.year : bad('Chọn năm kế hoạch'), fr = isoDay(b.from), to = isoDay(b.to); if (!fr || !to) bad('Nhập Từ ngày – Đến ngày'); if (fr > to) bad('«Từ ngày» phải nhỏ hơn hoặc bằng «Đến ngày»'); return { year: y, from_on: fr, to_on: to, project_id: b.project_id ? +b.project_id : null }; })() : null;
-  if (per?.project_id && !await db.one('SELECT id FROM kd_project WHERE id = $1', [per.project_id])) bad('Không tìm thấy dự án');
-  let p;
-  if (b.id) { p = await ypHead(db, b.id); if (!ypEdit(user, p)) bad(`Bản kế hoạch đang «${YP_ST[p.status]}» — không sửa được${p.status === 'da_duyet' ? ' (tạo phiên bản mới để điều chỉnh)' : ''}`); }
-  else { if (!per) bad('Chọn năm và kỳ kế hoạch'); const y = per.year, fr = per.from_on, to = per.to_on;
-    const n = (await db.one(`INSERT INTO kd_counter (prefix, n) VALUES ($1, 1) ON CONFLICT (prefix) DO UPDATE SET n = kd_counter.n + 1 RETURNING n`, ['KHDT-' + y])).n;
+  const y = /^\d{4}$/.test(String(b.year || '')) ? +b.year : bad('Chọn năm kế hoạch'), fr = isoDay(b.from), to = isoDay(b.to);
+  if (!fr || !to) bad('Nhập Từ ngày – Đến ngày'); if (fr > to) bad('«Từ ngày» phải nhỏ hơn hoặc bằng «Đến ngày»');
+  const pid = b.project_id ? +b.project_id : null; if (pid && !await db.one('SELECT id FROM kd_project WHERE id = $1', [pid])) bad('Không tìm thấy dự án');
+  const D = b.data; if (!D || !Array.isArray(D.items)) bad('Thiếu số liệu kế hoạch'); if (D.items.length > 30000) bad('Số dòng kế hoạch quá lớn');
+  const MS = []; for (let m = fr.slice(0, 7); m <= to.slice(0, 7); m = ymAdd(m, 1)) { MS.push(m); if (MS.length > 36) bad('Khoảng thời gian tối đa 36 tháng'); }
+  const n0 = v => Math.round(+v || 0);
+  const items = D.items.map(i => { const month = MS.includes(i.month) ? i.month : null, src = ['cn', 'moi', 'thue'].includes(i.src) ? i.src : bad('Dòng kế hoạch sai nguồn thu');
+    return { ...i, src, month, zone: month ? 'in' : ['out', 'carry', 'gap', 'nodate'].includes(i.zone) && i.zone !== 'in' ? i.zone : 'nodate', plan: n0(i.plan), act: n0(i.act), rem: n0(i.rem) }; });
+  const t = { cn: 0, moi: 0, thue: 0, un: 0 }; for (const i of items) { if (i.month) t[i.src] += i.plan; else if (i.zone !== 'out' && i.zone !== 'carry') t.un += i.plan; }
+  t.all = t.cn + t.moi + t.thue; t.units = new Set(items.map(i => i.src + '|' + (i.unit_id || i.grp || i.unit))).size; t.items = items.length; t.edited = items.filter(i => i.edited).length;
+  const now = new Date().toISOString(), data = { year: y, months: MS, from: fr, to, asof, items, total_left: D.total_left && typeof D.total_left === 'object' ? D.total_left : {}, can_plan: false, captured_at: D.captured_at || now, saved_at: now, frozen_at: submit ? now : null };
+  let p, first = '';
+  if (b.id) { p = await ypHead(db, b.id); if (!ypEdit(user, p)) bad(`Bản kế hoạch đang «${YP_ST[p.status]}» — không sửa được${p.status === 'da_duyet' ? ' (tạo phiên bản điều chỉnh)' : ''}`); }
+  else if (b.kind === 'ver') { const s0 = await ypHead(db, b.base_id), vs = await db.q('SELECT version, status FROM kd_year_plan WHERE root_id = $1', [s0.root_id]), mx = Math.max(...vs.map(v => v.version));
+    if (s0.status !== 'da_duyet' || s0.version !== mx || vs.some(v => ['nhap', 'yeu_cau_sua', 'cho_duyet'].includes(v.status))) bad('Chỉ tạo phiên bản điều chỉnh từ phiên bản đã duyệt mới nhất (không có phiên bản khác đang lập / chờ duyệt)');
+    p = await db.one(`INSERT INTO kd_year_plan (code, name, year, from_on, to_on, project_id, asof, version, root_id, status, created_by, hist) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'nhap', $10, '[]') RETURNING *`,
+      [s0.code, name, y, fr, to, pid, asof, mx + 1, s0.root_id, user.id]); first = `Tạo phiên bản điều chỉnh từ v${s0.version}`; }
+  else { const n = (await db.one(`INSERT INTO kd_counter (prefix, n) VALUES ($1, 1) ON CONFLICT (prefix) DO UPDATE SET n = kd_counter.n + 1 RETURNING n`, ['KHDT-' + y])).n;
     p = await db.one(`INSERT INTO kd_year_plan (code, name, year, from_on, to_on, project_id, asof, version, status, created_by, hist) VALUES ($1, $2, $3, $4, $5, $6, $7, 1, 'nhap', $8, '[]') RETURNING *`,
-      [`KHDT-${y}-${String(n).padStart(3, '0')}`, name, y, fr, to, b.project_id ? +b.project_id : null, asof, user.id]);
-    await db.q('UPDATE kd_year_plan SET root_id = id WHERE id = $1', [p.id]); p.root_id = p.id; }
-  const chg = !!b.id && !!per && (per.year !== +p.year || per.from_on !== ddDay(p.from_on) || per.to_on !== ddDay(p.to_on) || (per.project_id || null) !== (p.project_id || null));
-  if (chg) Object.assign(p, per);
-  const hist = [...(p.hist || [])], refresh = !b.id || submit || b.refresh || chg || ddDay(p.asof) !== asof;
-  let cap = null; if (refresh) cap = await ypCapture(db, user, { ...p, asof });
-  hist.push(ypH(user, !b.id ? (submit ? 'Lập và trình duyệt' : 'Lập — lưu nháp') : submit ? 'Trình duyệt' : refresh ? 'Sửa — cập nhật lại số liệu nguồn' : 'Sửa thông tin', submit ? `Chốt số liệu tại ngày chốt công nợ ${C.dmy(asof)}` : ''));
+      [`KHDT-${y}-${String(n).padStart(3, '0')}`, name, y, fr, to, pid, asof, user.id]);
+    await db.q('UPDATE kd_year_plan SET root_id = id WHERE id = $1', [p.id]); p.root_id = p.id;
+    if (b.kind === 'copy' && b.base_id) { const s0 = await db.one('SELECT code, version FROM kd_year_plan WHERE id = $1', [+b.base_id]); first = s0 ? `Tạo bản sao từ ${s0.code} v${s0.version}` : ''; } }
+  const hist = [...(p.hist || [])], ed = t.edited ? ` · ${t.edited} dòng đã chỉnh` : '';
+  if (first) hist.push(ypH(user, first, ''));
+  hist.push(ypH(user, submit ? (b.id ? 'Trình duyệt' : 'Lập và trình duyệt') : b.id ? 'Sửa — lưu nháp' : 'Lập — lưu nháp', `Kỳ ${C.dmy(fr)} – ${C.dmy(to)} · chốt công nợ ${C.dmy(asof)} · KH trong kỳ ${Math.round(t.all).toLocaleString('vi-VN')}${ed}${submit ? ' — chốt số liệu' : ''}`));
   const st = submit ? 'cho_duyet' : p.status === 'yeu_cau_sua' ? 'yeu_cau_sua' : 'nhap';
-  const x = await db.one(`UPDATE kd_year_plan SET name = $2, note = $3, asof = $4, approver_id = $5, status = $6, hist = $7, updated_by = $8, updated_at = now(), year = ${+p.year}, from_on = '${ddDay(p.from_on)}', to_on = '${ddDay(p.to_on)}', project_id = ${p.project_id ? +p.project_id : 'NULL'}${cap ? ', data = $9, totals = $10' : ''}${submit ? ', submitted_by = $8, submitted_at = now()' : ''} WHERE id = $1 RETURNING id, code, version, status`,
-    [p.id, name, note, asof, apr, st, JSON.stringify(hist), user.id, ...(cap ? [JSON.stringify(cap.data), JSON.stringify(cap.totals)] : [])]);
+  const x = await db.one(`UPDATE kd_year_plan SET name = $2, note = $3, asof = $4, approver_id = $5, status = $6, hist = $7, updated_by = $8, updated_at = now(), year = $9, from_on = $10, to_on = $11, project_id = $12, data = $13, totals = $14${submit ? ', submitted_by = $8, submitted_at = now()' : ''} WHERE id = $1 RETURNING id, code, version, status`,
+    [p.id, name, note, asof, apr, st, JSON.stringify(hist), user.id, y, fr, to, pid, JSON.stringify(data), JSON.stringify(t)]);
   await C.audit(db, 'year_plan', x.id, b.id ? 'update' : 'create', null, { code: x.code, version: x.version, status: st }, user, hist[hist.length - 1].act);
-  return { id: x.id, msg: `${x.code} v${x.version}: ${submit ? 'đã trình duyệt — số liệu đã chốt' : 'đã lưu nháp'}` };
+  return { id: x.id, code: x.code, version: x.version, status: st, status_l: YP_ST[st], msg: `Đã lưu ${x.code} · phiên bản ${x.version} · trạng thái «${YP_ST[st]}»${submit ? ' — số liệu đã chốt, chờ duyệt' : ''}` };
 }
 async function ypDecide(db, user, id, b) {
   const p = await ypHead(db, id); if (!ypDecider(user, p)) bad(p.status === 'cho_duyet' ? 'Bạn không phải người duyệt của bản kế hoạch này' : `Bản kế hoạch đang «${YP_ST[p.status]}»`);
