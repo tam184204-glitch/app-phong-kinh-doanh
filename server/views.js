@@ -961,7 +961,7 @@ async function saleUnits(db, user, f) {
   const ST = Object.fromEntries(E.unit.fields.find(x => x.k === 'status').o.map(o => [o[0], o[1]]));
   return { units: us.map(u => { const free = ['chua_mo_ban', 'con_ban', 'giu_cho', 'da_coc'].includes(u.status);
     const ok = !u.sale_ct && !u.moi_plan && (free || !!u.rent_ct);
-    return { id: u.id, code: u.code, project: u.project, project_id: u.project_id, building: u.building, building_id: u.building_id, area: u.area_tt != null ? +u.area_tt : null, price: +(u.total_price || u.list_price || 0) || null,
+    return { id: u.id, code: u.code, project: u.project, project_id: u.project_id, building: u.building, building_id: u.building_id, area: u.area_tt != null ? +u.area_tt : null, price: +(u.total_price || u.list_price || 0) || null, hd_value: +u.total_price > 0 ? Math.round(+u.total_price) : null,
       status_l: ST[u.status] || u.status, ok, note: u.sale_ct ? `Đã có HĐ bán ${u.sale_ct}` : u.moi_plan ? `Đã có kế hoạch bán mới (tháng ${u.moi_plan})` : u.rent_ct ? `Đang cho thuê – HĐ số ${u.rent_ct}` : free ? ST[u.status] || '' : `Trạng thái «${ST[u.status] || u.status}» — chưa thể bán` }; }) };
 }
 // 17/11/2026: LỊCH THU GỢI Ý CỦA 1 CĂN theo chính sách bán đang áp dụng (đã ban hành) — giá trị dự kiến bán, các đợt (nội dung, mốc tính, tỷ lệ, số tiền, tháng thu):
@@ -1004,7 +1004,9 @@ async function saleUnitPlan(db, user, b) {
   for (const [i, x] of L.entries()) {
     const u = chk.get(+x.unit_id) || (await saleUnits(db, user, { project: (await db.one('SELECT project_id FROM kd_unit WHERE id = $1', [+x.unit_id]))?.project_id })).units.find(z => z.id === +x.unit_id);
     if (!u) bad(`Dòng ${i + 1}: không tìm thấy căn`); if (!u.ok) bad(`Căn ${u.code}: ${u.note || 'không đủ điều kiện lập kế hoạch bán mới'}`);
-    const value = Math.round(+x.value || 0); if (!(value > 0)) bad(`Căn ${u.code}: nhập giá trị dự kiến bán`);
+    // 17/11/2026: giá trị dự kiến bán = «Giá trị HĐ» (Tổng giá căn hộ) trong Danh mục sản phẩm — không lấy chính sách bán hàng, thiếu thì không lập (không mặc định 0)
+    const value = u.hd_value; if (!(value > 0)) bad(`Căn ${u.code}: chưa có giá trị hợp đồng trong danh mục sản phẩm`);
+    if (Array.isArray(x.items)) x.items = x.items.map(z => z.pct != null && z.pct !== '' ? { ...z, amount: Math.round(value * +z.pct / 100) } : z);
     const sm = /^\d{4}-\d{2}$/.test(x.sale_month || '') ? x.sale_month : bad(`Căn ${u.code}: chọn tháng/năm dự kiến bán`);
     // 17/11/2026: lịch thu riêng từng căn theo đợt (items: tên đợt, nhóm, tháng thu | trống = chưa phân bổ kỳ, tỷ lệ, số tiền) — ưu tiên hơn lịch % kiểu cũ
     if (Array.isArray(x.items) && x.items.length) {
