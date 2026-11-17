@@ -206,7 +206,7 @@ function show(f, row, { plain } = {}) {
 const RET_COLS = ['doc_ret', 'doc_ret_on', 'ret_files'];
 function retCell(k, r) {
   if (k === 'doc_ret') return `<select class="ret-st ${r.doc_ret === 'da_tra' ? 'g' : 'a'}" data-ret="doc_ret">${[['chua_tra', 'Chưa trả hồ sơ'], ['da_tra', 'Đã trả hồ sơ']].map(([v, l]) => `<option value="${v}" ${(r.doc_ret || 'chua_tra') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
-  if (k === 'doc_ret_on') return `<input type="date" class="ret-d" data-ret="doc_ret_on" value="${esc(r.doc_ret_on || '')}" min="1900-01-01" max="2100-12-31">`;
+  if (k === 'doc_ret_on') return `<input class="ret-d" data-ret="doc_ret_on" value="${esc(dmy(r.doc_ret_on) || '')}" placeholder="dd/mm/yyyy" maxlength="10" inputmode="numeric" autocomplete="off" title="Ngày trả hồ sơ (dd/mm/yyyy)">`;   // 17/11/2026: dd/mm/yyyy
   const fs = r.ret_files || [];
   return `<div class="ret-f">${fs.map(f => `<span class="ret-fi"><a href="/api/file/${f.id}" target="_blank" rel="noopener" title="${esc(f.name)}">${ico(/\.pdf$/i.test(f.name) ? 'fa-file-pdf' : /\.(png|jpe?g|webp)$/i.test(f.name) ? 'fa-file-image' : 'fa-file')} ${esc(f.name)}</a><button type="button" data-retdel="${f.id}" title="Xóa tệp">×</button></span>`).join('')}<button type="button" class="btn sm" data-retup>${ico('fa-paperclip')} ${fs.length ? 'Thêm' : 'Đính kèm'}</button></div>`;
 }
@@ -2242,7 +2242,8 @@ async function listView(main, ent, params = {}) {
   });
   main.onchange = run(async e => {
     const t = e.target.closest('[data-ret]'); if (!t) return;
-    const k = t.dataset.ret, v = t.value || null;
+    const k = t.dataset.ret; let v = t.value || null;
+    if (k === 'doc_ret_on' && v) { v = parseDmy(v); if (!v) return toast('Ngày trả hồ sơ nhập theo dd/mm/yyyy', true); t.value = dmy(v); }   // 17/11/2026: ô ngày dd/mm/yyyy
     if (k === 'doc_ret') t.className = `ret-st ${v === 'da_tra' ? 'g' : 'a'}`;
     const patch = { [k]: v };
     if (k === 'doc_ret' && v === 'da_tra' && !t.closest('tr').querySelector('[data-ret=doc_ret_on]').value) patch.doc_ret_on = today();   // chọn Đã trả mà chưa có ngày → lấy hôm nay

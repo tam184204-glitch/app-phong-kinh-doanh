@@ -835,6 +835,7 @@ def('collect_plan', {
     { k: 'call_id', l: 'Từ lần nhắc nợ', t: 'ref', ref: 'debt_call', noForm: 1 },
     { k: 'prev_id', l: 'Kế hoạch trước khi đổi lịch', t: 'ref', ref: 'collect_plan', ro: 1 },
     { k: 'resched_reason', l: 'Lý do đổi lịch', t: 'text', ro: 1 },
+    { k: 'src_key', l: 'Nguồn tự lập', t: 'text', hide: 1 },   // dd:<ban|thue>:<id căn> — tích «Đưa vào kế hoạch thu» ở Báo cáo công nợ đến hạn
     { k: 'ability', l: 'Khả năng thu', t: 'sel', def: 'vua', o: [['cao', 'Cao', 'g'], ['vua', 'Vừa', 'a'], ['thap', 'Thấp', 'r']] },
     { k: 'explain', l: 'Giải trình (khi vượt công nợ)', t: 'long' },
     owner(),
