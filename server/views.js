@@ -701,6 +701,9 @@ async function dueDebt(db, user, f = {}) {
     banks: [...new Set(rows.map(r => r.bank).filter(Boolean))], owners: [...new Set(rows.map(r => r.owner).filter(Boolean))], plan: { month: t.slice(0, 7), in: planIn, out: planOut }, can_thu: can(user, E.receipt, 'c'),
     planned: Object.fromEntries((await db.q("SELECT id, src_key, month, plan_week, expected FROM kd_collect_plan WHERE src_key LIKE 'dd:%' AND status NOT IN ('thay_the','dong','tu_choi','da_chot') ORDER BY id")).map(x => [x.src_key,
       { id: x.id, month: String(x.month).slice(0, 7), week: +x.plan_week || 0, amt: +x.expected, l: periodL(String(x.month).slice(0, 7), +x.plan_week || 0) }])),
+    // 17/11/2026: số lần ghi nhận lịch sử kế hoạch thu theo căn + sheet (nhật ký các khoản kế hoạch, kể cả khoản đã gỡ)
+    plan_hist: Object.fromEntries((await db.q(`SELECT coalesce(p.scope, a.after->>'scope', a.before->>'scope', 'ban') sc, coalesce(p.unit_id::text, a.after->>'unit_id', a.before->>'unit_id') uid, count(*) n
+      FROM kd_audit a LEFT JOIN kd_collect_plan p ON p.id = a.rec_id WHERE a.ent = 'collect_plan' GROUP BY 1, 2`)).filter(x => x.uid).map(x => [`${x.sc}:${x.uid}`, +x.n])),
     promises: Object.fromEntries((await db.q('SELECT c.unit_id, min(k.promise_on) d FROM kd_debt_call k JOIN kd_contract c ON c.id = k.contract_id WHERE k.promise_on >= $1 GROUP BY c.unit_id', [today()])).map(x => [x.unit_id, ddDay(x.d)])),
     can_call: can(user, E.debt_call, 'c'), can_plan: can(user, E.collect_plan, 'c') };
 }
@@ -897,6 +900,55 @@ async function planAdjust(db, user, id, b) {
   await C.sys(db, 'collect_plan', x.id, { month: ym, plan_week: wk, expected_on: wk ? W[wk - 1].to : W[W.length - 1].to, expected: amt, owner_id: owner,
     ...(amt > (+x.debt_left || 0) && !x.explain ? { explain: 'Điều chỉnh tại Báo cáo kế hoạch thu' } : {}) }, user, 'dieu_chinh', `Điều chỉnh: ${ch.join('; ')}${b.reason ? ' · Lý do: ' + String(b.reason).slice(0, 300) : ''}`);
   return { ok: true, msg: 'Đã điều chỉnh: ' + ch.join('; ') };
+}
+// 17/11/2026: LỊCH SỬ THEO CĂN (Báo cáo công nợ đến hạn → Xem chi tiết) — tra theo mã căn, kể cả khi đã thu đủ / HĐ đã thanh lý:
+//  · Lịch sử kế hoạch thu: mọi bản ghi nhật ký của các khoản kế hoạch của căn (lập / sửa kỳ / sửa số tiền / điều chỉnh / bỏ chọn / gỡ / chốt kỳ / tự chuyển tiếp) — mỗi lần 1 dòng riêng,
+//    có nội dung trước → sau; khoản đã gỡ khỏi kế hoạch vẫn tra được qua nhật ký (bản ghi lập + bản ghi gỡ)
+//  · Lịch sử nhắc nợ: mọi lần nhắc của các HĐ của căn (mỗi lần 1 bản ghi, không ghi đè) + các lần chỉnh sửa (trước → sau) nếu có
+async function ddUnitHist(db, user, f) {
+  if (!can(user, E.installment, 'r')) deny();
+  const u = f.unit_id ? await db.one('SELECT id, code FROM kd_unit WHERE id = $1', [+f.unit_id]) : await db.one('SELECT id, code FROM kd_unit WHERE upper(code) = upper($1)', [String(f.code || '').trim()]);
+  if (!u) bad('Không tìm thấy mã căn');
+  const tab = ['ban', 'thue'].includes(f.tab) ? f.tab : null;
+  const opt = (e, k) => Object.fromEntries(E[e].fields.find(x => x.k === k).o.map(o => [o[0], o[1]]));
+  const PST = opt('collect_plan', 'status'), CH = opt('debt_call', 'channel'), CR = opt('debt_call', 'result'), KL = opt('contract', 'kind');
+  const users = new Map((await db.q('SELECT id, full_name FROM kd_user')).map(x => [x.id, x.full_name]));
+  // ---- kế hoạch thu
+  const live = await db.q('SELECT id, scope, contract_id FROM kd_collect_plan WHERE unit_id = $1', [u.id]);
+  // các khoản kế hoạch của căn: đang có + đã gỡ (nhận ra qua bản ghi lập / gỡ có mã căn) → lấy MỌI bản ghi nhật ký của các khoản đó (kể cả lần sửa kỳ trước khi gỡ)
+  const recs = [...new Set([...live.map(x => x.id), ...(await db.q("SELECT DISTINCT rec_id FROM kd_audit WHERE ent = 'collect_plan' AND (after->>'unit_id' = $1 OR before->>'unit_id' = $1)", [String(u.id)])).map(x => x.rec_id)])];
+  const aud = recs.length ? await db.q(`SELECT a.*, us.full_name who FROM kd_audit a LEFT JOIN kd_user us ON us.id = a.user_id WHERE a.ent = 'collect_plan' AND a.rec_id = ANY($1) ORDER BY a.at DESC, a.id DESC`, [recs]) : [];
+  const meta = new Map(live.map(x => [x.id, { scope: x.scope, contract_id: x.contract_id }]));
+  for (const a of [...aud].reverse()) { const j = { ...(a.before || {}), ...(a.after || {}) }; const m = meta.get(a.rec_id) || {}; meta.set(a.rec_id, { scope: m.scope || j.scope || null, contract_id: m.contract_id || j.contract_id || null }); }
+  const stt = new Map(), perOf = new Map();   // kỳ của khoản sau mỗi lần ghi nhận (lần theo nhật ký từ cũ đến mới)
+  for (const a of [...aud].reverse()) { const s0 = { ...(stt.get(a.rec_id) || {}), ...(a.before || {}) }, s1 = { ...s0, ...(a.after || {}) }; stt.set(a.rec_id, s1); perOf.set(a.id, a.action === 'xoa' ? s0 : s1); }
+  const cts = new Map((await db.q('SELECT c.id, c.number, c.kind, c.status, k.full_name customer FROM kd_contract c JOIN kd_customer k ON k.id = c.customer_id WHERE c.unit_id = $1', [u.id])).map(x => [x.id, x]));
+  const per = (m, w) => m ? periodL(String(m).slice(0, 7), +w || 0) : '';
+  const money = v => v == null || v === '' ? '—' : fmtMoney(v) + 'đ';
+  const PF = [['month', 'Tháng kế hoạch', v => v ? `${String(v).slice(5, 7)}/${String(v).slice(0, 4)}` : '—'], ['plan_week', 'Tuần', v => +v ? 'Tuần ' + v : 'Chưa phân bổ tuần'], ['expected', 'Số tiền kế hoạch', money],
+    ['expected_on', 'Ngày dự kiến', v => v ? C.dmy(ddDay(v)) : '—'], ['owner_id', 'Người phụ trách', v => v ? users.get(+v) || '#' + v : '—'], ['status', 'Trạng thái', v => PST[v] || v || '—'],
+    ['act_snap', 'Thực thu lúc chốt', money], ['carry_amt', 'Đã chuyển tiếp', money], ['carry_to', 'Chuyển tiếp sang', v => v || '—'], ['basis_note', 'Ghi chú', v => v || '—']];
+  const ACT = { tao: 'Đưa vào kế hoạch', sua_ky: 'Sửa kỳ / số tiền', dieu_chinh: 'Điều chỉnh kế hoạch', sua: 'Sửa kế hoạch', bo_chon: 'Bỏ khỏi kế hoạch (giữ phần đã thu)', xoa: 'Bỏ khỏi kế hoạch',
+    chot_ky: 'Chốt kỳ — tự động chuyển tiếp', doi_lich: 'Chuyển lịch', trinh_duyet: 'Trình duyệt', phe_duyet: 'Phê duyệt', tu_choi: 'Từ chối' };
+  const plans = aud.filter(a => !tab || (meta.get(a.rec_id)?.scope || 'ban') === tab).map(a => { const b = a.before || {}, af = a.after || {}, m = meta.get(a.rec_id) || {}, c = cts.get(+m.contract_id);
+    const auto = a.action === 'tao' && af.carry_in != null, full = a.action === 'tao' ? af : a.action === 'xoa' ? b : null;
+    const changes = full ? [] : PF.filter(([k]) => k in af || k in b).filter(([k]) => String(b[k] ?? '') !== String(af[k] ?? '')).map(([k, l, fmt]) => ({ l, from: fmt(b[k]), to: fmt(af[k]) }));
+    return { id: a.id, plan_id: a.rec_id, at: a.at, who: a.who || 'Hệ thống', act: auto ? 'Tự động chuyển tiếp — tạo kỳ mới' : ACT[a.action] || a.action, action: a.action, scope: m.scope || 'ban',
+      amount: full ? +full.expected || 0 : af.expected != null ? +af.expected : null, period: full ? per(full.month, full.plan_week) : per(perOf.get(a.id)?.month, perOf.get(a.id)?.plan_week),
+      note: [a.note, full?.basis_note].filter(Boolean).filter((x, i, xs) => xs.indexOf(x) === i).join(' · '), changes, contract: c?.number || '', customer: c?.customer || '' }; });
+  // ---- nhắc nợ
+  const calls = await db.q(`SELECT d.*, c.number, c.kind, c.status c_status, k.full_name customer, us.full_name who FROM kd_debt_call d JOIN kd_contract c ON c.id = d.contract_id JOIN kd_customer k ON k.id = c.customer_id
+    LEFT JOIN kd_user us ON us.id = d.created_by WHERE c.unit_id = $1 ORDER BY d.at DESC, d.id DESC`, [u.id]);
+  const ced = calls.length ? await db.q(`SELECT a.*, us.full_name who FROM kd_audit a LEFT JOIN kd_user us ON us.id = a.user_id WHERE a.ent = 'debt_call' AND a.rec_id = ANY($1) AND a.action <> 'tao' ORDER BY a.at DESC`, [calls.map(x => x.id)]) : [];
+  const CF = [['at', 'Ngày giờ', v => v ? new Date(v).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '—'], ['channel', 'Hình thức', v => CH[v] || v || '—'], ['result', 'Kết quả', v => CR[v] || v || '—'],
+    ['content', 'Nội dung', v => v || '—'], ['feedback', 'Phản hồi', v => v || '—'], ['promise_amount', 'Số tiền cam kết', money], ['promise_on', 'Ngày cam kết', v => v ? C.dmy(ddDay(v)) : '—'],
+    ['next_on', 'Lịch hẹn tiếp', v => v ? C.dmy(ddDay(v)) : '—'], ['note', 'Ghi chú', v => v || '—']];
+  // nhắc nợ: mọi lần nhắc của các HĐ của căn (1 lần nhắc có thể về cả tiến độ HĐMB trên HĐ thuê) — không tách theo sheet, ghi rõ hợp đồng
+  const callRows = calls.map(x => ({ id: x.id, at: x.at, who: x.who || 'Hệ thống', channel: CH[x.channel] || x.channel || '', result: CR[x.result] || x.result || '',
+    content: x.content || '', feedback: x.feedback || '', contact: x.contact_person || '', promise_amount: x.promise_amount != null ? +x.promise_amount : null, promise_on: x.promise_on ? ddDay(x.promise_on) : null,
+    next_on: x.next_on ? ddDay(x.next_on) : null, note: x.note || '', contract: x.number, kind_l: KL[x.kind] || x.kind, customer: x.customer, closed: x.c_status === 'thanh_ly',
+    edits: ced.filter(a => a.rec_id === x.id).map(a => ({ at: a.at, who: a.who || 'Hệ thống', changes: CF.filter(([k]) => k in (a.after || {}) || k in (a.before || {})).filter(([k]) => String(a.before?.[k] ?? '') !== String(a.after?.[k] ?? '')).map(([k, l, fmt]) => ({ l, from: fmt(a.before?.[k]), to: fmt(a.after?.[k]) })) })) }));
+  return { unit: u.code, unit_id: u.id, tab, plans, calls: callRows, customers: [...new Set([...cts.values()].map(c => c.customer))] };
 }
 async function planList(db, user, f) { if (!can(user, E.collect_plan, 'r')) deny(); const t = isoDay(f.to) || today(); return { rows: await planRows(db, user, f, t), asof: t }; }
 
@@ -1616,4 +1668,4 @@ async function monthly(db, period, projectId) {
   };
 }
 
-module.exports = { dueDebt, ddPlanToggle, planList, planReport, planAdjust, planRollover, planYear, debtStatus, setDebtClass, setDebtDays, debtCfg, debtGrpOf, debtGrpL, customerLedger, myDay, debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, voucherList, contractTrack, setLateRate, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
+module.exports = { dueDebt, ddPlanToggle, ddUnitHist, planList, planReport, planAdjust, planRollover, planYear, debtStatus, setDebtClass, setDebtDays, debtCfg, debtGrpOf, debtGrpL, customerLedger, myDay, debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, voucherList, contractTrack, setLateRate, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
