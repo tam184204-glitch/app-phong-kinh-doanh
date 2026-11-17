@@ -347,6 +347,8 @@ const wxHtml = ({ at, d }) => {
     ${tips.length ? `<div class="wx-tips">${tips.map(([t, i]) => `<div>${ico(i)} ${esc(t)}</div>`).join('')}</div>` : ''}
     <div class="wx-src">Nguồn: Open-Meteo · ${esc(at[1])}</div>`;
 };
+// 17/11/2026: home «Việc của tôi» thiết kế lại theo mẫu dashboard thẻ mềm (lời chào + nút tròn, 4 thẻ KPI có ô biểu tượng, biểu đồ việc theo ngày,
+// danh sách việc cần làm kiểu «hoạt động», cột phải: lịch ký · lịch tháng · thời tiết) — giữ màu của app
 V.myday = async main => {
   const me = M.me, first = String(me.full_name || '').split(/\s[–-]\s/)[0].trim().split(/\s+/).slice(-1)[0] || '';   // «Nguyễn Thị Thư» → Thư; bỏ phần sau « – »
   const DOW = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
@@ -354,17 +356,33 @@ V.myday = async main => {
   const clock = () => { const d = new Date(); return `${DOW[d.getDay()]}, ${dmy(today())} · ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
   const city = lsGet('ctg-kd-wx-city') || 'bac_ninh';
   const [g, gi] = greet();
-  main.innerHTML = `<div class="page">
-    <div class="md-hero card mb"><div class="md-hi"><div class="eyebrow">${ico(gi)} <span id="mdClock">${clock()}</span></div><h1 id="mdGreet">${g}${first ? ', ' + esc(first) : ''}!</h1>
-        <div class="md-sub" id="mdSub">Đang tổng hợp việc hôm nay…</div></div>
-      <div class="md-wx"><div class="wx-head"><b>${ico('fa-cloud-sun')} Thời tiết hôm nay</b><span class="grow"></span>
-          <select id="wxCity" class="inp sm">${WX_CITY.map(c => `<option value="${c[0]}" ${city === c[0] ? 'selected' : ''}>${esc(c[1])}</option>`).join('')}<option value="gps" ${city === 'gps' ? 'selected' : ''}>Vị trí hiện tại</option></select></div>
-        <div id="wxBox"><div class="empty">Đang lấy thời tiết…</div></div></div></div>
-    <div class="grid g4 mb" id="mdK"></div>
-    <div class="grid md-cols"><div class="card"><div class="hd"><h3>${ico('fa-list-check')} Việc cần làm</h3><span class="grow"></span><a href="#/v/alerts" class="small">Xem tất cả ›</a></div><div id="mdTodo"><div class="empty">Đang tải…</div></div></div>
-      <div><div class="card mb"><div class="hd"><h3>${ico('fa-calendar-check')} Lịch ký 7 ngày tới</h3><span class="grow"></span><a href="#/v/signing" class="small">Lịch ký ›</a></div><div id="mdSign"><div class="empty">Đang tải…</div></div></div>
-        <div class="card"><div class="hd"><h3>${ico('fa-bolt')} Mở nhanh</h3></div><div class="md-quick" id="mdQuick"></div></div></div></div></div>`;
-  // đồng hồ + lời chào tự đổi theo giờ; dừng khi rời màn
+  const QUICK = [['vouchers', 'Phiếu thu – Phiếu chi', 'fa-file-invoice-dollar'], ['board', 'Bảng hàng', 'fa-table-cells'], ['loantrack', 'Theo dõi công nợ', 'fa-file-contract'],
+    ['signing', 'Lịch ký', 'fa-calendar-check'], ['approvals', 'Hộp phê duyệt', 'fa-inbox'], ['dashboard', 'Dashboard', 'fa-gauge-high'], ['e:customer', 'Khách hàng', 'fa-users']];
+  const okNav = new Set(M.menu.flatMap(m => m[3].map(x => x[0])));
+  const quick = QUICK.filter(q => okNav.has(q[0]));
+  const iso = x => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+  const pd = s => { const [y, m, dd] = s.split('-').map(Number); return new Date(y, m - 1, dd); };
+  const plus = (s, k) => { const x = pd(s); x.setDate(x.getDate() + k); return iso(x); };
+  main.innerHTML = `<div class="page hm">
+    <div class="hm-top"><div><div class="hm-eb">${ico(gi)} <span id="mdClock">${clock()}</span></div><h1 id="mdGreet">${g}${first ? ', ' + esc(first) : ''}!</h1>
+        <div class="hm-sub" id="mdSub">Đang tổng hợp việc hôm nay…</div></div>
+      <div class="hm-qa" id="mdQuick">${quick.map(([id, l, ic]) => `<a class="hm-rb" href="${id.startsWith('e:') ? '#/e/' + id.slice(2) : '#/v/' + id}" title="${esc(l)}" aria-label="${esc(l)}" data-q="${id}">${ico(ic)}</a>`).join('')}</div></div>
+    <div class="hm-kpis" id="mdK">${'<div class="hm-k sk"></div>'.repeat(4)}</div>
+    <div class="hm-grid">
+      <div class="hm-main">
+        <section class="hm-card hm-chart"><div class="hm-hd"><h3>Việc theo ngày</h3><span class="grow"></span>
+            <select id="mdRange" class="hm-sel" aria-label="Khoảng thời gian"><option value="next">7 ngày tới</option><option value="prev">7 ngày qua</option></select></div>
+          <div class="hm-leg"><span><i style="background:#2D7DD2"></i>Việc đến hạn</span><span><i style="background:#D4850F"></i>Lịch ký hợp đồng</span></div>
+          <div id="mdChart" class="hm-plot"><div class="empty">Đang tải…</div></div></section>
+        <section class="hm-card hm-act"><div class="hm-hd"><h3>Việc cần làm</h3><span class="grow"></span><a href="#/v/alerts" class="hm-pill">Xem tất cả</a></div><div id="mdTodo"><div class="empty">Đang tải…</div></div></section>
+      </div>
+      <aside class="hm-side">
+        <section class="hm-card hm-t-rose"><div class="hm-hd"><h3>Lịch ký 7 ngày tới</h3><span class="grow"></span><a href="#/v/signing" class="hm-plus" title="Lịch ký" aria-label="Mở Lịch ký">${ico('fa-arrow-right')}</a></div><div id="mdSign"><div class="empty">Đang tải…</div></div></section>
+        <section class="hm-card hm-t-blue"><div class="hm-hd"><h3>Lịch</h3><span class="grow"></span><button type="button" class="hm-pill" id="calToday">Hôm nay</button></div><div id="mdCal"></div><div id="mdDay" class="hm-day"></div></section>
+        <section class="hm-card hm-t-amber hm-wx"><div class="hm-hd"><h3>${ico('fa-cloud-sun')} Thời tiết</h3><span class="grow"></span>
+            <select id="wxCity" class="hm-sel">${WX_CITY.map(c => `<option value="${c[0]}" ${city === c[0] ? 'selected' : ''}>${esc(c[1])}</option>`).join('')}<option value="gps" ${city === 'gps' ? 'selected' : ''}>Vị trí hiện tại</option></select></div>
+          <div id="wxBox"><div class="empty">Đang lấy thời tiết…</div></div></section>
+      </aside></div></div>`;
   const tick = setInterval(() => { const el = $('#mdClock'); if (!el || !document.body.contains(el)) return clearInterval(tick); el.textContent = clock(); const [g2] = greet(); $('#mdGreet').textContent = `${g2}${first ? ', ' + first : ''}!`; }, 30e3);
   const wx = async force => { const box = $('#wxBox', main); try { box.innerHTML = wxHtml(await wxLoad(force)); } catch (e) { box.innerHTML = `<div class="empty">Chưa lấy được thời tiết (cần kết nối Internet). <a href="#" id="wxRe">Thử lại</a></div>`; } };
   $('#wxCity', main).onchange = async e => {
@@ -377,31 +395,84 @@ V.myday = async main => {
     }
     lsSet('ctg-kd-wx-city', v); await wx(true);
   };
-  const QUICK = [['vouchers', 'Phiếu thu – Phiếu chi', 'fa-file-invoice-dollar'], ['loantrack', 'Theo dõi công nợ', 'fa-file-contract'], ['board', 'Bảng hàng', 'fa-table-cells'], ['signing', 'Lịch ký', 'fa-calendar-check'],
-    ['approvals', 'Hộp phê duyệt', 'fa-inbox'], ['dashboard', 'Dashboard', 'fa-gauge-high'], ['e:customer', 'Khách hàng', 'fa-users']];
-  const okNav = new Set(M.menu.flatMap(m => m[3].map(x => x[0])));
-  $('#mdQuick', main).innerHTML = QUICK.filter(q => okNav.has(q[0])).map(([id, l, ic]) => `<a href="${id.startsWith('e:') ? '#/e/' + id.slice(2) : '#/v/' + id}">${ico(ic)}<span>${esc(l)}</span></a>`).join('') || '<div class="empty">—</div>';
-  let al = [];
+  let al = [], d = null, calM = today().slice(0, 7), selDay = null;
+  const go = a => { if (a.ent) openDetail(a.ent, a.id); else if (a.unit_id) location.hash = `#/v/unit360?id=${a.unit_id}`; else if (a.cat === 'ke_hoach') location.hash = '#/e/collect_plan'; };
   main.onclick = e => {
     if (e.target.closest('#wxRe')) { e.preventDefault(); return wx(true); }
-    const r = e.target.closest('[data-ai]'); if (r) { const a = al[+r.dataset.ai]; if (a.ent) openDetail(a.ent, a.id); else if (a.unit_id) location.hash = `#/v/unit360?id=${a.unit_id}`; else if (a.cat === 'ke_hoach') location.hash = '#/e/collect_plan'; return; }
-    const s = e.target.closest('[data-sg]'); if (s) openDetail(s.dataset.sg.split(':')[0], +s.dataset.sg.split(':')[1]);
+    const r = e.target.closest('[data-ai]'); if (r) return go(al[+r.dataset.ai]);
+    const s = e.target.closest('[data-sg]'); if (s) return openDetail(s.dataset.sg.split(':')[0], +s.dataset.sg.split(':')[1]);
+    const nv = e.target.closest('[data-cm]'); if (nv) { const [y, m] = calM.split('-').map(Number); calM = iso(new Date(y, m - 1 + +nv.dataset.cm, 1)).slice(0, 7); return cal(); }
+    if (e.target.closest('#calToday')) { calM = today().slice(0, 7); selDay = today(); return cal(); }
+    const dd = e.target.closest('[data-cd]'); if (dd) { selDay = selDay === dd.dataset.cd ? null : dd.dataset.cd; return cal(); }
   };
+  main.onkeydown = e => { if (e.key === 'Enter' && e.target.matches('[data-ai],[data-sg]')) e.target.click(); };
   wx();
-  const d = await api('GET', '/api/my-day'); al = d.alerts;
-  const n = l => al.filter(a => a.lvl === l).length, todaySign = d.signing.filter(x => x.plan_sign === d.today).length;
+  try { d = await api('GET', '/api/my-day'); } catch (e) { $('#mdSub', main).textContent = 'Chưa tải được việc hôm nay: ' + e.message; return; }
+  al = d.alerts;
+  const T = d.today, n = l => al.filter(a => a.lvl === l).length, todaySign = d.signing.filter(x => x.plan_sign === T).length;
+  const dayDiff = x => Math.round((pd(x) - pd(T)) / 864e5);
   $('#mdSub', main).innerHTML = !al.length && !d.signing.length ? 'Hôm nay chưa có việc tồn đọng nào — chúc một ngày làm việc hiệu quả!'
     : `Hôm nay có <b>${n('r')}</b> việc gấp, <b>${n('a')}</b> việc cần làm${d.approvals ? `, <b>${d.approvals}</b> hồ sơ chờ bạn duyệt` : ''}${todaySign ? `, <b>${todaySign}</b> lịch ký hợp đồng` : ''}.`;
-  const tile = (l, v, sub, href, red) => `<a class="card kpi ${red ? 'red' : ''}" href="${href}" style="text-decoration:none;color:inherit"><div class="l">${l}</div><div class="v" style="font-size:22px">${v}</div><div class="s">${sub}</div></a>`;
-  $('#mdK', main).innerHTML = tile('Việc gấp', n('r'), 'quá hạn, cần xử lý ngay', '#/v/alerts', n('r') > 0) + tile('Việc cần làm', n('a'), 'sắp đến hạn', '#/v/alerts')
-    + tile('Chờ tôi duyệt', d.approvals, 'trong Hộp phê duyệt', '#/v/approvals') + tile('Lịch ký 7 ngày', d.signing.length, todaySign ? `${todaySign} lịch hôm nay` : 'không có lịch hôm nay', '#/v/signing');
-  const LV = { r: 'Gấp', a: 'Cần làm', b: 'Theo dõi' };
-  $('#mdTodo', main).innerHTML = al.length ? `<div class="md-todo">${al.slice(0, 30).map((a, i) => `<div class="alert-row" data-ai="${i}"><span class="lv ${a.lvl}"></span><div class="tx"><div>${esc(a.text)}</div>
-      <div class="small muted">${esc(M.alertCat[a.cat] || '')}${a.due ? ' · ' + dmy(a.due) : ''}${a.who ? ' · ' + esc(a.who) : ''}</div></div><span class="pill ${a.lvl === 'r' ? 'r' : a.lvl === 'a' ? 'a' : 'b'}">${LV[a.lvl]}</span></div>`).join('')}</div>
-      ${al.length > 30 ? `<div class="small muted mt">Còn ${al.length - 30} việc nữa — <a href="#/v/alerts">xem tất cả</a></div>` : ''}` : `<div class="empty">${ico('fa-circle-check')} Không có việc tồn đọng</div>`;
-  $('#mdSign', main).innerHTML = d.signing.length ? d.signing.map(x => `<div class="alert-row" data-sg="${x.ent}:${x.id}"><span class="lv ${x.plan_sign === d.today ? 'a' : 'b'}"></span><div class="tx">
-      <div><b>${x.plan_sign === d.today ? 'Hôm nay' : dmy(x.plan_sign)}</b> · ${esc(x.unit || '')} · ${esc(x.customer || '')}</div><div class="small muted">${esc([x.number, x.kind_l, x.sign_place, x.owner].filter(Boolean).join(' · '))}</div></div></div>`).join('')
-    : '<div class="empty">Không có lịch ký trong 7 ngày tới</div>';
+  if (d.approvals) { const b = $('[data-q="approvals"]', main); b && b.insertAdjacentHTML('beforeend', `<span class="hm-badge">${d.approvals > 99 ? '99+' : d.approvals}</span>`); }
+  // 4 thẻ KPI — ô biểu tượng khối + số + dòng phụ màu theo thẻ
+  const tile = (cls, ic, l, v, sub, href) => `<a class="hm-k ${cls}" href="${href}"><span class="hm-ki">${ico(ic)}</span><div><div class="l">${l}</div><div class="v">${v}</div><div class="s">${sub}</div></div></a>`;
+  $('#mdK', main).innerHTML = tile('k-red', 'fa-fire', 'Việc gấp', n('r'), 'quá hạn, cần xử lý ngay', '#/v/alerts') + tile('k-amber', 'fa-list-check', 'Việc cần làm', n('a'), 'sắp đến hạn', '#/v/alerts')
+    + tile('k-blue', 'fa-inbox', 'Chờ tôi duyệt', d.approvals, 'trong Hộp phê duyệt', '#/v/approvals') + tile('k-green', 'fa-calendar-check', 'Lịch ký 7 ngày', d.signing.length, todaySign ? `${todaySign} lịch hôm nay` : 'không có lịch hôm nay', '#/v/signing');
+  // biểu đồ đường: số việc đến hạn + số lịch ký theo từng ngày (7 ngày tới / 7 ngày qua)
+  const chart = () => {
+    const prev = $('#mdRange', main).value === 'prev', days = [...Array(7)].map((_, i) => plus(T, prev ? i - 6 : i));
+    const A = days.map(x => al.filter(a => a.due === x).length), S = days.map(x => d.signing.filter(s => s.plan_sign === x).length);
+    const box = $('#mdChart', main); if (!box) return; const W = Math.max(300, box.clientWidth || 640), H = 250, L = 34, R = 26, TP = 16, B = 44, top = Math.ceil(Math.max(4, ...A, ...S) / 4) * 4, step = (W - L - R) / 6;
+    const X = i => L + i * step, Y = v => TP + (H - TP - B) * (1 - v / top);
+    const line = (vs, c) => `<path d="${vs.map((v, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join('')}" fill="none" stroke="${c}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`
+      + vs.map((v, i) => `<circle cx="${X(i)}" cy="${Y(v)}" r="4.5" fill="${c}" stroke="#fff" stroke-width="2"/>`).join('');
+    const area = `<path d="M${X(0)},${Y(0)}${A.map((v, i) => `L${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join('')}L${X(6)},${Y(0)}Z" fill="url(#hmG)"/>`;
+    const dl = x => ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][pd(x).getDay()];
+    const pk = A.indexOf(Math.max(...A));
+    box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Biểu đồ số việc đến hạn và lịch ký theo ngày"><defs><linearGradient id="hmG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2D7DD2" stop-opacity=".16"/><stop offset="1" stop-color="#2D7DD2" stop-opacity="0"/></linearGradient></defs>
+      ${[0, 1, 2, 3, 4].map(k => { const v = top * k / 4; return `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="#e6ebf2"/><text x="${L - 8}" y="${Y(v) + 4}" text-anchor="end" class="hm-ax">${v}</text>`; }).join('')}
+      ${days.map((x, i) => `<text x="${X(i)}" y="${H - 22}" text-anchor="middle" class="hm-ax${x === T ? ' on' : ''}">${x === T ? 'Hôm nay' : dl(x)}<tspan x="${X(i)}" dy="15">${x.slice(8)}/${+x.slice(5, 7)}</tspan></text>`).join('')}
+      <line class="hm-cross" y1="${TP}" y2="${H - B}" stroke="#94a3b8" stroke-dasharray="3 3" style="display:none"/>
+      ${area}${line(S, '#D4850F')}${line(A, '#2D7DD2')}
+      ${days.map((x, i) => `<rect x="${X(i) - step / 2}" y="${TP}" width="${step}" height="${H - TP - B}" fill="transparent" data-hi="${i}"/>`).join('')}</svg>
+      ${A[pk] > 0 ? `<div class="hm-bub" style="left:${(X(pk) / W * 100).toFixed(1)}%;top:${(Y(A[pk]) / H * 100).toFixed(1)}%">Nhiều việc nhất: ${A[pk]}</div>` : ''}
+      ${A.every(v => !v) && S.every(v => !v) ? `<div class="hm-zero">${ico('fa-mug-hot')} Không có việc đến hạn hay lịch ký trong ${prev ? '7 ngày qua' : '7 ngày tới'}</div>` : ''}<div class="hm-tip" hidden></div>`;
+    const svg = $('#mdChart svg', main), tip = $('#mdChart .hm-tip', main), cr = $('.hm-cross', svg);
+    svg.onmousemove = e => { const r = e.target.closest('[data-hi]'); if (!r) return; const i = +r.dataset.hi;
+      cr.style.display = ''; cr.setAttribute('x1', X(i)); cr.setAttribute('x2', X(i));
+      tip.hidden = false; tip.style.left = (X(i) / W * 100) + '%'; tip.innerHTML = `<b>${DOW[pd(days[i]).getDay()]}, ${dmy(days[i])}</b><div><i style="background:#2D7DD2"></i>Việc đến hạn <b>${A[i]}</b></div><div><i style="background:#D4850F"></i>Lịch ký <b>${S[i]}</b></div>`; };
+    svg.onmouseleave = () => { cr.style.display = 'none'; tip.hidden = true; };
+  };
+  $('#mdRange', main).onchange = chart; chart();
+  if (window.ResizeObserver) { let w0 = 0; const ro = new ResizeObserver(([e]) => { if (!document.body.contains(main.querySelector('#mdChart'))) return ro.disconnect(); const w = Math.round(e.contentRect.width); if (w && Math.abs(w - w0) > 8) { w0 = w; chart(); } }); ro.observe($('#mdChart', main)); }
+  // việc cần làm — dạng «hoạt động»: ô biểu tượng theo nhóm, mốc hạn bên phải
+  const CI = { phe_duyet: 'fa-inbox', giu_cho: 'fa-hourglass-half', noxh: 'fa-folder-open', ky_hd: 'fa-file-signature', no_qua_han: 'fa-sack-dollar', den_han: 'fa-coins', cam_ket: 'fa-handshake',
+    lien_he: 'fa-phone', ban_giao: 'fa-key', ton_tai: 'fa-screwdriver-wrench', so_hong: 'fa-book', cskh: 'fa-comments', ke_hoach: 'fa-clipboard-list' };
+  const when = a => { if (!a.due) return ''; const k = dayDiff(a.due); return k < 0 ? `quá ${-k} ngày` : k === 0 ? 'hôm nay' : `còn ${k} ngày`; };
+  $('#mdTodo', main).innerHTML = al.length ? `<div class="hm-list">${al.slice(0, 30).map((a, i) => `<div class="hm-row" data-ai="${i}" tabindex="0"><span class="hm-ri l-${a.lvl}">${ico(CI[a.cat] || 'fa-bell')}</span>
+      <div class="tx"><div>${esc(a.text)}</div><div class="small muted">${esc(M.alertCat[a.cat] || '')}${a.who ? ' · ' + esc(a.who) : ''}</div></div><span class="hm-when ${a.lvl === 'r' ? 'r' : ''}">${when(a)}</span></div>`).join('')}</div>
+      ${al.length > 30 ? `<div class="small muted hm-more">Còn ${al.length - 30} việc nữa — <a href="#/v/alerts">xem tất cả</a></div>` : ''}` : `<div class="empty">${ico('fa-circle-check')} Không có việc tồn đọng</div>`;
+  // lịch ký 7 ngày — dạng danh sách ô tích như To-Do
+  $('#mdSign', main).innerHTML = d.signing.length ? `<div class="hm-chk">${d.signing.slice(0, 8).map(x => `<div class="hm-ck" data-sg="${x.ent}:${x.id}" tabindex="0"><span class="bx ${x.plan_sign === T ? 'on' : ''}">${x.plan_sign === T ? ico('fa-pen-nib') : ''}</span>
+      <div class="tx"><div><b>${x.plan_sign === T ? 'Hôm nay' : dmy(x.plan_sign).slice(0, 5)}</b> · ${esc(x.unit || '')} · ${esc(x.customer || '')}</div><div class="small muted">${esc([x.number, x.kind_l, x.sign_place].filter(Boolean).join(' · '))}</div></div></div>`).join('')}</div>
+      ${d.signing.length > 8 ? `<div class="small muted hm-more"><a href="#/v/signing">+${d.signing.length - 8} lịch khác</a></div>` : ''}` : `<div class="hm-none">${ico('fa-calendar')} Không có lịch ký trong 7 ngày tới</div>`;
+  // lịch tháng — chấm theo ngày có việc đến hạn / lịch ký; bấm ngày xem việc của ngày đó
+  const cal = () => {
+    const [y, m] = calM.split('-').map(Number), off = (new Date(y, m - 1, 1).getDay() + 6) % 7, nd = new Date(y, m, 0).getDate();
+    const rows = [...Array(Math.ceil((off + nd) / 7) * 7)].map((_, i) => iso(new Date(y, m - 1, i - off + 1)));
+    const dot = x => { const a = al.filter(z => z.due === x), s = d.signing.some(z => z.plan_sign === x); return (a.some(z => z.lvl === 'r') ? '<i class="r"></i>' : a.length ? '<i class="a"></i>' : '') + (s ? '<i class="s"></i>' : ''); };
+    $('#mdCal', main).innerHTML = `<div class="hm-cm"><button type="button" data-cm="-1" aria-label="Tháng trước">${ico('fa-chevron-left')}</button><b>Tháng ${m}/${y}</b><button type="button" data-cm="1" aria-label="Tháng sau">${ico('fa-chevron-right')}</button></div>
+      <div class="hm-cg">${['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map((w, i) => `<span class="w${i > 4 ? ' we' : ''}">${w}</span>`).join('')}
+      ${rows.map((x, i) => `<button type="button" data-cd="${x}" class="${x.slice(0, 7) !== calM ? 'out' : ''}${i % 7 > 4 ? ' we' : ''}${x === T ? ' tdy' : ''}${x === selDay ? ' sel' : ''}">${+x.slice(8)}<span class="dt">${dot(x)}</span></button>`).join('')}</div>`;
+    const box = $('#mdDay', main);
+    if (!selDay) { box.innerHTML = '<div class="small muted hm-cl"><span><i class="r"></i>việc gấp</span><span><i class="a"></i>đến hạn</span><span><i class="s"></i>lịch ký</span></div>'; return; }
+    const a = al.map((z, i) => [z, i]).filter(([z]) => z.due === selDay), s = d.signing.filter(z => z.plan_sign === selDay);
+    box.innerHTML = `<div class="hm-dh">${DOW[pd(selDay).getDay()]}, ${dmy(selDay)}</div>` + (a.length || s.length
+      ? s.map(x => `<div class="hm-dr" data-sg="${x.ent}:${x.id}"><i class="s"></i>Ký ${esc(x.number || '')} · ${esc(x.unit || '')} · ${esc(x.customer || '')}</div>`).join('')
+        + a.slice(0, 6).map(([z, i]) => `<div class="hm-dr" data-ai="${i}"><i class="${z.lvl === 'r' ? 'r' : 'a'}"></i>${esc(z.text)}</div>`).join('') + (a.length > 6 ? `<div class="small muted">+${a.length - 6} việc khác</div>` : '')
+      : '<div class="small muted">Không có việc đến hạn / lịch ký</div>');
+  };
+  cal();
 };
 V.alerts = async (main, params) => {
   const mgr = ['truong_phong', 'lanh_dao', 'admin'].includes(M.me.role);
