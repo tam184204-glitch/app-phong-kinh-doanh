@@ -2533,22 +2533,22 @@ V.ctdebt = async (main, params = {}) => {
 // Theo dõi công nợ đến hạn (CN-11, 17/11/2026): từng đợt thu chưa thu đủ có hạn ≤ hôm nay của HĐ còn hiệu lực — tự tải lại khi lưu phiếu thu / sửa hạn ở bất kỳ đâu
 // 17/11/2026: Báo cáo công nợ đến hạn tự động (CN-11) — tại ngày chốt: mỗi dòng 1 khoản đến hạn chưa thanh toán đủ của 1 hợp đồng; phải thu / phải trả (HĐ vay) tách riêng, không bù trừ
 // 17/11/2026: lịch sử theo căn — «Lịch sử kế hoạch thu» và «Lịch sử nhắc nợ», mới nhất trước; mỗi lần 1 dòng riêng, thay đổi ghi trước → sau (không ghi đè)
-const ddHistHtml = (h, only) => {
+const ddHistHtml = (h, only, act = '') => {
   const chg = xs => xs.map(c => `<div><span class="muted">${esc(c.l)}:</span> <s class="muted">${esc(c.from)}</s> → <b>${esc(c.to)}</b></div>`).join('');
   const P = `<div class="sec-title">${ico('fa-calendar-check')} Lịch sử đưa vào kế hoạch thu <span class="small muted">(${h.plans.length} lần ghi nhận${h.tab ? ' · ' + (h.tab === 'thue' ? 'công nợ cho thuê' : 'công nợ bán hàng') : ''})</span></div>
     ${h.plans.length ? `<div class="tbl-wrap"><table class="t compact noclick"><thead><tr><th>Thời gian</th><th>Người thực hiện</th><th>Thao tác</th><th>Kỳ kế hoạch</th><th class="num">Số tiền</th><th>Nội dung thay đổi / ghi chú</th><th>Hợp đồng · khách hàng</th></tr></thead><tbody>
       ${h.plans.map(x => `<tr><td style="white-space:nowrap">${dmyhm(x.at)}</td><td>${esc(x.who)}</td><td><b>${esc(x.act)}</b></td><td>${esc(x.period || '')}</td><td class="num">${x.amount != null ? fm(x.amount) : ''}</td>
         <td class="small" style="white-space:normal;min-width:300px;max-width:420px">${chg(x.changes)}${x.note ? `<div class="muted">${esc(x.note)}</div>` : ''}</td><td class="small">${esc(x.contract)}<div class="muted">${esc(x.customer)}</div></td></tr>`).join('')}</tbody></table></div>` : '<div class="small muted">Chưa có lần đưa vào kế hoạch thu</div>'}`;
-  const Cl = `<div class="sec-title">${ico('fa-phone-volume')} Lịch sử nhắc nợ <span class="small muted">(${h.calls.length} lần)</span></div>
+  const Cl = `<div style="display:flex;align-items:center;gap:12px"><div class="sec-title" style="flex:1;min-width:0">${ico('fa-phone-volume')} Lịch sử nhắc nợ <span class="small muted">(${h.calls.length} lần)</span></div>${act}</div>
     ${h.calls.length ? `<div class="tbl-wrap"><table class="t compact noclick"><thead><tr><th>Ngày giờ</th><th>Người thực hiện</th><th>Hình thức</th><th>Nội dung nhắc</th><th>Phản hồi khách hàng</th><th>Cam kết thanh toán</th><th>Hẹn nhắc tiếp</th><th>Kết quả</th><th>Hợp đồng</th></tr></thead><tbody>
       ${h.calls.map(x => `<tr><td style="white-space:nowrap">${dmyhm(x.at)}</td><td>${esc(x.who)}</td><td>${esc(x.channel)}${x.contact ? `<div class="small muted">${esc(x.contact)}</div>` : ''}</td><td class="small" style="white-space:pre-wrap">${esc(x.content)}</td>
         <td class="small" style="white-space:pre-wrap">${esc(x.feedback)}</td><td>${x.promise_amount ? fm(x.promise_amount) : ''}${x.promise_on ? `<div class="small">ngày ${dmy(x.promise_on)}</div>` : ''}</td><td>${x.next_on ? dmy(x.next_on) : ''}</td><td>${esc(x.result)}</td>
         <td class="small">${esc(x.contract)}<div class="muted">${esc(x.kind_l)}${x.closed ? ' · đã thanh lý' : ''}</div></td></tr>
-        ${x.note || x.edits.length ? `<tr><td></td><td colspan="8" class="small">${x.note ? `<div><span class="muted">Ghi chú:</span> ${esc(x.note)}</div>` : ''}${x.edits.map(e => `<div class="muted">Đã sửa ${dmyhm(e.at)} · ${esc(e.who)}:</div>${chg(e.changes)}`).join('')}</td></tr>` : ''}`).join('')}</tbody></table></div>` : '<div class="small muted">Chưa có lần nhắc nợ</div>'}`;
+        ${x.note || x.edits.length ? `<tr><td></td><td colspan="8" class="small">${x.note ? `<div><span class="muted">Ghi chú:</span> ${esc(x.note)}</div>` : ''}${x.edits.map(e => `<div class="muted">Đã sửa ${dmyhm(e.at)} · ${esc(e.who)}:</div>${chg(e.changes)}`).join('')}</td></tr>` : ''}`).join('')}</tbody></table></div>` : '<div class="empty">Chưa có lần nhắc nợ' + (act ? ' — bấm «Thêm lần nhắc» để ghi lần đầu' : '') + '</div>'}`;
   return only === 'calls' ? Cl : only === 'plans' ? P : Cl + P; };
-const ddHistModal = async (q, tab, only) => { const h = await api('GET', '/api/due-debt/unit-history?' + new URLSearchParams({ ...q, ...(tab ? { tab } : {}) }));
+const ddHistModal = async (q, tab, only, act = '') => { const h = await api('GET', '/api/due-debt/unit-history?' + new URLSearchParams({ ...q, ...(tab ? { tab } : {}) }));
   return modal({ wide: true, title: `${ico('fa-clock-rotate-left')} Lịch sử ${only === 'calls' ? 'nhắc nợ' : only === 'plans' ? 'kế hoạch thu' : 'kế hoạch thu & nhắc nợ'} · căn ${esc(h.unit)}`,
-    body: `<div class="small muted mb">Khách hàng: ${esc(h.customers.join(', '))} · lịch sử giữ nguyên cả khi đã thu đủ hoặc hợp đồng đã thanh lý</div>${ddHistHtml(h, only)}` }); };
+    body: `<div class="small muted mb">Khách hàng: ${esc(h.customers.join(', '))} · lịch sử giữ nguyên cả khi đã thu đủ hoặc hợp đồng đã thanh lý</div>${ddHistHtml(h, only, act)}` }); };
 V.duedebt = async main => {
   const f = filt(), s = ST.duedebt ||= { q: '', kind: '', dir: '', grp: '', bank: '', owner: '', from: '', to: '', tab: 'ban' };
   // 17/11/2026: 2 sheet — «Công nợ bán hàng đến hạn» (tiền căn hộ, phí bảo trì, hoàn thiện / nội thất: HĐMB, thuê mua, hoàn thiện, tiến độ HĐMB của HĐ thuê / vay, gốc khách chuyển HĐ vay bán căn)
@@ -2750,8 +2750,8 @@ V.duedebt = async main => {
       const go = run(async () => { const c = $('#uhC', m.el).value.trim(); if (!c) return toast('Nhập mã căn', true); await ddHistModal({ code: c }); m.close(); });
       $('#uhOk', m.el).onclick = go; $('#uhC', m.el).onkeydown = ev => { if (ev.key === 'Enter') go(); }; return; }
     const uc = e.target.closest('[data-ucalls]');
-    if (uc) { e.preventDefault(); const u = d.units.find(x => x.unit_id === +uc.dataset.ucalls); const m = await ddHistModal({ unit_id: uc.dataset.ucalls }, s.tab, 'calls');
-      if (d.can_call && u?.main_ct) { m.body.insertAdjacentHTML('beforeend', `<div class="row mt"><button class="btn" data-addcall2="1">${ico('fa-plus')} Thêm lần nhắc</button></div>`); m.el.addEventListener('click', ev => { if (ev.target.closest('[data-addcall2]')) { m.close(); openForm('debt_call', { preset: { contract_id: u.main_ct, contract_id__l: u.main_no }, onSaved: load }); } }); }
+    if (uc) { e.preventDefault(); const u = d.units.find(x => x.unit_id === +uc.dataset.ucalls); const m = await ddHistModal({ unit_id: uc.dataset.ucalls }, s.tab, 'calls', d.can_call && u?.main_ct ? `<button type="button" class="btn sm pri" data-addcall2="1" style="text-transform:none;letter-spacing:0">${ico('fa-plus')} Thêm lần nhắc</button>` : '');
+      if (d.can_call && u?.main_ct) { m.el.addEventListener('click', ev => { if (ev.target.closest('[data-addcall2]')) { m.close(); openForm('debt_call', { preset: { contract_id: u.main_ct, contract_id__l: u.main_no }, onSaved: load }); } }); }
       return; }
     if (uc && false) { e.preventDefault(); const u = d.units.find(x => x.unit_id === +uc.dataset.ucalls); const RL = Object.fromEntries(M.ents.debt_call.fields.find(z => z.k === 'result').o.map(o => [o[0], o[1]]));
       const xs = (await Promise.all([...u.cts].map(id => api('GET', `/api/e/debt_call?f_contract_id=${id}&limit=200`).then(x => x.rows.map(z => ({ ...z, number: u.items.find(i => i.contract_id === id)?.number }))).catch(() => [])))).flat().sort((a, b) => String(b.at).localeCompare(String(a.at)));
@@ -2801,7 +2801,7 @@ V.duedebt = async main => {
             ${x.vouchers.map(v => `<tr class="${v.ok ? '' : 'void'}"><td>${dmy(v.on)}</td><td><a href="#" data-vch="${v.ent}:${v.id}" title="Mở phiếu để đối chiếu">${esc(v.no || '(chưa số)')}</a></td><td>${esc(v.contract)}</td><td class="n">${v.thu ? fm(v.thu) : ''}</td><td class="n">${v.chi ? fm(v.chi) : ''}</td>
               <td class="small">${esc(v.alloc)}</td><td class="small">${esc(v.content)}</td><td>${pill(v.st_l, v.ok ? 'g' : 's')}</td></tr>`).join('')}</tbody>
             <tfoot><tr><td colspan="3">Tổng phiếu hợp lệ</td><td class="n">${fm(x.vouchers.filter(v => v.ok).reduce((t, v) => t + v.thu, 0))}</td><td class="n">${fm(x.vouchers.filter(v => v.ok).reduce((t, v) => t + v.chi, 0))}</td><td colspan="3"></td></tr></tfoot></table></div>` : '<div class="empty">Chưa có phiếu thu/chi</div>',
-        nn: () => (d.can_call && u.main_ct ? `<div class="row mb"><button class="btn sm pri" data-addcall2="1">${ico('fa-plus')} Thêm lần nhắc</button></div>` : '') + ddHistHtml(h, 'calls'),
+        nn: () => ddHistHtml(h, 'calls', d.can_call && u.main_ct ? `<button type="button" class="btn sm pri" data-addcall2="1" style="text-transform:none;letter-spacing:0">${ico('fa-plus')} Thêm lần nhắc</button>` : ''),
         kh: () => ddHistHtml(h, 'plans'),
         hd: () => `<div class="ud-tw"><table class="ud-t"><thead><tr><th>Số hợp đồng</th><th>Loại</th><th>Khách hàng</th><th>Ngày ký</th><th>Trạng thái hiện tại</th><th>Lịch sử chuyển trạng thái</th></tr></thead><tbody>
             ${x.contracts.map(c => `<tr><td><a href="#" data-uct="${c.id}" title="Mở hồ sơ hợp đồng">${esc(c.number)}</a></td><td>${esc(c.kind_l)}</td><td>${esc(c.customer)}</td><td>${c.signed_on ? dmy(c.signed_on) : ''}</td><td>${pill(c.status_l, c.closed ? 's' : 'g')}${c.status === 'thanh_ly' ? `<div class="small muted">Đã đóng theo dõi công nợ${c.liquidated_on ? ' từ ' + dmy(c.liquidated_on) : ''} — không cộng vào phải thu hiện tại</div>` : ''}</td>
