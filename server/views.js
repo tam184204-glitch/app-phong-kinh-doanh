@@ -968,7 +968,7 @@ const ypUsers = async db => (await db.q("SELECT id, full_name, role FROM kd_user
 async function ypList(db, user, f = {}) {
   if (!can(user, E.collect_plan, 'r')) deny();
   const p = [], w = ['true']; if (/^\d{4}$/.test(String(f.year || ''))) { p.push(+f.year); w.push(`y.year = $${p.length}`); } if (YP_ST[f.status]) { p.push(f.status); w.push(`y.status = $${p.length}`); }
-  const rows = await db.q(`SELECT y.id, y.code, y.name, y.year, y.from_on, y.to_on, y.asof, y.version, y.root_id, y.status, y.totals, y.note, y.created_at, y.submitted_at, y.decided_at, y.approver_id,
+  const rows = await db.q(`SELECT y.id, y.code, y.name, y.year, y.from_on, y.to_on, y.asof, y.version, y.root_id, y.status, y.totals, y.note, y.created_at, y.submitted_at, y.decided_at, y.approver_id, y.decide_note,
       pr.code project, pr.name project_name, a.full_name created_name, b.full_name approver_name,
       (SELECT max(z.version) FROM kd_year_plan z WHERE z.root_id = y.root_id) last_ver
     FROM kd_year_plan y LEFT JOIN kd_project pr ON pr.id = y.project_id LEFT JOIN kd_user a ON a.id = y.created_by LEFT JOIN kd_user b ON b.id = y.approver_id

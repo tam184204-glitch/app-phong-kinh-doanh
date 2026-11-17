@@ -2270,3 +2270,8 @@ table.t.uc-t td.num, table.t.uc-t th.num { white-space: nowrap; overflow-wrap: n
 .yp-pvh{font-weight:600;color:#1e4e8c;margin-bottom:8px}
 .yp-pvg{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}.yp-pvg span{display:block;font-size:12px;color:#6b7a90}.yp-pvg b{font-variant-numeric:tabular-nums}
 @media (max-width:800px){.yp-f3{grid-template-columns:1fr}.yp-f3 .yp-w2,.yp-f3 .yp-w3{grid-column:auto}.yp-pvg{grid-template-columns:1fr 1fr}}
+.yp-tabs{display:flex;gap:4px;flex-wrap:wrap;background:#f1f5fb;padding:4px;border-radius:10px}
+.yp-tabs button{border:0;background:transparent;padding:7px 12px;border-radius:8px;font:inherit;font-size:13px;cursor:pointer;color:#334155}
+.yp-tabs button span{display:inline-block;min-width:18px;padding:0 5px;margin-left:3px;border-radius:9px;background:#dbe3ef;font-size:11.5px;text-align:center}
+.yp-tabs button.on{background:#fff;color:#1e4e8c;font-weight:600;box-shadow:0 1px 3px rgba(20,40,80,.12)}.yp-tabs button.on span{background:#254f89;color:#fff}
+.yp-ops{display:flex;gap:4px;flex-wrap:wrap}.yp-ops .btn{white-space:nowrap}
