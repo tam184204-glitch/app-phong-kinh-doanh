@@ -1895,7 +1895,7 @@ const planWeek = async main => {
   const agg = (ps, by) => { const M = new Map(); for (const p of ps) { const k = (by === 'tuan' ? p.week : p.month) + '|' + p.tab, g = M.get(k) || M.set(k, { k, l: by === 'tuan' ? p.week_l : 'Tháng ' + p.month_l, tab_l: p.tab === 'thue' ? 'Cho thuê' : 'Bán hàng', n: 0, expected: 0, actual: 0, rem: 0, warn: 0 }).get(k);
     g.n++; g.expected += p.expected; g.actual += p.actual; g.rem += p.rem; if (p.warn) g.warn++; } return [...M.values()].sort((a, b) => a.k.localeCompare(b.k)).map(g => ({ ...g, pct: g.expected ? Math.round(g.actual / g.expected * 1000) / 10 : 0 })); };
   const PC = [['l', 'Kỳ'], ['tab_l', 'Thuộc'], ['n', 'Số căn / khoản', 'int'], ['expected', 'Kế hoạch', 'money'], ['actual', 'Thực thu', 'money'], ['rem', 'Còn phải thu theo kế hoạch', 'money'], ['pct', 'Tỷ lệ hoàn thành (%)', 'num'], ['warn', 'Quá ngày chưa thu đủ', 'int']];
-  const PD = [['tab_l', 'Thuộc'], ['unit', 'Mã căn'], ['customer', 'Khách hàng'], ['number', 'Hợp đồng'], ['expected_on', 'Ngày dự kiến thu', 'date'], ['week_l', 'Tuần'], ['month_l', 'Tháng'], ['expected', 'Kế hoạch', 'money'], ['actual', 'Thực thu', 'money'], ['rem', 'Còn phải thu theo KH', 'money'], ['pct', 'Tỷ lệ (%)', 'num'], ['src_l', 'Nguồn tiền'], ['owner', 'Người phụ trách'], ['st_l', 'Trạng thái'], ['warn', 'Cảnh báo'], ['_pa', '']];
+  const PD = [['tab_l', 'Thuộc'], ['unit', 'Mã căn'], ['customer', 'Khách hàng'], ['number', 'Hợp đồng'], ['expected_on', 'Ngày dự kiến thu', 'date'], ['week_l', 'Kỳ kế hoạch'], ['month_l', 'Tháng'], ['expected', 'Kế hoạch', 'money'], ['actual', 'Thực thu', 'money'], ['rem', 'Còn phải thu theo KH', 'money'], ['pct', 'Tỷ lệ (%)', 'num'], ['src_l', 'Nguồn tiền'], ['owner', 'Người phụ trách'], ['st_l', 'Trạng thái'], ['warn', 'Cảnh báo'], ['_pa', '']];
   const rows = () => d.rows.filter(p => !s.scope || p.tab === s.scope).map(p => ({ ...p, tab_l: p.tab === 'thue' ? 'Cho thuê' : 'Bán hàng' }));
   const draw = () => { const ps = rows(), ag = agg(ps, s.by);
     const pcell = (c, p) => c[0] === '_pa' && p.status === 'dong' ? '<span class="small muted">Đã bỏ chọn — giữ lịch sử phần đã thu</span>' : c[0] === '_pa' ? `<button class="btn sm ghost" data-pwid="${p.id}" title="Sửa ngày / số tiền dự kiến">${ico('fa-pen')}</button><button class="btn sm ghost" data-pwres="${p.id}" title="Chuyển lịch — kế hoạch cũ được giữ lại để đối chiếu">${ico('fa-calendar-plus')} Chuyển lịch</button>${p.hist.length ? `<div class="small muted">đã chuyển ${p.hist.length} lần${p.resched ? ': ' + esc(p.resched) : ''}</div>` : ''}`
@@ -2329,7 +2329,7 @@ V.duedebt = async main => {
   const planOf = (uid, items) => { const tab = items[0] ? tabOf(items[0]) : s.tab, ps = [];
     const byC = new Map(); for (const r of items) byC.set(r.contract_id, (byC.get(r.contract_id) || 0) + (+r.rem || 0)); const main = [...byC.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
     return { plans: ps, main_ct: main, main_no: items.find(r => r.contract_id === main)?.number || '', plan_amt: ps.reduce((t, p) => t + p.expected, 0), plan_act: ps.reduce((t, p) => t + p.actual, 0), plan_rem: ps.reduce((t, p) => t + p.rem, 0),
-      plan_warn: 0, plan_l: '', planned: (d.planned || []).includes(`dd:${tab}:${uid}`), plan_on: (d.planned || []).includes(`dd:${tab}:${uid}`) ? 'Đã đưa vào kế hoạch' : '' }; };
+      plan_warn: 0, plan_l: '', planned: (d.planned || {})[`dd:${tab}:${uid}`] || null, plan_on: (d.planned || {})[`dd:${tab}:${uid}`]?.l || '' }; };
   let d = { rows: [] };
   const shown = (tab = s.tab) => { const q = s.q.trim().toLowerCase(); return d.rows.filter(r => tabOf(r) === tab && (!s.kind || r.kind === s.kind) && (!s.grp || r.grp === s.grp) && (!s.bank || r.bank === s.bank)
     && (!s.owner || r.owner === s.owner || r.plan_owner === s.owner) && (!q || [r.unit, r.customer, r.kcode, r.number, r.content, r.phone].some(x => String(x || '').toLowerCase().includes(q)))); };
@@ -2340,7 +2340,7 @@ V.duedebt = async main => {
   const planAgg = (ps, by) => { const M = new Map(); for (const p of ps) { const k = by === 'tuan' ? p.week : p.month, g = M.get(k) || M.set(k, { k, l: by === 'tuan' ? p.week_l : 'Tháng ' + p.month_l, n: 0, expected: 0, actual: 0, rem: 0, warn: 0 }).get(k);
     g.n++; g.expected += p.expected; g.actual += p.actual; g.rem += p.rem; if (p.warn) g.warn++; } return [...M.values()].sort((a, b) => a.k.localeCompare(b.k)).map(g => ({ ...g, pct: g.expected ? Math.round(g.actual / g.expected * 1000) / 10 : 0 })); };
   const PC = [['l', 'Kỳ'], ['n', 'Số lần dự kiến', 'int'], ['expected', 'Kế hoạch', 'money'], ['actual', 'Thực thu', 'money'], ['rem', 'Còn phải thu theo kế hoạch', 'money'], ['pct', 'Tỷ lệ hoàn thành (%)', 'num'], ['warn', 'Quá ngày chưa thu đủ', 'int']];
-  const PD = [['unit', 'Mã căn'], ['customer', 'Khách hàng'], ['number', 'Hợp đồng'], ['expected_on', 'Ngày dự kiến thu', 'date'], ['week_l', 'Tuần'], ['month_l', 'Tháng'], ['expected', 'Kế hoạch', 'money'], ['actual', 'Thực thu', 'money'], ['rem', 'Còn phải thu theo KH', 'money'], ['pct', 'Tỷ lệ (%)', 'num'], ['src_l', 'Nguồn tiền'], ['owner', 'Người phụ trách'], ['st_l', 'Trạng thái'], ['note', 'Ghi chú'], ['warn', 'Cảnh báo'], ['_pa', '']];
+  const PD = [['unit', 'Mã căn'], ['customer', 'Khách hàng'], ['number', 'Hợp đồng'], ['expected_on', 'Ngày dự kiến thu', 'date'], ['week_l', 'Kỳ kế hoạch'], ['month_l', 'Tháng'], ['expected', 'Kế hoạch', 'money'], ['actual', 'Thực thu', 'money'], ['rem', 'Còn phải thu theo KH', 'money'], ['pct', 'Tỷ lệ (%)', 'num'], ['src_l', 'Nguồn tiền'], ['owner', 'Người phụ trách'], ['st_l', 'Trạng thái'], ['note', 'Ghi chú'], ['warn', 'Cảnh báo'], ['_pa', '']];
   const drawPlan = () => { const box = $('#ddPlan', main); if (!box) return; const ps = plansIn(), ag = planAgg(ps, s.pgrp), T = TABS.find(x => x[0] === s.tab);
     const pcell = (c, p) => c[0] === '_pa' ? `<button class="btn sm ghost" data-resched="${p.id}" title="Chuyển ngày / số tiền — kế hoạch cũ được giữ lại để đối chiếu">${ico('fa-calendar-plus')} Chuyển lịch</button>${p.hist.length ? `<div class="small muted" title="${esc(p.hist.map(h => dmy(h.on) + ' · ' + fm(h.amt)).join(' → '))}">đã chuyển ${p.hist.length} lần${p.resched ? ': ' + esc(p.resched) : ''}</div>` : ''}`
       : c[0] === 'warn' ? (p.warn ? `<span class="neg small">${ico('fa-triangle-exclamation')} ${esc(p.warn)}</span>` : '') : undefined;
@@ -2375,7 +2375,8 @@ V.duedebt = async main => {
       : c[0] === 'grp_l' ? (u.grp ? pill(u.grp_l, u.days > 30 ? 'r' : u.days > 0 ? 'a' : 'b') : `<span class="small muted">${u.grp_l}</span>`)
       : c[0] === 'lai' && u.noLai ? `${fm(u.lai)}<div class="small muted">${esc(u.lai_l)}</div>`
       : c[0] === 'call_n' ? `${u.call_n ? `<a href="#" data-ucalls="${u.unit_id}">${u.call_n} lần</a>` : '<span class="muted">chưa nhắc</span>'}${d.can_call ? `<div><button class="btn sm ghost" data-addcall="${u.unit_id}" title="Ghi 1 lần nhắc nợ mới (không ghi đè lần trước)">${ico('fa-plus')} Thêm lần nhắc</button></div>` : ''}`
-      : c[0] === 'plan_on' ? `<label class="chk" title="Tích: chuyển căn, khách hàng, số còn phải thu đến hạn sang «Kế hoạch dự kiến dòng thu-chi» (theo ngày cam kết gần nhất, chưa có thì ngày đang chọn). Bỏ tích: gỡ khoản chưa có thực thu"><input type="checkbox" data-ddplan="${u.unit_id}" ${u.planned ? 'checked' : ''} ${d.can_plan ? '' : 'disabled'}> ${u.planned ? '<a href="#/e/collect_plan" class="small">đã đưa vào kế hoạch</a>' : '<span class="small muted">chưa</span>'}</label>` : undefined;
+      : c[0] === 'plan_on' ? `<label class="chk" title="Tích: chọn kỳ (tháng, tuần) và số tiền dự kiến thu → tạo khoản thu ở «Kế hoạch dự kiến dòng thu-chi». Bỏ tích: gỡ khoản chưa có thực thu"><input type="checkbox" data-ddplan="${u.unit_id}" ${u.planned ? 'checked' : ''} ${d.can_plan ? '' : 'disabled'}> ${u.planned ? '' : '<span class="small muted">chưa</span>'}</label>`
+        + (u.planned ? `<div class="small"><b>${esc(u.planned.l)}</b></div><div class="small muted">${fm(u.planned.amt)}</div>${d.can_plan ? `<a href="#" class="small" data-ddplanedit="${u.unit_id}">${ico('fa-pen')} Sửa kỳ</a>` : ''}` : '') : undefined;
     $('#ddT', main).innerHTML = rowsTable(UC, us, SUM, { no: 'STT', groups, cell: ucell });
     $('#ddN', main).textContent = `${us.length} căn · ${rs.length} khoản · từ ${d.from ? dmy(d.from) : 'đầu'} đến ${dmy(d.asof)} · đồng bộ ${dmyhm(d.synced_at)}`;
   };
@@ -2397,9 +2398,36 @@ V.duedebt = async main => {
   for (const [id, k] of [['#ddKind', 'kind'], ['#ddGrp', 'grp'], ['#ddBank', 'bank'], ['#ddOwn', 'owner']]) $(id, main).onchange = e => { s[k] = e.target.value; draw(); };
   $('#ddTabs', main).onclick = e => { const b = e.target.closest('[data-ddtab]'); if (b) { s.tab = b.dataset.ddtab; draw(); } };
   // tích / bỏ «Đưa vào kế hoạch thu» — 1 khoản / căn / sheet, không tạo trùng; sửa ngày, số tiền, theo dõi thực thu ở «Kế hoạch dự kiến dòng thu-chi»
+  // 17/11/2026: tích → hộp thoại chọn kỳ: tháng / năm (bắt buộc), tuần trong tháng (không bắt buộc — trống = «Chưa phân bổ tuần»), số tiền dự kiến (mặc định = còn phải thu đến hạn); Hủy = không tạo, không đánh dấu
+  const MW = ym => { const [y, m] = ym.split('-').map(Number), last = new Date(Date.UTC(y, m, 0)).getUTCDate(), W = [];
+    for (let i = 1; i <= last;) { const dow = (new Date(Date.UTC(y, m - 1, i)).getUTCDay() + 6) % 7, e = Math.min(last, i + 6 - dow); W.push({ n: W.length + 1, from: `${ym}-${String(i).padStart(2, '0')}`, to: `${ym}-${String(e).padStart(2, '0')}` }); i = e + 1; }
+    return W; };
+  const ymAdd = (ym, k) => { const [y, m] = ym.split('-').map(Number), x = new Date(Date.UTC(y, m - 1 + k, 1)); return `${x.getUTCFullYear()}-${String(x.getUTCMonth() + 1).padStart(2, '0')}`; };
+  const planDlg = u => new Promise(res => {
+    const cur = u.planned, pr = (d.promises || {})[u.unit_id], base = (s.to || today()).slice(0, 7), ym0 = cur?.month || (pr || s.to || today()).slice(0, 7);
+    const wk0 = cur ? cur.week : pr && pr.slice(0, 7) === ym0 ? (MW(ym0).find(w => w.from <= pr && pr <= w.to)?.n || 0) : 0;
+    const months = [...new Set([...Array.from({ length: 16 }, (_, i) => ymAdd(today().slice(0, 7), i - 3)), ym0, base])].sort();
+    const wOpts = (ym, sel) => `<option value="0">— Không chọn (chưa phân bổ tuần) —</option>` + MW(ym).map(w => `<option value="${w.n}" ${+sel === w.n ? 'selected' : ''}>Tuần ${w.n} (${dmy(w.from)} – ${dmy(w.to)})</option>`).join('');
+    const m = modal({ title: `${cur ? 'Sửa kỳ' : 'Đưa vào kế hoạch thu'} — ${esc(u.unit)}`, narrow: true, onClose: () => res(null),
+      body: `<div class="small muted" style="margin-bottom:8px">${esc(u.customer)} · ${s.tab === 'thue' ? 'Công nợ cho thuê' : 'Công nợ bán hàng'} · còn phải thu đến hạn <b>${fm(u.rem)}</b>${pr ? ` · khách cam kết ${dmy(pr)}` : ''}</div>
+        <div class="fld"><label>Tháng / năm<span class="req">*</span></label><select class="inp" id="kpM">${months.map(x => `<option value="${x}" ${x === ym0 ? 'selected' : ''}>Tháng ${x.slice(5, 7)}/${x.slice(0, 4)}</option>`).join('')}</select></div>
+        <div class="fld"><label>Tuần trong tháng <span class="small muted">(không bắt buộc)</span></label><select class="inp" id="kpW">${wOpts(ym0, wk0)}</select></div>
+        <div class="fld"><label>Số tiền dự kiến thu<span class="req">*</span></label><input class="inp" id="kpA" inputmode="numeric" autocomplete="off" value="${moneyStr(cur ? cur.amt : u.rem)}"></div>
+        <div class="small muted">Chỉ chọn tháng → kế hoạch tháng, «Chưa phân bổ tuần». Chọn cả tuần → vào tuần đó và cộng vào tháng (không tính trùng).</div>`,
+      foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="kpOk">${ico('fa-check')} Xác nhận</button>` });
+    $('#kpM', m.el).onchange = e => { $('#kpW', m.el).innerHTML = wOpts(e.target.value, 0); };
+    $('#kpA', m.el).oninput = e => { const v = num(e.target.value, true); if (v != null && !isNaN(v)) e.target.value = moneyStr(v); };
+    $('#kpOk', m.el).onclick = () => { const a = num($('#kpA', m.el).value, true); if (!(a > 0)) return toast('Nhập số tiền dự kiến thu > 0', true);
+      m.el.remove(); res({ month: $('#kpM', m.el).value, week: +$('#kpW', m.el).value, amount: a }); };
+  });
+  const planSet = async (uid, on) => { const u = byUnit(shown()).find(x => x.unit_id === uid); if (!u) return;
+    let body = { unit_id: uid, tab: s.tab, on, to: s.to || today() };
+    if (on) { const v = await planDlg(u); if (!v) return false; body = { ...body, ...v }; }
+    const r = await api('POST', '/api/due-debt/plan', body); toast(r.msg); await load(); return true; };
   $('#ddT', main).addEventListener('change', run(async e => { const c = e.target.closest('[data-ddplan]'); if (!c) return; e.stopPropagation();
-    try { const r = await api('POST', '/api/due-debt/plan', { unit_id: +c.dataset.ddplan, tab: s.tab, on: c.checked, to: s.to || today() }); toast(r.msg); } catch (er) { c.checked = !c.checked; throw er; }
-    await load(); }));
+    const on = c.checked; c.checked = !on;   /* chỉ đánh dấu sau khi xác nhận + lưu thành công */
+    await planSet(+c.dataset.ddplan, on); }));
+  $('#ddT', main).addEventListener('click', run(async e => { const a = e.target.closest('[data-ddplanedit]'); if (!a) return; e.preventDefault(); e.stopPropagation(); await planSet(+a.dataset.ddplanedit, true); }));
   wireSegDate(main); $('#ddDates', main).addEventListener('sdchange', run(async e => { const v = segVal(e.target); if (v === null) return; if (e.target.id === 'ddFr') s.from = v; else s.to = v || today(); await load(); }));   // ô ngày dd/mm/yyyy
   const note = (k = s.tab) => `Tổng hợp theo mã căn hộ · ngày chốt báo cáo ${dmy(d.asof)}${d.from ? ` · hạn từ ${dmy(d.from)}` : ''} · đồng bộ dữ liệu lúc ${dmyhm(d.synced_at)} · ${byUnit(shown(k)).length} căn, ${shown(k).length} khoản · phải thu và phải trả tách riêng, không bù trừ`;
   $('#ddX', main).onclick = () => { const tab0 = s.tab, plansOf = k => { s.tab = k; const x = plansIn(); s.tab = tab0; return x; };
