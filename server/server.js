@@ -379,6 +379,7 @@ R('POST', '/api/sale-plan-units', async (req, res, u) => { const b = await readJ
 R('POST', '/api/sale-plan', async (req, res, u) => { const b = await readJson(req); send(res, 200, await tx(db => V.salePlanCreate(db, u, b))); });   // tạo dòng thu bán mới (17/11/2026)
 R('POST', '/api/collect-plans/:id/link', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await tx(db => V.planLink(db, u, p.id, b))); });   // liên kết dòng thu bán mới với căn / HĐ
 R('GET', '/api/plan-year', async (req, res, u, p, qs) => { await tx(db => V.planRollover(db)); send(res, 200, await V.planYear({ q, one }, u, qs)); });   // Kế hoạch dòng thu năm (17/11/2026)
+R('POST', '/api/collect-plans/:id/split-weeks', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await tx(db => V.planSplitWeeks(db, u, p.id, b))); });   // phân bổ 1 khoản tháng ra nhiều tuần (17/11/2026)
 R('POST', '/api/collect-plans/:id/adjust', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await tx(db => V.planAdjust(db, u, p.id, b))); });   // kế hoạch thu tuần / tháng   // Theo dõi công nợ đến hạn (17/11/2026)
 R('GET', '/api/finish-pay', async (req, res, u, p, qs) => send(res, 200, await V.finishPay({ q, one }, u, qs)));
 R('GET', '/api/loans', async (req, res, u, p, qs) => send(res, 200, await V.loans({ q, one }, u, qs)));
