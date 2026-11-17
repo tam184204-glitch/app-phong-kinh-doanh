@@ -3549,15 +3549,16 @@ V.vault = async (main, params = {}) => {
   $('#vtS', main).onchange = e => { s.sort = e.target.value; draw(); };
   $('#vtN', main).onclick = $('#vtUp', main).onclick = () => upload();
   main.onclick = run(async e => {
+    if (e.target.closest('.hsm')) return;   // tab «Bộ hồ sơ theo căn» có nút riêng (data-m = chế độ, …) — không lẫn với menu tệp của Kho (17/11/2026)
     const nav = e.target.closest('[data-tab]'); if (nav) return go(nav.dataset.tab);
     const v = e.target.closest('[data-v]'); if (v) { s.view = v.dataset.v; return draw(); }
     const c = e.target.closest('[data-c]'); if (c) return c.dataset.c === 'root' ? go('all') : c.dataset.c === 'ent' ? go('all', s.ent) : undefined;
     const fe = e.target.closest('[data-e]'); if (fe) return go('all', fe.dataset.e);
     const fr = e.target.closest('[data-r]'); if (fr) return go('all', s.ent, fr.dataset.r);
-    const mo = e.target.closest('[data-m]'); if (mo) { e.stopPropagation(); const b = mo.getBoundingClientRect(); return menu(byId(mo.dataset.m), b.left, b.bottom + 4); }
+    const mo = e.target.closest('[data-m]'); if (mo && byId(mo.dataset.m)) { e.stopPropagation(); const b = mo.getBoundingClientRect(); return menu(byId(mo.dataset.m), b.left, b.bottom + 4); }
     const fl = e.target.closest('[data-f]'); if (fl) { if (s.tab === 'trash') return menu(byId(fl.dataset.f), e.clientX, e.clientY); window.open('/api/file/' + fl.dataset.f, '_blank'); }
   });
-  main.oncontextmenu = e => { const fl = e.target.closest('[data-f]'); if (!fl) return; e.preventDefault(); menu(byId(fl.dataset.f), e.clientX, e.clientY); };
+  main.oncontextmenu = e => { const fl = !e.target.closest('.hsm') && e.target.closest('[data-f]'); if (!fl) return; e.preventDefault(); menu(byId(fl.dataset.f), e.clientX, e.clientY); };
   main.onkeydown = e => { if (e.key === 'Enter' && e.target.matches('.vt-d')) e.target.click(); };
   const box = $('#vtM', main);
   box.ondragover = e => { if (![...e.dataTransfer.types].includes('Files')) return; e.preventDefault(); box.classList.add('drop'); };
