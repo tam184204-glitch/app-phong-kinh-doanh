@@ -374,6 +374,7 @@ R('GET', '/api/collect-plans', async (req, res, u, p, qs) => send(res, 200, awai
 R('GET', '/api/plan-report', async (req, res, u, p, qs) => { await tx(db => V.planRollover(db)); send(res, 200, await V.planReport({ q, one }, u, qs)); });   // Báo cáo kế hoạch thu tuần / tháng (17/11/2026)
 R('GET', '/api/due-debt/unit-detail', async (req, res, u, p, qs) => send(res, 200, await V.ddUnitDetail({ q, one }, u, qs)));   // Xem chi tiết công nợ 1 căn (17/11/2026)
 R('GET', '/api/due-debt/unit-history', async (req, res, u, p, qs) => send(res, 200, await V.ddUnitHist({ q, one }, u, qs)));   // lịch sử kế hoạch thu + nhắc nợ theo căn (17/11/2026)
+R('GET', '/api/sale-unit-sched', async (req, res, u, p, qs) => send(res, 200, await V.saleUnitSched({ q, one }, u, qs)));   // lịch thu gợi ý của căn theo chính sách (17/11/2026)
 R('GET', '/api/sale-units', async (req, res, u, p, qs) => send(res, 200, await V.saleUnits({ q, one }, u, qs)));   // căn đủ điều kiện lập kế hoạch bán mới (17/11/2026)
 R('POST', '/api/sale-plan-units', async (req, res, u) => { const b = await readJson(req); send(res, 200, await tx(db => V.saleUnitPlan(db, u, b))); });   // kế hoạch thu bán mới theo căn
 R('POST', '/api/sale-plan', async (req, res, u) => { const b = await readJson(req); send(res, 200, await tx(db => V.salePlanCreate(db, u, b))); });   // tạo dòng thu bán mới (17/11/2026)

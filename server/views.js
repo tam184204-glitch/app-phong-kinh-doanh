@@ -907,7 +907,7 @@ async function planYear(db, user, f) {
     if (x.carry_in == null && x.unit_id && String(x.grp_key || '').startsWith('moiu:')) { const r = roots.get(x.grp_key) || roots.set(x.grp_key, { base, value: +x.unit_price || 0, alloc: 0, sale: x.sale_month || null }).get(x.grp_key); r.alloc += +x.expected; }
     if (x.status === 'dong' && !(x.actual > 0)) continue; const inR = x.expected_on >= Y0 && x.expected_on <= Y1;
     const pv = x.prev_id ? byId.get(x.prev_id) : null, inMonth = x.carry_in != null && pv && pv.ym === x.ym, plan = inMonth ? +x.expected - +x.carry_in : x.status === 'dong' ? x.actual : +x.expected;
-    items.push({ ...base, label: x.carry_from ? `Chuyển tiếp từ ${x.carry_from}` : x.rate ? `Thu ${String(x.rate).replace('.', ',')}% giá trị bán` : (x.title || 'Kế hoạch thu bán mới'), month: inR ? x.ym : null, zone: inR ? 'in' : 'out', due_on: x.expected_on, week_l: periodL(x.ym, x.wk),
+    items.push({ ...base, label: x.carry_from ? `Chuyển tiếp từ ${x.carry_from}` : x.unit_id && x.title && x.title !== x.unit ? `${x.title}${x.rate ? ` (${String(x.rate).replace('.', ',')}%)` : ''}` : x.rate ? `Thu ${String(x.rate).replace('.', ',')}% giá trị bán` : (x.title || 'Kế hoạch thu bán mới'), month: inR ? x.ym : null, zone: inR ? 'in' : 'out', due_on: x.expected_on, week_l: periodL(x.ym, x.wk),
       plan, act: x.actual, rem: Math.max(0, +x.expected - x.actual), st: x.status === 'da_chot' ? 'Đã chốt kỳ' : x.status === 'dong' ? 'Đã bỏ chọn' : 'Đang thực hiện', plan_id: x.id,
       contract: x.number || '', sale_month: x.sale_month || null, value: x.unit_price != null ? +x.unit_price : null, rate: x.rate != null ? +x.rate : null, carry_src: x.carry_from ? `Chuyển tiếp từ ${x.carry_from}` : '' }); }
   for (const r of roots.values()) if (r.value > r.alloc && (!r.sale || (r.sale >= Y0.slice(0, 7) && r.sale <= Y1.slice(0, 7))))
@@ -964,6 +964,36 @@ async function saleUnits(db, user, f) {
     return { id: u.id, code: u.code, project: u.project, project_id: u.project_id, building: u.building, building_id: u.building_id, area: u.area_tt != null ? +u.area_tt : null, price: +(u.total_price || u.list_price || 0) || null,
       status_l: ST[u.status] || u.status, ok, note: u.sale_ct ? `Đã có HĐ bán ${u.sale_ct}` : u.moi_plan ? `Đã có kế hoạch bán mới (tháng ${u.moi_plan})` : u.rent_ct ? `Đang cho thuê – HĐ số ${u.rent_ct}` : free ? ST[u.status] || '' : `Trạng thái «${ST[u.status] || u.status}» — chưa thể bán` }; }) };
 }
+// 17/11/2026: LỊCH THU GỢI Ý CỦA 1 CĂN theo chính sách bán đang áp dụng (đã ban hành) — giá trị dự kiến bán, các đợt (nội dung, mốc tính, tỷ lệ, số tiền, tháng thu):
+// tiền căn hộ = giá − phí bảo trì − hoàn thiện; đợt «sau ký N ngày» = ngày ký (đầu tháng bán) + N; đợt bàn giao: theo kế hoạch bàn giao của căn (nếu có) + số ngày;
+// đợt Giấy chứng nhận / chưa xác định được → «Chưa phân bổ kỳ» (không tự gán tháng); phí bảo trì, hoàn thiện / nội thất là nhóm riêng (không cộng vào cơ sở tính tỷ lệ)
+async function saleUnitSched(db, user, f) {
+  if (!can(user, E.collect_plan, 'r')) deny();
+  const u = await db.one('SELECT * FROM kd_unit WHERE id = $1', [+f.unit_id]); if (!u) bad('Không tìm thấy căn');
+  const sm = /^\d{4}-\d{2}$/.test(f.sale_month || '') ? f.sale_month : today().slice(0, 7), sign = `${sm}-01`;
+  const pr = await B.pricing(db, u, today()), price = Math.round(+pr.price || +u.total_price || +u.list_price || 0);
+  // tiến độ thu: chính sách giá áp cho căn; chưa khai tiến độ thì lấy chính sách bán đã ban hành gần nhất của dự án có khai tiến độ (như khi lập hợp đồng) — ghi rõ nguồn
+  let pol = pr.policy, src = pol ? `${pol.code} v${pol.version}` : null;
+  if (!pol?.pay_sched?.length) { const alt = await db.one("SELECT * FROM kd_price_policy WHERE status = 'phat_hanh' AND coalesce(pkind, 'ban') = 'ban' AND jsonb_array_length(coalesce(pay_sched, '[]'::jsonb)) > 0 AND $1 = ANY(project_ids) ORDER BY id DESC LIMIT 1", [u.project_id]);
+    if (alt) { src = `${alt.code} v${alt.version}${pol ? ` (tiến độ — chính sách giá ${pol.code} v${pol.version} chưa khai tiến độ thu)` : ' (tiến độ)'}`; pol = alt; } }
+  const maint = Math.round(+u.maint_fee || 0), fin = Math.round(+u.finish_value || 0), base = Math.max(0, price - maint - fin);
+  const rows = [];
+  if (pol?.pay_sched?.length) {
+    const sr = await B.saleSchedRows(db, pol, u.id, sign), hp = u.handover_plan ? ddDay(u.handover_plan) : null;
+    for (const r of sr) {
+      let on = r.due_on ? ddDay(r.due_on) : null;
+      if (!on && r.bg && hp) on = addDays(hp, +(r.bg_days || 0));
+      const mile = r.maint ? 'Cùng đợt thu phí bảo trì theo chính sách' : r.gcn ? 'Cấp Giấy chứng nhận' : r.bg ? 'Bàn giao căn hộ' : r.sign_days ? `Sau ký ${r.sign_days} ngày` : 'Ký hợp đồng';
+      rows.push(r.maint ? { name: r.name, grp: 'maint', mile, pct: null, amount: maint, month: on ? on.slice(0, 7) : null }
+        : { name: r.name, grp: 'house', mile, pct: r.pct != null ? +r.pct : null, amount: r.pct != null ? Math.round(base * +r.pct / 100) : Math.round(+r.amount || 0), month: on ? on.slice(0, 7) : null });
+    }
+    if (fin > 0) for (const [i, x] of (Array.isArray(pol.fin_sched) ? pol.fin_sched : []).filter(x => +x.pct > 0).entries()) {
+      const has = x.days != null && x.days !== '', on = has || !i ? addDays(sign, +x.days || 0) : null;
+      rows.push({ name: x.name || `Đợt hoàn thiện ${i + 1}`, grp: 'fin', mile: has ? (+x.days ? `Sau ký ${+x.days} ngày` : 'Ký hợp đồng') : i ? 'Mốc riêng — chưa xác định' : 'Ký hợp đồng', pct: +x.pct, amount: Math.round(fin * +x.pct / 100), month: on ? on.slice(0, 7) : null });
+    }
+  }
+  return { unit_id: u.id, unit: u.code, area: u.area_tt != null ? +u.area_tt : null, sale_month: sm, policy: src, price, base, maint, fin, rows };
+}
 // lưu kế hoạch thu bán mới theo căn: mỗi căn = 1 nhóm (grp_key), mỗi tháng thu 1 khoản kế hoạch (tỷ lệ % × giá trị dự kiến bán); phần chưa phân bổ = «Chưa phân bổ kỳ»
 async function saleUnitPlan(db, user, b) {
   if (!can(user, E.collect_plan, 'c')) deny('Bạn không được lập kế hoạch thu');
@@ -976,6 +1006,18 @@ async function saleUnitPlan(db, user, b) {
     if (!u) bad(`Dòng ${i + 1}: không tìm thấy căn`); if (!u.ok) bad(`Căn ${u.code}: ${u.note || 'không đủ điều kiện lập kế hoạch bán mới'}`);
     const value = Math.round(+x.value || 0); if (!(value > 0)) bad(`Căn ${u.code}: nhập giá trị dự kiến bán`);
     const sm = /^\d{4}-\d{2}$/.test(x.sale_month || '') ? x.sale_month : bad(`Căn ${u.code}: chọn tháng/năm dự kiến bán`);
+    // 17/11/2026: lịch thu riêng từng căn theo đợt (items: tên đợt, nhóm, tháng thu | trống = chưa phân bổ kỳ, tỷ lệ, số tiền) — ưu tiên hơn lịch % kiểu cũ
+    if (Array.isArray(x.items) && x.items.length) {
+      const its = x.items.map(z => ({ name: String(z.name || '').trim() || 'Đợt thu', grp: z.grp || 'house', month: /^\d{4}-\d{2}$/.test(z.month || '') ? z.month : null, pct: z.pct != null && z.pct !== '' ? +z.pct : null, amount: Math.round(+z.amount || 0) })).filter(z => z.amount > 0);
+      for (const z of its) if (z.month && z.month < sm) bad(`Căn ${u.code}: «${z.name.slice(0, 40)}» thu tháng ${z.month.slice(5)}/${z.month.slice(0, 4)} trước tháng dự kiến bán`);
+      const tot = its.reduce((a, z) => a + z.amount, 0); if (tot > value) bad(`Căn ${u.code}: tổng các đợt ${fmtMoney(tot)} vượt giá trị dự kiến bán ${fmtMoney(value)}`);
+      const grp = `moiu:${u.id}:${Date.now().toString(36)}${i}`, un = its.filter(z => !z.month).reduce((a, z) => a + z.amount, 0) + (value - tot);
+      for (const [k, z] of its.entries()) { if (!z.month) continue; const W = monthWeeks(z.month);
+        await C.create('collect_plan', { scope: 'moi', unit_id: u.id, project_id: u.project_id, building_id: u.building_id, title: z.name.slice(0, 200), units_n: 1, unit_price: value, rate: z.pct, sale_month: sm, month: z.month, plan_week: 0,
+          expected: z.amount, expected_on: W[W.length - 1].to, owner_id: b.owner_id ? +b.owner_id : null, basis: 'khac', fund_src: 'khach_tu_tra', basis_note: [x.policy ? `Theo chính sách ${x.policy}` : '', String(x.note || '').trim(), String(b.note || '').trim()].filter(Boolean).join(' · ') || null,
+          explain: 'Kế hoạch thu bán mới', grp_key: grp }, user, { db, system: true, note: `Kế hoạch thu bán mới căn ${u.code} (giá trị dự kiến bán ${fmtMoney(value)}, bán tháng ${sm.slice(5)}/${sm.slice(0, 4)}${x.policy ? ', chính sách ' + x.policy : ''}) — đợt ${k + 1}: ${z.name.slice(0, 80)} · thu tháng ${z.month.slice(5)}/${z.month.slice(0, 4)} · ${fmtMoney(z.amount)}${un > 0 ? ` (chưa phân bổ kỳ của căn ${fmtMoney(un)})` : ''}` }); n++; }
+      total += value; continue;
+    }
     const sched = (Array.isArray(x.sched) ? x.sched : []).map(z => ({ month: z.month, pct: +z.pct || 0 })).filter(z => z.pct > 0);
     for (const z of sched) { if (!/^\d{4}-\d{2}$/.test(z.month || '')) bad(`Căn ${u.code}: tháng thu không hợp lệ`); if (z.month < sm) bad(`Căn ${u.code}: tháng thu ${z.month.slice(5)}/${z.month.slice(0, 4)} trước tháng dự kiến bán`); }
     if (new Set(sched.map(z => z.month)).size !== sched.length) bad(`Căn ${u.code}: trùng tháng thu`);
@@ -1886,4 +1928,4 @@ async function monthly(db, period, projectId) {
   };
 }
 
-module.exports = { dueDebt, ddPlanToggle, ddUnitHist, ddUnitDetail, saleUnits, saleUnitPlan, planSplitWeeks, salePlanCreate, planLink, planList, planReport, planAdjust, planRollover, planYear, debtStatus, setDebtClass, setDebtDays, debtCfg, debtGrpOf, debtGrpL, customerLedger, myDay, debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, voucherList, contractTrack, setLateRate, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
+module.exports = { dueDebt, ddPlanToggle, ddUnitHist, ddUnitDetail, saleUnits, saleUnitPlan, saleUnitSched, planSplitWeeks, salePlanCreate, planLink, planList, planReport, planAdjust, planRollover, planYear, debtStatus, setDebtClass, setDebtDays, debtCfg, debtGrpOf, debtGrpL, customerLedger, myDay, debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, voucherList, contractTrack, setLateRate, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
