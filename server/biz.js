@@ -1121,8 +1121,27 @@ async function noxhAutoFinish(db, n, user, warn, demo, { s, u, ptype, owner, nee
   if (!(fv > 0)) { if (need) warn.push(`Chính sách bán hàng ${pol.code} v${pol.version} chưa có giá trị gói hoàn thiện cho căn ${u.code} — chưa lập hợp đồng hoàn thiện căn hộ: bổ sung gói hoàn thiện ở chính sách (tab «Hoàn thiện căn hộ»)`); return; }
   if (need && !pol.fin_sched?.length) warn.push(`Chính sách bán hàng ${pol.code} v${pol.version} chưa khai «Tiến độ thu giá trị hoàn thiện» — hợp đồng hoàn thiện chưa có Lần thanh toán: bổ sung ở chính sách hoặc nhập trên hợp đồng`);
   const ht = await create('contract', { kind: 'hoan_thien', ptype, unit_id: unitId, customer_id: custId, owner_id: owner || s?.owner_id || user?.id, value: fv, finish_value: fv, price_policy_id: pol.id,
-    noxh_id: n.id, noxh_wait: !noxhOk(n), ...(s ? { reservation_id: s.id } : {}) }, user, { db, system: true, demo });
+    noxh_id: n.id, noxh_wait: !noxhOk(n), ...(s ? { reservation_id: s.id } : {}),
+    rel_ids: (await db.q("SELECT id FROM kd_contract WHERE noxh_id = $1 AND kind <> 'hoan_thien' AND status <> 'huy'", [n.id])).map(x => x.id), auto_src: `Tự lập từ hồ sơ NOXH #${n.id} theo chính sách ${pol.code} v${pol.version}` }, user, { db, system: true, demo });
   warn.push(`Đã tự lập hợp đồng hoàn thiện căn hộ ${ht.row.number} (${fmtMoney(fv)}đ, theo chính sách ${pol.code} v${pol.version})`); for (const w of ht.warnings || []) warn.push(`${ht.row.number}: ${w}`);
+}
+// 17/11/2026: HĐ vay «Bán căn hộ» (lập mới / đổi sang bán căn / đổi căn, khách) → dự thảo HĐ hoàn thiện căn hộ theo gói hoàn thiện của chính sách bán đã ban hành áp cho căn
+// (khách, căn, giá trị, tiến độ thu giá trị hoàn thiện theo chính sách — lập ở afterSave của HĐ hoàn thiện), liên kết HĐ vay + HĐ thuê đi kèm (rel_ids), ghi nguồn + chính sách.
+// Đã có HĐ hoàn thiện của khách tại căn (từ hồ sơ / HĐ thuê / lập tay) → dùng HĐ đó (bổ sung liên kết), không lập trùng. HĐ vay không bán căn / chính sách không có gói hoàn thiện → không lập
+async function loanAutoFinish(db, c, user, warn, demo) {
+  if (c.kind !== 'vay' || (c.nature || 'ban') !== 'ban' || c.ptype === 'lien_ke' || !c.unit_id || !c.customer_id || ['huy', 'thanh_ly'].includes(c.status)) return;
+  const rel = [c.id, ...((await db.q("SELECT id FROM kd_contract WHERE kind = 'thue' AND unit_id = $1 AND status <> 'huy' AND (id = ANY($2) OR $3 = ANY(coalesce(link_ids, '{}'::int[])))", [c.unit_id, c.link_ids || [], c.id])).map(x => x.id))];
+  const ex = await db.one("SELECT id, number, rel_ids FROM kd_contract WHERE kind = 'hoan_thien' AND unit_id = $1 AND customer_id = $2 AND status NOT IN ('huy','thanh_ly') ORDER BY id LIMIT 1", [c.unit_id, c.customer_id]);
+  if (ex) { const add = rel.filter(x => !(ex.rel_ids || []).includes(x));
+    if (add.length) { await db.q('UPDATE kd_contract SET rel_ids = $2, updated_at = now() WHERE id = $1', [ex.id, [...(ex.rel_ids || []), ...add]]);
+      await C.audit(db, 'contract', ex.id, 'lien_ket_hd', null, null, user, `Liên kết với HĐ vay ${c.number || '#' + c.id} (dùng HĐ hoàn thiện đã có, không lập trùng)`, demo); }
+    return; }
+  const u = await raw(db, 'unit', c.unit_id), pol = (await pricing(db, u, d10(c.contract_on) || today())).policy, fv = +(polFin(pol, u.code) || 0);
+  if (!pol || !(fv > 0)) return;   // chính sách không có gói hoàn thiện cho căn
+  if (!pol.fin_sched?.length) warn.push(`Chính sách bán hàng ${pol.code} v${pol.version} chưa khai «Tiến độ thu giá trị hoàn thiện» — hợp đồng hoàn thiện chưa có Lần thanh toán`);
+  const ht = await create('contract', { kind: 'hoan_thien', ptype: c.ptype || 'can_ho', unit_id: c.unit_id, customer_id: c.customer_id, owner_id: c.owner_id || user?.id, value: fv, finish_value: fv, price_policy_id: pol.id,
+    rel_ids: rel, auto_src: `Tự lập từ HĐ vay ${c.number || '#' + c.id} theo chính sách ${pol.code} v${pol.version}`, ...(c.noxh_id ? { noxh_id: c.noxh_id, noxh_wait: !!c.noxh_wait } : {}) }, user, { db, system: true, demo });
+  warn.push(`Đã tự lập dự thảo hợp đồng hoàn thiện căn hộ ${ht.row.number} (${fmtMoney(fv)}đ, theo chính sách ${pol.code} v${pol.version})`); for (const w of ht.warnings || []) warn.push(`${ht.row.number}: ${w}`);
 }
 async function noxhAutoContract(db, n, user, warn = [], demo) {
   if (await db.one('SELECT 1 FROM kd_contract WHERE noxh_id = $1 LIMIT 1', [n.id])) {   // hồ sơ đã có hợp đồng tự lập (kể cả đã hủy) — không lập thêm (chuyển lại trạng thái không tạo trùng)
@@ -2543,6 +2562,7 @@ H.contract = {
     if (n.n && n.s !== r.value) bad(`Tổng lịch thanh toán ${fmtMoney(n.s)} khác giá trị hợp đồng ${fmtMoney(r.value)}`);
   },
   async afterSave(r, old, { db, user, demo, sched, warn = [], rentRedo }) {
+    if (r.kind === 'vay' && (!old || ['nature', 'unit_id', 'customer_id'].some(k => String(old[k] ?? '') !== String(r[k] ?? '')))) await loanAutoFinish(db, r, user, warn, demo);   // 17/11/2026
     // nối giao dịch: hợp đồng trước ghi «Đã chuyển sang hợp đồng»; hủy / thanh lý / bỏ nối thì gỡ
     const live = !['huy', 'thanh_ly'].includes(r.status);
     if (old?.prev_id && (old.prev_id !== r.prev_id || !live)) await db.q('UPDATE kd_contract SET next_id = NULL, updated_at = now() WHERE id = $1 AND next_id = $2', [old.prev_id, r.id]);
@@ -3105,4 +3125,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, noticeHist, noticeUnits, noticeRent, rentPrices, noticeConflict, unitNotes, saleSchedPolicy, saleSchedRows, rentBackfill, noxhSyncAll, unitDeals, bgDueSet, loanNet, loanPairOf, rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, noticeHist, noticeUnits, noticeRent, rentPrices, noticeConflict, unitNotes, saleSchedPolicy, saleSchedRows, rentBackfill, noxhSyncAll, unitDeals, bgDueSet, loanNet, loanPairOf, loanAutoFinish, rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

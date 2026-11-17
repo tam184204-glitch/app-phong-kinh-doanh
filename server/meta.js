@@ -546,6 +546,9 @@ def('contract', {
     // 16/11/2026: hồ sơ NOXH của HĐ được Sở Xây dựng xét duyệt KHÔNG đủ điều kiện → «Dự thảo – Hồ sơ không đủ điều kiện», chặn trình / duyệt / ký cho tới khi hồ sơ được duyệt đủ điều kiện
     { k: 'noxh_fail', l: 'Hồ sơ NOXH không đủ điều kiện', t: 'bool', ro: 1, noForm: 1 },
     { k: 'noxh_fail_txt', l: 'Kết quả xét duyệt hồ sơ NOXH', t: 'text', ro: 1, show: { noxh_fail: [true] } },
+    // 17/11/2026: HĐ hoàn thiện tự lập (từ hồ sơ NOXH / HĐ vay bán căn) — HĐ vay, HĐ thuê đi kèm cùng giao dịch + nguồn tạo, chính sách để tra cứu
+    { k: 'rel_ids', l: 'Hợp đồng liên quan (vay / thuê)', t: 'refs', ref: 'contract', ro: 1, show: { kind: ['hoan_thien'] } },
+    { k: 'auto_src', l: 'Nguồn tạo tự động', t: 'text', ro: 1, show: { kind: ['hoan_thien'] } },
     // bên mua nhà ở
     { k: 'customer_id', l: 'Khách hàng (chủ hợp đồng)', t: 'ref', ref: 'customer', req: 1, sec: 'Bên mua nhà ở', byUnit: 'unit_id',   // HĐMB: chọn trong khách gắn với căn (15/11/2026)
       fill: { b_id_no: 'id_no', b_id_date: 'id_date', b_id_place: 'id_place', b_addr: 'address', b_phone: 'phone', b_email: 'email', b_bank_acc: 'bank_account' } },
