@@ -837,13 +837,20 @@ def('collect_plan', {
     { k: 'resched_reason', l: 'Lý do đổi lịch', t: 'text', ro: 1 },
     { k: 'plan_week', l: 'Tuần trong tháng', t: 'int', help: 'Tuần 1, 2, … của tháng kế hoạch (Thứ 2 – Chủ nhật, cắt theo ranh giới tháng); 0 / trống = chưa phân bổ tuần' },   // 17/11/2026
     { k: 'src_key', l: 'Nguồn tự lập', t: 'text', hide: 1 },
-    { k: 'src_cts', l: 'Các HĐ của căn trong kế hoạch', t: 'text', hide: 1 },   // id HĐ, phân cách «,» — tính thực thu theo căn, không trùng giữa HĐ thuê / vay / HĐMB   // dd:<ban|thue>:<id căn> — tích «Đưa vào kế hoạch thu» ở Báo cáo công nợ đến hạn
+    { k: 'src_cts', l: 'Các HĐ của căn trong kế hoạch', t: 'text', hide: 1 },
+    // 17/11/2026: chuyển tiếp kỳ — hết tuần / tháng chưa thu đủ: chốt kỳ (lưu số liệu lúc hết kỳ) + tạo khoản kỳ kế tiếp liên kết kỳ trước
+    { k: 'carry_from', l: 'Chuyển tiếp từ', t: 'text', ro: 1 },
+    money('carry_in', 'Số chuyển tiếp sang', { ro: 1, hide: 1 }),
+    { k: 'closed_on', l: 'Chốt kỳ ngày', t: 'date', ro: 1 },
+    money('act_snap', 'Thực thu trong kỳ (lúc chốt)', { ro: 1 }),
+    money('carry_amt', 'Đã chuyển tiếp (chưa thu lúc chốt)', { ro: 1 }),
+    { k: 'carry_to', l: 'Chuyển tiếp sang', t: 'text', ro: 1 },   // id HĐ, phân cách «,» — tính thực thu theo căn, không trùng giữa HĐ thuê / vay / HĐMB   // dd:<ban|thue>:<id căn> — tích «Đưa vào kế hoạch thu» ở Báo cáo công nợ đến hạn
     { k: 'ability', l: 'Khả năng thu', t: 'sel', def: 'vua', o: [['cao', 'Cao', 'g'], ['vua', 'Vừa', 'a'], ['thap', 'Thấp', 'r']] },
     { k: 'explain', l: 'Giải trình (khi vượt công nợ)', t: 'long' },
     owner(),
     { k: 'version', l: 'Phiên bản', t: 'int', ro: 1, def: 1 },
     { k: 'reason_miss', l: 'Nguyên nhân chưa thu được', t: 'long' },
-    { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'nhap', o: [...S.duyet, ['thay_the', 'Đã thay thế', 's'], ['dong', 'Đã đóng (HĐ thanh lý)', 's']] },
+    { k: 'status', l: 'Trạng thái', t: 'sel', ro: 1, def: 'nhap', o: [...S.duyet, ['thay_the', 'Đã thay thế', 's'], ['dong', 'Đã đóng (HĐ thanh lý)', 's'], ['da_chot', 'Đã chốt kỳ', 's']] },
   ], list: ['month', 'project', 'building', 'unit_id', 'customer_id', 'debt_left', 'expected', 'expected_on', 'basis', 'ability', 'actual', 'gap', 'owner_id', 'status'],
   lock: ['cho_duyet', 'da_duyet', 'thay_the', 'dong'], lockKeep: ['reason_miss'],
   flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'da_duyet' } },

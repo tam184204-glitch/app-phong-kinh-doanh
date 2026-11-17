@@ -377,6 +377,7 @@ const pgMsg = (err, e) => {
       kd_reservation_one_active: 'Căn này đang có phiếu giữ chỗ / giao dịch còn hiệu lực — không thể giữ trùng',
       kd_contract_one_active: 'Căn này đã có hợp đồng còn hiệu lực',
       kd_commission_one: 'Hợp đồng này đã được tính hoa hồng — không tính trùng',
+      kd_collect_plan_carry: 'Kỳ này đã được chuyển tiếp — không tạo trùng',
       kd_collect_plan_one2: 'Hợp đồng này đã có dòng kế hoạch thu trong tháng — chỉnh ngày / số tiền ở Kế hoạch dự kiến dòng thu-chi',
       kd_installment_seq: 'Trùng số kỳ thu trong hợp đồng',
       kd_customer_phone: 'Số điện thoại đã thuộc hồ sơ khách hàng khác',

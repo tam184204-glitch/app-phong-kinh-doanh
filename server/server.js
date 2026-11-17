@@ -368,10 +368,10 @@ R('GET', '/api/debt-status', async (req, res, u, p, qs) => send(res, 200, await 
 R('PUT', '/api/debt-status/days', async (req, res, u) => { const b = await readJson(req); send(res, 200, await tx(db => V.setDebtDays(db, u, b.days))); });
 R('PUT', '/api/debt-status/:id/class', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await tx(db => V.setDebtClass(db, u, p.id, b))); });
 R('GET', '/api/unit-status', async (req, res, u, p, qs) => send(res, 200, await V.unitStatus({ q, one }, u, qs)));
-R('GET', '/api/due-debt', async (req, res, u, p, qs) => send(res, 200, await V.dueDebt({ q, one }, u, qs)));
+R('GET', '/api/due-debt', async (req, res, u, p, qs) => { await tx(db => V.planRollover(db)); send(res, 200, await V.dueDebt({ q, one }, u, qs)); });   // chuyển tiếp kế hoạch hết kỳ trước khi xem
 R('POST', '/api/due-debt/plan', async (req, res, u) => { const b = await readJson(req); send(res, 200, await tx(db => V.ddPlanToggle(db, u, b))); });   // tích / bỏ «Đưa vào kế hoạch thu» (17/11/2026)
 R('GET', '/api/collect-plans', async (req, res, u, p, qs) => send(res, 200, await V.planList({ q, one }, u, qs)));
-R('GET', '/api/plan-report', async (req, res, u, p, qs) => send(res, 200, await V.planReport({ q, one }, u, qs)));   // Báo cáo kế hoạch thu tuần / tháng (17/11/2026)
+R('GET', '/api/plan-report', async (req, res, u, p, qs) => { await tx(db => V.planRollover(db)); send(res, 200, await V.planReport({ q, one }, u, qs)); });   // Báo cáo kế hoạch thu tuần / tháng (17/11/2026)
 R('POST', '/api/collect-plans/:id/adjust', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await tx(db => V.planAdjust(db, u, p.id, b))); });   // kế hoạch thu tuần / tháng   // Theo dõi công nợ đến hạn (17/11/2026)
 R('GET', '/api/finish-pay', async (req, res, u, p, qs) => send(res, 200, await V.finishPay({ q, one }, u, qs)));
 R('GET', '/api/loans', async (req, res, u, p, qs) => send(res, 200, await V.loans({ q, one }, u, qs)));
@@ -744,7 +744,8 @@ async function start() {
   await tx(async db => B.fixRentValue(db, await db.one("SELECT * FROM kd_user WHERE role = 'admin' ORDER BY id LIMIT 1"))).catch(e => console.error('fixRentValue', e.message));
   const srv = http.createServer(handle);
   srv.listen(PORT, HOST, () => console.log(`App Phòng Kinh doanh: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`));
-  const job = async () => { try { await tx(db => B.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.error('Việc chạy nền lỗi:', e.message); } };
+  const job = async () => { try { await tx(db => V.planRollover(db)); } catch (e) { console.error('Chuyển tiếp kế hoạch thu lỗi:', e.message); }   // 17/11/2026: hết tuần / tháng → chốt kỳ + chuyển tiếp
+    try { await tx(db => B.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.error('Việc chạy nền lỗi:', e.message); } };
   if (!process.env.NO_JOBS) { setTimeout(job, 3000); setInterval(job, 2 * 60e3); }
   require('./misa-watch').startMisaWatch();   // MISA_DIR: tự nhập phiếu thu MISA từ thư mục chung
   return srv;
