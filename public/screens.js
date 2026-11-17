@@ -2383,29 +2383,57 @@ V.planyear = async (main, params = {}) => {
       ${rs.map(r => `<tr class="${r.tot ? 'tot' : 'yp-a'}"><td class="c1" rowspan="3">${r.col ? `<i class="yp-dot" style="background:${r.col}"></i>` : ''}<b>${esc(r.l)}</b></td><td class="c2">Kế hoạch</td><td><b>${ty(sm(r.p))}</b></td>${r.p.map(z).join('')}</tr>
         <tr class="${r.tot ? 'tot' : ''}"><td class="c2">Thực thu</td><td><b>${ty(sm(r.a))}</b></td>${r.a.map(z).join('')}</tr>
         <tr class="${r.tot ? 'tot' : ''} yp-pc"><td class="c2">% thực hiện</td><td><b>${pc(sm(r.a), sm(r.p))}</b></td>${r.p.map((v, j) => `<td>${v || r.a[j] ? pc(r.a[j], v) : ''}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`; };
-  // lưu nháp / lưu và trình duyệt — bản mới (từ báo cáo trực tiếp) hoặc sửa bản Nháp / Yêu cầu chỉnh sửa (ed)
+  // tạo bản kế hoạch mới / sửa bản Nháp – Yêu cầu chỉnh sửa (ed): được chọn lại Tên, Năm, Từ – Đến ngày, Dự án, Ngày chốt công nợ, Người duyệt, Ghi chú
+  // (bộ lọc ngoài màn hình chỉ để điền mặc định); đổi lựa chọn → tự tính lại số liệu xem trước; tự động, không sửa: Mã, Phiên bản, Người lập, Ngày lập
   const ypSaveDlg = async (submit, ed) => { const L = await api('GET', '/api/year-plans?year=' + (ed ? ed.year : s.year));
-    if (!L.can_c) return toast('Bạn không được lập kế hoạch thu', true); if (!ed && !d) return toast('Chưa có số liệu cho khoảng thời gian đang chọn', true);
-    const pj = ed ? (ed.project_id ? { id: ed.project_id, name: ed.project_name } : null) : M.projects.find(p => p.code === s.project);
-    const yr = ed ? ed.year : s.year, fr = ed ? ed.from_on : s.from, to = ed ? ed.to_on : s.to, as = ed ? ed.asof : s.asof, two = true;
-    const m = modal({ title: ed ? `Sửa bản kế hoạch ${esc(ed.code)} · v${ed.version}` : `${ico('fa-file-circle-plus')} Tạo bản kế hoạch dòng thu năm`, body: `<div class="yp-f">
-      <div class="fld"><label>Mã kế hoạch</label><div class="yp-ro">${ed ? `${esc(ed.code)} · phiên bản ${ed.version}` : `Tự cấp khi lưu (KHDT-${yr}-…) · phiên bản 1`}</div></div>
-      <div class="fld"><label>Tên kế hoạch<span class="req">*</span></label><input class="inp" id="ypN" autocomplete="off" value="${esc(ed ? ed.name : `Kế hoạch dòng thu năm ${yr}${pj ? ' — ' + (pj.name || '') : ''}`)}"></div>
-      <div class="fld"><label>Năm / kỳ kế hoạch</label><div class="yp-ro">${yr} · ${dmy(fr)} – ${dmy(to)}</div></div>
-      <div class="fld"><label>Dự án áp dụng</label><div class="yp-ro">${esc(pj?.name || 'Tất cả dự án')}</div></div>
-      <div class="fld"><label>Ngày chốt công nợ</label>${ed ? segDate('ypA', as) : `<div class="yp-ro">${dmy(as)}</div>`}</div>
+    if (!L.can_c) return toast('Bạn không được lập kế hoạch thu', true);
+    const f = ed ? { year: +ed.year, from: ed.from_on, to: ed.to_on, project: ed.project_id ? String(ed.project_id) : '', asof: ed.asof }
+      : { year: s.year, from: s.from, to: s.to, project: String(M.projects.find(p => p.code === s.project)?.id || ''), asof: s.asof || today() };
+    const pjN = id => M.projects.find(p => p.id === +id)?.name || '', defName = () => `Kế hoạch dòng thu năm ${f.year}${f.project ? ' — ' + pjN(f.project) : ''}`;
+    let named = !!ed, seqP = 0, pv = null;
+    const t0 = +today().slice(0, 4), ys = [...new Set([t0 - 1, t0, t0 + 1, t0 + 2, f.year])].sort();
+    const m = modal({ wide: true, title: ed ? `Sửa bản kế hoạch ${esc(ed.code)} · v${ed.version} · ${esc(ed.status_l)}` : `${ico('fa-file-circle-plus')} Tạo bản kế hoạch dòng thu năm`, body: `<div class="yp-f3">
+      <div class="fld"><label>Mã kế hoạch</label><div class="yp-ro">${ed ? esc(ed.code) : 'Tự cấp khi lưu'}</div></div>
+      <div class="fld"><label>Phiên bản · trạng thái</label><div class="yp-ro">${ed ? `v${ed.version} · ${esc(ed.status_l)}` : 'v1 · Nháp'}</div></div>
       <div class="fld"><label>Người lập · ngày lập</label><div class="yp-ro">${esc(ed ? ed.created_name : (M.me?.full_name || M.me?.name || ''))} · ${ed ? dtL(ed.created_at) : dmy(today())}</div></div>
-      <div class="fld"><label>Người duyệt <span class="small muted">(bắt buộc khi trình duyệt)</span></label><select class="inp" id="ypR"><option value="">— Chọn người duyệt —</option>${L.approvers.map(([i, n]) => `<option value="${i}" ${ed && +ed.approver_id === i ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></div>
-      <div class="fld"><label>Ghi chú</label><input class="inp" id="ypO" autocomplete="off" value="${esc(ed?.note || '')}"></div></div>
-      <div class="yp-msg">${submit || two ? 'Khi trình duyệt, toàn bộ số liệu (Thu công nợ còn lại – Thu bán mới – Thu cho thuê, theo tháng, đến từng căn) được chốt tại thời điểm trình; thay đổi dữ liệu nguồn về sau không ghi đè bản đã trình / đã duyệt.' : 'Bản nháp lưu số liệu tại thời điểm lưu; được sửa và cập nhật lại số liệu nguồn trước khi trình.'}</div>`,
-      foot: `<button class="btn" data-x>Hủy</button>${two ? `<button class="btn" id="ypS0">${ico('fa-floppy-disk')} Lưu nháp</button>` : ''}<button class="btn pri" id="ypS1">${submit || two ? `${ico('fa-paper-plane')} Lưu và trình duyệt` : `${ico('fa-floppy-disk')} Lưu nháp`}</button>` });
-    if (ed) wireSegDate(m.el);
-    const go = sub => run(async () => { const asv = ed ? segVal($('#ypA', m.el)) : as; if (!asv) return toast('Ngày chốt công nợ không hợp lệ', true);
-      if (!$('#ypN', m.el).value.trim()) return toast('Nhập tên kế hoạch', true); if (sub && !$('#ypR', m.el).value) return toast('Chọn người duyệt', true);
-      if (sub && !await ask('Lưu và trình duyệt', 'Chốt toàn bộ số liệu tại thời điểm trình và gửi người duyệt? Sau khi trình, bản này không sửa được (trừ khi bị yêu cầu chỉnh sửa).')) return;
-      const x = await api('POST', '/api/year-plans', { name: $('#ypN', m.el).value.trim(), note: $('#ypO', m.el).value.trim(), approver_id: $('#ypR', m.el).value || null, asof: asv, submit: sub, ...(ed ? { id: ed.id } : { year: yr, from: fr, to, project_id: pj?.id || null }) });
+      <div class="fld yp-w2"><label>Tên kế hoạch<span class="req">*</span></label><input class="inp" id="ypN" autocomplete="off" value="${esc(ed ? ed.name : defName())}"></div>
+      <div class="fld"><label>Năm kế hoạch<span class="req">*</span></label><select class="inp" id="ypY">${ys.map(y => `<option value="${y}" ${y === f.year ? 'selected' : ''}>${y}</option>`).join('')}</select></div>
+      <div class="fld"><label>Từ ngày<span class="req">*</span></label>${segDate('ypF', f.from)}</div>
+      <div class="fld"><label>Đến ngày<span class="req">*</span></label>${segDate('ypT', f.to)}</div>
+      <div class="fld"><label>Dự án áp dụng</label><select class="inp" id="ypP"><option value="">Tất cả dự án</option>${M.projects.map(p => `<option value="${p.id}" ${String(p.id) === f.project ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select></div>
+      <div class="fld"><label>Ngày chốt công nợ<span class="req">*</span></label>${segDate('ypA', f.asof)}</div>
+      <div class="fld"><label>Người duyệt <span class="small muted">(bắt buộc khi trình)</span></label><select class="inp" id="ypR"><option value="">— Chọn người duyệt —</option>${L.approvers.map(([i, n]) => `<option value="${i}" ${ed && +ed.approver_id === i ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></div>
+      <div class="fld yp-w3"><label>Ghi chú</label><input class="inp" id="ypO" autocomplete="off" value="${esc(ed?.note || '')}"></div></div>
+      <div class="yp-pv" id="ypV"></div>
+      <div class="yp-msg">${ico('fa-circle-info')} <b>Lưu nháp</b>: lưu số liệu theo lựa chọn trên, vẫn sửa được và cập nhật lại dữ liệu nguồn. <b>Lưu và trình duyệt</b>: chốt toàn bộ số liệu (3 nguồn, theo tháng, đến từng căn) tại thời điểm trình, chuyển «Chờ duyệt» và khóa chỉnh sửa.</div>`,
+      foot: `<button class="btn" data-x>Hủy</button><button class="btn" id="ypS0">${ico('fa-floppy-disk')} Lưu nháp</button><button class="btn pri" id="ypS1">${ico('fa-paper-plane')} Lưu và trình duyệt</button>` });
+    wireSegDate(m.el);
+    // xem trước số liệu theo lựa chọn trên form — tính lại mỗi khi đổi năm / kỳ / dự án / ngày chốt
+    const calc = async () => { const my = ++seqP, box = $('#ypV', m.el);
+      if (!f.from || !f.to || !f.asof) { pv = null; box.innerHTML = `<span class="neg">${ico('fa-triangle-exclamation')} Nhập đủ Từ ngày, Đến ngày và Ngày chốt công nợ hợp lệ</span>`; return; }
+      if (f.from > f.to) { pv = null; box.innerHTML = `<span class="neg">${ico('fa-triangle-exclamation')} «Từ ngày» phải nhỏ hơn hoặc bằng «Đến ngày»</span>`; return; }
+      box.innerHTML = `<span class="muted">${ico('fa-spinner fa-spin')} Đang lấy số liệu: kỳ ${dmy(f.from)} – ${dmy(f.to)}${f.project ? ' · ' + esc(pjN(f.project)) : ' · tất cả dự án'} · chốt công nợ ${dmy(f.asof)}…</span>`;
+      try { const r = await api('GET', '/api/plan-year?' + new URLSearchParams({ year: f.year, from: f.from, to: f.to, asof: f.asof })); if (my !== seqP) return;
+        const pc = M.projects.find(p => p.id === +f.project)?.code, xs = f.project ? r.items.filter(i => i.project === pc) : r.items, sm = k => xs.filter(i => i.month && (!k || i.src === k)).reduce((a, i) => a + (+i.plan || 0), 0);
+        const un = xs.filter(i => !i.month && i.zone !== 'out' && i.zone !== 'carry').reduce((a, i) => a + (+i.plan || 0), 0), nu = new Set(xs.map(i => i.src + '|' + (i.unit_id || i.grp || i.unit))).size;
+        pv = 1; box.innerHTML = `<div class="yp-pvh">Số liệu theo lựa chọn — kỳ ${dmy(f.from)} – ${dmy(f.to)} · ${f.project ? esc(pjN(f.project)) : 'Tất cả dự án'} · chốt công nợ ${dmy(f.asof)}</div>
+          <div class="yp-pvg">${[['Tổng kế hoạch trong kỳ', sm()], ['Thu công nợ còn lại', sm('cn')], ['Thu bán mới', sm('moi')], ['Thu cho thuê', sm('thue')], ['Chưa phân bổ kỳ', un]].map(([l, v]) => `<div><span>${l}</span><b>${fm(v)}</b></div>`).join('')}<div><span>Số căn / khoản</span><b>${nu} / ${xs.length}</b></div></div>`; }
+      catch (er) { if (my !== seqP) return; pv = null; box.innerHTML = `<span class="neg">Không lấy được số liệu: ${esc(er.message)}</span>`; } };
+    m.el.addEventListener('sdchange', e => { const v = segVal(e.target); if (v === null) return; const k = { ypF: 'from', ypT: 'to', ypA: 'asof' }[e.target.id]; if (!k) return; f[k] = v || ''; calc(); });
+    m.el.addEventListener('change', e => { const id = e.target.id;
+      if (id === 'ypY') { f.year = +e.target.value; f.from = `${f.year}-01-01`; f.to = `${f.year}-12-31`; segSet($('#ypF', m.el), f.from); segSet($('#ypT', m.el), f.to); }
+      else if (id === 'ypP') f.project = e.target.value; else return;
+      if (!named) $('#ypN', m.el).value = defName(); calc(); });
+    $('#ypN', m.el).oninput = () => { named = true; };
+    calc();
+    const go = sub => run(async () => { if (!$('#ypN', m.el).value.trim()) return toast('Nhập tên kế hoạch', true);
+      if (!f.from || !f.to || !f.asof) return toast('Nhập đủ Từ ngày, Đến ngày và Ngày chốt công nợ hợp lệ', true); if (f.from > f.to) return toast('«Từ ngày» phải nhỏ hơn hoặc bằng «Đến ngày»', true);
+      if (sub && !$('#ypR', m.el).value) return toast('Chọn người duyệt trước khi trình', true);
+      if (sub && !await ask('Lưu và trình duyệt', 'Chốt toàn bộ số liệu tại thời điểm trình, chuyển «Chờ duyệt» và khóa chỉnh sửa bản này?')) return;
+      const x = await api('POST', '/api/year-plans', { ...(ed ? { id: ed.id } : {}), name: $('#ypN', m.el).value.trim(), note: $('#ypO', m.el).value.trim(), approver_id: $('#ypR', m.el).value || null,
+        year: f.year, from: f.from, to: f.to, project_id: f.project || null, asof: f.asof, submit: sub });
       toast(x.msg); m.close(); if (ed && +x.id === VER) await load(); else location.hash = '#/v/planyear?ver=' + x.id; });
-    $('#ypS1', m.el).onclick = go(submit || two); if (two) $('#ypS0', m.el).onclick = go(false); };
+    $('#ypS0', m.el).onclick = go(false); $('#ypS1', m.el).onclick = go(true); };
   const ypAct = async a => {
     if (a === 'edit' || a === 'submit') return ypSaveDlg(a === 'submit', P);
     if (a === 'refresh') { if (!await ask('Cập nhật số liệu nguồn', `Lấy lại số liệu 3 nguồn theo dữ liệu hiện tại (ngày chốt công nợ ${dmy(P.asof)})? Số liệu cũ của bản ${P.status_l.toLowerCase()} được thay thế.`)) return;

@@ -1008,18 +1008,22 @@ async function ypSave(db, user, b) {
   if (!name) bad('Nhập tên kế hoạch');
   if (apr) { const a = await db.one('SELECT role, active FROM kd_user WHERE id = $1', [apr]); if (!a?.active || !YP_BOSS.includes(a.role)) bad('Người duyệt không có thẩm quyền phê duyệt'); }
   if (submit && !apr) bad('Chọn người duyệt trước khi trình');
+  const per = b.year != null || b.from || b.to ? (() => { const y = /^\d{4}$/.test(String(b.year || '')) ? +b.year : bad('Chọn năm kế hoạch'), fr = isoDay(b.from), to = isoDay(b.to); if (!fr || !to) bad('Nhập Từ ngày – Đến ngày'); if (fr > to) bad('«Từ ngày» phải nhỏ hơn hoặc bằng «Đến ngày»'); return { year: y, from_on: fr, to_on: to, project_id: b.project_id ? +b.project_id : null }; })() : null;
+  if (per?.project_id && !await db.one('SELECT id FROM kd_project WHERE id = $1', [per.project_id])) bad('Không tìm thấy dự án');
   let p;
   if (b.id) { p = await ypHead(db, b.id); if (!ypEdit(user, p)) bad(`Bản kế hoạch đang «${YP_ST[p.status]}» — không sửa được${p.status === 'da_duyet' ? ' (tạo phiên bản mới để điều chỉnh)' : ''}`); }
-  else { const y = /^\d{4}$/.test(String(b.year || '')) ? +b.year : bad('Chọn năm kế hoạch'), fr = isoDay(b.from), to = isoDay(b.to); if (!fr || !to || fr > to) bad('Kỳ kế hoạch không hợp lệ');
+  else { if (!per) bad('Chọn năm và kỳ kế hoạch'); const y = per.year, fr = per.from_on, to = per.to_on;
     const n = (await db.one(`INSERT INTO kd_counter (prefix, n) VALUES ($1, 1) ON CONFLICT (prefix) DO UPDATE SET n = kd_counter.n + 1 RETURNING n`, ['KHDT-' + y])).n;
     p = await db.one(`INSERT INTO kd_year_plan (code, name, year, from_on, to_on, project_id, asof, version, status, created_by, hist) VALUES ($1, $2, $3, $4, $5, $6, $7, 1, 'nhap', $8, '[]') RETURNING *`,
       [`KHDT-${y}-${String(n).padStart(3, '0')}`, name, y, fr, to, b.project_id ? +b.project_id : null, asof, user.id]);
     await db.q('UPDATE kd_year_plan SET root_id = id WHERE id = $1', [p.id]); p.root_id = p.id; }
-  const hist = [...(p.hist || [])], refresh = !b.id || submit || b.refresh || ddDay(p.asof) !== asof;
+  const chg = !!b.id && !!per && (per.year !== +p.year || per.from_on !== ddDay(p.from_on) || per.to_on !== ddDay(p.to_on) || (per.project_id || null) !== (p.project_id || null));
+  if (chg) Object.assign(p, per);
+  const hist = [...(p.hist || [])], refresh = !b.id || submit || b.refresh || chg || ddDay(p.asof) !== asof;
   let cap = null; if (refresh) cap = await ypCapture(db, user, { ...p, asof });
   hist.push(ypH(user, !b.id ? (submit ? 'Lập và trình duyệt' : 'Lập — lưu nháp') : submit ? 'Trình duyệt' : refresh ? 'Sửa — cập nhật lại số liệu nguồn' : 'Sửa thông tin', submit ? `Chốt số liệu tại ngày chốt công nợ ${C.dmy(asof)}` : ''));
   const st = submit ? 'cho_duyet' : p.status === 'yeu_cau_sua' ? 'yeu_cau_sua' : 'nhap';
-  const x = await db.one(`UPDATE kd_year_plan SET name = $2, note = $3, asof = $4, approver_id = $5, status = $6, hist = $7, updated_by = $8, updated_at = now()${cap ? ', data = $9, totals = $10' : ''}${submit ? ', submitted_by = $8, submitted_at = now()' : ''} WHERE id = $1 RETURNING id, code, version, status`,
+  const x = await db.one(`UPDATE kd_year_plan SET name = $2, note = $3, asof = $4, approver_id = $5, status = $6, hist = $7, updated_by = $8, updated_at = now(), year = ${+p.year}, from_on = '${ddDay(p.from_on)}', to_on = '${ddDay(p.to_on)}', project_id = ${p.project_id ? +p.project_id : 'NULL'}${cap ? ', data = $9, totals = $10' : ''}${submit ? ', submitted_by = $8, submitted_at = now()' : ''} WHERE id = $1 RETURNING id, code, version, status`,
     [p.id, name, note, asof, apr, st, JSON.stringify(hist), user.id, ...(cap ? [JSON.stringify(cap.data), JSON.stringify(cap.totals)] : [])]);
   await C.audit(db, 'year_plan', x.id, b.id ? 'update' : 'create', null, { code: x.code, version: x.version, status: st }, user, hist[hist.length - 1].act);
   return { id: x.id, msg: `${x.code} v${x.version}: ${submit ? 'đã trình duyệt — số liệu đã chốt' : 'đã lưu nháp'}` };
