@@ -2066,7 +2066,6 @@ table.t td.wrap { min-width: 260px; }
   background: repeating-linear-gradient(180deg, #EDF1F6 0 14px, transparent 14px 30px); -webkit-mask: linear-gradient(90deg, #000 0 70%, rgba(0,0,0,.4)); }
 .empty.sk::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.65), transparent); animation: skm 1.2s linear infinite; }
 @keyframes skm { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
-=======
 /* 16/11/2026: «Các hợp đồng của căn» ở tab công nợ của hợp đồng — dòng tiến độ HĐMB của HĐ thuê / vay bán căn */
 .uc-t tr.uc-sub td { background: #fafbfc; font-size: 12.5px; }
 table.t.uc-t { table-layout: fixed; width: 100%; } table.t.uc-t td, table.t.uc-t th { vertical-align: top; white-space: normal; overflow-wrap: anywhere; padding-left: 7px; padding-right: 7px; }
@@ -2203,3 +2202,103 @@ table.t.uc-t td.num, table.t.uc-t th.num { white-space: nowrap; overflow-wrap: n
 .ai-msg .bub a.ai-btn:hover { background: var(--cobalt-50); text-decoration: none; }
 .ai-msg .bub a.ai-btn.ok { background: var(--cobalt); border-color: var(--cobalt); color: #fff; }
 .ai-msg .bub a.ai-btn.ok:hover { background: var(--cobalt-d); }
+/* 17/11/2026: Kế hoạch thu tuần/tháng — bộ lọc chung, dải 3 chỉ tiêu, biểu đồ thanh ngang theo chế độ, báo cáo thực hiện kế hoạch thu */
+.pw2 .pw-f{padding:12px 16px}
+.pw2 .pw-fr{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pw2 .pw-fr select{height:34px;width:auto;min-width:110px;padding:0 10px;border:1px solid var(--line2);border-radius:8px;background:var(--card);font:inherit;font-size:13.5px;color:var(--text)}
+.pw2 .pw-fr .sdate{height:34px}
+.pw2 .pw-dt{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+.pw2 .pw-seg{display:inline-flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden;height:34px}
+.pw2 .pw-seg button{border:0;background:var(--card);padding:0 14px;font:inherit;font-size:13.5px;font-weight:600;color:var(--muted);cursor:pointer}
+.pw2 .pw-seg button.on{background:var(--cobalt);color:#fff}
+.pw2 .pw-kpi{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch}
+.pw2 .pw-kpi>div{background:var(--card);border:1px solid var(--line2);border-radius:10px;padding:8px 16px;display:flex;align-items:baseline;gap:10px}
+.pw2 .pw-kpi>div span{font-size:12.5px;color:var(--muted)}
+.pw2 .pw-kpi>div b{font-size:17px;font-variant-numeric:tabular-nums}
+.pw2 .pw-kpi>.pw-kp{flex:1;min-width:220px;border:0;background:transparent;justify-content:flex-end}
+.pw2 .pr-chart{position:relative;padding:14px 18px 12px}
+.pw2 .hb-top{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;justify-content:space-between;margin-bottom:8px}
+.pw2 .hb-ttl{font-weight:700;font-size:15px}
+.pw2 .hb-lg{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12.5px;align-items:center}
+.pw2 .hb-lg i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.pw2 .hb-k{display:grid;grid-template-columns:220px 1fr 170px;gap:12px;align-items:center;padding:6px 8px;border-radius:8px;cursor:pointer;border-bottom:1px solid var(--line2)}
+.pw2 .hb-k:hover{background:rgba(46,102,194,.05)}
+.pw2 .hb-k.on{background:rgba(245,166,35,.13)}
+.pw2 .hb-k.none{display:flex;justify-content:space-between;padding:5px 8px;color:var(--muted)}
+.pw2 .hb-lb{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px}
+.pw2 .hb-t{font-weight:600;font-size:13.5px;white-space:nowrap}
+.pw2 .hb-bars .hb-r{display:grid;grid-template-columns:1fr 64px;gap:8px;align-items:center;margin:2px 0}
+.pw2 .hb-tr{height:12px;background:rgba(148,163,184,.22);border-radius:3px;overflow:hidden;display:block}
+.pw2 .hb-f{display:block;height:100%;border-radius:0 3px 3px 0}
+.pw2 .hb-v{font-size:12.5px;text-align:right;font-variant-numeric:tabular-nums}
+.pw2 .hb-nt{display:flex;flex-direction:column;align-items:flex-end;font-size:13px;text-align:right}
+.pw2 .pw-st{display:inline-block;font-size:11px;font-weight:600;padding:1px 8px;border-radius:10px;white-space:nowrap}
+.pw2 .pw-st.done{background:#e5e7eb;color:#374151}
+.pw2 .pw-st.run{background:#fff1dc;color:#9a5b00}
+.pw2 .pw-st.next{background:#e8f0fb;color:#1e4e8c}
+.pw2 .pw-st.none{background:transparent;color:var(--muted);border:1px dashed var(--line2)}
+.pw2 .hb-tip{position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--line2);box-shadow:0 6px 18px rgba(20,56,102,.12);border-radius:8px;padding:7px 10px;font-size:12.5px;line-height:1.5;display:none;white-space:nowrap;z-index:3}
+.pw2 .pr-box{padding:14px 18px}
+.pw2 .pr-h{text-align:center;margin:4px 0 12px}
+.pw2 .pr-tt{display:block;font-weight:800;font-size:18px;letter-spacing:.5px}
+.pw2 .pr-t{width:100%;border-collapse:collapse;table-layout:fixed}
+.pw2 .pr-t th,.pw2 .pr-t td{padding:7px 10px;border-bottom:1px solid var(--line2);font-size:14px;text-align:left;overflow:hidden;text-overflow:ellipsis}
+.pw2 .pr-t th{font-weight:700;white-space:nowrap}
+.pw2 .pr-t .n{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.pw2 .pr-t tr.g td{font-weight:700;background:#eaf1fb}
+.pw2 .pr-t tr.b td{font-weight:700;background:#f3f4f6}
+.pw2 .pr-t tr.t td{font-weight:700;background:#1e4e8c;color:#fff}
+.pw2 .pr-t tr.u a{font-weight:600}
+.pw2 .pr-tg{cursor:pointer;display:inline-block;width:14px}
+.pw2 .pw-rule{margin-top:10px;font-size:12.5px;color:var(--muted)}
+.pw2 .pw-rule summary{cursor:pointer;color:var(--cobalt);font-weight:600}
+.pw2 .pw-rule ul{margin:6px 0 0;padding-left:18px;line-height:1.55}
+@media (max-width:900px){.pw2 .hb-k{grid-template-columns:1fr}.pw2 .hb-nt{align-items:flex-start;text-align:left}}
+
+/* 17/11/2026: Báo cáo công nợ đến hạn (thiết kế lại) — bộ lọc gom 1 khu vực, 5 ô tổng hợp nhỏ, bảng 1 dòng / căn cố định cột + tiêu đề */
+.dd2 .dd-f{padding:12px 16px}
+.dd2 .dd-fr{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.dd2 .dd-fr select{height:34px;width:auto;min-width:130px;padding:0 10px;border:1px solid var(--line2);border-radius:8px;background:var(--card);font:inherit;font-size:13.5px;color:var(--text)}
+.dd2 .dd-fr .search{min-width:240px;flex:1 1 240px;max-width:340px}
+.dd2 .dd-dt{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+.dd2 .dd-adv{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line2)}
+.dd2 .dd-adv[hidden]{display:none}
+.dd2 .dd-k{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.dd2 .dd-kt{background:var(--card);border:1px solid var(--line2);border-radius:10px;padding:8px 14px;display:flex;flex-direction:column;gap:1px;min-width:0}
+.dd2 .dd-kt .l{font-size:12.5px;color:var(--muted)}
+.dd2 .dd-kt b{font-size:17px;font-variant-numeric:tabular-nums}
+.dd2 .dd-kt small{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dd2 .dd-kt.red b{color:#c0392b}
+.dd2 .dd-kt.tot{border-color:#1e4e8c;background:#eaf1fb}
+.dd2 .dd-warn{color:#b45309;font-size:12px;margin-left:4px;text-decoration:none}
+.dd2 .dd-c{padding:10px 14px 12px}
+.dd2 .dd-top{display:flex;align-items:center;gap:8px;margin:2px 0 6px}
+.dd2 .dd-tw{overflow:auto;max-height:calc(100vh - 330px);min-height:220px;border:1px solid var(--line2);border-radius:8px}
+.dd2 .dd-t{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-size:13px}
+.dd2 .dd-t th,.dd2 .dd-t td{padding:6px 9px;border-bottom:1px solid var(--line2);background:var(--card);vertical-align:top;text-align:left}
+.dd2 .dd-t thead th{position:sticky;background:#f1f5fb;font-weight:700;font-size:12.5px;white-space:nowrap;z-index:2;text-align:center}
+.dd2 .dd-t thead tr.h1 th{top:0;height:30px}
+.dd2 .dd-t thead tr.h2 th{top:31px}
+.dd2 .dd-t th.n,.dd2 .dd-t td.n{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.dd2 .dd-t .s1{position:sticky;left:0;z-index:1;min-width:120px;width:120px;white-space:nowrap}
+.dd2 .dd-t .s2{position:sticky;left:120px;z-index:1;min-width:190px;max-width:230px;box-shadow:2px 0 0 var(--line2)}
+.dd2 .dd-t .sr{position:sticky;right:0;z-index:1;box-shadow:-2px 0 0 var(--line2);white-space:nowrap}
+.dd2 .dd-t thead th.s1,.dd2 .dd-t thead th.s2,.dd2 .dd-t thead th.sr{z-index:4;text-align:left}
+.dd2 .dd-t tbody tr{cursor:pointer}
+.dd2 .dd-t tbody tr:hover td{background:#f6f9fe}
+.dd2 .dd-t td.small{min-width:150px;max-width:230px}
+.dd2 .dd-t tfoot td{position:sticky;bottom:0;background:#1e4e8c;color:#fff;font-weight:700;z-index:2;border-bottom:0}
+.dd2 .dd-t tfoot td.s1,.dd2 .dd-t tfoot td.sr{z-index:4}
+.dd2 .dd-g{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.dd2 .dd-g.g1{background:#e8f0fb;color:#1e4e8c}
+.dd2 .dd-g.g2{background:#fff3d9;color:#94600a}
+.dd2 .dd-g.g3{background:#fdecdc;color:#b4540a}
+.dd2 .dd-g.g4{background:#fdecea;color:#b42318}
+.dd2 .btn.xs{padding:2px 8px;font-size:12px;min-height:0;height:auto}
+.dd2 .dd-rule{margin-top:8px;font-size:12.5px}
+.dd2 .dd-rule summary{cursor:pointer;color:var(--cobalt);font-weight:600}
+@media (max-width:1100px){.dd2 .dd-k{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:640px){.dd2 .dd-k{grid-template-columns:repeat(2,minmax(0,1fr))}.dd2 .dd-t .s2{position:static;box-shadow:none}}
+.pw2 .pr-t tr.p td{font-weight:700;background:#f2f6fc}
+.pw2 .pr-t tr.p td:first-child{padding-left:22px}
+.pw2 .pr-t tr.b td:first-child{padding-left:36px}

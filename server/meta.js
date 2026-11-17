@@ -816,13 +816,13 @@ def('payment', {
   acts: [{ k: 'void', l: 'Hủy phiếu chi', icon: 'fa-ban', from: ['hop_le'], roles: ['cong_no', 'ho_so', 'truong_phong'], danger: 1, ask: [{ k: 'reason', l: 'Lý do hủy', t: 'long', req: 1 }] }],
 });
 def('collect_plan', {
-  title: 'Kế hoạch dự kiến dòng thu-chi', one: 'dòng kế hoạch', code: 'CN-03', mod: '06', icon: 'fa-chart-line', disp: "t.month||' · #'||t.id",
+  title: 'Kế hoạch dự kiến dòng thu tuần/ tháng', one: 'dòng kế hoạch', code: 'CN-03', mod: '06', icon: 'fa-chart-line', disp: "t.month||' · #'||t.id",
   purpose: 'Dự báo số tiền có khả năng thu trong kỳ', users: 'Nhân viên công nợ / Trưởng phòng',
   how: 'Lọc công nợ → nhập dự kiến từng căn → Trưởng phòng duyệt → theo dõi thực thu → chốt chênh lệch',
   rules: 'Không dự kiến âm; vượt công nợ phải giải trình; kế hoạch có phiên bản và ngày chốt',
   c: ['cong_no', 'truong_phong'], a: ['truong_phong'], own: [], order: 't.month desc, t.expected_on', bulk: 1, fields: [
     { k: 'month', l: 'Tháng kế hoạch', t: 'month', help: 'Để trống = tự lấy theo ngày dự kiến thu' },
-    { k: 'contract_id', l: 'Hợp đồng / mã căn', t: 'ref', ref: 'contract', req: 1, filter: 'da_ky' },
+    { k: 'contract_id', l: 'Hợp đồng / mã căn', t: 'ref', ref: 'contract', filter: 'da_ky', help: 'Bắt buộc, trừ dòng thu bán mới (liên kết sau khi có giao dịch)' },
     { k: 'unit_id', l: 'Mã căn', t: 'ref', ref: 'unit', ro: 1 },
     { k: 'customer_id', l: 'Khách hàng', t: 'ref', ref: 'customer', ro: 1 },
     money('debt_left', 'Công nợ còn lại', { ro: 1, help: 'Tại ngày lập' }),
@@ -832,7 +832,15 @@ def('collect_plan', {
     { k: 'basis_note', l: 'Ghi chú', t: 'text' },
     // 17/11/2026: nguồn tiền, thuộc công nợ bán hàng / cho thuê, liên kết lần nhắc nợ (đưa cam kết vào kế hoạch), đổi lịch = bản mới (giữ bản cũ «Đã thay thế» + lý do)
     { k: 'fund_src', l: 'Nguồn tiền', t: 'sel', def: 'khach_tu_tra', o: [['khach_tu_tra', 'Khách tự thanh toán'], ['vay_ngan_hang', 'Vay ngân hàng giải ngân'], ['ho_tro', 'Hỗ trợ / bên thứ ba'], ['khac', 'Khác']] },
-    { k: 'scope', l: 'Thuộc công nợ', t: 'sel', o: [['ban', 'Bán hàng'], ['thue', 'Cho thuê']] },
+    { k: 'scope', l: 'Thuộc công nợ', t: 'sel', o: [['ban', 'Bán hàng'], ['thue', 'Cho thuê'], ['moi', 'Thu bán mới']] },
+    // 17/11/2026: dòng THU BÁN MỚI — kế hoạch thu từ giao dịch bán mới chưa xác định căn / khách hàng (liên kết sau); mỗi tuần phân bổ 1 bản ghi cùng nhóm grp_key
+    { k: 'project_id', l: 'Dự án', t: 'ref', ref: 'project', noForm: 1 },
+    { k: 'building_id', l: 'Tòa', t: 'ref', ref: 'building', noForm: 1 },
+    { k: 'title', l: 'Nội dung kế hoạch', t: 'text', noForm: 1 },
+    { k: 'units_n', l: 'Số căn dự kiến bán', t: 'int', noForm: 1 },
+    money('unit_price', 'Đơn giá bình quân (đồng/căn)', { noForm: 1 }),
+    { k: 'rate', l: 'Tỷ lệ dự kiến thu (%)', t: 'num', noForm: 1 },
+    { k: 'grp_key', l: 'Nhóm dòng kế hoạch', t: 'text', hide: 1 },
     { k: 'call_id', l: 'Từ lần nhắc nợ', t: 'ref', ref: 'debt_call', noForm: 1 },
     { k: 'prev_id', l: 'Kế hoạch trước khi đổi lịch', t: 'ref', ref: 'collect_plan', ro: 1 },
     { k: 'resched_reason', l: 'Lý do đổi lịch', t: 'text', ro: 1 },
@@ -1210,7 +1218,7 @@ const MENU = [
   ['03', 'Khách hàng tiềm năng', 'fa-users', [['e:contact_log']]],   // hồ sơ khách tự sinh từ kênh liên hệ (Website, Messenger, Zalo, Hotline, trực tiếp)
   ['04', 'Giao dịch bán hàng', 'fa-handshake-angle', [['e:sale_notice'], ['e:reservation'], ['e:noxh_check'], ['signing', 'Lịch ký hợp đồng'], ['payouts', 'Theo dõi thanh lý & chi trả', 'GD-04']]],
   ['05', 'Hồ sơ & hợp đồng', 'fa-file-contract', [['e:contract?group=can_ho', 'Hợp đồng căn hộ chung cư'], ['e:contract?group=lien_ke', 'Hợp đồng nhà liền kề'], ['loans', 'Theo dõi hợp đồng 3 bên', 'HD-05'], ['e:contract_change'], ['vault', 'Hồ sơ & lưu trữ theo căn', 'HD-06']]],
-  ['06', 'Công nợ & kế hoạch thu', 'fa-sack-dollar', [['vouchers', 'Phiếu thu – Phiếu chi', 'CN-09'], ['loantrack', 'Theo dõi công nợ', 'CN-07'], ['duedebt', 'Báo cáo công nợ đến hạn', 'CN-11'], ['ledger', 'Sổ công nợ căn hộ'], ['e:collect_plan']]],   // bỏ menu Nhật ký nhắc nợ (07/11/2026): ghi ở Tình trạng công nợ đến hạn, tự hiện ở Hồ sơ 360°
+  ['06', 'Công nợ & kế hoạch thu', 'fa-sack-dollar', [['vouchers', 'Phiếu thu – Phiếu chi', 'CN-09'], ['loantrack', 'Theo dõi công nợ', 'CN-07'], ['duedebt', 'Báo cáo công nợ đến hạn', 'CN-11'], ['ledger', 'Sổ công nợ căn hộ'], ['e:collect_plan'], ['planyear', 'Kế hoạch dòng thu năm', 'CN-12']]],   // bỏ menu Nhật ký nhắc nợ (07/11/2026): ghi ở Tình trạng công nợ đến hạn, tự hiện ở Hồ sơ 360°
   ['07', 'Bàn giao căn hộ', 'fa-key', [['ready', 'Căn đủ điều kiện'], ['e:handover_notice'], ['e:handover'], ['e:defect']]],
   ['08', 'Cấp sổ hồng', 'fa-book', [['e:gcn_notice'], ['e:pinkbook']]],   // 17/11/2026: Thông báo bàn giao Giấy chứng nhận
   ['09', 'Chăm sóc khách hàng', 'fa-headset', [['e:ticket'], ['e:notice']]],
