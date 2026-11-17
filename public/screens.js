@@ -2162,85 +2162,97 @@ const saleUnitDlg = (onDone, preset = {}) => {
       units: xs.map(x => ({ unit_id: x.u.id, value: x.value, sale_month: x.sale, sched: sched.filter(z => +z.pct > 0).map(z => ({ month: ymAdd(x.sale, z.off), pct: +z.pct })) })) });
     toast(r.msg); m.close(); onDone && onDone(); });
 };
-// 17/11/2026 (bản 2 nguồn): KẾ HOẠCH DÒNG THU NĂM — I. Thu công nợ còn lại (lịch từng đợt; công nợ chuyển sang; chưa phân bổ kỳ) + II. Thu bán mới (theo căn / dự án – tòa);
-// bảng Nguồn → Dự án → Tòa → Căn: Số căn, Tổng KH năm, Chuyển sang, T1 – T12, Chưa phân bổ kỳ, Thực thu, Còn phải thu, Tỷ lệ; bấm tháng → kế hoạch tuần/tháng; biểu đồ dùng chung dữ liệu
+// 17/11/2026 (bản 3 nguồn, giao diện theo mẫu Ke_hoach_dong_thu_nam.html): KẾ HOẠCH DÒNG THU NĂM — Công nợ còn lại · Bán mới · Cho thuê (dữ liệu thật, không hệ số giả lập);
+// bộ lọc Năm / Dự án dùng chung cho chỉ tiêu, biểu đồ cột chồng 12 tháng, bảng 4 dòng × 12 tháng (bấm ô → chi tiết đúng nguồn + tháng), Chưa phân bổ kỳ, chi tiết tháng Dự án → Tòa → Căn → Đợt/kỳ
 V.planyear = async main => {
-  const s = ST.planyear ||= { year: +today().slice(0, 4), project: '', building: '', src: '', owner: '', shut: {} }; s.shut ||= {};
-  main.innerHTML = `<div class="page py2">${head('06', 'Kế hoạch dòng thu năm', 'fa-calendar-days', `<button class="btn pri" id="pyNew">${ico('fa-bullhorn')} Tạo kế hoạch thu bán mới</button><button class="btn" id="pyX">${ico('fa-file-excel')} Xuất Excel</button><button class="btn" id="pyP">${ico('fa-print')} In / PDF</button>`, 'CN-12')}
-    <div class="card mb py-f"></div><div class="py-k mb"></div><div class="card mb pr-chart py-c"></div><div class="card mb py-t"></div></div>`;
-  const fbox = $('.py-f', main), kbox = $('.py-k', main), cbox = $('.py-c', main), tbox = $('.py-t', main);
-  const pct = (a, p) => p > 0 ? (Math.round(a / p * 1000) / 10).toLocaleString('vi-VN') + '%' : '—', tr = v => (Math.round(v / 1e5) / 10).toLocaleString('vi-VN', { maximumFractionDigits: 1 });
+  const s = ST.planyear2 ||= { year: +today().slice(0, 4), project: '', month: today().slice(0, 7), src: '' };
+  const SRC = [['cn', 'Thu công nợ còn lại', '#3568ac', 'Theo từng căn và đợt HĐMB'], ['moi', 'Thu bán mới', '#dba54d', 'Theo căn dự kiến bán và tỷ lệ thu'], ['thue', 'Thu cho thuê', '#14998a', 'Theo kỳ thuê nhà + nội thất']];
+  main.innerHTML = `<div class="page ap"><div class="ap-hd"><div><div class="ap-eb">CÁT TƯỜNG · KẾ HOẠCH DÒNG THU</div><h2>Kế hoạch dòng thu năm</h2><div class="ap-sub">Công nợ còn lại · Bán mới · Cho thuê</div></div>
+      <div class="ap-act"><span class="ap-dd"><button type="button" id="apX">Xuất báo cáo ${ico('fa-caret-down')}</button><span class="ap-menu" hidden><button type="button" data-apx="xlsx">${ico('fa-file-excel')} Xuất Excel</button><button type="button" data-apx="pdf">${ico('fa-print')} In / PDF</button></span></span>
+        <button type="button" class="ap-pri" id="apNew">+ Kế hoạch bán mới</button></div></div>
+    <div class="ap-box"><div class="ap-flt"><label>Năm kế hoạch<select id="apY"></select></label><label>Dự án<select id="apP"></select></label><span class="ap-sub">Đơn vị: tỷ đồng · số liệu thực tế đến <span id="apAsof"></span></span></div><div class="ap-stats" id="apS"></div></div>
+    <div class="ap-box"><div class="ap-row"><h3>Phân bổ dòng thu 12 tháng</h3><span class="ap-sub">Tỷ đồng · Tổng từng tháng · bấm cột để xem chi tiết tháng</span></div><div class="ap-chart" id="apC"></div>
+      <div class="ap-lg">${SRC.map(([, l, c]) => `<span><i style="background:${c}"></i>${l}</span>`).join('')}</div><div class="ap-tip" hidden></div></div>
+    <div class="ap-box"><div class="ap-row"><h3>Bảng kế hoạch năm</h3><span class="ap-sub">Bấm số tiền để xem chi tiết tháng</span></div><div class="ap-scroll"><table class="ap-t"><thead><tr><th>Nguồn thu</th><th>Tổng năm</th>${Array.from({ length: 12 }, (_, i) => `<th>T${i + 1}</th>`).join('')}</tr></thead><tbody id="apT"></tbody></table></div>
+      <div class="ap-note">Chưa phân bổ kỳ: <a href="#" id="apU"><b></b> tỷ</a> · Theo dõi riêng, chưa cộng vào tổng năm.</div>
+      <details><summary>Nguyên tắc tổng hợp và lưu lịch sử</summary><p>Công nợ còn lại lấy theo số dư từng đợt HĐMB tại đầu năm và ngày đến hạn (HĐ mua bán, thuê mua, hoàn thiện; giao dịch bán căn bằng HĐ thuê / HĐ vay lấy tiến độ HĐMB liên kết, chỉ tính một lần). Bán mới lấy theo tháng thu đã phân bổ (giá trị dự kiến bán × tỷ lệ thu). Cho thuê lấy theo kỳ thu tiền nhà và nội thất; tiền cọc và gốc / lãi vay phải trả không cộng vào tiền thuê. Công nợ quá hạn từ năm trước xếp vào kỳ dự kiến thu đã chọn; chưa chọn kỳ, chưa có ngày đến hạn hoặc giá trị bán chưa phân bổ tháng → «Chưa phân bổ kỳ», không cộng vào tổng năm. Phần chưa thu tự chuyển kỳ sau ở Kế hoạch thu tuần/tháng, giữ nguyên báo cáo đã chốt và lưu lịch sử; tổng năm không cộng lặp khoản chuyển tiếp. Hợp đồng ký từ kế hoạch bán mới được tính ở nguồn bán mới, không trùng với công nợ.</p></details></div>
+    <div class="ap-box" id="apD" aria-live="polite"></div></div>`;
+  const ty = v => (v / 1e9).toLocaleString('vi-VN', { maximumFractionDigits: 3 }), sum = (xs, k = 'plan') => xs.reduce((a, r) => a + (+r[k] || 0), 0);
   let d = null;
-  const sum = (xs, k) => xs.reduce((a, r) => a + (+r[k] || 0), 0), sumM = (xs, k, m) => xs.reduce((a, r) => a + (+r[k][m] || 0), 0);
-  const SRC = [['cn', 'I. Thu công nợ còn lại'], ['moi', 'II. Thu bán mới']];
-  const tree = () => { const out = [], agg = (xs, base) => ({ ...base, n: xs.filter(r => r.unit_id).length || xs.length, plan: sum(xs, 'plan'), carry: sum(xs, 'carry'), unalloc: sum(xs, 'unalloc'), act: sum(xs, 'act'), months: Object.fromEntries(d.months.map(m => [m, sumM(xs, 'months', m)])) });
-    const grp = (xs, k) => [...xs.reduce((M, r) => M.set(r[k] || '—', [...(M.get(r[k] || '—') || []), r]), new Map()).entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0])));
-    for (const [sk, sl] of SRC) { const xs = d.rows.filter(r => r.src === sk); if (!xs.length && s.src && s.src !== sk) continue; out.push(agg(xs, { lv: 0, key: sk, anc: [], l: sl }));
-      for (const [p, ps] of grp(xs, 'project')) { const pk = sk + '|' + p; out.push(agg(ps, { lv: 1, key: pk, anc: [sk], l: 'Dự án ' + p }));
-        for (const [b, bs] of grp(ps, 'building')) { const bk = pk + '|' + b; out.push(agg(bs, { lv: 2, key: bk, anc: [sk, pk], l: 'Tòa ' + b }));
-          for (const r of bs.sort((a, c) => String(a.unit).localeCompare(String(c.unit)))) out.push({ ...r, lv: 3, anc: [sk, pk, bk], l: r.unit, n: 1 }); } } }
-    out.push(agg(d.rows, { lv: -1, l: 'Tổng cộng' })); return out.map(r => ({ ...r, rem: Math.max(0, r.plan - r.act) })); };
-  const drawF = () => { const ty = +today().slice(0, 4), ys = [...new Set([ty - 1, ty, ty + 1, ty + 2, s.year])].sort();
-    fbox.innerHTML = `<div class="pw-fr" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 16px">
-      <select id="pyY">${ys.map(y => `<option value="${y}" ${y === s.year ? 'selected' : ''}>Năm ${y}</option>`).join('')}</select>
-      <select id="pyPr"><option value="">Tất cả dự án</option>${M.projects.map(p => `<option value="${p.id}" ${+s.project === p.id ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select>
-      <select id="pyB"><option value="">Tất cả tòa</option>${M.buildings.filter(b => !s.project || b.project_id === +s.project).map(b => `<option value="${b.id}" ${+s.building === b.id ? 'selected' : ''}>Tòa ${esc(b.code)}</option>`).join('')}</select>
-      <select id="pySrc">${[['', 'Mọi nguồn thu'], ['cn', 'Thu công nợ còn lại'], ['moi', 'Thu bán mới']].map(([k, l]) => `<option value="${k}" ${s.src === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
-      <select id="pyOw"><option value="">Mọi người phụ trách</option>${(d?.owners || []).map(o => `<option ${s.owner === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></div>`; };
-  const draw = () => { const F = tree(), T = F[F.length - 1], cn = d.rows.filter(r => r.src === 'cn'), mo = d.rows.filter(r => r.src === 'moi');
-    kbox.innerHTML = `<div class="py-kk">${[['Tổng kế hoạch thu năm', fm(T.plan), 'tot'], ['Thu công nợ còn lại', fm(sum(cn, 'plan')), ''], ['Thu bán mới', fm(sum(mo, 'plan')), ''], ['Thực thu', fm(T.act), ''], ['Còn phải thu theo KH', fm(T.rem), ''], ['Tỷ lệ hoàn thành', pct(T.act, T.plan), ''], ['Chưa phân bổ kỳ', fm(T.unalloc), 'mut']]
-      .map(([l, v, c]) => `<div class="${c}"><span>${l}</span><b>${v}</b></div>`).join('')}</div>`;
-    // biểu đồ: 12 tháng (+ chuyển sang) Kế hoạch / Thực thu — cùng dữ liệu với bảng
-    const xs = [...(T.carry ? [{ k: 'carry', l: 'Công nợ chuyển sang', plan: T.carry, act: 0 }] : []), ...d.months.map(m => ({ k: m, l: `Tháng ${m.slice(5)}/${m.slice(0, 4)}`, plan: T.months[m], act: d.rows.reduce((a, r) => a + (r.act_m[m] || 0), 0) }))];
-    const mx = Math.max(1, ...xs.map(x => Math.max(x.plan, x.act))), bar = (v, c) => `<div class="hb-r"><span class="hb-tr"><span class="hb-f" style="width:${(v / mx * 100).toFixed(2)}%;background:${c}"></span></span><span class="hb-v">${tr(v)}</span></div>`;
-    const blk = ys => ys.map(x => `<div class="hb-k" ${x.k !== 'carry' ? `data-pym="${x.k}"` : ''} title="Kế hoạch ${fm(x.plan)} · Thực thu ${fm(x.act)} · ${pct(x.act, x.plan)}"><div class="hb-hd"><span class="hb-t">${esc(x.l)}</span><span class="hb-n">${x.plan ? pct(x.act, x.plan) : 'chưa có kế hoạch'}</span></div>${bar(x.plan, '#2E66C2')}${bar(x.act, '#E8833A')}</div>`).join('');
-    const h = Math.ceil(xs.length / 2);
-    cbox.innerHTML = `<div class="hb-top"><div><div class="hb-ttl">${ico('fa-chart-bar')} Kế hoạch – Thực thu năm ${d.year}</div><div class="small muted">Đơn vị: triệu đồng · dùng chung dữ liệu với bảng bên dưới · bấm tháng để xem kế hoạch tuần/tháng</div></div>
-      <div class="hb-lg"><span><i style="background:#2E66C2"></i>Kế hoạch</span><span><i style="background:#E8833A"></i>Thực thu</span></div></div><div class="hb-cols"><div>${blk(xs.slice(0, h))}</div><div>${blk(xs.slice(h))}</div></div>`;
-    const hid = r => (r.anc || []).some(k => s.shut[k]), tw = r => r.lv >= 0 && r.lv <= 2 ? `<span class="pr-tg" data-pytg="${esc(r.key)}">${ico(s.shut[r.key] ? 'fa-caret-right' : 'fa-caret-down')}</span> ` : '';
-    tbox.innerHTML = `<div class="pr-h"><span class="pr-tt">KẾ HOẠCH DÒNG THU NĂM ${d.year}</span><div class="small muted">${esc(sub())} · Đơn vị: đồng</div></div>
-      <div class="py-tw"><table class="py-tb"><thead><tr><th class="s1">Nguồn thu / Dự án / Tòa / Căn hộ</th><th class="n">Số căn</th><th class="n">Tổng KH năm</th><th class="n" title="Công nợ quá hạn từ năm trước chưa chọn kỳ thu">Chuyển sang</th>
-        ${d.months.map(m => `<th class="n mh" data-pym="${m}" title="Xem kế hoạch tháng ${m.slice(5)}/${m.slice(0, 4)}">T${+m.slice(5)}</th>`).join('')}<th class="n" title="Khoản chưa có ngày đến hạn / phần giá trị bán chưa phân bổ tháng — không cộng vào tổng">Chưa phân bổ kỳ</th><th class="n">Thực thu</th><th class="n">Còn phải thu</th><th class="n">Tỷ lệ</th></tr></thead><tbody>
-        ${F.map(r => hid(r) ? '' : `<tr class="${r.lv === 0 ? 'g' : r.lv === 1 ? 'p' : r.lv === 2 ? 'b' : r.lv === -1 ? 't' : 'u'}"><td class="s1">${tw(r)}${esc(r.l)}${r.lv === 3 ? `${r.customer ? `<div class="small muted">${esc(r.customer)}</div>` : ''}${r.note ? `<div class="small muted">${esc(r.note)}</div>` : ''}${r.src === 'cn' && r.carry > 0 && d.can_plan ? `<a href="#" class="small" data-pysel="${r.unit_id}" title="Chọn kỳ dự kiến thu cho công nợ chuyển sang">${ico('fa-calendar-plus')} Chọn kỳ thu</a>` : ''}` : ''}</td>
-          <td class="n">${r.lv === 3 ? '' : r.n}</td><td class="n"><b>${fm(r.plan)}</b></td><td class="n">${r.carry ? fm(r.carry) : ''}</td>${d.months.map(m => `<td class="n">${r.months[m] ? fm(r.months[m]) : ''}</td>`).join('')}
-          <td class="n mut">${r.unalloc ? fm(r.unalloc) : ''}</td><td class="n">${fm(r.act)}</td><td class="n">${fm(r.rem)}</td><td class="n">${pct(r.act, r.plan)}</td></tr>`).join('')}</tbody></table></div>
-      <details class="pw-rule"><summary>Xem nguyên tắc tổng hợp</summary><ul>
-        <li>Tổng kế hoạch thu năm = Thu công nợ còn lại phân bổ trong năm + Thu bán mới dự kiến thu trong năm (gồm cột Chuyển sang, không gồm «Chưa phân bổ kỳ»).</li>
-        <li>Thu công nợ còn lại: số dư từng đợt tại đầu năm (phải thu − đã thu đến 31/12 năm trước) của HĐMB / thuê mua / hoàn thiện, xếp theo tháng đến hạn; tiến độ HĐMB của HĐ thuê / vay bán căn chỉ tính 1 lần. Đợt quá hạn từ năm trước → «Chuyển sang» (bấm «Chọn kỳ thu» để xếp vào tháng); đợt chưa có ngày đến hạn → «Chưa phân bổ kỳ».</li>
-        <li>Thu bán mới: khoản kế hoạch thu theo tháng thu (giá trị dự kiến bán × tỷ lệ thu); phần giá trị chưa phân bổ → «Chưa phân bổ kỳ»; khoản thu sang năm sau tính ở năm đó. Hợp đồng ký sau khi lập kế hoạch bán mới của căn được tính ở nguồn bán mới, không cộng trùng ở công nợ.</li>
-        <li>Thực thu: phiếu thu hợp lệ trong năm — công nợ theo hợp đồng của căn, bán mới theo khoản kế hoạch (mỗi phiếu 1 lần). Hết tuần / tháng phần chưa thu tự chuyển tiếp ở «Kế hoạch thu tuần/tháng»; tổng tháng / năm không cộng lặp khoản chuyển tiếp.</li></ul></details>`; };
-  const sub = () => `Năm ${d.year}${s.project ? ' · ' + (M.projects.find(p => p.id === +s.project)?.name || '') : ''}${s.building ? ' · Tòa ' + (M.buildings.find(b => b.id === +s.building)?.code || '') : ''}${s.src ? ' · ' + (s.src === 'cn' ? 'Thu công nợ còn lại' : 'Thu bán mới') : ''}${s.owner ? ' · ' + s.owner : ''} · số liệu đến ${dmy(d.asof)}`;
-  const load = async () => { const q = new URLSearchParams({ year: s.year }); for (const k of ['project', 'building', 'src', 'owner']) if (s[k]) q.set(k, s[k]); d = await api('GET', '/api/plan-year?' + q); drawF(); draw(); };
-  const go = m => { const r = ST.planrep ||= { by: 'thang', ym: m, week: '', project: '', building: '', from: '', to: '', shut: {} }; Object.assign(r, { by: 'thang', ym: m, week: '', project: s.project, building: s.building }); location.hash = '#/e/collect_plan'; };
-  // chọn kỳ dự kiến thu cho công nợ chuyển sang (= đưa căn vào kế hoạch thu tuần/tháng, sheet bán hàng)
-  const selDlg = uid => { const r = d.rows.find(x => x.src === 'cn' && x.unit_id === uid); if (!r) return;
-    const ms = Array.from({ length: 12 }, (_, i) => `${s.year}-${String(i + 1).padStart(2, '0')}`);
-    const m = modal({ title: `Chọn kỳ dự kiến thu — ${esc(r.unit)}`, narrow: true, body: `<div class="small muted mb">Công nợ chuyển sang từ năm trước: <b>${fm(r.carry)}</b></div>
-      <div class="fld"><label>Tháng / năm<span class="req">*</span></label><select class="inp" id="csM">${ms.map(x => `<option value="${x}" ${x === d.carry_month ? 'selected' : ''}>Tháng ${x.slice(5)}/${x.slice(0, 4)}</option>`).join('')}</select></div>
-      <div class="fld"><label>Số tiền dự kiến thu</label><input class="inp" id="csA" inputmode="numeric" value="${moneyStr(r.carry)}"></div><div class="small muted">Lưu vào «Kế hoạch thu tuần/tháng» (có thể phân bổ tiếp vào tuần ở đó).</div>`,
-      foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="csOk">${ico('fa-check')} Xác nhận</button>` });
+  const its = () => d.items.filter(i => !s.project || i.project === s.project);
+  const cell = (src, m) => sum(its().filter(i => i.src === src && i.month === m));
+  const drawF = () => { const t0 = +today().slice(0, 4), ys = [...new Set([t0 - 1, t0, t0 + 1, t0 + 2, s.year])].sort();
+    $('#apY', main).innerHTML = ys.map(y => `<option value="${y}" ${y === s.year ? 'selected' : ''}>${y}</option>`).join('');
+    const ps = [...new Set([...(d?.projects || []), ...(s.project ? [s.project] : [])])];
+    $('#apP', main).innerHTML = `<option value="">Tất cả dự án</option>` + ps.map(p => `<option value="${esc(p)}" ${s.project === p ? 'selected' : ''}>${esc(M.projects.find(x => x.code === p)?.name || p)}</option>`).join(''); };
+  const draw = () => { $('#apAsof', main).textContent = dmy(d.asof);
+    const tot = Object.fromEntries(SRC.map(([k]) => [k, d.months.reduce((a, m) => a + cell(k, m), 0)])), all = SRC.reduce((a, [k]) => a + tot[k], 0);
+    $('#apS', main).innerHTML = [['Tổng kế hoạch năm', all], ...SRC.map(([k, l]) => [l, tot[k]])].map(([l, v]) => `<div class="ap-stat"><div class="ap-sub">${l}</div><div class="ap-big">${ty(v)} <small>tỷ</small></div></div>`).join('');
+    // biểu đồ cột chồng — cùng thang đo, tổng trên đầu cột, rê / chạm xem từng nguồn
+    const mt = d.months.map(m => SRC.reduce((a, [k]) => a + cell(k, m), 0)), mx = Math.max(...mt, 0);
+    $('#apC', main).innerHTML = mx ? d.months.map((m, i) => `<div class="ap-col ${m === s.month ? 'on' : ''}" data-apm="${m}" data-i="${i}" tabindex="0"><span class="ap-val">${mt[i] ? ty(mt[i]) : ''}</span>
+        <div class="ap-stack" style="height:${(mt[i] / mx * 150).toFixed(1)}px">${SRC.map(([k, , c]) => { const v = cell(k, m); return v ? `<div style="flex:${v};background:${c}"></div>` : ''; }).join('')}</div><small>T${i + 1}</small></div>`).join('')
+      : `<div class="ap-empty">Chưa có kế hoạch thu năm ${d.year}${s.project ? ' của dự án này' : ''}</div>`;
+    // bảng 4 dòng
+    $('#apT', main).innerHTML = [...SRC.map(([k, l]) => ({ k, l, v: d.months.map(m => cell(k, m)) })), { k: '', l: 'TỔNG CỘNG', v: mt }].map(r => `<tr class="${r.k ? '' : 'tot'}"><td>${esc(r.l)}</td><td><b>${ty(sum(r.v.map(v => ({ plan: v }))))}</b></td>
+      ${r.v.map((v, i) => `<td><button type="button" data-aps="${r.k}" data-apm="${d.months[i]}" title="Xem chi tiết ${esc(r.l.toLowerCase())} tháng ${i + 1}/${d.year}">${v ? ty(v) : '–'}</button></td>`).join('')}</tr>`).join('');
+    $('#apU b', main).textContent = ty(sum(its().filter(i => !i.month)));
+    detail(); };
+  // chi tiết tháng (hoặc «Chưa phân bổ kỳ» khi s.month = '') — 3 nguồn; mở rộng Dự án → Tòa → Căn → Đợt/kỳ: kế hoạch, thực thu, còn lại, tình trạng, phân bổ tuần
+  const detail = () => { const m = s.month, xs = its().filter(i => m ? i.month === m : !i.month), lab = m ? `tháng ${+m.slice(5)}/${m.slice(0, 4)}` : 'chưa phân bổ kỳ';
+    const tree = (rs) => { const by = (a, k) => [...a.reduce((M, r) => M.set(r[k] || '—', [...(M.get(r[k] || '—') || []), r]), new Map()).entries()].sort((x, y) => String(x[0]).localeCompare(String(y[0]), 'vi', { numeric: true }));
+      const nums = a => `<span class="ap-nums"><span>KH <b>${fm(sum(a))}</b></span><span>Thực thu ${fm(sum(a, 'act'))}</span><span>Còn lại ${fm(sum(a, 'rem'))}</span></span>`;
+      return by(rs, 'project').map(([p, ps]) => `<details open><summary><b>Dự án ${esc(p)}</b>${nums(ps)}</summary>${by(ps, 'building').map(([b, bs]) => `<details><summary>Tòa ${esc(b)}${nums(bs)}</summary>
+        ${by(bs, 'unit').map(([u, us]) => `<details><summary>${esc(u)}${us[0].customer ? ` <span class="ap-sub">${esc(us[0].customer)}</span>` : ''}${nums(us)}</summary><div class="ap-scroll"><table class="ap-it"><thead><tr><th>Đợt / kỳ thu</th><th>Hợp đồng</th><th>Ngày đến hạn</th><th>Phân bổ tuần</th><th>Kế hoạch</th><th>Thực thu</th><th>Còn lại</th><th>Tình trạng</th><th></th></tr></thead><tbody>
+          ${us.map(i => `<tr><td>${esc(i.label)}</td><td>${esc(i.contract || '')}</td><td>${i.due_on ? dmy(i.due_on) : '—'}</td><td>${esc(i.week_l || (i.src === 'moi' ? '' : 'Theo ngày đến hạn'))}</td><td>${fm(i.plan)}</td><td>${fm(i.act)}</td><td>${fm(i.rem)}</td><td><span class="ap-pill">${esc(i.st)}</span></td>
+            <td>${i.carry && !i.month && d.can_plan ? `<button type="button" class="ap-lnk" data-apsel="${i.unit_id}" data-aptab="${i.src === 'thue' ? 'thue' : 'ban'}" data-apamt="${i.rem}">Chọn kỳ thu</button>` : ''}</td></tr>`).join('')}</tbody></table></div></details>`).join('')}</details>`).join('')}</details>`).join(''); };
+    const cur = s.src ? xs.filter(i => i.src === s.src) : xs;
+    $('#apD', main).innerHTML = `<div class="ap-row"><h3>Chi tiết ${lab}</h3><span class="ap-pill">${s.src ? esc(SRC.find(x => x[0] === s.src)[1]) + ' · ' : ''}Kế hoạch thực tế</span></div>
+      <div class="ap-dg">${SRC.map(([k, l, , n]) => `<button type="button" class="ap-di ${s.src === k ? 'on' : ''}" data-apsrc="${k}"><div class="ap-sub">${l}</div><div class="ap-big">${ty(sum(xs.filter(i => i.src === k)))} tỷ</div><div class="ap-sub">${n}</div></button>`).join('')}</div>
+      <div class="ap-note">Tổng ${lab}: <b>${ty(sum(xs))} tỷ</b> (${fm(sum(xs))} đ) · thực thu ${fm(sum(xs, 'act'))} đ${s.src ? ` · đang xem: ${esc(SRC.find(x => x[0] === s.src)[1])} — <a href="#" data-apsrc="">xem cả 3 nguồn</a>` : ''}${m ? ` · <a href="#" data-apweek="${m}">Mở kế hoạch thu tuần/tháng ${+m.slice(5)}/${m.slice(0, 4)}</a>` : ''}</div>
+      ${cur.length ? `<div class="ap-tree">${tree(cur)}</div>` : '<div class="ap-empty">Không có khoản thu trong kỳ này</div>'}`; };
+  const load = async () => { const q = new URLSearchParams({ year: s.year }); d = await api('GET', '/api/plan-year?' + q); if (!s.month || s.month.slice(0, 4) !== String(s.year)) s.month = d.months[today().slice(0, 4) === String(s.year) ? +today().slice(5, 7) - 1 : 0]; drawF(); draw(); };
+  // tooltip cột chồng
+  const tip = $('.ap-tip', main);
+  $('#apC', main).addEventListener('mousemove', e => { const c = e.target.closest('.ap-col'); if (!c) { tip.hidden = true; return; } const m = c.dataset.apm, rc = $('#apC', main).getBoundingClientRect();
+    tip.innerHTML = `<b>Tháng ${+m.slice(5)}/${m.slice(0, 4)}</b>${SRC.map(([k, l, col]) => `<div><i style="background:${col}"></i>${l}: <b>${ty(cell(k, m))}</b> tỷ</div>`).join('')}<div>Tổng: <b>${ty(SRC.reduce((a, [k]) => a + cell(k, m), 0))}</b> tỷ</div>`;
+    tip.hidden = false; tip.style.left = Math.min(rc.width - 230, Math.max(0, e.clientX - rc.left + 12)) + 'px'; tip.style.top = (e.clientY - rc.top + 70) + 'px'; });
+  $('#apC', main).addEventListener('mouseleave', () => { tip.hidden = true; });
+  const selDlg = (uid, tab, amt) => { const ms = Array.from({ length: 12 }, (_, i) => `${s.year}-${String(i + 1).padStart(2, '0')}`), u = d.items.find(i => i.unit_id === uid);
+    const m = modal({ title: `Chọn kỳ dự kiến thu — ${esc(u?.unit || '')}`, narrow: true, body: `<div class="small muted mb">Công nợ quá hạn từ năm trước (${tab === 'thue' ? 'cho thuê' : 'công nợ còn lại'}) — lưu vào Kế hoạch thu tuần/tháng.</div>
+      <div class="fld"><label>Tháng / năm<span class="req">*</span></label><select class="inp" id="csM">${ms.map(x => `<option value="${x}" ${x === s.month ? 'selected' : ''}>Tháng ${x.slice(5)}/${x.slice(0, 4)}</option>`).join('')}</select></div>
+      <div class="fld"><label>Số tiền dự kiến thu</label><input class="inp" id="csA" inputmode="numeric" value="${moneyStr(amt)}"></div>`, foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="csOk">${ico('fa-check')} Xác nhận</button>` });
     $('#csA', m.el).oninput = e => { const v = num(e.target.value, true); if (v) e.target.value = moneyStr(v); };
-    $('#csOk', m.el).onclick = run(async () => { const x = await api('POST', '/api/due-debt/plan', { unit_id: uid, tab: 'ban', on: true, to: today(), month: $('#csM', m.el).value, week: 0, amount: num($('#csA', m.el).value, true) }); toast(x.msg); m.close(); await load(); }); };
-  const xrows = () => tree().map(r => { const o = { l: r.lv === 3 ? `      ${r.l}` : r.lv === 2 ? `    ${r.l}` : r.lv === 1 ? `  ${r.l}` : r.l, n: r.lv === 3 ? '' : r.n, plan: r.plan, carry: r.carry, unalloc: r.unalloc, act: r.act, rem: r.rem, pct: pct(r.act, r.plan), _b: r.lv !== 3 ? 1 : 0 };
-    d.months.forEach((m, i) => { o['m' + i] = r.months[m] || 0; }); return o; });
-  const XC = () => [['l', 'Nguồn thu / Dự án / Tòa / Căn hộ', 'text', 34], ['n', 'Số căn', 'int'], ['plan', 'Tổng KH năm', 'money'], ['carry', 'Chuyển sang', 'money'], ...d.months.map((m, i) => ['m' + i, `T${+m.slice(5)}`, 'money']), ['unalloc', 'Chưa phân bổ kỳ', 'money'], ['act', 'Thực thu', 'money'], ['rem', 'Còn phải thu', 'money'], ['pct', 'Tỷ lệ', 'text', 10]];
+    $('#csOk', m.el).onclick = run(async () => { const x = await api('POST', '/api/due-debt/plan', { unit_id: uid, tab, on: true, to: today(), month: $('#csM', m.el).value, week: 0, amount: num($('#csA', m.el).value, true) }); toast(x.msg); m.close(); await load(); }); };
+  const subT = () => `Năm ${d.year}${s.project ? ' · Dự án ' + (M.projects.find(x => x.code === s.project)?.name || s.project) : ' · Tất cả dự án'} · số liệu đến ${dmy(d.asof)}`;
+  const exp = kind => { const rows = [...SRC.map(([k, l]) => ({ l, ...Object.fromEntries(d.months.map((m, i) => ['m' + i, cell(k, m)])), tot: d.months.reduce((a, m) => a + cell(k, m), 0) }))];
+    rows.push({ l: 'Tổng cộng', ...Object.fromEntries(d.months.map((m, i) => ['m' + i, SRC.reduce((a, [k]) => a + cell(k, m), 0)])), tot: rows.reduce((a, r) => a + r.tot, 0), _b: 1 });
+    rows.push({ l: 'Chưa phân bổ kỳ (không cộng tổng)', tot: sum(its().filter(i => !i.month)) });
+    const C = [['l', 'Nguồn thu', 'text', 34], ['tot', 'Tổng năm', 'money'], ...d.months.map((m, i) => ['m' + i, `T${i + 1}`, 'money'])];
+    const DC = [['src_l', 'Nguồn thu', 'text', 20], ['month_l', 'Tháng', 'text', 12], ['project', 'Dự án', 'text', 10], ['building', 'Tòa', 'text', 8], ['unit', 'Căn hộ', 'text', 18], ['customer', 'Khách hàng', 'text', 24], ['contract', 'Hợp đồng', 'text', 16], ['label', 'Đợt / kỳ thu', 'text', 36], ['due_on', 'Ngày đến hạn', 'date'], ['week_l', 'Phân bổ tuần', 'text', 22], ['plan', 'Kế hoạch', 'money'], ['act', 'Thực thu', 'money'], ['rem', 'Còn lại', 'money'], ['st', 'Tình trạng', 'text', 26]];
+    const det = its().map(i => ({ ...i, src_l: SRC.find(x => x[0] === i.src)[1], month_l: i.month ? `${i.month.slice(5)}/${i.month.slice(0, 4)}` : 'Chưa phân bổ kỳ' })).sort((a, b) => String(a.month || '9999').localeCompare(String(b.month || '9999')) || a.src.localeCompare(b.src) || String(a.unit).localeCompare(String(b.unit)));
+    if (kind === 'xlsx') return download('/api/export-rows', { file: `Ke_hoach_dong_thu_nam_${d.year}`, title: `KẾ HOẠCH DÒNG THU NĂM ${d.year}`, sheets: [
+      { name: `Kế hoạch năm ${d.year}`, title: `KẾ HOẠCH DÒNG THU NĂM ${d.year}`, note: subT() + ' · Đơn vị: đồng', cols: C, rows, noNo: 1 },
+      { name: 'Chi tiết khoản thu', title: `CHI TIẾT KHOẢN THU NĂM ${d.year}`, note: subT() + ' · Đơn vị: đồng', cols: DC, rows: det, sum: ['plan', 'act', 'rem'] }] });
+    const w = window.open('', '_blank'); if (!w) return toast('Trình duyệt chặn cửa sổ in', true); const t0 = today();
+    w.document.write(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Kế hoạch dòng thu năm ${d.year}</title><style>@page{size:A4 landscape;margin:10mm}body{font:10.5px Arial,sans-serif;color:#000}h2{text-align:center;margin:0;font-size:16px}.c{text-align:center;margin:3px 0 10px}
+      table{border-collapse:collapse;width:100%}thead{display:table-header-group}th,td{border:1px solid #888;padding:4px 5px}th{background:#e8eef7}td.n{text-align:right;white-space:nowrap}tr.x td{font-weight:bold;background:#254b80;color:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}.sg{display:flex;justify-content:space-around;margin-top:18px;text-align:center}.sg i{display:block;margin-bottom:50px}</style></head><body>
+      <h2>KẾ HOẠCH DÒNG THU NĂM ${d.year}</h2><div class="c">${esc(subT())} · Đơn vị: đồng</div><table><thead><tr>${C.map(c => `<th>${esc(c[1])}</th>`).join('')}</tr></thead><tbody>
+      ${rows.map(r => `<tr class="${r._b ? 'x' : ''}">${C.map(c => `<td class="${c[2] === 'money' ? 'n' : ''}">${c[2] === 'money' ? (r[c[0]] ? fm(r[c[0]]) : '') : esc(r[c[0]] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table>
+      <div style="text-align:right;margin-top:10px;font-style:italic">Ngày lập: ngày ${+t0.slice(8)} tháng ${+t0.slice(5, 7)} năm ${t0.slice(0, 4)}</div><div class="sg"><div><b>NGƯỜI LẬP</b><i>(Ký, ghi rõ họ tên)</i></div><div><b>TRƯỞNG BỘ PHẬN</b><i>(Ký, ghi rõ họ tên)</i></div></div><script>setTimeout(() => print(), 300)</` + `script></body></html>`); w.document.close(); };
   main.addEventListener('click', run(async e => {
-    const tg = e.target.closest('[data-pytg]'); if (tg) { s.shut[tg.dataset.pytg] = !s.shut[tg.dataset.pytg]; return draw(); }
-    const mm = e.target.closest('[data-pym]'); if (mm) return go(mm.dataset.pym);
-    const sl = e.target.closest('[data-pysel]'); if (sl) { e.preventDefault(); return selDlg(+sl.dataset.pysel); }
-    if (e.target.closest('#pyNew')) return saleUnitDlg(load, { project: s.project });
-    if (e.target.closest('#pyX')) return download('/api/export-rows', { file: `Ke_hoach_dong_thu_nam_${d.year}`, title: `KẾ HOẠCH DÒNG THU NĂM ${d.year}`, sheets: [{ name: `Kế hoạch thu năm ${d.year}`, title: `KẾ HOẠCH DÒNG THU NĂM ${d.year}`, note: sub() + ' · Đơn vị: đồng', cols: XC(), rows: xrows(), noNo: 1 }] });
-    if (e.target.closest('#pyP')) { const w = window.open('', '_blank'); if (!w) return toast('Trình duyệt chặn cửa sổ in', true); const C = XC(), t0 = today();
-      w.document.write(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Kế hoạch dòng thu năm ${d.year}</title><style>@page{size:A3 landscape;margin:10mm}body{font:10px Arial,sans-serif}h2{text-align:center;margin:0;font-size:15px}.c{text-align:center;margin:3px 0 8px}
-        table{border-collapse:collapse;width:100%}thead{display:table-header-group}th,td{border:1px solid #888;padding:3px 4px}th{background:#e8eef7}td.n{text-align:right;white-space:nowrap}tr.x td{font-weight:bold;background:#f2f5fa}.sg{display:flex;justify-content:space-around;margin-top:16px;text-align:center}.sg i{display:block;margin-bottom:50px}</style></head><body>
-        <h2>KẾ HOẠCH DÒNG THU NĂM ${d.year}</h2><div class="c">${esc(sub())} · Đơn vị: đồng</div><table><thead><tr>${C.map(c => `<th>${esc(c[1])}</th>`).join('')}</tr></thead><tbody>
-        ${xrows().map(r => `<tr class="${r._b ? 'x' : ''}">${C.map(c => `<td class="${c[2] === 'money' || c[2] === 'int' ? 'n' : ''}">${c[2] === 'money' ? (r[c[0]] ? fm(r[c[0]]) : '') : esc(r[c[0]] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table>
-        <div style="text-align:right;margin-top:10px;font-style:italic">Ngày lập: ngày ${+t0.slice(8)} tháng ${+t0.slice(5, 7)} năm ${t0.slice(0, 4)}</div><div class="sg"><div><b>NGƯỜI LẬP</b><i>(Ký, ghi rõ họ tên)</i></div><div><b>TRƯỞNG BỘ PHẬN</b><i>(Ký, ghi rõ họ tên)</i></div></div><script>setTimeout(() => print(), 300)</` + `script></body></html>`); w.document.close(); }
+    if (e.target.closest('#apX')) { const mn = $('.ap-menu', main); mn.hidden = !mn.hidden; return; }
+    const x = e.target.closest('[data-apx]'); if (x) { $('.ap-menu', main).hidden = true; return exp(x.dataset.apx); }
+    if (e.target.closest('#apNew')) return saleUnitDlg(load, { project: M.projects.find(p => p.code === s.project)?.id || '' });
+    if (e.target.closest('#apU')) { e.preventDefault(); s.month = ''; s.src = ''; detail(); return $('#apD', main).scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    const sc = e.target.closest('[data-apsrc]'); if (sc) { e.preventDefault(); s.src = s.src === sc.dataset.apsrc ? '' : sc.dataset.apsrc; return detail(); }
+    const wk = e.target.closest('[data-apweek]'); if (wk) { e.preventDefault(); const r = ST.planrep ||= { by: 'thang', ym: wk.dataset.apweek, week: '', project: '', building: '', from: '', to: '', shut: {} }; Object.assign(r, { by: 'thang', ym: wk.dataset.apweek, week: '', project: M.projects.find(p => p.code === s.project)?.id || '', building: '' }); location.hash = '#/e/collect_plan'; return; }
+    const sl = e.target.closest('[data-apsel]'); if (sl) return selDlg(+sl.dataset.apsel, sl.dataset.aptab, +sl.dataset.apamt);
+    const mm = e.target.closest('[data-apm]'); if (mm) { s.month = mm.dataset.apm; s.src = mm.dataset.aps || ''; draw(); return $('#apD', main).scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    if (!e.target.closest('.ap-dd')) $('.ap-menu', main).hidden = true;
   }));
-  main.addEventListener('change', run(async e => { const t = e.target;
-    if (t.id === 'pyY') { s.year = +t.value; return load(); } if (t.id === 'pyPr') { s.project = t.value; s.building = ''; return load(); } if (t.id === 'pyB') { s.building = t.value; return load(); }
-    if (t.id === 'pySrc') { s.src = t.value; return load(); } if (t.id === 'pyOw') { s.owner = t.value; return load(); } }));
-  try { await load(); } catch (er) { tbox.innerHTML = `<div class="empty">${esc(er.message)}</div>`; }
+  main.addEventListener('change', run(async e => { if (e.target.id === 'apY') { s.year = +e.target.value; return load(); } if (e.target.id === 'apP') { s.project = e.target.value; draw(); } }));
+  try { await load(); } catch (er) { $('#apD', main).innerHTML = `<div class="ap-empty">${esc(er.message)}</div>`; }
 };
 V.unitstatus = async main => {
   const f = filt(), s = ST.unitstatus2 ||= { grp: '', q: '', open: null };

@@ -2117,3 +2117,70 @@ table.t.uc-t td.num, table.t.uc-t th.num { white-space: nowrap; overflow-wrap: n
 .py2 .pw-rule{margin-top:10px;font-size:12.5px;color:var(--muted)}
 .py2 .pw-rule summary{cursor:pointer;color:var(--cobalt);font-weight:600}
 @media (max-width:1100px){.py2 .py-kk{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+/* 17/11/2026: Kế hoạch dòng thu năm — giao diện theo mẫu Ke_hoach_dong_thu_nam.html (nền xám xanh, khối trắng, xanh đậm + điểm nhấn vàng) */
+.page.ap{font:14px/1.5 Arial,sans-serif;background:#f3f5f9;color:#27374e;padding:24px;border-radius:14px;max-width:1600px}
+.ap *{box-sizing:border-box}
+.ap h2{font-size:24px;margin:4px 0;font-weight:700}
+.ap h3{font-size:16px;margin:0;font-weight:700}
+.ap .ap-sub{font-size:12px;color:#728098}
+.ap .ap-eb{color:#9a722e;font-size:11px;letter-spacing:1.5px}
+.ap .ap-hd,.ap .ap-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.ap .ap-act{display:flex;gap:10px;align-items:center}
+.ap button,.ap select{font:inherit;padding:9px 12px;border:1px solid #dbe3ef;border-radius:8px;background:#fff;color:inherit}
+.ap button{cursor:pointer}
+.ap button:focus-visible,.ap select:focus-visible{outline:2px solid #d8a855;outline-offset:2px}
+.ap .ap-pri{background:#254f89;color:#fff;border-color:#254f89;font-weight:600}
+.ap .ap-dd{position:relative}
+.ap .ap-menu{position:absolute;right:0;top:calc(100% + 4px);background:#fff;border:1px solid #dbe3ef;border-radius:8px;box-shadow:0 8px 24px rgba(20,40,80,.12);z-index:20;display:flex;flex-direction:column;min-width:170px;padding:4px}
+.ap .ap-menu[hidden]{display:none}
+.ap .ap-menu button{border:0;text-align:left;padding:8px 10px}
+.ap .ap-menu button:hover{background:#f3f5f9}
+.ap .ap-box{background:#fff;border:1px solid #e1e7ef;border-radius:12px;padding:18px;margin-top:18px;position:relative}
+.ap .ap-flt{display:flex;align-items:end;gap:12px;flex-wrap:wrap}
+.ap .ap-flt label{display:flex;flex-direction:column;gap:5px;font-size:12px}
+.ap .ap-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin:20px 0 4px}
+.ap .ap-stat{border-left:3px solid #cfa65e;padding-left:12px}
+.ap .ap-big{font-size:23px;font-weight:bold;margin-top:4px;font-variant-numeric:tabular-nums}
+.ap .ap-big small{font-size:13px;font-weight:500;color:#728098}
+.ap .ap-chart{display:grid;grid-template-columns:repeat(12,1fr);gap:10px;align-items:end;height:200px;margin:20px 0 8px}
+.ap .ap-col{display:flex;flex-direction:column;justify-content:end;align-items:center;height:100%;min-width:0;cursor:pointer;border-radius:6px;padding-bottom:2px}
+.ap .ap-col:hover,.ap .ap-col.on{background:#f6f1e6}
+.ap .ap-val{font-size:11px;color:#728098;white-space:nowrap}
+.ap .ap-stack{display:flex;flex-direction:column-reverse;gap:2px;width:100%;max-width:36px;border-radius:4px 4px 0 0;overflow:hidden}
+.ap .ap-stack div{min-height:2px}
+.ap .ap-col small{font-size:11px;margin-top:8px}
+.ap .ap-empty{grid-column:1/-1;align-self:center;text-align:center;color:#728098;padding:30px}
+.ap .ap-lg{display:flex;gap:18px;flex-wrap:wrap;font-size:12px}
+.ap .ap-lg i,.ap .ap-tip i{display:inline-block;width:9px;height:9px;margin-right:5px;border-radius:2px}
+.ap .ap-tip{position:absolute;pointer-events:none;background:#fff;border:1px solid #dbe3ef;border-radius:8px;box-shadow:0 8px 24px rgba(20,40,80,.12);padding:8px 10px;font-size:12px;z-index:5;min-width:220px}
+.ap .ap-tip[hidden]{display:none}
+.ap .ap-scroll{overflow:auto;margin-top:16px}
+.ap .ap-t{border-collapse:collapse;width:100%;white-space:nowrap;font-size:12px}
+.ap .ap-t th,.ap .ap-t td{padding:12px;border-bottom:1px solid #e7ecf3;text-align:right;font-variant-numeric:tabular-nums}
+.ap .ap-t th{color:#718099;font-weight:500;background:#f6f8fb}
+.ap .ap-t th:first-child,.ap .ap-t td:first-child{text-align:left;position:sticky;left:0;min-width:200px;background:#fff;font-weight:bold}
+.ap .ap-t th:first-child{background:#f6f8fb}
+.ap .ap-t tr.tot td{background:#254b80;color:#fff;font-weight:bold}
+.ap .ap-t td button{padding:0;border:0;background:none;color:#295ba0;font-size:12px;font-variant-numeric:tabular-nums}
+.ap .ap-t tr.tot td button{color:#fff}
+.ap .ap-note{margin-top:12px;font-size:12px;color:#728098}
+.ap .ap-note a{color:#295ba0}
+.ap details{margin-top:14px;font-size:12px}
+.ap summary{cursor:pointer}
+.ap .ap-dg{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:16px}
+.ap .ap-di{text-align:left;padding:12px 0 12px 12px;border:0;border-bottom:1px solid #e3e9f2;border-radius:0;background:none}
+.ap .ap-di.on{border-bottom:3px solid #cfa65e;background:#fbf7ee}
+.ap .ap-pill{font-size:11px;padding:3px 7px;border-radius:5px;background:#fff3de;color:#946a23;white-space:nowrap}
+.ap .ap-tree{margin-top:12px}
+.ap .ap-tree details{margin:6px 0 6px 14px;border-left:2px solid #e3e9f2;padding-left:10px}
+.ap .ap-tree>details{margin-left:0}
+.ap .ap-tree summary{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;padding:6px 0;font-size:13px}
+.ap .ap-nums{display:flex;gap:14px;margin-left:auto;font-size:12px;color:#728098;font-variant-numeric:tabular-nums}
+.ap .ap-nums b{color:#27374e}
+.ap .ap-it{border-collapse:collapse;width:100%;font-size:12px;white-space:nowrap}
+.ap .ap-it th,.ap .ap-it td{padding:7px 8px;border-bottom:1px solid #e7ecf3;text-align:left}
+.ap .ap-it th{background:#f6f8fb;color:#718099;font-weight:500}
+.ap .ap-it td:nth-child(n+5):nth-child(-n+7),.ap .ap-it th:nth-child(n+5):nth-child(-n+7){text-align:right;font-variant-numeric:tabular-nums}
+.ap .ap-lnk{padding:2px 8px;font-size:12px;color:#295ba0;border-color:#c9d6ea}
+@media (max-width:600px){.page.ap{padding:14px}.ap .ap-stats{grid-template-columns:1fr 1fr}.ap .ap-dg{grid-template-columns:1fr}.ap .ap-chart{gap:5px;height:170px}.ap .ap-big{font-size:20px}.ap .ap-val{display:none}}

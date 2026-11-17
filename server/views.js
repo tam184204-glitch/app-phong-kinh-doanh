@@ -879,62 +879,46 @@ async function planReport(db, user, f) {
     title: wk === 0 ? `Tháng ${+ym.slice(5)} năm ${ym.slice(0, 4)} — các khoản chưa phân bổ tuần` : `${wk ? `Tuần ${wk} tháng` : 'Tháng'} ${+ym.slice(5)} năm ${ym.slice(0, 4)}, từ ngày ${C.dmy(pf)} đến ngày ${C.dmy(pt)}`,
     rows, users: (await db.q('SELECT id, full_name FROM kd_user WHERE active ORDER BY full_name')).map(u => [u.id, u.full_name]), can_edit: can(user, E.collect_plan, 'u') || can(user, E.collect_plan, 'c') };
 }
-// 17/11/2026 (bản 2 nguồn): KẾ HOẠCH DÒNG THU NĂM (CN-12) — Tổng kế hoạch năm = Thu công nợ còn lại phân bổ trong năm + Thu bán mới dự kiến thu trong năm.
-//  I. Thu công nợ còn lại (sheet công nợ bán hàng — HĐMB / thuê mua / hoàn thiện; tiến độ HĐMB của HĐ thuê / vay bán căn chỉ tính 1 lần):
-//     kế hoạch từng đợt = số dư của đợt tại đầu năm (phải thu − đã thu đến 31/12 năm trước), xếp vào tháng đến hạn trong năm;
-//     đợt quá hạn từ năm trước → «Công nợ chuyển sang» (đã chọn kỳ dự kiến thu ở kế hoạch thu tuần/tháng thì xếp vào tháng đó); đợt chưa có ngày đến hạn → «Chưa phân bổ kỳ» (không cộng vào tổng)
-//     HĐ của căn đã có kế hoạch bán mới, ký sau ngày lập kế hoạch → tính ở nguồn bán mới (không cộng trùng)
-//  II. Thu bán mới: các khoản kế hoạch thu bán mới (theo căn / theo dự án – tòa), tháng thu trong năm; phần giá trị chưa phân bổ tháng → «Chưa phân bổ kỳ»
-//  Thực thu: công nợ = phiếu thu hợp lệ trong năm của các HĐ thuộc nguồn I (theo tháng phiếu); bán mới = phiếu thu phân bổ cho khoản kế hoạch (mỗi phiếu 1 lần)
+// 17/11/2026 (bản 3 nguồn): KẾ HOẠCH DÒNG THU NĂM — Tổng kế hoạch năm = Thu công nợ còn lại + Thu bán mới + Thu cho thuê phân bổ vào 12 tháng của năm
+//  · Công nợ còn lại (sheet công nợ bán hàng: HĐMB / thuê mua / hoàn thiện; tiến độ HĐMB của HĐ thuê / vay bán căn chỉ 1 lần): kế hoạch từng đợt = số dư tại đầu năm, xếp theo tháng đến hạn
+//  · Cho thuê (sheet công nợ cho thuê: kỳ tiền thuê nhà + nội thất, khoản thu theo HĐ thuê; không gồm tiền cọc, gốc / lãi vay phải trả): như trên
+//  · Bán mới: khoản kế hoạch thu bán mới theo tháng thu (tỷ lệ × giá trị dự kiến bán); khoản chuyển tiếp trong cùng tháng chỉ tính phần chênh (không cộng lặp)
+//  · Quá hạn từ năm trước: xếp vào kỳ dự kiến thu đã chọn (kế hoạch thu tuần/tháng); chưa chọn kỳ / chưa có ngày đến hạn / giá trị bán chưa phân bổ → «Chưa phân bổ kỳ» (không cộng tổng)
+//  · Mỗi khoản trả về kế hoạch, thực thu (đã thu trong năm cho khoản đó — bán mới: phiếu thu phân bổ cho khoản kế hoạch), còn lại; HĐ ký sau kế hoạch bán mới của căn tính ở nguồn bán mới
 async function planYear(db, user, f) {
   if (!can(user, E.collect_plan, 'r')) deny();
   const y = /^\d{4}$/.test(String(f.year || '')) ? +f.year : +today().slice(0, 4), Y0 = `${y}-01-01`, Y1 = `${y}-12-31`, now = today() < Y1 ? today() : Y1, M12 = Array.from({ length: 12 }, (_, i) => `${y}-${String(i + 1).padStart(2, '0')}`);
-  const cur = today().slice(0, 4) === String(y) ? today().slice(0, 7) : `${y}-01`;   // kỳ mặc định của công nợ chuyển sang chưa chọn kỳ
-  const fo = { project: f.project, building: f.building }, src = ['cn', 'moi'].includes(f.src) ? f.src : '', own = String(f.owner || '');
-  const leaves = new Map(), Z = () => ({ months: Object.fromEntries(M12.map(m => [m, 0])), act_m: Object.fromEntries(M12.map(m => [m, 0])), carry: 0, carry_sel: 0, unalloc: 0 });
-  const leaf = (k, o) => leaves.get(k) || leaves.set(k, { key: k, ...o, ...Z() }).get(k);
-  // ---- II. bán mới (đọc trước để loại HĐ bán mới khỏi nguồn công nợ)
+  const fo = { project: f.project, building: f.building }, items = [];
+  // ---- bán mới
   const PA = await planAlloc(db, await planAll(db, fo, user), { to: now }), byId = new Map(PA.map(x => [x.id, x]));
   const moiUnit = new Map(); for (const x of PA) if (x.scope === 'moi' && x.unit_id) { const c0 = ddDay(x.created_at); if (!moiUnit.has(+x.unit_id) || c0 < moiUnit.get(+x.unit_id)) moiUnit.set(+x.unit_id, c0); }
-  if (src !== 'cn') {
-    const roots = new Map();
-    for (const x of PA) { if (x.scope !== 'moi' || x.status === 'tu_choi' || x.status === 'thay_the') continue; if (own && (x.owner || '') !== own) continue;
-      const k = 'moi|' + (x.unit_id ? 'u' + x.unit_id : 'g' + (x.grp_key || x.id)), L = leaf(k, { src: 'moi', project: x.project || '', building: x.building || '', unit: x.unit || x.title || '—', unit_id: x.unit_id || null, customer: x.customer || '', owner: x.owner || '', note: '', plan_ids: [] });
-      L.plan_ids.push(x.id);
-      if (x.carry_in == null && x.unit_id && String(x.grp_key || '').startsWith('moiu:')) { const r = roots.get(x.grp_key) || roots.set(x.grp_key, { L, value: +x.unit_price || 0, alloc: 0, sale: x.sale_month || null }).get(x.grp_key); r.alloc += +x.expected; }
-      if (x.status === 'dong' && !(x.actual > 0)) continue;
-      const pv = x.prev_id ? byId.get(x.prev_id) : null, inMonth = x.carry_in != null && pv && pv.ym === x.ym;
-      if (L.months[x.ym] != null) L.months[x.ym] += inMonth ? +x.expected - +x.carry_in : (x.status === 'dong' ? x.actual : +x.expected);
-      for (const r of x.rc) { const m = String(r.on).slice(0, 7); if (L.act_m[m] != null) L.act_m[m] += r.amt; }
-      if (x.sale_month) L.note = `Dự kiến bán tháng ${String(x.sale_month).slice(5, 7)}/${String(x.sale_month).slice(0, 4)}`; }
-    // giá trị bán chưa phân bổ tháng thu (theo căn có giá trị dự kiến bán) — ghi «Chưa phân bổ kỳ» ở năm của tháng bán
-    for (const r of roots.values()) if (r.value > 0 && r.value > r.alloc && (!r.sale || String(r.sale).slice(0, 4) === String(y))) r.L.unalloc += r.value - r.alloc;
-  }
-  // ---- I. công nợ còn lại
-  if (src !== 'moi') {
-    const [A, S] = await Promise.all([dueDebt(db, user, { ...fo, to: now, all: 1 }), dueDebt(db, user, { ...fo, to: `${y - 1}-12-31`, all: 1 })]);
-    const key = r => `${r.contract_id}|${r.src}|${r.inst_id || r.dot}|${r.due_on || ''}`, S0 = new Map(S.rows.map(r => [key(r), r]));
-    const sig = new Map((await db.q('SELECT id, signed_on, contract_on FROM kd_contract WHERE id = ANY($1)', [[...new Set(A.rows.map(r => r.contract_id))]])).map(c => [c.id, ddDay(c.signed_on || c.contract_on)]));
-    const DDP = new Map((await db.q("SELECT src_key, month FROM kd_collect_plan WHERE src_key LIKE 'dd:ban:%' AND status NOT IN ('thay_the','dong','tu_choi','da_chot')")).map(x => [+x.src_key.split(':')[2], String(x.month).slice(0, 7)]));
-    const cts = new Set();
-    for (const r of A.rows) { if (r.dir !== 'thu' || ddTab(r) !== 'ban') continue; if (own && (r.owner || '') !== own) continue;
-      const mu = moiUnit.get(+r.unit_id); if (mu && (sig.get(r.contract_id) || '') >= mu) continue;   // HĐ phát sinh từ kế hoạch bán mới → tính ở nguồn bán mới
-      const s0 = S0.get(key(r)), plan = Math.max(0, +r.amount - (s0 ? +s0.paid : 0)); if (!(plan > 0)) continue;
-      if (r.due_on && r.due_on > Y1) continue;
-      const L = leaf('cn|' + r.unit_id, { src: 'cn', project: r.project, building: r.building, unit: r.unit, unit_id: r.unit_id, customer: r.customer, owner: r.owner || '', note: '' });
-      cts.add(r.contract_id); (L.cts ||= new Set()).add(r.contract_id);
-      if (!r.due_on) L.unalloc += plan;
-      else if (r.due_on < Y0) { const pm = DDP.get(+r.unit_id); if (pm && L.months[pm] != null) { L.months[pm] += plan; L.carry_sel += plan; } else { L.carry += plan; L.carry_m = cur; } }
-      else L.months[r.due_on.slice(0, 7)] += plan; }
-    if (cts.size) for (const x of await db.q("SELECT r.contract_id, to_char(r.voucher_date, 'YYYY-MM') m, sum(r.amount) s FROM kd_receipt r WHERE r.status = 'hop_le' AND r.contract_id = ANY($1) AND r.voucher_date BETWEEN $2 AND $3 GROUP BY 1, 2", [[...cts], Y0, now]))
-      for (const L of leaves.values()) if (L.src === 'cn' && L.cts?.has(x.contract_id) && L.act_m[x.m] != null) L.act_m[x.m] += +x.s;
-  }
-  const rows = [...leaves.values()].map(L => { const plan = L.carry + M12.reduce((s, m) => s + L.months[m], 0), act = M12.reduce((s, m) => s + L.act_m[m], 0);
-    return { key: L.key, src: L.src, project: L.project, building: L.building, unit: L.unit, unit_id: L.unit_id, customer: L.customer, owner: L.owner, note: L.note || (L.carry_sel ? 'Có công nợ chuyển sang đã chọn kỳ thu' : ''),
-      carry: L.carry, unalloc: L.unalloc, months: L.months, act_m: L.act_m, plan, act, rem: Math.max(0, plan - act), plan_ids: L.plan_ids || [] }; })
-    .filter(r => r.plan > 0 || r.unalloc > 0 || r.act > 0);
-  const owners = [...new Set(rows.map(r => r.owner).filter(Boolean))].sort();
-  return { year: y, months: M12, asof: now, carry_month: cur, rows, owners, can_plan: can(user, E.collect_plan, 'c') };
+  const roots = new Map();
+  for (const x of PA) { if (x.scope !== 'moi') continue;
+    const base = { src: 'moi', project: x.project || '', building: x.building || '', unit: x.unit || x.title || '—', unit_id: x.unit_id || null, customer: x.customer || '', grp: x.grp_key || 'p' + x.id };
+    if (x.carry_in == null && x.unit_id && String(x.grp_key || '').startsWith('moiu:')) { const r = roots.get(x.grp_key) || roots.set(x.grp_key, { base, value: +x.unit_price || 0, alloc: 0, sale: x.sale_month || null }).get(x.grp_key); r.alloc += +x.expected; }
+    if (x.ym < Y0.slice(0, 7) || x.ym > Y1.slice(0, 7) || (x.status === 'dong' && !(x.actual > 0))) continue;
+    const pv = x.prev_id ? byId.get(x.prev_id) : null, inMonth = x.carry_in != null && pv && pv.ym === x.ym, plan = inMonth ? +x.expected - +x.carry_in : x.status === 'dong' ? x.actual : +x.expected;
+    items.push({ ...base, label: x.carry_from ? `Chuyển tiếp từ ${x.carry_from}` : x.rate ? `Thu ${String(x.rate).replace('.', ',')}% giá trị bán` : (x.title || 'Kế hoạch thu bán mới'), month: x.ym, due_on: x.expected_on, week_l: periodL(x.ym, x.wk),
+      plan, act: x.actual, rem: Math.max(0, +x.expected - x.actual), st: x.status === 'da_chot' ? 'Đã chốt kỳ' : x.status === 'dong' ? 'Đã bỏ chọn' : 'Đang thực hiện', plan_id: x.id }); }
+  for (const r of roots.values()) if (r.value > r.alloc && (!r.sale || String(r.sale).slice(0, 4) === String(y)))
+    items.push({ ...r.base, label: `Giá trị bán chưa phân bổ tháng thu (${Math.round((r.value - r.alloc) / r.value * 1000) / 10}%)`, month: null, due_on: null, week_l: '', plan: r.value - r.alloc, act: 0, rem: r.value - r.alloc, st: 'Chưa phân bổ kỳ' });
+  // ---- công nợ còn lại + cho thuê (số dư từng đợt / kỳ tại đầu năm)
+  const [A, S] = await Promise.all([dueDebt(db, user, { ...fo, to: now, all: 1 }), dueDebt(db, user, { ...fo, to: `${y - 1}-12-31`, all: 1 })]);
+  const key = r => `${r.contract_id}|${r.src}|${r.inst_id || r.dot}|${r.due_on || ''}`, S0 = new Map(S.rows.map(r => [key(r), r]));
+  const sig = new Map((await db.q('SELECT id, signed_on, contract_on FROM kd_contract WHERE id = ANY($1)', [[...new Set(A.rows.map(r => r.contract_id))]])).map(c => [c.id, ddDay(c.signed_on || c.contract_on)]));
+  const DDP = new Map((await db.q("SELECT src_key, month FROM kd_collect_plan WHERE src_key LIKE 'dd:%' AND status NOT IN ('thay_the','dong','tu_choi','da_chot')")).map(x => [x.src_key, String(x.month).slice(0, 7)]));
+  for (const r of A.rows) { const tb = ddTab(r); if (!tb) continue;
+    if (tb === 'thue' && /c[oọ]c/i.test(`${r.content || ''} ${r.dot || ''}`)) continue;   // tiền cọc không tính vào thu cho thuê
+    const mu = moiUnit.get(+r.unit_id); if (tb === 'ban' && mu && (sig.get(r.contract_id) || '') >= mu) continue;   // HĐ phát sinh từ kế hoạch bán mới → nguồn bán mới
+    const s0 = S0.get(key(r)), paid0 = s0 ? +s0.paid : 0, plan = Math.max(0, +r.amount - paid0); if (!(plan > 0)) continue;
+    if (r.due_on && r.due_on > Y1) continue;
+    const act = Math.max(0, Math.min(plan, +r.paid - paid0)), sel = DDP.get(`dd:${tb}:${r.unit_id}`);
+    const month = !r.due_on ? null : r.due_on >= Y0 ? r.due_on.slice(0, 7) : sel && sel.slice(0, 4) === String(y) ? sel : null;
+    items.push({ src: tb === 'thue' ? 'thue' : 'cn', project: r.project, building: r.building, unit: r.unit, unit_id: r.unit_id, customer: r.customer, contract: r.number, label: `${r.dot}${r.content ? ' — ' + r.content : ''}`,
+      month, due_on: r.due_on, carry: !!(r.due_on && r.due_on < Y0), sel_on: r.due_on && r.due_on < Y0 && month ? month : null, week_l: '', plan, act, rem: Math.max(0, plan - act),
+      st: !r.due_on ? 'Chưa có ngày đến hạn' : r.due_on < Y0 ? (month ? 'Quá hạn năm trước — đã chọn kỳ thu' : 'Quá hạn năm trước — chưa chọn kỳ thu') : act >= plan ? 'Đã thu đủ' : r.due_on < now ? 'Quá hạn' : 'Chưa đến hạn' }); }
+  const projects = [...new Set(items.map(i => i.project).filter(Boolean))].sort();
+  return { year: y, months: M12, asof: now, items, projects, can_plan: can(user, E.collect_plan, 'c') };
 }
 // 17/11/2026: CĂN ĐỦ ĐIỀU KIỆN LẬP KẾ HOẠCH BÁN MỚI — chưa có HĐ bán (HĐMB / thuê mua / HĐ thuê – vay bán căn) còn hiệu lực;
 // căn trạng thái có thể bán (chưa mở bán / còn bán / giữ chỗ / đặt cọc) hoặc đang cho thuê (ghi «Đang cho thuê – HĐ số …»); căn đã có kế hoạch bán mới còn hiệu lực: báo, không chọn lại
