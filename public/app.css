@@ -2284,3 +2284,9 @@ table.t.uc-t td.num, table.t.uc-t th.num { white-space: nowrap; overflow-wrap: n
 .yp-el tr.yp-del td{opacity:.5;text-decoration:line-through}.yp-el tr.yp-del td:last-child{opacity:1;text-decoration:none}
 .yp-el .inp{height:32px}.yp-ss{margin-top:10px;padding:8px 12px;background:#f6f9fd;border-radius:8px;font-size:13px}
 .yp-f .yp-w{grid-column:span 2}
+/* 17/11/2026: hộp Thiết lập lịch thu (bán mới) */
+.sc3-hd{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:12px;padding:10px 14px;background:#f6f9fd;border:1px solid var(--line2);border-radius:10px}
+.sc3-hd span{display:block;font-size:12px;color:var(--muted)}.sc3-hd b{font-size:15px;font-variant-numeric:tabular-nums}
+.sc3-t tfoot td{background:#f1f5fb;font-weight:700;padding:8px;border-top:2px solid #d6dfec}.sc3-t tfoot tr.sc3-sub td{font-weight:500;background:#f8fafd;border-top:1px solid var(--line2)}
+.sc3-bt{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:10px}
+@media (max-width:700px){.sc3-hd{grid-template-columns:1fr}}

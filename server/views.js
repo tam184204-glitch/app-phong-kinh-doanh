@@ -1123,7 +1123,8 @@ async function saleUnitPlan(db, user, b) {
     if (!u) bad(`Dòng ${i + 1}: không tìm thấy căn`); if (!u.ok) bad(`Căn ${u.code}: ${u.note || 'không đủ điều kiện lập kế hoạch bán mới'}`);
     // 17/11/2026: giá trị dự kiến bán = «Giá trị HĐ» (Tổng giá căn hộ) trong Danh mục sản phẩm — không lấy chính sách bán hàng, thiếu thì không lập (không mặc định 0)
     const value = u.hd_value; if (!(value > 0)) bad(`Căn ${u.code}: chưa có giá trị hợp đồng trong danh mục sản phẩm`);
-    if (Array.isArray(x.items)) x.items = x.items.map(z => z.pct != null && z.pct !== '' ? { ...z, amount: Math.round(value * +z.pct / 100) } : z);
+    // tiền từng đợt: nhập theo số tiền (by = amt) giữ đúng số tiền, tỷ lệ suy ra; nhập theo tỷ lệ → số tiền = Giá trị HĐ × tỷ lệ
+    if (Array.isArray(x.items)) x.items = x.items.map(z => z.by === 'amt' && +z.amount > 0 ? { ...z, amount: Math.round(+z.amount), pct: Math.round(+z.amount / value * 1e6) / 1e4 } : z.pct != null && z.pct !== '' ? { ...z, amount: Math.round(value * +z.pct / 100) } : z);
     const sm = /^\d{4}-\d{2}$/.test(x.sale_month || '') ? x.sale_month : bad(`Căn ${u.code}: chọn tháng/năm dự kiến bán`);
     // 17/11/2026: lịch thu riêng từng căn theo đợt (items: tên đợt, nhóm, tháng thu | trống = chưa phân bổ kỳ, tỷ lệ, số tiền) — ưu tiên hơn lịch % kiểu cũ
     if (Array.isArray(x.items) && x.items.length) {
