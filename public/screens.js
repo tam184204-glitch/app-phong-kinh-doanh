@@ -2263,7 +2263,28 @@ V.duedebt = async main => {
     ...G('Nhắc nợ', [['call_on', 'Ngày nhắc gần nhất', 'date'], ['call_l', 'Kết quả'], ['call_n', 'Lịch sử nhắc nợ', 'int']]),
     ...G('Kế hoạch thu / chi', [['plan_on', 'Ngày dự kiến', 'date'], ['plan_amt', 'Số tiền', 'money'], ['plan_src', 'Nguồn tiền'], ['plan_owner', 'Người phụ trách'], ['plan_st', 'Trạng thái'], ['plan_note', 'Ghi chú']]),
     ['_act', '', null, '']];
-  const SUM = ['amount', 'paid', 'rem', 'lai', 'total_rem'], groups = cols.map(c => c[3] || '');
+  // 17/11/2026: tổng hợp theo mã căn — mỗi căn 1 dòng (gộp mọi khoản đến hạn của HĐMB, thuê, vay, hoàn thiện); phải trả HĐ vay ở cột riêng, không bù trừ; «Xem chi tiết» = từng HĐ / đợt / thu chi
+  const UC = [...G('Căn hộ, khách hàng', [['project', 'Dự án'], ['building', 'Tòa'], ['unit', 'Mã căn'], ['customer', 'Khách hàng'], ['phone', 'Số điện thoại']]),
+    ...G('Phải thu khách hàng', [['amount', 'Phải thu đến hạn', 'money'], ['paid', 'Đã thu phân bổ cho khoản đến hạn', 'money'], ['rem', 'Còn phải thu đến hạn', 'money'], ['lai', 'Lãi quá hạn', 'money'], ['total_rem', 'Tổng còn phải thu', 'money']]),
+    ...G('Phải trả khách hàng (HĐ vay)', [['tra_goc', 'Gốc vay đến hạn chưa trả', 'money'], ['tra_lai', 'Lãi vay đến hạn chưa trả', 'money']]),
+    ...G('Phân loại', [['grp_l', 'Nhóm nợ'], ['days', 'Quá hạn lâu nhất (ngày)', 'int']]),
+    ...G('Vay ngân hàng', [['loan_l', 'Tình trạng vay / ngân hàng']]),
+    ...G('Nhắc nợ', [['call_l', 'Nhắc nợ gần nhất'], ['call_n', 'Lịch sử nhắc nợ', 'int']]),
+    ...G('Kế hoạch thu', [['plan_l', 'Kế hoạch thu']]),
+    ['_act', '', null, '']];
+  const SUM = ['amount', 'paid', 'rem', 'lai', 'total_rem', 'tra_goc', 'tra_lai'], groups = UC.map(c => c[3] || '');
+  const byUnit = rs => { const M = new Map();
+    for (const r of rs) { const u = M.get(r.unit_id) || M.set(r.unit_id, { unit_id: r.unit_id, project: r.project, building: r.building, unit: r.unit, cust: new Set(), ph: new Set(), items: [], amount: 0, paid: 0, rem: 0, lai: 0, noLai: 0, total_rem: 0, tra_goc: 0, tra_lai: 0, days: -1, loans: new Set(), calls: new Map(), plans: new Map(), cts: new Set() }).get(r.unit_id);
+      u.items.push(r); u.cts.add(r.contract_id); if (r.customer) u.cust.add(r.customer); if (r.phone) u.ph.add(r.phone);
+      if (r.dir === 'thu') { u.amount += +r.amount || 0; u.paid += +r.paid || 0; u.rem += +r.rem || 0; if (r.lai == null) u.noLai++; else u.lai += +r.lai || 0; u.total_rem += +r.total_rem || 0; u.days = Math.max(u.days, r.days); }
+      else if (r.src === 'lai_vay') u.tra_lai += +r.rem || 0; else u.tra_goc += +r.rem || 0;
+      if (r.loan_l || r.bank) u.loans.add([r.loan_l, r.bank].filter(Boolean).join(' · '));
+      if (r.call_n) u.calls.set(r.contract_id, { on: r.call_on, l: r.call_l, n: r.call_n }); if (r.plan_amt != null) u.plans.set(r.contract_id, { on: r.plan_on, amt: r.plan_amt, src: r.plan_src, st: r.plan_st }); }
+    return [...M.values()].map(u => { const cl = [...u.calls.values()].sort((a, b) => String(b.on).localeCompare(String(a.on))), pl = [...u.plans.values()];
+      const g = u.days < 0 ? null : u.days <= 0 ? 'den_han' : u.days <= 30 ? 'qh30' : u.days <= 60 ? 'qh60' : u.days <= 90 ? 'qh90' : 'qh90p';
+      return { ...u, customer: [...u.cust].join(', '), phone: [...u.ph].join(', '), n_ct: u.cts.size, days: Math.max(0, u.days), grp: g, grp_l: g ? (d.grps || []).find(x => x[0] === g)?.[1] : 'Chỉ có phải trả HĐ vay',
+        loan_l: [...u.loans].join('; '), call_n: cl.reduce((t, c) => t + c.n, 0), call_l: cl[0] ? `${dmy(cl[0].on)} · ${cl[0].l}` : '',
+        plan_l: pl.length ? pl.map(p => `${fm(p.amt)} ngày ${dmy(p.on)}${p.src ? ' (' + p.src + ')' : ''}`).join('; ') : '', lai_l: u.noLai ? `${u.noLai} khoản chưa đủ thông tin tính lãi` : '' }; }); };
   let d = { rows: [] };
   const shown = () => { const q = s.q.trim().toLowerCase(); return d.rows.filter(r => (!s.kind || r.kind === s.kind) && (!s.dir || r.dir === s.dir) && (!s.grp || r.grp === s.grp) && (!s.bank || r.bank === s.bank)
     && (!s.owner || r.owner === s.owner || r.plan_owner === s.owner) && (!q || [r.unit, r.customer, r.kcode, r.number, r.content, r.phone].some(x => String(x || '').toLowerCase().includes(q)))); };
@@ -2286,7 +2307,13 @@ V.duedebt = async main => {
       : c[0] === 'dir_l' ? pill(r.dir === 'thu' ? 'Phải thu' : 'Phải trả', r.dir === 'thu' ? 'b' : 'v')
       : c[0] === 'lai' && r.lai == null ? `<span class="small muted">${esc(r.lai_l)}</span>`
       : c[0] === 'call_n' ? (r.call_n ? `<a href="#" data-calls="${r.contract_id}">${r.call_n} lần</a>` : '<span class="muted">—</span>') : undefined;
-    $('#ddT', main).innerHTML = rowsTable(cols, rs, SUM, { no: 'STT', groups, cell });
+    const us = byUnit(rs); d.units = us;
+    const ucell = (c, u) => c[0] === '_act' ? `<button class="btn sm" data-uview="${u.unit_id}">${ico('fa-list')} Xem chi tiết</button>`
+      : c[0] === 'grp_l' ? (u.grp ? pill(u.grp_l, u.days > 30 ? 'r' : u.days > 0 ? 'a' : 'b') : `<span class="small muted">${u.grp_l}</span>`)
+      : c[0] === 'lai' && u.noLai ? `${fm(u.lai)}<div class="small muted">${esc(u.lai_l)}</div>`
+      : c[0] === 'call_n' ? (u.call_n ? `<a href="#" data-ucalls="${u.unit_id}">${u.call_n} lần</a>` : '<span class="muted">—</span>') : undefined;
+    $('#ddT', main).innerHTML = rowsTable(UC, us, SUM, { no: 'STT', groups, cell: ucell });
+    $('#ddN', main).textContent = `${us.length} căn · ${rs.length} khoản · ngày chốt ${dmy(d.asof)}${d.from ? ' · hạn từ ' + dmy(d.from) : ''} · đồng bộ ${dmyhm(d.synced_at)}`;
   };
   const load = async () => { const ok = latest(main), r = await api('GET', '/api/due-debt?' + qsOf({ project: f.project, building: f.building, to: s.to, from: s.from })); if (ok()) { d = r; draw(); } };
   const sel = (id, list, cur) => `<select class="inp" id="${id}" style="width:auto;height:30px">${list.map(([v, l]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
@@ -2306,16 +2333,16 @@ V.duedebt = async main => {
   $('#ddQ', main).oninput = debounce(e => { s.q = e.target.value; draw(); }, 200);
   for (const [id, k] of [['#ddDir', 'dir'], ['#ddKind', 'kind'], ['#ddGrp', 'grp'], ['#ddBank', 'bank'], ['#ddOwn', 'owner']]) $(id, main).onchange = e => { s[k] = e.target.value; draw(); };
   $('#ddTo', main).onchange = run(async e => { s.to = e.target.value; await load(); }); $('#ddFr', main).onchange = run(async e => { s.from = e.target.value; await load(); });
-  const note = () => `Ngày chốt báo cáo ${dmy(d.asof)}${d.from ? ` · hạn từ ${dmy(d.from)}` : ''} · đồng bộ dữ liệu lúc ${dmyhm(d.synced_at)} · ${shown().length} khoản · phải thu và phải trả tách riêng, không bù trừ`;
-  $('#ddX', main).onclick = () => download('/api/export-rows', { title: 'BÁO CÁO CÔNG NỢ ĐẾN HẠN', cols: cols.filter(c => c[0] !== '_act').map(c => [c[0], c[1], c[2]]), groups: groups.filter((g, i) => cols[i][0] !== '_act'),
-    rows: shown().map(r => ({ ...r, dir_l: r.dir === 'thu' ? 'Phải thu' : 'Phải trả', lai: r.lai == null ? r.lai_l : r.lai })), sum: SUM, file: 'Bao_cao_cong_no_den_han_' + d.asof, note: note() });
+  const note = () => `Tổng hợp theo mã căn hộ · ngày chốt báo cáo ${dmy(d.asof)}${d.from ? ` · hạn từ ${dmy(d.from)}` : ''} · đồng bộ dữ liệu lúc ${dmyhm(d.synced_at)} · ${byUnit(shown()).length} căn, ${shown().length} khoản · phải thu và phải trả tách riêng, không bù trừ`;
+  $('#ddX', main).onclick = () => download('/api/export-rows', { title: 'BÁO CÁO CÔNG NỢ ĐẾN HẠN (THEO CĂN HỘ)', cols: UC.filter(c => c[0] !== '_act').map(c => [c[0], c[1], c[2]]), groups: groups.filter((g, i) => UC[i][0] !== '_act'),
+    rows: byUnit(shown()), sum: SUM, file: 'Bao_cao_cong_no_den_han_' + d.asof, note: note() });
   $('#ddP', main).onclick = () => {   // bản in / PDF theo bộ lọc đang chọn
-    const pc = cols.filter(c => !['_act', 'loan_plan', 'plan_note', 'plan_owner', 'plan_st', 'kcode', 'project'].includes(c[0]));
-    const v = (c, r) => c[0] === 'lai' && r.lai == null ? r.lai_l : c[2] === 'money' ? fm(r[c[0]] || 0) : c[2] === 'date' ? dmy(r[c[0]]) : esc(r[c[0]] ?? '');
+    const pc = UC.filter(c => c[0] !== '_act'), PR = byUnit(shown());
+    const v = (c, r) => c[2] === 'money' ? fm(r[c[0]] || 0) + (c[0] === 'lai' && r.noLai ? ` (${r.noLai} khoản chưa đủ thông tin)` : '') : c[2] === 'date' ? dmy(r[c[0]]) : esc(r[c[0]] ?? '');
     const w = window.open('', '_blank'); if (!w) return toast('Trình duyệt chặn cửa sổ in', true);
     w.document.write(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Báo cáo công nợ đến hạn ${dmy(d.asof)}</title><style>@page{size:A4 landscape;margin:10mm}body{font:10px Arial,sans-serif}h2{margin:0 0 4px;font-size:15px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #888;padding:2px 3px;vertical-align:top}th{background:#eee}td.n{text-align:right;white-space:nowrap}</style></head><body>
-      <h2>BÁO CÁO CÔNG NỢ ĐẾN HẠN</h2><div>${esc(note())}</div><br><table><thead><tr><th>STT</th>${pc.map(c => `<th>${esc(c[1])}</th>`).join('')}</tr></thead><tbody>${shown().map((r, i) => `<tr><td>${i + 1}</td>${pc.map(c => `<td class="${c[2] === 'money' || c[2] === 'int' ? 'n' : ''}">${v(c, r)}</td>`).join('')}</tr>`).join('')}</tbody>
-      <tfoot><tr><td></td>${pc.map(c => `<td class="n"><b>${SUM.includes(c[0]) ? fm(sum(shown(), c[0])) : ''}</b></td>`).join('')}</tr></tfoot></table><script>setTimeout(() => print(), 300)</script></body></html>`); w.document.close();
+      <h2>BÁO CÁO CÔNG NỢ ĐẾN HẠN</h2><div>${esc(note())}</div><br><table><thead><tr><th>STT</th>${pc.map(c => `<th>${esc(c[1])}</th>`).join('')}</tr></thead><tbody>${PR.map((r, i) => `<tr><td>${i + 1}</td>${pc.map(c => `<td class="${c[2] === 'money' || c[2] === 'int' ? 'n' : ''}">${v(c, r)}</td>`).join('')}</tr>`).join('')}</tbody>
+      <tfoot><tr><td></td>${pc.map(c => `<td class="n"><b>${SUM.includes(c[0]) ? fm(sum(PR, c[0])) : ''}</b></td>`).join('')}</tr></tfoot></table><script>setTimeout(() => print(), 300)</script></body></html>`); w.document.close();
   };
   main.onclick = run(async e => {
     const b = e.target.closest('[data-rc]');
@@ -2327,7 +2354,29 @@ V.duedebt = async main => {
     const cl = e.target.closest('[data-calls]');
     if (cl) { e.preventDefault(); const x = await api('GET', `/api/e/debt_call?f_contract_id=${cl.dataset.calls}&limit=200`); const RL = Object.fromEntries(M.ents.debt_call.fields.find(z => z.k === 'result').o.map(o => [o[0], o[1]]));
       return modal({ title: `${ico('fa-phone')} Lịch sử nhắc nợ`, body: x.rows.length ? `<table class="t compact noclick"><thead><tr><th>Ngày gọi</th><th>Kết quả</th><th>Nội dung</th><th>Ngày cam kết</th></tr></thead><tbody>${x.rows.map(z => `<tr><td>${dmy(z.at)}</td><td>${esc(RL[z.result] || z.result || '')}</td><td>${esc(z.content || '')}</td><td>${dmy(z.promise_on)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Chưa có lần nhắc nợ</div>' }); }
-    const tr = e.target.closest('#ddT tr[data-i]'); if (tr) { const r = shown()[+tr.dataset.i]; if (r) location.hash = `#/v/ctdebt?id=${r.contract_id}`; }
+    const uc = e.target.closest('[data-ucalls]');
+    if (uc) { e.preventDefault(); const u = d.units.find(x => x.unit_id === +uc.dataset.ucalls); const RL = Object.fromEntries(M.ents.debt_call.fields.find(z => z.k === 'result').o.map(o => [o[0], o[1]]));
+      const xs = (await Promise.all([...u.cts].map(id => api('GET', `/api/e/debt_call?f_contract_id=${id}&limit=200`).then(x => x.rows.map(z => ({ ...z, number: u.items.find(i => i.contract_id === id)?.number }))).catch(() => [])))).flat().sort((a, b) => String(b.at).localeCompare(String(a.at)));
+      return modal({ title: `${ico('fa-phone')} Lịch sử nhắc nợ · căn ${esc(u.unit)}`, body: xs.length ? `<table class="t compact noclick"><thead><tr><th>Ngày gọi</th><th>Hợp đồng</th><th>Kết quả</th><th>Nội dung</th><th>Ngày cam kết</th></tr></thead><tbody>${xs.map(z => `<tr><td>${dmy(z.at)}</td><td>${esc(z.number || '')}</td><td>${esc(RL[z.result] || z.result || '')}</td><td>${esc(z.content || '')}</td><td>${dmy(z.promise_on)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Chưa có lần nhắc nợ</div>' }); }
+    const trU = !e.target.closest('a,button') && e.target.closest('#ddT tr[data-i]'), uvId = e.target.closest('[data-uview]')?.dataset.uview || (trU ? d.units[+trU.dataset.i]?.unit_id : null);
+    if (uvId) { const u = d.units.find(x => x.unit_id === +uvId); if (!u) return;
+      const ids = [...u.cts], RC = (await Promise.all(ids.map(id => Promise.all([api('GET', `/api/e/receipt?f_contract_id=${id}&limit=500`).catch(() => ({ rows: [] })), api('GET', `/api/e/payment?f_contract_id=${id}&limit=500`).catch(() => ({ rows: [] }))])
+        .then(([a, b]) => [...a.rows.map(x => ({ ...x, _t: 'Phiếu thu', _ct: id })), ...b.rows.map(x => ({ ...x, _t: 'Phiếu chi', _ct: id }))])))).flat().sort((a, b) => String(b.voucher_date).localeCompare(String(a.voucher_date)));
+      const num = id => u.items.find(i => i.contract_id === id)?.number || '#' + id;
+      const m = modal({ wide: true, title: `${ico('fa-building')} Công nợ đến hạn · căn ${esc(u.unit)} — ${esc(u.customer)}`, body: `<div class="small muted mb">Ngày chốt ${dmy(d.asof)} · ${u.items.length} khoản đến hạn của ${u.n_ct} hợp đồng · HĐ thuê + HĐ vay dùng chung tiến độ HĐMB chỉ tính 1 lần</div>
+        <div class="tbl-wrap"><table class="t compact noclick"><thead><tr><th>Hợp đồng</th><th>Trạng thái</th><th>Chiều</th><th>Đợt / kỳ</th><th>Nội dung</th><th>Hạn</th><th class="num">Quá hạn</th><th class="num">Phải thanh toán</th><th class="num">Đã thanh toán</th><th class="num">Còn phải thanh toán</th><th class="num">Lãi quá hạn</th><th></th></tr></thead>
+        <tbody>${u.items.map(r => `<tr><td><a href="#" data-uct="${r.contract_id}">${esc(r.number)}</a><div class="small muted">${esc(r.kind_l)}</div></td><td>${esc(r.status_l)}</td><td>${pill(r.dir === 'thu' ? 'Phải thu' : 'Phải trả', r.dir === 'thu' ? 'b' : 'v')}</td><td>${esc(r.dot)}</td><td class="small" style="white-space:normal;min-width:220px">${esc(r.content)}</td><td>${dmy(r.due_on)}</td><td class="num">${r.days || 0}</td><td class="num">${fm(r.amount)}</td><td class="num">${fm(r.paid)}</td><td class="num"><b>${fm(r.rem)}</b></td><td class="num">${r.lai == null ? '<span class="small muted">chưa đủ thông tin</span>' : fm(r.lai)}</td>
+          <td>${r.dir === 'thu' && r.inst_id && d.can_thu ? `<button class="btn sm" data-rc="${r.inst_id}">${ico('fa-plus')} Thu</button>` : r.dir === 'tra' && r.loan_pay_id ? `<button class="btn sm" data-pc="${r.loan_pay_id}">${ico('fa-plus')} Chi</button>` : ''}</td></tr>`).join('')}</tbody></table></div>
+        <div class="sec-title">Lịch sử thu / chi của căn</div>${RC.length ? `<div class="tbl-wrap"><table class="t compact noclick"><thead><tr><th>Ngày</th><th>Loại</th><th>Số chứng từ</th><th>Hợp đồng</th><th>Nội dung</th><th class="num">Số tiền</th><th>Trạng thái</th></tr></thead><tbody>${RC.map(x => `<tr><td>${dmy(x.voucher_date)}</td><td>${x._t}</td><td>${esc(x.voucher_no || '')}</td><td>${esc(num(x._ct))}</td><td class="small">${esc(x.content || '')}</td><td class="num">${fm(x.amount)}</td><td>${esc(x.status === 'hop_le' ? 'Hợp lệ' : x.status === 'huy' ? 'Đã hủy' : x.status || '')}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">Chưa có phiếu thu / chi</div>'}
+        <div class="row mt"><button class="btn" data-uctall="${ids[0]}">${ico('fa-folder-tree')} Danh sách hợp đồng &amp; trạng thái của căn</button></div>` });
+      m.el.addEventListener('click', run(async ev => {
+        const a = ev.target.closest('[data-uct]'); if (a) { ev.preventDefault(); m.close(); return openDetail('contract', +a.dataset.uct, 'debt'); }
+        const all = ev.target.closest('[data-uctall]'); if (all) { m.close(); return openDetail('contract', +all.dataset.uctall, 'debt'); }
+        const b = ev.target.closest('[data-rc]'), p = ev.target.closest('[data-pc]'); if (b || p) m.close();
+        if (b) { const r = d.rows.find(x => x.inst_id === +b.dataset.rc); if (r) openForm('receipt', { preset: { contract_id: r.contract_id, contract_id__l: r.number, unit_id: r.unit_id, unit_id__l: r.unit, installment_id: r.inst_id, installment_id__l: r.content, voucher_date: today(), amount: r.rem, content: `Thu tiền ${r.dot}${r.content ? ' — ' + r.content : ''} căn ${r.unit}` }, onSaved: load }); }
+        if (p) { const r = d.rows.find(x => x.loan_pay_id === +p.dataset.pc); if (r) openForm('payment', { preset: { contract_id: r.contract_id, contract_id__l: r.number, kind: r.src === 'lai_vay' ? 'tra_lai' : 'tra_goc', loan_pay_id: r.loan_pay_id, voucher_date: today(), amount: r.rem, content: `${r.content} ${r.dot} — HĐ vay ${r.number}` }, onSaved: load }); }
+      }));
+      return; }
   });
   // tự cập nhật: lưu phiếu thu / chi, sửa hạn, phát hành thông báo bàn giao / GCN… ở form bất kỳ → tải lại; quay lại tab hoặc mỗi 60 giây cũng tải lại (không cần F5)
   ST.reload = async () => { if ($('#ddT', main)) await load(); };
