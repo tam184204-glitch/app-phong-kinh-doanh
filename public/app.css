@@ -2384,3 +2384,6 @@ table.t.uc-t td.num, table.t.uc-t th.num { white-space: nowrap; overflow-wrap: n
 @media (max-width:900px){.pk3{grid-template-columns:1fr}.pc-cols{overflow-x:auto}.pc-v{font-size:10.5px}}
 .pc-s{overflow:hidden;text-overflow:ellipsis;max-width:100%}
 @media (max-width:900px){.pc-cols{grid-template-columns:none!important;grid-auto-flow:column;grid-auto-columns:72px;padding-bottom:4px}}
+/* 18/11/2026: chính sách — chọn Thông báo đang áp dụng */
+.npick{border:1px solid var(--line2);border-radius:10px;padding:10px;background:#fbfdff}
+.npick-t{max-height:240px}.npick-t tr.off td{background:#fdf6f6}.npick-t td .neg{margin-top:2px}
