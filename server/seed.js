@@ -363,6 +363,13 @@ async function loadDemo() {
         owner_id: by.id, stage: x.stage || 'moi', note: 'Dữ liệu thử' }, by, o({ at: x.at }))).row;
       inc('Khách hàng'); return r;
     };
+    const noxhOk = async res => {   // hồ sơ NOXH đạt (đã duyệt, Sở Xây dựng duyệt đủ điều kiện)
+      const ck = (await C.setting('checklist_noxh', db))._all.map(s => B.ckItem(s).n);
+      const n = (await C.create('noxh_check', { reservation_id: res.id, grp: 'cong_nhan', items: ck.map(n => ({ n, st: 'da_nhan', note: '' })), received_on: C.addDays(T, -30), doi_tuong: 'Người lao động đang làm việc tại các doanh nghiệp trong và ngoài khu công nghiệp', confirm_org: 'Doanh nghiệp (thử)',
+        housing: 'Chưa có nhà ở thuộc sở hữu của hộ gia đình', income: 'Có thu nhập bình quân hàng tháng thực nhận không quá 25 triệu đồng', province: 'Bắc Ninh', commune: 'Yên Trung', job: 'Người lao động làm việc tại doanh nghiệp' }, hs, o())).row;
+      await C.act('noxh_check', n.id, 'review', hs, { step: 'kiem_tra_1', conclusion: 'dat', note: 'Đủ giấy tờ' }, { db, demo: true });
+      await C.submit('noxh_check', n.id, hs, { db, demo: true }); await C.approve('noxh_check', n.id, tp, { ok: true, db }); inc('Hồ sơ NOXH đạt (trước HĐMB)');
+    };
     // --- 1 giao dịch trọn vẹn: giữ chỗ → duyệt → cọc → HĐ → lịch → rà soát → ký → thu ---
     const sale = async ({ unit, by, regDate, signDate, schedule, paidSeqs = [], partial, agent, number, stopAt }) => {
       const cust = await mkCustomer(by, { source: agent ? (agent.kind === 'ctv' ? 'ctv' : 'dai_ly') : undefined, agent_id: agent?.id, project: unit.project_id, at: at(regDate) });
@@ -378,6 +385,8 @@ async function loadDemo() {
       const rows = schedule.map(([name, pct, due]) => ({ name, pct, due_on: due }));
       await C.act('contract', cid, 'schedule', hs, { rows }, { db, demo: true });
       if (stopAt === 'du_thao') return { cust, res, c };
+      // 19/11/2026: căn NOXH phải có hồ sơ NOXH được Sở Xây dựng duyệt đủ điều kiện trước khi trình HĐMB (noxhGate) — dữ liệu thử lập sẵn hồ sơ đạt
+      if (await B.noxhIssue(db, 'hdmb', cust.id, unit.id)) await noxhOk(res);
       await C.submit('contract', cid, hs, { db, demo: true });
       if (stopAt === 'cho_duyet') return { cust, res, c };
       await C.approve('contract', cid, tp, { ok: true, db });
@@ -398,7 +407,7 @@ async function loadDemo() {
     };
 
     // ===== TNS tòa G — bàn giao dự kiến 10/2026: đợt 3 (25%) đến hạn khi bàn giao =====
-    const tnsSched = s => [['Đợt 1 – ký HĐMB', 30, s], ['Đợt 2 – theo tiến độ xây dựng', 40, C.addDays(s, 150)], ['Đợt 3 – nhận bàn giao căn hộ', 25, '2026-10-10'], ['Đợt 4 – nhận Giấy chứng nhận', 5, '2027-06-30']];
+    const tnsSched = s => [['Đợt 1 – ký HĐMB', 30, s], ['Đợt 2 – theo tiến độ xây dựng', 40, C.addDays(s, 150)], ['Đợt 3 – nhận bàn giao căn hộ', 25, ['2026-10-10', C.addDays(s, 180)].sort()[1]], ['Đợt 4 – nhận Giấy chứng nhận', 5, ['2027-06-30', C.addDays(s, 400)].sort()[1]]]   // 19/11/2026: hạn không sớm hơn đợt 2 khi ngày ký muộn;
     const tnsDeals = [];
     for (let i = 0; i < 62; i++) {
       const u = G[i]; const sign = C.addDays('2025-03-10', i * 5 + Math.floor(rnd() * 4));
@@ -434,6 +443,9 @@ async function loadDemo() {
     // được duyệt; căn thứ 4 đang giữ chỗ để thử lập HĐMB mới (chọn mã căn → Lần thanh toán tự điền theo chính sách) =====
     {
       for (const u of [O[27], O[28]]) { await sale({ unit: u, by: bh1, regDate: D(-3), signDate: D(5), schedule: ctsSched(D(5)), number: `HĐMB-${u.code}/2026`, stopAt: 'du_thao' }); inc('Giao dịch đang xử lý'); }
+      // 19/11/2026: chính sách bán chỉ lập được khi dự án có thông báo mở bán đang áp dụng (thông báo ban hành sau cùng) — dữ liệu thử phát hành thông báo tòa O CTS
+      const tb = (await C.create('sale_notice', { deal: 'ban', project_id: pj.CTS, title: 'Mở bán tòa O (thử)', doc_no: 'TB-THU-01', notice_on: D(-5), open_on: D(-5), unit_group: 'O' }, tp, o())).row;
+      await C.submit('sale_notice', tb.id, tp, { db, demo: true }); await C.approve('sale_notice', tb.id, U['thu.lanhdao'], { ok: true, db });
       const p = (await C.create('price_policy', { code: 'CSBH-TDTT-CTS', version: 1, project_ids: [pj.CTS], unit_group: [O[19], O[27], O[28], O[29]].map(u => u.code).join(','), mode: 'bang_hang',
         start_on: D(-1), end_on: '2026-12-31', target: 'Khách mua căn tòa O theo tiến độ giãn (thử)', pay_mdot: 4,
         content: 'Ưu đãi / chiết khấu: Thanh toán giãn 5 đợt (dữ liệu thử)\nPhương thức thanh toán: Theo tiến độ thu tiền khai ở chính sách',
@@ -483,7 +495,7 @@ async function loadDemo() {
     // ===== điều chỉnh hợp đồng =====
     { // phụ lục có hiệu lực: giãn đợt 2 thành 2 phần cho 1 khách nhóm C
       const d = tnsDeals[52], c = d.c, s = c.signed_on;
-      const sched = [['Đợt 1 – ký HĐMB', 30, s], ['Đợt 2a – theo tiến độ', 20, C.addDays(s, 150)], ['Đợt 2b – giãn theo phụ lục', 20, D(20)], ['Đợt 3 – nhận bàn giao căn hộ', 25, '2026-11-30'], ['Đợt 4 – nhận Giấy chứng nhận', 5, '2027-06-30']]
+      const sched = [['Đợt 1 – ký HĐMB', 30, s], ['Đợt 2a – theo tiến độ', 20, C.addDays(s, 150)], ['Đợt 2b – giãn theo phụ lục', 20, D(20)], ['Đợt 3 – nhận bàn giao căn hộ', 25, ['2026-11-30', D(30)].sort()[1]], ['Đợt 4 – nhận Giấy chứng nhận', 5, '2027-06-30']]
         .map(([name, pct, due_on]) => ({ name, pct, due_on }));
       const ch = (await C.create('contract_change', { contract_id: c.id, kind: 'tien_do', content: 'Giãn 50% đợt 2 sang tháng 11/2026, lùi đợt 3 tới 30/11/2026', reason: 'Khách đề nghị do chờ giải ngân khoản vay', new_schedule: sched, approver_id: tp.id }, cn, o())).row;
       await demoFile(db, 'contract_change', ch.id, 'don_de_nghi', 'don_de_nghi_gian_tien_do.pdf', cn);
