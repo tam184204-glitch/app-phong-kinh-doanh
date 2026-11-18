@@ -47,7 +47,7 @@ const area = v => v == null || v === '' ? '' : String(+v).replace('.', ',');
 
 // dữ liệu một căn → { map: trường → chữ, nums: trường → số, ctx: bản ghi gốc }
 // bản vẽ mô tả căn hộ (13/11/2026): mẫu loại «ban_ve», mã <DỰ ÁN>-<TÒA>-BV-<mã hiệu căn> / -BV-TANG (mặt bằng tầng); data-floors="2-9" = tầng áp dụng;
-// bản vẽ riêng 1 tầng: <DỰ ÁN>-<TÒA>-BV-T<tầng>-<mã hiệu>. Nạp sẵn tòa K (CTS) từ «MB K.pdf» + «chi tiet can ho/K01…K13.pdf»
+// bản vẽ riêng 1 tầng: <DỰ ÁN>-<TÒA>-BV-T<tầng>-<mã hiệu> (ưu tiên). 18/11/2026: nạp đủ 16 tòa từ TONG HOP MAU (MAU MAT BANG CHI TIET …) — bản vẽ 01 dùng cho mọi căn đuôi 01 (101, 201…), không giới hạn tầng
 const BV = { sig: null, rows: [] };
 async function banVe(u) {
   const meta = await q("SELECT id, updated_at FROM kd_template WHERE kind = 'ban_ve' AND active ORDER BY id");

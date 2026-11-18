@@ -443,14 +443,15 @@ async function boot(pgliteUrl) {
   // (CCCD, vợ / chồng đồng sở hữu, MST, TK ngân hàng) + HĐMB đã ký 4 đợt 30/40/25/5% + phí bảo trì + HĐ hoàn thiện + phiếu thu đợt 1–2; thêm 1 căn chỉ có HĐ vay
   // (gợi ý bộ «HĐ vay») và Thông báo bàn giao căn hộ (nháp) cho căn tòa K → in thử mọi mẫu ở 05 › Hồ sơ & lưu trữ theo căn
   try {
-    if (!localStorage.getItem('ctg-kd-demo-mau-th')) {
+    if (!localStorage.getItem('ctg-kd-demo-mau-th') || !localStorage.getItem('ctg-kd-demo-bv-g')) {
       const C = require('../server/core'), B = require('../server/biz'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1");
       const day = n => C.addDays(C.today(), n);
       const freeU = (pc, bc, n) => q(`SELECT u.id, u.code, u.area_tt, u.building_id FROM kd_unit u JOIN kd_building b ON b.id = u.building_id JOIN kd_project p ON p.id = u.project_id
         WHERE p.code = $1 AND b.code = $2 AND u.status IN ('con_ban', 'chua_mo_ban') AND coalesce(u.lock, '') = ''
         AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.status <> 'huy') AND NOT EXISTS (SELECT 1 FROM kd_reservation r WHERE r.unit_id = u.id AND r.status NOT IN ('huy', 'het_han'))
         ORDER BY (coalesce(u.base_price, 0) > 0) DESC, u.floor DESC, u.code DESC LIMIT $3`, [pc, bc, n]);
-      const KH = [['Trần Minh Khoa', 'Nguyễn Thu Hằng', '0912345671'], ['Lê Văn Phúc', 'Đỗ Thị Mai', '0912345672'], ['Phạm Quốc Bảo', 'Vũ Thị Lan', '0912345673'], ['Hoàng Thị Ngọc', '', '0912345674']];
+      const KH = [['Trần Minh Khoa', 'Nguyễn Thu Hằng', '0912345671'], ['Lê Văn Phúc', 'Đỗ Thị Mai', '0912345672'], ['Phạm Quốc Bảo', 'Vũ Thị Lan', '0912345673'], ['Hoàng Thị Ngọc', '', '0912345674'],
+        ['Ngô Đức Thắng', 'Bùi Thị Hoa', '0912345675'], ['Đặng Thu Trang', '', '0912345676'], ['Vũ Quang Huy', 'Lý Thị Thảo', '0912345677']];
       let i = 0;
       const mk = async (un, kind) => {
         await q('UPDATE kd_unit SET activated = true WHERE id = $1', [un.id]); await tx(db => B.recomputeUnit(db, un.id, u));   // căn thử: coi như đã duyệt mở bán
@@ -483,6 +484,7 @@ async function boot(pgliteUrl) {
         } catch (e) { console.warn('HĐ hoàn thiện thử', un.code, e.message); }
         return un;
       };
+      if (!localStorage.getItem('ctg-kd-demo-mau-th')) {
       say('Đang dựng dữ liệu thử cho bộ mẫu in…');
       const made = [];
       for (const [pc, bc] of [['CTS', 'K'], ['CTS', 'O'], ['TNS', 'G']]) { const [un] = await freeU(pc, bc, 1); if (un) try { made.push(await mk(un, 'hdmb')); } catch (e) { console.warn('mẫu in thử', un.code, e.message); } }
@@ -493,6 +495,20 @@ async function boot(pgliteUrl) {
       } catch (e) { console.warn('TB bàn giao thử', e.message); }
       console.log('dữ liệu thử mẫu in:', made.filter(Boolean).map(x => x.code).join(', '));
       localStorage.setItem('ctg-kd-demo-mau-th', '1');
+      }
+      // bản vẽ mô tả căn hộ các tòa (18/11/2026, Tâm: «cho tôi 1 số mẫu để thử với tòa G»): thêm 3 căn tòa G ở 3 mã hiệu khác nhau (01, 03 căn nhỏ 55 m², 06) có HĐMB
+      // → HĐMB in kèm Phụ lục mô tả căn hộ đúng bản vẽ mã hiệu căn + mặt bằng tầng
+      if (!localStorage.getItem('ctg-kd-demo-bv-g')) {
+        i = 4;
+        for (const pos of ['01', '03', '06']) {
+          const [un] = await q(`SELECT u.id, u.code, u.area_tt, u.building_id FROM kd_unit u JOIN kd_building b ON b.id = u.building_id JOIN kd_project p ON p.id = u.project_id
+            WHERE p.code = 'TNS' AND b.code = 'G' AND right(u.code, 2) = $1 AND coalesce(u.floor, 0) >= 2 AND u.status IN ('con_ban', 'chua_mo_ban') AND coalesce(u.lock, '') = ''
+            AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.status <> 'huy') AND NOT EXISTS (SELECT 1 FROM kd_reservation r WHERE r.unit_id = u.id AND r.status NOT IN ('huy', 'het_han'))
+            ORDER BY u.floor DESC LIMIT 1`, [pos]);
+          if (un) try { await mk(un, 'hdmb'); console.log('bản vẽ thử tòa G:', un.code); } catch (e) { console.warn('bản vẽ thử', un.code, e.message); }
+        }
+        localStorage.setItem('ctg-kd-demo-bv-g', '1');
+      }
     }
   } catch (e) { console.warn('dữ liệu thử mẫu in', e); }
   const job = async () => { try { await tx(db => biz.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.warn('job', e.message); } };
