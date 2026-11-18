@@ -2302,3 +2302,347 @@ table.t.uc-t td.num, table.t.uc-t th.num { white-space: nowrap; overflow-wrap: n
 .pw2 .pr-t tr.p td{font-weight:700;background:#f2f6fc}
 .pw2 .pr-t tr.p td:first-child{padding-left:22px}
 .pw2 .pr-t tr.b td:first-child{padding-left:36px}
+
+/* 17/11/2026: Xem chi tiết công nợ (Báo cáo công nợ đến hạn) — 1 cửa sổ cuộn dọc, mỗi HĐ 1 khối */
+.modal.ud-modal{width:min(1500px,92vw);max-width:92vw}
+.modal.ud-modal .mh h3{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px}
+.ud-asof{font-size:12.5px;font-weight:500;color:var(--muted)}
+.ud .ud-blk{border:1px solid var(--line2);border-radius:12px;padding:12px 14px;margin-bottom:14px;background:var(--card)}
+.ud .ud-hd{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--line2)}
+.ud .ud-hd a{font-weight:800;font-size:16px;color:#1e4e8c}
+.ud .ud-ov{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-bottom:10px}
+.ud .ud-ov>div{background:#f6f9fd;border-radius:8px;padding:7px 12px;display:flex;flex-direction:column;min-width:0}
+.ud .ud-ov span{font-size:12px;color:var(--muted)}
+.ud .ud-ov b{font-size:16px;font-variant-numeric:tabular-nums}
+.ud .ud-ov small{font-size:11.5px;color:var(--muted)}
+.ud .ud-ov .red b{color:#c0392b}
+.ud .ud-bar{display:flex;gap:2px;height:14px;margin:2px 0 3px}
+.ud .ud-seg{position:relative;border-radius:3px;overflow:hidden;background:#e5e7eb;min-width:8px}
+.ud .ud-seg i{position:absolute;left:0;top:0;bottom:0;background:#2e7d4f}
+.ud .ud-seg.r{background:#f5c2bd}.ud .ud-seg.a{background:#fde3a7}.ud .ud-seg.b{background:#cfe0f7}.ud .ud-seg.s{background:#e5e7eb}.ud .ud-seg.g{background:#bfe3cc}
+.ud .ud-barl{display:flex;gap:2px;font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.25}
+.ud .ud-barl span{min-width:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ud .ud-info{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px 18px;margin-bottom:10px;padding:8px 0;border-top:1px dashed var(--line2);border-bottom:1px dashed var(--line2)}
+.ud .ud-info>div{display:flex;flex-direction:column;min-width:0}
+.ud .ud-info span{font-size:12px;color:var(--muted)}
+.ud .ud-info b{font-size:13.5px;font-weight:600}
+.ud .ud-wn{color:#b45309;font-weight:600}
+.ud .ud-tw{overflow-x:auto;margin-bottom:6px}
+.ud .ud-t{width:100%;border-collapse:collapse;font-size:13px}
+.ud .ud-t th{background:#f1f5fb;font-size:12.5px;text-align:left;padding:6px 8px;white-space:nowrap;border-bottom:1px solid var(--line2)}
+.ud .ud-t td{padding:6px 8px;border-bottom:1px solid var(--line2);vertical-align:top}
+.ud .ud-t .n{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.ud .ud-t tr.od td{background:#fdf1f0}
+.ud .ud-t tr.od td:first-child b{color:#b42318}
+.ud .ud-t tr.mt td:first-child b{color:#6b46c1}
+.ud .ud-t tr.void td{color:var(--muted);text-decoration:line-through}
+.ud .ud-t tfoot td{font-weight:700;background:#eaf1fb;border-bottom:0}
+.ud .ud-sub{font-weight:600;font-size:13px;margin:8px 0 4px;color:#1e4e8c}
+.ud .ud-sec,.ud .sec-title{color:#1e4e8c;font-weight:800;font-size:13.5px;letter-spacing:.3px;margin:16px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--line2);text-transform:uppercase}
+@media (max-width:900px){.ud .ud-ov{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* 17/11/2026: Chi tiết căn hộ — chia tab, tiêu đề + thanh tab cố định, chỉ cuộn nội dung */
+.modal.ud-modal .mb{height:min(78vh,900px);max-height:none;padding-top:0}
+.ud .ud-top{position:sticky;top:0;z-index:5;background:var(--card);padding:12px 0 0;margin-bottom:12px;border-bottom:1px solid var(--line2)}
+.ud .ud-cu{font-weight:700;font-size:14.5px;margin-bottom:10px}
+.ud .ud-cu span{display:block;font-weight:500;font-size:12.5px;color:var(--muted);margin-top:2px}
+.ud .ud-tabs{display:flex;flex-wrap:wrap;gap:6px;padding-bottom:10px}
+.ud .ud-tabs button{border:1px solid var(--line2);background:var(--card);border-radius:10px;padding:8px 16px;font:inherit;font-size:14px;cursor:pointer;color:var(--text)}
+.ud .ud-tabs button.on{background:#1e4e8c;border-color:#1e4e8c;color:#fff;font-weight:700}
+.ud .ud-cts{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.ud .ud-ct{display:flex;flex-direction:column;align-items:flex-start;gap:1px;border:1px solid var(--line2);background:var(--card);border-radius:10px;padding:8px 14px;cursor:pointer;font:inherit;text-align:left;min-width:200px}
+.ud .ud-ct b{color:#1e4e8c}
+.ud .ud-ct span{font-size:12.5px;color:var(--muted)}
+.ud .ud-ct small{font-size:12px}
+.ud .ud-ct small em{color:#c0392b;font-style:normal;font-weight:600}
+.ud .ud-ct.on{border-color:#1e4e8c;box-shadow:inset 0 0 0 1px #1e4e8c;background:#eaf1fb}
+
+/* 17/11/2026: Kế hoạch dòng thu năm (2 nguồn) */
+.py2 .pw-fr select{height:34px;width:auto;min-width:130px;padding:0 10px;border:1px solid var(--line2);border-radius:8px;background:var(--card);font:inherit;font-size:13.5px;color:var(--text)}
+.py2 .py-kk{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+.py2 .py-kk>div{background:var(--card);border:1px solid var(--line2);border-radius:10px;padding:8px 12px;display:flex;flex-direction:column;min-width:0}
+.py2 .py-kk span{font-size:12px;color:var(--muted)}
+.py2 .py-kk b{font-size:15.5px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.py2 .py-kk .tot{border-color:#1e4e8c;background:#eaf1fb}
+.py2 .py-kk .mut b{color:var(--muted)}
+.py2 .pr-chart{position:relative;padding:14px 18px 12px}
+.py2 .hb-top{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline;justify-content:space-between;margin-bottom:6px}
+.py2 .hb-ttl{font-weight:700;font-size:15px}
+.py2 .hb-lg{display:flex;gap:16px;font-size:13px}
+.py2 .hb-lg i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.py2 .hb-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:0 36px}
+.py2 .hb-k{padding:5px 8px;border-radius:8px;cursor:pointer}
+.py2 .hb-k:hover{background:rgba(46,102,194,.05)}
+.py2 .hb-hd{display:flex;justify-content:space-between;gap:10px;margin-bottom:2px}
+.py2 .hb-t{font-weight:600;font-size:13px}
+.py2 .hb-n{font-size:12px;color:var(--muted)}
+.py2 .hb-r{display:grid;grid-template-columns:1fr 64px;align-items:center;gap:8px;margin:2px 0}
+.py2 .hb-tr{height:10px;background:rgba(148,163,184,.22);border-radius:3px;overflow:hidden;display:block}
+.py2 .hb-f{display:block;height:100%;border-radius:0 3px 3px 0}
+.py2 .hb-v{font-size:12.5px;text-align:right;font-variant-numeric:tabular-nums}
+.py2 .py-t{padding:14px 16px}
+.py2 .pr-h{text-align:center;margin:2px 0 10px}
+.py2 .pr-tt{display:block;font-weight:800;font-size:18px;letter-spacing:.5px}
+.py2 .py-tw{overflow:auto;max-height:calc(100vh - 220px);border:1px solid var(--line2);border-radius:8px}
+.py2 .py-tb{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-size:12.5px}
+.py2 .py-tb th,.py2 .py-tb td{padding:6px 8px;border-bottom:1px solid var(--line2);background:var(--card);white-space:nowrap;vertical-align:top}
+.py2 .py-tb thead th{position:sticky;top:0;z-index:2;background:#f1f5fb;font-weight:700}
+.py2 .py-tb th.mh{cursor:pointer;color:#1e4e8c;text-decoration:underline dotted}
+.py2 .py-tb .n{text-align:right;font-variant-numeric:tabular-nums}
+.py2 .py-tb .s1{position:sticky;left:0;z-index:1;min-width:230px;max-width:280px;white-space:normal;box-shadow:2px 0 0 var(--line2)}
+.py2 .py-tb thead th.s1{z-index:3}
+.py2 .py-tb tr.g td{font-weight:700;background:#eaf1fb}
+.py2 .py-tb tr.p td{font-weight:700;background:#f2f6fc}
+.py2 .py-tb tr.b td{font-weight:600;background:#f6f7f9}
+.py2 .py-tb tr.p td.s1{padding-left:20px}
+.py2 .py-tb tr.b td.s1{padding-left:32px}
+.py2 .py-tb tr.u td.s1{padding-left:46px}
+.py2 .py-tb tr.t td{font-weight:700;background:#1e4e8c;color:#fff;position:sticky;bottom:0}
+.py2 .py-tb td.mut{color:var(--muted)}
+.py2 .pr-tg{cursor:pointer;display:inline-block;width:14px}
+.py2 .pw-rule{margin-top:10px;font-size:12.5px;color:var(--muted)}
+.py2 .pw-rule summary{cursor:pointer;color:var(--cobalt);font-weight:600}
+@media (max-width:1100px){.py2 .py-kk{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+/* 17/11/2026: Kế hoạch dòng thu năm — giao diện theo mẫu Ke_hoach_dong_thu_nam.html (nền xám xanh, khối trắng, xanh đậm + điểm nhấn vàng) */
+.page.ap{font:14px/1.5 Arial,sans-serif;background:#f3f5f9;color:#27374e;padding:24px;border-radius:14px;max-width:1600px}
+.ap *{box-sizing:border-box}
+.ap h2{font-size:24px;margin:4px 0;font-weight:700}
+.ap h3{font-size:16px;margin:0;font-weight:700}
+.ap .ap-sub{font-size:12px;color:#728098}
+.ap .ap-eb{color:#9a722e;font-size:11px;letter-spacing:1.5px}
+.ap .ap-hd,.ap .ap-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.ap .ap-act{display:flex;gap:10px;align-items:center}
+.ap button,.ap select{font:inherit;padding:9px 12px;border:1px solid #dbe3ef;border-radius:8px;background:#fff;color:inherit}
+.ap button{cursor:pointer}
+.ap button:focus-visible,.ap select:focus-visible{outline:2px solid #d8a855;outline-offset:2px}
+.ap .ap-pri{background:#254f89;color:#fff;border-color:#254f89;font-weight:600}
+.ap .ap-dd{position:relative}
+.ap .ap-menu{position:absolute;right:0;top:calc(100% + 4px);background:#fff;border:1px solid #dbe3ef;border-radius:8px;box-shadow:0 8px 24px rgba(20,40,80,.12);z-index:20;display:flex;flex-direction:column;min-width:170px;padding:4px}
+.ap .ap-menu[hidden]{display:none}
+.ap .ap-menu button{border:0;text-align:left;padding:8px 10px}
+.ap .ap-menu button:hover{background:#f3f5f9}
+.ap .ap-box{background:#fff;border:1px solid #e1e7ef;border-radius:12px;padding:18px;margin-top:18px;position:relative}
+.ap .ap-flt{display:flex;align-items:end;gap:12px;flex-wrap:wrap}
+.ap .ap-flt label{display:flex;flex-direction:column;gap:5px;font-size:12px}
+.ap .ap-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin:20px 0 4px}
+.ap .ap-stat{border-left:3px solid #cfa65e;padding-left:12px}
+.ap .ap-big{font-size:23px;font-weight:bold;margin-top:4px;font-variant-numeric:tabular-nums}
+.ap .ap-big small{font-size:13px;font-weight:500;color:#728098}
+.ap .ap-chart{display:grid;grid-template-columns:repeat(12,1fr);gap:10px;align-items:end;height:200px;margin:20px 0 8px}
+.ap .ap-col{display:flex;flex-direction:column;justify-content:end;align-items:center;height:100%;min-width:0;cursor:pointer;border-radius:6px;padding-bottom:2px}
+.ap .ap-col:hover,.ap .ap-col.on{background:#f6f1e6}
+.ap .ap-val{font-size:11px;color:#728098;white-space:nowrap}
+.ap .ap-stack{display:flex;flex-direction:column-reverse;gap:2px;width:100%;max-width:36px;border-radius:4px 4px 0 0;overflow:hidden}
+.ap .ap-stack div{min-height:2px}
+.ap .ap-col small{font-size:11px;margin-top:8px}
+.ap .ap-empty{grid-column:1/-1;align-self:center;text-align:center;color:#728098;padding:30px}
+.ap .ap-lg{display:flex;gap:18px;flex-wrap:wrap;font-size:12px}
+.ap .ap-lg i,.ap .ap-tip i{display:inline-block;width:9px;height:9px;margin-right:5px;border-radius:2px}
+.ap .ap-tip{position:absolute;pointer-events:none;background:#fff;border:1px solid #dbe3ef;border-radius:8px;box-shadow:0 8px 24px rgba(20,40,80,.12);padding:8px 10px;font-size:12px;z-index:5;min-width:220px}
+.ap .ap-tip[hidden]{display:none}
+.ap .ap-scroll{overflow:auto;margin-top:16px}
+.ap .ap-t{border-collapse:collapse;width:100%;white-space:nowrap;font-size:12px}
+.ap .ap-t th,.ap .ap-t td{padding:12px;border-bottom:1px solid #e7ecf3;text-align:right;font-variant-numeric:tabular-nums}
+.ap .ap-t th{color:#718099;font-weight:500;background:#f6f8fb}
+.ap .ap-t th:first-child,.ap .ap-t td:first-child{text-align:left;position:sticky;left:0;min-width:200px;background:#fff;font-weight:bold}
+.ap .ap-t th:first-child{background:#f6f8fb}
+.ap .ap-t tr.tot td{background:#254b80;color:#fff;font-weight:bold}
+.ap .ap-t td button{padding:0;border:0;background:none;color:#295ba0;font-size:12px;font-variant-numeric:tabular-nums}
+.ap .ap-t tr.tot td button{color:#fff}
+.ap .ap-note{margin-top:12px;font-size:12px;color:#728098}
+.ap .ap-note a{color:#295ba0}
+.ap details{margin-top:14px;font-size:12px}
+.ap summary{cursor:pointer}
+.ap .ap-dg{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:16px}
+.ap .ap-di{text-align:left;padding:12px 0 12px 12px;border:0;border-bottom:1px solid #e3e9f2;border-radius:0;background:none}
+.ap .ap-di.on{border-bottom:3px solid #cfa65e;background:#fbf7ee}
+.ap .ap-pill{font-size:11px;padding:3px 7px;border-radius:5px;background:#fff3de;color:#946a23;white-space:nowrap}
+.ap .ap-tree{margin-top:12px}
+.ap .ap-tree details{margin:6px 0 6px 14px;border-left:2px solid #e3e9f2;padding-left:10px}
+.ap .ap-tree>details{margin-left:0}
+.ap .ap-tree summary{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;padding:6px 0;font-size:13px}
+.ap .ap-nums{display:flex;gap:14px;margin-left:auto;font-size:12px;color:#728098;font-variant-numeric:tabular-nums}
+.ap .ap-nums b{color:#27374e}
+.ap .ap-it{border-collapse:collapse;width:100%;font-size:12px;white-space:nowrap}
+.ap .ap-it th,.ap .ap-it td{padding:7px 8px;border-bottom:1px solid #e7ecf3;text-align:left}
+.ap .ap-it th{background:#f6f8fb;color:#718099;font-weight:500}
+.ap .ap-it td:nth-child(n+5):nth-child(-n+7),.ap .ap-it th:nth-child(n+5):nth-child(-n+7){text-align:right;font-variant-numeric:tabular-nums}
+.ap .ap-lnk{padding:2px 8px;font-size:12px;color:#295ba0;border-color:#c9d6ea}
+@media (max-width:600px){.page.ap{padding:14px}.ap .ap-stats{grid-template-columns:1fr 1fr}.ap .ap-dg{grid-template-columns:1fr}.ap .ap-chart{gap:5px;height:170px}.ap .ap-big{font-size:20px}.ap .ap-val{display:none}}
+.ap .ap-t td button.ap-tg{width:20px;height:20px;padding:0;margin-right:6px;font-size:13px;line-height:18px;text-align:center;border:1px solid #c9d6ea;border-radius:4px;background:#fff;color:#254f89;font-weight:700}
+/* 17/11/2026: 3 dòng nguồn thu in đậm toàn dòng (tên, Tổng năm, T1–T12, kể cả số tiền bấm được) */
+.ap .ap-t tr.l0 td,.ap .ap-t tr.l0 td b,.ap .ap-t tr.l0 td button,.ap .ap-t tr.l0 td .ap-z{font-weight:700}
+.ap .ap-t td.ap-x{background:#fbfaf6}
+.ap .ap-t tr.tot td.ap-x{background:#254b80}
+.ap .ap-ok{color:#1d7a46;font-weight:700}
+.ap .ap-bad{color:#b42318;font-weight:700}
+/* 17/11/2026: trạng thái đang tải / lỗi của Kế hoạch dòng thu năm */
+.ap.ap-ld #apS,.ap.ap-ld .ap-box:not(:has(.ap-flt)){opacity:.35;pointer-events:none;transition:opacity .15s}
+.ap .ap-st{margin-top:10px;font-size:12.5px;color:#254f89;font-weight:600}
+.ap .ap-st a{color:#295ba0}
+.ap .ap-errb{color:#b42318}
+/* 17/11/2026: Tạo kế hoạch thu bán mới — bố cục 3 phần */
+.modal.su3-modal{width:min(1240px,94vw)}
+.modal.su3-modal .mb{max-height:calc(100vh - 190px);background:#fbfcfe}
+.su3{display:grid;gap:14px;font-size:13.5px}
+.su3-hint{color:var(--muted);font-size:13px}
+.su3 section{background:#fff;border:1px solid var(--line2);border-radius:12px;padding:12px 14px}
+.su3 h4{display:flex;align-items:center;gap:8px;font-size:14px;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line2)}
+.su3 h4 span{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#eaf1fb;color:#1e4e8c;font-size:12px}
+.su3-pick{display:grid;grid-template-columns:minmax(220px,1.3fr) minmax(150px,.8fr) minmax(240px,1.4fr);gap:10px}
+.su3-pick label{display:grid;gap:4px;font-size:12.5px;color:var(--muted)}
+.su3-pick select,.su3-dd{height:36px;font-size:13.5px;color:var(--ink,#1f2937)}
+.su3-dd{display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 10px;cursor:pointer;text-align:left}
+.su3-dd:disabled{background:#f4f6f9;color:var(--muted);cursor:not-allowed}
+.su3-list{margin-top:8px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.su3-lh{display:flex;gap:10px;align-items:center;padding:8px 10px;background:#f6f9fd;border-bottom:1px solid var(--line2)}
+.su3-lh .inp{max-width:240px;height:32px}
+.su3-lb{max-height:240px;overflow:auto}
+.su3-lb label{display:flex;gap:10px;align-items:center;padding:7px 12px;border-bottom:1px solid var(--line2);cursor:pointer}
+.su3-lb label:hover{background:#f6f9fd}.su3-lb label.on{background:#eef5ff}
+.su3-lb .n{font-variant-numeric:tabular-nums}
+.su3-tag{display:inline-block;font-size:11px;line-height:1;padding:3px 7px;border-radius:999px;background:#e6f5f3;color:#0f766e;font-weight:600}
+.su3-warn{color:#b45309;font-size:12.5px}
+.su3-bulk{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 10px;margin-bottom:8px;background:#fff7e8;border:1px solid #f3d9a4;border-radius:8px}
+.su3-bulk select{height:32px;width:auto}
+.su3-tw{overflow-x:auto}
+.su3-t{width:100%;border-collapse:collapse;font-size:13.5px}
+.su3-t th{background:#f1f5fb;text-align:left;padding:8px;font-size:12.5px;font-weight:600;white-space:nowrap;border-bottom:1px solid var(--line2)}
+.su3-t td{padding:7px 8px;border-bottom:1px solid var(--line2);vertical-align:middle}
+.su3-t .n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.su3-t .c{text-align:center}
+.su3-t select.inp,.su3-t .inp{height:32px;width:100%;min-width:0}
+.su3-t tr.pk td{background:#f6faff}
+.su3-gh td{background:#f7f9fc;font-weight:600;color:#1e4e8c;padding:6px 8px}
+.su3-gh span{color:var(--muted);margin:0 4px}.su3-gh em{font-style:normal;font-weight:400;color:var(--muted);margin-left:10px;font-size:12.5px}
+.su3-empty{text-align:center;color:var(--muted);padding:18px!important}
+.su3-lc{display:flex;align-items:center;gap:10px;justify-content:space-between}
+.su3-lt{display:grid;line-height:1.35}.su3-lt small{color:var(--muted);font-size:12px}
+.su3-sum{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--line2);border-radius:10px;overflow:hidden}
+.su3-sum>div{padding:10px 14px;border-left:1px solid var(--line2)}.su3-sum>div:first-child{border-left:0}
+.su3-sum span{display:block;font-size:12px;color:var(--muted)}.su3-sum b{font-size:16px;font-variant-numeric:tabular-nums}
+.su3-sum>div.w b{color:#b45309}
+.su3-more{margin:8px 0 4px;font-size:13px}.su3-more summary{cursor:pointer;color:#1e4e8c;font-weight:600}.su3-more>div{display:grid;gap:3px;padding:6px 2px}
+.su3-g{display:grid;grid-template-columns:minmax(220px,1fr) minmax(260px,2fr);gap:4px 14px;margin-top:6px}
+.su3-sh{display:flex;gap:24px;margin-bottom:10px;padding:8px 12px;background:#f6f9fd;border-radius:8px}
+.su3-ss{display:flex;flex-wrap:wrap;gap:6px 24px;margin-top:10px;padding:8px 12px;background:#f6f9fd;border-radius:8px}
+@media (max-width:820px){.su3-pick,.su3-g{grid-template-columns:1fr}.su3-sum{grid-template-columns:repeat(2,1fr)}}
+/* 17/11/2026: Bản kế hoạch dòng thu năm — thông tin bản, trạng thái, thao tác duyệt, so sánh thực thu */
+.ap .yp-hd{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.ap .yp-hd h3{margin:2px 0 0;font-size:18px}
+.yp-st{display:inline-block;padding:4px 10px;border-radius:999px;font-size:12.5px;font-weight:600;color:var(--c);background:color-mix(in srgb,var(--c) 12%,#fff);border:1px solid color-mix(in srgb,var(--c) 35%,#fff);white-space:nowrap}
+.yp-st.sm{font-size:11.5px;padding:2px 8px}
+.ap .yp-act{display:flex;gap:8px;flex-wrap:wrap}
+.ap .yp-act button{padding:7px 11px;font-size:13px}
+.ap .yp-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px 18px;margin-top:14px;padding:12px 14px;background:#f7f9fc;border-radius:10px}
+.ap .yp-g span{display:block;font-size:12px;color:#6b7a90}.ap .yp-g b{font-weight:600;font-size:13.5px}
+.yp-msg{margin-top:10px;padding:8px 12px;border-radius:8px;background:#f1f5fb;color:#334155;font-size:13px}
+.yp-msg.r{background:#fdecec;color:#991b1b}.yp-msg.g{background:#eaf7ee;color:#166534}
+.ap .yp-vs{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:10px;font-size:13px;color:#6b7a90}
+.ap .yp-vs button{padding:4px 10px;font-size:12.5px}.ap .yp-vs button.on{background:#254f89;color:#fff;border-color:#254f89}
+.ap .yp-cmp td.c2{color:#6b7a90;white-space:nowrap}.ap .yp-cmp tr.yp-a td{border-top:2px solid #e1e7ef}.ap .yp-cmp tr.yp-pc td{color:#6b7a90;font-size:12.5px}
+.yp-dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.yp-f{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px}
+.yp-ro{min-height:36px;display:flex;align-items:center;padding:0 10px;background:#f4f6f9;border-radius:8px;font-size:13.5px}
+.yp-lf{display:flex;gap:12px;align-items:end;margin-bottom:10px}.yp-lf label{display:grid;gap:3px;font-size:12.5px;color:var(--muted)}.yp-lf select{height:34px;width:auto}
+.modal.yp-lm{width:min(1300px,94vw)}
+@media (max-width:700px){.yp-f{grid-template-columns:1fr}}
+.ap .yp-cmp td.c2{text-align:left!important}.ap .yp-cmp td.c1{vertical-align:middle}
+
+.ap .yp-tip{margin-top:12px;padding:9px 12px;border-radius:8px;background:#fff7e8;border:1px solid #f3d9a4;color:#7a5410;font-size:13px}.ap .yp-tip a{color:#254f89;text-decoration:underline}
+.yp-f3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px 16px}.yp-f3 .yp-w2{grid-column:span 3}.yp-f3 .yp-w3{grid-column:span 3}
+.yp-f3 .sdate{width:100%}
+.yp-pv{margin-top:12px;padding:10px 12px;border:1px solid #dbe3ef;border-radius:10px;background:#f7f9fc;font-size:13px;min-height:44px}
+.yp-pvh{font-weight:600;color:#1e4e8c;margin-bottom:8px}
+.yp-pvg{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}.yp-pvg span{display:block;font-size:12px;color:#6b7a90}.yp-pvg b{font-variant-numeric:tabular-nums}
+@media (max-width:800px){.yp-f3{grid-template-columns:1fr}.yp-f3 .yp-w2,.yp-f3 .yp-w3{grid-column:auto}.yp-pvg{grid-template-columns:1fr 1fr}}
+.yp-tabs{display:flex;gap:4px;flex-wrap:wrap;background:#f1f5fb;padding:4px;border-radius:10px}
+.yp-tabs button{border:0;background:transparent;padding:7px 12px;border-radius:8px;font:inherit;font-size:13px;cursor:pointer;color:#334155}
+.yp-tabs button span{display:inline-block;min-width:18px;padding:0 5px;margin-left:3px;border-radius:9px;background:#dbe3ef;font-size:11.5px;text-align:center}
+.yp-tabs button.on{background:#fff;color:#1e4e8c;font-weight:600;box-shadow:0 1px 3px rgba(20,40,80,.12)}.yp-tabs button.on span{background:#254f89;color:#fff}
+.yp-ops{display:flex;gap:4px;flex-wrap:wrap}.yp-ops .btn{white-space:nowrap}
+/* 17/11/2026: thanh thao tác cố định khi chỉnh bản kế hoạch năm */
+.ap .yp-bar{position:sticky;bottom:0;z-index:30;margin-top:18px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 16px;background:#fff;border:1px solid #d6dfec;border-radius:12px;box-shadow:0 -6px 20px rgba(20,40,80,.12)}
+.ap .yp-bar[hidden]{display:none}
+.ap .yp-bl{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13.5px}.ap .yp-br{display:flex;gap:8px;flex-wrap:wrap}
+.yp-dt{color:#b45309;font-weight:600}
+.yp-ed{display:inline-block;font-size:10.5px;line-height:1;padding:2px 6px;border-radius:999px;background:#fff1d6;color:#92400e;font-weight:600;vertical-align:1px}
+.yp-el tr.yp-del td{opacity:.5;text-decoration:line-through}.yp-el tr.yp-del td:last-child{opacity:1;text-decoration:none}
+.yp-el .inp{height:32px}.yp-ss{margin-top:10px;padding:8px 12px;background:#f6f9fd;border-radius:8px;font-size:13px}
+.yp-f .yp-w{grid-column:span 2}
+/* 17/11/2026: hộp Thiết lập lịch thu (bán mới) */
+.sc3-hd{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:12px;padding:10px 14px;background:#f6f9fd;border:1px solid var(--line2);border-radius:10px}
+.sc3-hd span{display:block;font-size:12px;color:var(--muted)}.sc3-hd b{font-size:15px;font-variant-numeric:tabular-nums}
+.sc3-t tfoot td{background:#f1f5fb;font-weight:700;padding:8px;border-top:2px solid #d6dfec}.sc3-t tfoot tr.sc3-sub td{font-weight:500;background:#f8fafd;border-top:1px solid var(--line2)}
+.sc3-bt{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:10px}
+@media (max-width:700px){.sc3-hd{grid-template-columns:1fr}}
+/* 17/11/2026: lịch thu bán mới dạng đợt thanh toán HĐMB */
+.sc4-t td{vertical-align:top}.sc4-t .sc4-c{width:100%;min-height:54px;height:auto;resize:vertical;line-height:1.4;padding:6px 8px;font:inherit}
+.sc4-t .sdate{width:100%}.sc4-t input.c{text-align:center}
+.sc4-t tr.sc4-m td{background:#fbf8f1}
+.sc3-hd small{display:block;font-size:11.5px;color:var(--muted)}
+.sc3-hd{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+/* 18/11/2026: Tạo kế hoạch thu bán mới — bảng nhập trực tiếp (tiêu đề 2 hàng, cố định tiêu đề + cột Dự án / Tòa / Căn) */
+.modal.sg-modal{width:97vw;max-width:97vw}
+.modal.sg-modal .mb{max-height:calc(100vh - 170px);height:calc(100vh - 170px);display:flex;flex-direction:column;padding-top:12px}
+.sg{display:flex;flex-direction:column;gap:10px;min-height:0;flex:1;font-size:13px}
+.sg-hint{color:var(--muted);font-size:12.5px}
+.sg-wrap{flex:1;min-height:220px;overflow:auto;border:1px solid #d6dfec;border-radius:10px;background:#fff}
+.sg-t{border-collapse:separate;border-spacing:0;table-layout:fixed;width:max-content;min-width:100%}
+.sg-t th,.sg-t td{border-bottom:1px solid #e3e9f2;border-right:1px solid #eef2f7;padding:6px 7px;vertical-align:top;background:#fff}
+.sg-t thead th{position:sticky;top:0;z-index:3;background:#f1f5fb;font-size:12.5px;font-weight:600;text-align:left;white-space:nowrap}
+.sg-t thead tr:nth-child(2) th{top:31px}
+.sg-t thead th.sg-g{background:#dde9f8;color:#1e4e8c;text-align:center}.sg-t thead th.sg-g small{font-weight:400;color:#46628a}
+.sg-t thead th.sg-g a{color:#b91c1c;text-decoration:none;margin-left:4px}
+.sg-t td.sg-d{background:#f3f8fe}.sg-t tfoot td.sg-d{background:#e6f0fb}
+.sg-t .n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.sg-t .c{text-align:center}
+.sg-t .s1,.sg-t .s2,.sg-t .s3{position:sticky;z-index:2}.sg-t .s1{left:0}.sg-t .s2{left:180px}.sg-t .s3{left:290px;box-shadow:2px 0 0 #d6dfec}
+.sg-t thead .s1,.sg-t thead .s2,.sg-t thead .s3{z-index:4}
+.sg-t select.inp,.sg-t input.inp{height:30px;width:100%;min-width:0;font-size:12.5px;padding:0 6px}
+.sg-u{display:flex;gap:4px}.sg-u select{flex:1}
+.sg-dc{display:grid;gap:4px}.sg-dc .sdate{width:100%;height:30px}
+.sg-pa{display:flex;align-items:center;gap:4px}.sg-pa span{color:var(--muted);font-size:12px}
+.sg-t tfoot td{position:sticky;bottom:0;z-index:2;background:#eef3fa;font-weight:700;border-top:2px solid #cfdcee}
+.sg-t tfoot td.s1,.sg-t tfoot td.s2,.sg-t tfoot td.s3{z-index:3}
+.sg-t tr.sg-over td{background:#fff5f5}.sg-t tr.sg-over td.sg-d{background:#fdeeee}
+.sg-un{font-weight:600}
+.sg-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sg-sum{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:1px solid var(--line2);border-radius:10px;overflow:hidden}
+.sg-sum>div{padding:8px 14px;border-left:1px solid var(--line2)}.sg-sum>div:first-child{border-left:0}
+.sg-sum span{display:block;font-size:12px;color:var(--muted)}.sg-sum b{font-size:15px;font-variant-numeric:tabular-nums}.sg-sum>div.w b{color:#b45309}
+.sg-pop{position:fixed;z-index:3000;width:370px;background:#fff;border:1px solid #cfdcee;border-radius:10px;box-shadow:0 12px 32px rgba(20,40,80,.22);overflow:hidden;font-size:13px}
+.sg-ph{display:flex;gap:8px;align-items:center;padding:8px;background:#f6f9fd;border-bottom:1px solid var(--line2)}.sg-ph .inp{height:30px;flex:1}
+.sg-pl{max-height:300px;overflow:auto}.sg-pl label{display:flex;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid var(--line2);cursor:pointer}.sg-pl label:hover{background:#f6f9fd}.sg-pl label.off{opacity:.5}
+.sg-pf{display:flex;justify-content:flex-end;gap:6px;padding:8px;border-top:1px solid var(--line2)}
+@media (max-width:800px){.sg-sum{grid-template-columns:1fr 1fr}}
+.modal.sg-modal{width:97vw!important;max-width:97vw!important}
+.modal.sg-modal{height:calc(100vh - 40px);display:flex!important;flex-direction:column}.modal.sg-modal .mb{flex:1;min-height:0;height:auto!important;max-height:none!important}.modal.sg-modal .mh,.modal.sg-modal .mf{flex:none}
+.modal.sg-modal{height:calc(100vh - 110px)}
+/* 18/11/2026: chọn căn theo tòa + áp dụng lịch thu cho căn đã tích */
+.sg-pick{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 10px;background:#f6f9fd;border:1px solid #d6dfec;border-radius:10px}
+.sg-pick select{height:32px;width:auto;min-width:160px}
+.sg-plist{border:1px solid #cfdcee;border-radius:10px;overflow:hidden;background:#fff;flex:none}
+.sg-plh{display:flex;gap:8px;align-items:center;padding:8px 10px;background:#f6f9fd;border-bottom:1px solid var(--line2)}.sg-plh .inp{height:30px;max-width:240px}
+.sg-plb{max-height:220px;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr))}
+.sg-plb label{display:flex;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid var(--line2);border-right:1px solid var(--line2);cursor:pointer;font-size:12.5px}
+.sg-plb label.on{background:#eaf3ff}.sg-plb label.off{opacity:.55;cursor:default}
+.sg-plf{display:flex;justify-content:flex-end;gap:6px;padding:8px 10px;border-top:1px solid var(--line2)}
+.sg-apply{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 10px;background:#fff7e8;border:1px solid #f3d9a4;border-radius:10px;flex:none}
+.sg-apply select{height:30px;width:auto;min-width:200px;margin-left:4px}.sg-apply label{display:flex;align-items:center;font-size:13px}.sg-ck input{margin-right:5px}
+.sg-t .s0{position:sticky;left:0;z-index:2}.sg-t thead .s0{z-index:4}.sg-t tfoot .s0{z-index:3}
+.sg-t .s1{left:36px}.sg-t .s2{left:216px}.sg-t .s3{left:326px}
+.sg-t tr.sg-pk td{background:#f7fbff}.sg-t tr.sg-pk td.sg-d{background:#eaf3fd}
+
+/* 18/11/2026: tab Thiết lập tháng bán & lịch thu (các căn đã tích) */
+.modal.st-modal{width:min(1240px,96vw)!important;max-width:96vw!important}
+.st{display:grid;grid-template-columns:260px minmax(0,1fr);gap:14px;min-height:420px;font-size:13px}
+.st-l{border:1px solid #d6dfec;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;max-height:calc(100vh - 260px)}
+.st-lh{display:flex;flex-direction:column;gap:2px;padding:8px 10px;background:#f6f9fd;border-bottom:1px solid var(--line2)}.st-lh label{display:flex;gap:6px;align-items:center}
+.st-lb{overflow:auto;flex:1}
+.st-i{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-bottom:1px solid var(--line2);cursor:pointer;border-left:3px solid transparent}
+.st-i:hover{background:#f6f9fd}.st-i.on{background:#eaf3ff;border-left-color:#3568ac}.st-i.bad b{color:#b91c1c}
+.st-i input{margin-top:3px}.st-ib{display:flex;flex-direction:column;gap:1px;min-width:0}.st-ib span{font-size:12px}
+.st-r{min-width:0}
+.st-sale{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}.st-sale label{display:flex;gap:8px;align-items:center;font-weight:600}.st-sale select{height:32px;width:auto;min-width:130px}
+.sg-sep{width:1px;height:20px;background:#f3d9a4}
+.sg-ct{font-size:11.5px;color:#46628a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:800px){.st{grid-template-columns:1fr}.st-l{max-height:220px}}

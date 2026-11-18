@@ -65,6 +65,14 @@ CREATE TABLE IF NOT EXISTS kd_approval (
 );
 CREATE INDEX IF NOT EXISTS kd_approval_rec ON kd_approval (ent, rec_id);
 CREATE UNIQUE INDEX IF NOT EXISTS kd_approval_one_open ON kd_approval (ent, rec_id) WHERE status = 'cho_duyet';
+CREATE TABLE IF NOT EXISTS kd_year_plan (
+  id serial PRIMARY KEY, code text NOT NULL, name text NOT NULL, year integer NOT NULL, from_on date NOT NULL, to_on date NOT NULL, project_id integer, asof date NOT NULL,
+  version integer NOT NULL DEFAULT 1, root_id integer, status text NOT NULL DEFAULT 'nhap' CHECK (status IN ('nhap','cho_duyet','da_duyet','yeu_cau_sua','thay_the')),
+  note text, data jsonb, totals jsonb, hist jsonb NOT NULL DEFAULT '[]', approver_id integer REFERENCES kd_user(id),
+  created_by integer REFERENCES kd_user(id), created_at timestamptz NOT NULL DEFAULT now(), updated_by integer, updated_at timestamptz,
+  submitted_by integer, submitted_at timestamptz, decided_by integer REFERENCES kd_user(id), decided_at timestamptz, decide_note text
+);
+CREATE INDEX IF NOT EXISTS kd_year_plan_root ON kd_year_plan (root_id, version);
 CREATE TABLE IF NOT EXISTS kd_import (
   id serial PRIMARY KEY, kind text NOT NULL, file_name text, by integer REFERENCES kd_user(id), at timestamptz NOT NULL DEFAULT now(),
   total integer, ok integer, failed integer, errors jsonb, is_demo boolean NOT NULL DEFAULT false

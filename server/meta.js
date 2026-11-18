@@ -840,6 +840,7 @@ def('collect_plan', {
     { k: 'units_n', l: 'Số căn dự kiến bán', t: 'int', noForm: 1 },
     money('unit_price', 'Đơn giá bình quân (đồng/căn)', { noForm: 1 }),
     { k: 'rate', l: 'Tỷ lệ dự kiến thu (%)', t: 'num', noForm: 1 },
+    { k: 'sale_month', l: 'Tháng dự kiến bán', t: 'month', noForm: 1 },   // 17/11/2026: kế hoạch thu bán mới theo căn
     { k: 'grp_key', l: 'Nhóm dòng kế hoạch', t: 'text', hide: 1 },
     { k: 'call_id', l: 'Từ lần nhắc nợ', t: 'ref', ref: 'debt_call', noForm: 1 },
     { k: 'prev_id', l: 'Kế hoạch trước khi đổi lịch', t: 'ref', ref: 'collect_plan', ro: 1 },
