@@ -364,6 +364,39 @@ async function boot(pgliteUrl) {
       localStorage.setItem('ctg-kd-demo-cstd', '1');
     }
   } catch (e) { console.warn('chính sách có tiến độ thử', e); }
+  // bộ thử «Bảng hàng cho khách xem» (18/11/2026): TB mở bán đợt 1 tòa K (tầng 1–3) ĐÃ PHÁT HÀNH + 3 phiếu giữ chỗ trong đợt → căn hiện ở bảng hàng khách;
+  // TB mở bán đợt 2 tòa O (tầng 2–4) CHỜ DUYỆT → chưa hiện, duyệt xong mới hiện. Chỉ lấy căn còn trống (căn đã có HĐ / phiếu không lập thông báo được)
+  try {
+    if (!localStorage.getItem('ctg-kd-demo-tbmb')) {
+      const C = require('../server/core'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1"), ld = await one("SELECT * FROM kd_user WHERE role = 'lanh_dao' AND active ORDER BY id LIMIT 1");
+      const day = n => C.addDays(C.today(), n), pj = await one("SELECT id FROM kd_project WHERE code = 'CTS'");
+      const free = (b, f1, f2) => q(`SELECT u.id, u.code FROM kd_unit u JOIN kd_building bb ON bb.id = u.building_id WHERE u.project_id = $1 AND bb.code = $2 AND u.floor BETWEEN $3 AND $4 AND coalesce(u.lock, '') = ''
+        AND u.status IN ('chua_mo_ban', 'con_ban') AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.status NOT IN ('huy', 'thanh_ly'))
+        AND NOT EXISTS (SELECT 1 FROM kd_reservation r WHERE r.unit_id = u.id AND r.status IN ('cho_duyet', 'giu_cho', 'qua_han', 'da_coc'))
+        AND NOT EXISTS (SELECT 1 FROM kd_noxh_check h WHERE h.unit_id = u.id AND h.status = 'cho_duyet') ORDER BY u.floor, u.code`, [pj.id, b, f1, f2]);
+      if (u && ld && pj) {
+        say('Đang dựng thông báo mở bán thử…');
+        const k1 = await free('K', 1, 3);
+        if (k1.length) {
+          const n = (await C.create('sale_notice', { deal: 'ban', project_id: pj.id, title: 'Mở bán đợt 1 – tòa K (tầng 1–3)', doc_no: '01/2026/TB-CTG', notice_on: day(-3), open_on: day(-2), close_on: day(40),
+            channels: 'Website công ty; Cổng thông tin Sở Xây dựng', unit_group: k1.map(x => x.code).join(','), note: 'Dữ liệu thử: thông báo đã phát hành — các căn hiện ở «Bảng hàng cho khách xem»' }, u, { demo: true })).row;
+          await C.submit('sale_notice', n.id, u, { demo: true }); await C.approve('sale_notice', n.id, ld, { ok: true });
+          const KH = [['Ngô Thị Lan', '0988000201'], ['Bùi Văn Nam', '0988000202'], ['Trịnh Mai Phương', '0988000203']];
+          for (const [i, x] of k1.filter((_, j) => j % 5 === 2).slice(0, 3).entries()) {
+            try { await C.create('reservation', { unit_id: x.id, deal: 'mua', cust_name: `${KH[i][0]} (khách thử)`, phone: KH[i][1], reg_state: 'giu_cho', progress: 'tiep_nhan', source: 'truc_tiep', notice_id: n.id, hold_until: day(5) + 'T17:00', note: 'Dữ liệu thử: giữ chỗ trong đợt mở bán 1' }, u, { demo: true }); }
+            catch (e) { console.warn('giữ chỗ thử', x.code, e.message); }
+          }
+        }
+        const o2 = await free('O', 2, 4);
+        if (o2.length) {
+          const n = (await C.create('sale_notice', { deal: 'ban', project_id: pj.id, title: 'Mở bán đợt 2 – tòa O (tầng 2–4)', doc_no: '02/2026/TB-CTG', notice_on: day(0), open_on: day(7), close_on: day(60),
+            channels: 'Website công ty', unit_group: o2.map(x => x.code).join(','), note: 'Dữ liệu thử: thông báo CHỜ DUYỆT — duyệt phát hành thì các căn này mới hiện ở «Bảng hàng cho khách xem»' }, u, { demo: true })).row;
+          await C.submit('sale_notice', n.id, u, { demo: true });
+        }
+      }
+      localStorage.setItem('ctg-kd-demo-tbmb', '1');
+    }
+  } catch (e) { console.warn('thông báo mở bán thử', e); }
   const job = async () => { try { await tx(db => biz.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.warn('job', e.message); } };
   await job(); setInterval(job, 2 * 60e3);
 

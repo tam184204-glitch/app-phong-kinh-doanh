@@ -365,6 +365,35 @@ async function board(db, user, f) {
   return { projects, project: pid, buildings, building: bid, units, policy };
 }
 
+// 18/11/2026: BẢNG HÀNG CHO KHÁCH XEM — chỉ căn thuộc thông báo mở bán / cho thuê ĐÃ PHÁT HÀNH (đã duyệt); không tên khách, không thông tin nội bộ.
+// Tình trạng gọn: con (còn trống) · giu (đã có khách giữ chỗ) · ban (đã bán) · thue (đã cho thuê). Giá chỉ hiện ở căn còn trống
+async function boardPub(db, user, f) {
+  const ns = await db.q("SELECT n.*, p.code pcode, p.name pname FROM kd_sale_notice n JOIN kd_project p ON p.id = n.project_id WHERE n.status = 'da_duyet' ORDER BY n.open_on, n.id");
+  const byP = new Map(); for (const n of ns) (byP.get(n.project_id) || byP.set(n.project_id, []).get(n.project_id)).push(n);
+  const projects = [...byP.values()].map(l => ({ id: l[0].project_id, code: l[0].pcode, name: l[0].pname }));
+  const pid = byP.has(+f.project) ? +f.project : projects[0]?.id;
+  if (!pid) return { projects, buildings: [], units: [], notices: [] };
+  const pub = new Map();   // id căn → { thông báo bán, thông báo thuê, tiền thuê/tháng }
+  for (const n of byP.get(pid)) {
+    const us = await B.noticeUnits(db, n), rs = n.deal === 'thue' ? await B.noticeRent(db, pid, n.policy_id, us) : us;
+    for (const u of rs) { const x = pub.get(u.id) || {}; if (n.deal === 'thue') { x.rentN = n; x.rent = u.rent_month || null; } else x.saleN = n; pub.set(u.id, x); }
+  }
+  const all = await db.q('SELECT u.id, u.building_id FROM kd_unit u WHERE u.project_id = $1', [pid]), cnt = {};
+  for (const u of all) if (pub.has(u.id)) cnt[u.building_id] = (cnt[u.building_id] || 0) + 1;
+  const buildings = (await db.q('SELECT b.id, b.code, b.name FROM kd_building b WHERE b.project_id = $1 ORDER BY b.code', [pid])).filter(b => cnt[b.id]).map(b => ({ ...b, n: cnt[b.id] }));
+  const bid = buildings.some(b => b.id === +f.building) ? +f.building : buildings[0]?.id;
+  const d = await board(db, C.SYS, { project: pid, building: bid });
+  const ST = { con_ban: 'con', chua_mo_ban: 'con', giu_cho: 'giu', da_coc: 'giu', da_ky_hd: 'ban', da_ban_giao: 'ban' };
+  const units = d.units.filter(u => pub.has(u.id) && ST[u.status]).map(u => {
+    const x = pub.get(u.id), st = u.rent ? 'thue' : ST[u.status], free = st === 'con';
+    return { id: u.id, code: u.code, floor: u.floor, kind: u.kind, bedrooms: u.bedrooms, area_tt: u.area_tt, direction: u.direction, handover_plan: u.handover_plan, st,
+      sale: !!x.saleN, rentable: !!x.rentN, price: free && x.saleN ? u.total_price : null, rent: free && x.rentN ? x.rent : null };
+  });
+  const used = new Set(); for (const u of units) { const x = pub.get(u.id); x.saleN && used.add(x.saleN.id); x.rentN && used.add(x.rentN.id); }
+  const notices = byP.get(pid).filter(n => used.has(n.id)).map(n => ({ id: n.id, code: n.code, title: n.title, deal: n.deal || 'ban', doc_no: n.doc_no, open_on: n.open_on, close_on: n.close_on }));
+  return { projects, project: pid, buildings, building: bid, units, notices, policy: d.policy };
+}
+
 // ======================= TÌNH TRẠNG CĂN HỘ & CÔNG NỢ (CN-06) =======================
 // tình trạng theo BẢN CHẤT giao dịch, không theo loại văn bản: căn bán qua HĐ vay / HĐ thuê (bản chất bán) vẫn là «đã bán»;
 // công nợ tách theo từng hợp đồng — tiền vay / tiền thuê không trừ vào giá mua
@@ -2092,4 +2121,4 @@ async function monthly(db, period, projectId) {
   };
 }
 
-module.exports = { ypList, ypGet, ypSave, ypDecide, ypNewVer, ypDel, dueDebt, ddPlanToggle, ddUnitHist, ddUnitDetail, saleUnits, saleUnitPlan, saleUnitSched, planSplitWeeks, salePlanCreate, planLink, planList, planReport, planAdjust, planRollover, planYear, debtStatus, setDebtClass, setDebtDays, debtCfg, debtGrpOf, debtGrpL, customerLedger, myDay, debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, voucherList, contractTrack, setLateRate, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
+module.exports = { boardPub, ypList, ypGet, ypSave, ypDecide, ypNewVer, ypDel, dueDebt, ddPlanToggle, ddUnitHist, ddUnitDetail, saleUnits, saleUnitPlan, saleUnitSched, planSplitWeeks, salePlanCreate, planLink, planList, planReport, planAdjust, planRollover, planYear, debtStatus, setDebtClass, setDebtDays, debtCfg, debtGrpOf, debtGrpL, customerLedger, myDay, debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, voucherList, contractTrack, setLateRate, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };

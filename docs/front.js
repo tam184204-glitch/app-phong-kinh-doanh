@@ -3055,6 +3055,45 @@ function unitPop(u, after) {
     onSaved: row => { after(); toast('Đã lưu — phiếu đã vào «Đăng ký mua / thuê – giữ chỗ» › Đăng ký mua (04)'); openDetail('reservation', row.id); } }); });
 }
 
+// ======================= 02. BẢNG HÀNG CHO KHÁCH XEM (18/11/2026) =======================
+// chỉ hiện căn thuộc thông báo mở bán / cho thuê ĐÃ PHÁT HÀNH (đã duyệt) — thông báo nháp / chờ duyệt chưa hiện; không tên khách, không thông tin nội bộ,
+// giá chỉ hiện ở căn còn trống. Nút «Trình chiếu» = toàn màn hình để mở cho khách xem trên TV / laptop
+const PUB_G = { con: 'trong', giu: 'giu', ban: 'ky', thue: 'thue' }, PUB_L = { con: 'Còn trống', giu: 'Đã giữ chỗ', ban: 'Đã bán', thue: 'Đã cho thuê' };
+V.boardpub = async (main, params) => {
+  const s = ST.boardpub ||= { project: '', building: '', st: '' };
+  if (params.project) s.project = params.project;
+  const draw = async () => {
+    const d = await api('GET', `/api/board-pub?${qsOf({ project: s.project, building: s.building })}`);
+    s.project = d.project || ''; s.building = d.building || '';
+    const pj = d.projects.find(p => p.id === d.project), cnt = {}; d.units.forEach(u => cnt[u.st] = (cnt[u.st] || 0) + 1);
+    const floors = [...new Set(d.units.map(u => u.floor))].sort((a, b) => a - b);
+    const priceOf = u => u.price ? fmB(u.price) : u.rent ? `${fmB(u.rent)}/tháng` : u.st === 'con' && u.rentable ? 'Cho thuê' : '';
+    main.innerHTML = `<div class="page bpub">${head('02', 'Bảng hàng cho khách xem', 'fa-store', d.units.length ? `<button class="btn pri" id="bpFull">${ico('fa-expand')} Trình chiếu cho khách</button>` : '')}
+      ${!d.projects.length ? `<div class="card"><div class="empty" style="padding:40px 20px">${ico('fa-bullhorn')} Chưa có thông báo mở bán nào được phát hành.<br><span class="small muted">Bảng hàng cho khách chỉ hiện các căn của thông báo mở bán / cho thuê đã được duyệt phát hành (04 › Thông báo mở bán / cho thuê căn hộ).</span></div></div>` : `
+      <div class="card mb"><div class="toolbar" style="border:0"><select id="bpp">${d.projects.map(p => `<option value="${p.id}" ${p.id === d.project ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select>
+        <span class="grow"></span><span class="small muted">${ico('fa-circle-info')} Chỉ hiện căn của thông báo đã phát hành</span></div>
+        <div class="bp-hero"><div class="bp-pj">${esc(pj?.name || '')}</div><div class="bp-ns">${d.notices.map(n => `<span class="bp-n">${ico(n.deal === 'thue' ? 'fa-key' : 'fa-bullhorn')} <b>${esc(n.title || n.code)}</b>${n.doc_no ? ` · TB số ${esc(n.doc_no)}` : ''} · nhận hồ sơ từ ${dmy(n.open_on)}${n.close_on ? ' đến ' + dmy(n.close_on) : ''}</span>`).join('')}</div></div>
+        <div style="padding:0 14px 12px"><div class="towers">${d.buildings.map(b => `<div class="tower ${b.id === d.building ? 'on' : ''}" data-b="${b.id}"><b>${esc(b.name || 'Tòa ' + b.code)}</b><small>${b.n} căn mở bán</small></div>`).join('')}</div></div></div>
+      <div class="card"><div class="toolbar"><div class="legend">${Object.entries(PUB_L).filter(([k]) => cnt[k]).map(([k, l]) => `<span data-st="${k}" style="cursor:pointer;${s.st && s.st !== k ? 'opacity:.4' : ''}"><b class="u g-${PUB_G[k]}" style="width:12px;height:12px;min-height:0;padding:0;border-radius:3px"></b>${l} <b style="background:none;width:auto;height:auto;color:var(--ink)">${cnt[k]}</b></span>`).join('')}</div>${s.st ? '<button class="btn sm ghost" data-st="">Bỏ lọc</button>' : ''}<span class="grow"></span><span class="small muted">${d.units.length} căn · ${floors.length} tầng</span></div>
+      <div class="bd"><div class="floors">${floors.map(fl => `<div class="floor"><div class="fl">Tầng ${fl}</div><div class="us">${d.units.filter(u => u.floor === fl).map(u => `<div class="u g-${PUB_G[u.st]} ${s.st && s.st !== u.st ? 'dim' : ''}" data-u="${u.id}" title="${esc(u.code)} · ${PUB_L[u.st]}"><b class="no">${esc(u.code.split('-').pop())}</b><div class="sp">${u.bedrooms || ''}PN · ${fnum(u.area_tt)}m²</div><div class="pr">${u.st === 'con' ? priceOf(u) : PUB_L[u.st]}</div><div class="cu">${esc(u.direction || '')}</div></div>`).join('')}</div></div>`).join('') || '<div class="empty">Tòa chưa có căn mở bán</div>'}</div></div></div>`}</div>`;
+    if (!d.projects.length) return;
+    $('#bpp', main).onchange = e => { s.project = e.target.value; s.building = ''; draw(); };
+  };
+  main.onclick = run(async e => {
+    if (e.target.closest('#bpFull')) { const pg = $('.bpub', main); return document.fullscreenElement ? document.exitFullscreen() : pg.requestFullscreen?.(); }
+    const b = e.target.closest('[data-b]'); if (b) { s.building = b.dataset.b; return draw(); }
+    const st = e.target.closest('[data-st]'); if (st) { s.st = s.st === st.dataset.st ? '' : st.dataset.st; return draw(); }
+    const el = e.target.closest('[data-u]'); if (!el) return;
+    const d = await api('GET', `/api/board-pub?${qsOf({ project: s.project, building: s.building })}`), u = d.units.find(x => x.id === +el.dataset.u); if (!u) return;
+    modal({ title: `${ico('fa-door-open')} Căn ${esc(u.code)} ${pill(PUB_L[u.st], { con: 'b', giu: 'a', ban: 'g', thue: 'v' }[u.st])}`, narrow: true,
+      body: `<dl class="kv"><div><dt>Tầng</dt><dd>${u.floor}</dd></div><div><dt>Loại</dt><dd>${u.bedrooms || ''} phòng ngủ</dd></div><div><dt>Diện tích thông thủy</dt><dd>${fnum(u.area_tt)} m²</dd></div><div><dt>Hướng</dt><dd>${esc(u.direction || '')}</dd></div>
+        ${u.price ? `<div class="wide"><dt>Giá bán (đã gồm VAT, phí bảo trì)</dt><dd><b style="font-size:18px;color:var(--cobalt-d)">${fm(u.price)} đ</b></dd></div>` : ''}${u.rent ? `<div class="wide"><dt>Tiền thuê/tháng</dt><dd><b style="font-size:18px;color:var(--cobalt-d)">${fm(u.rent)} đ</b></dd></div>` : ''}
+        ${u.handover_plan ? `<div class="wide"><dt>Dự kiến bàn giao</dt><dd>${esc(u.handover_plan)}</dd></div>` : ''}${u.st !== 'con' ? `<div class="wide"><dt>Tình trạng</dt><dd>${PUB_L[u.st]} — mời quý khách tham khảo các căn còn trống</dd></div>` : ''}</dl>`,
+      foot: '<button class="btn" data-x>Đóng</button>' });
+  });
+  await draw();
+};
+
 // ======================= 02. DANH MỤC DỰ ÁN / SẢN PHẨM =======================
 const UST_C = { con_ban: 'g', giu_cho: 'a', da_coc: 'v', da_ky_hd: 'b', da_ban_giao: 't', tam_khoa: 'r' };
 const SOLD = new Set(['giu_cho', 'da_coc', 'da_ky_hd', 'da_ban_giao']);

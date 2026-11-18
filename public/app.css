@@ -2669,3 +2669,11 @@ table.t.uc-t td.num, table.t.uc-t th.num { white-space: nowrap; overflow-wrap: n
 @media (max-width:900px){.pk3{grid-template-columns:1fr}.pc-cols{overflow-x:auto}.pc-v{font-size:10.5px}}
 .pc-s{overflow:hidden;text-overflow:ellipsis;max-width:100%}
 @media (max-width:900px){.pc-cols{grid-template-columns:none!important;grid-auto-flow:column;grid-auto-columns:72px;padding-bottom:4px}}
+
+/* 18/11/2026: Bảng hàng cho khách xem (V.boardpub) — khung dự án / đợt mở bán + chế độ trình chiếu toàn màn hình */
+.bp-hero { margin: 0 14px 12px; padding: 14px 18px; border-radius: 14px; background: linear-gradient(120deg, #1F3A68, #2A4F8A); color: #fff; }
+.bp-pj { font-size: 20px; font-weight: 700; letter-spacing: .2px; }
+.bp-ns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.bp-n { font-size: 12.5px; background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.25); padding: 4px 10px; border-radius: 999px; }
+.bpub:fullscreen { background: var(--paper); overflow: auto; padding: 18px 24px; }
+.bpub:fullscreen .ph .eyebrow { display: none; }

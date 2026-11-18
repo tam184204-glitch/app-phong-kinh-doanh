@@ -352,6 +352,7 @@ R('GET', '/api/my-day', async (req, res, u) => send(res, 200, await V.myDay({ q,
 R('GET', '/api/alerts', async (req, res, u, p, qs) => send(res, 200, await V.alerts({ q, one }, u, { all: qs.all === '1' && (mgr(u)), project: qs.project })));
 R('GET', '/api/approvals', async (req, res, u) => send(res, 200, await V.approvals({ q, one }, u)));
 R('GET', '/api/board', async (req, res, u, p, qs) => send(res, 200, await V.board({ q, one }, u, qs)));
+R('GET', '/api/board-pub', async (req, res, u, p, qs) => send(res, 200, await V.boardPub({ q, one }, u, qs)));   // bảng hàng cho khách xem (18/11/2026)
 R('GET', '/api/liq-contracts', async (req, res, u, p, qs) => { if (!can(u, M.E.cancel_req, 'c') && !can(u, M.E.cancel_req, 'u')) C.deny(); send(res, 200, await B.liqContracts({ q, one }, qs)); });   // phiếu thanh lý chung (16/11/2026)
 R('GET', '/api/payouts', async (req, res, u, p, qs) => send(res, 200, await V.payouts({ q, one }, u, qs)));
 R('GET', '/api/loan-track', async (req, res, u, p, qs) => send(res, 200, await V.loanTrack({ q, one }, u, qs)));
