@@ -3115,24 +3115,48 @@ async function boardPubView(main, params) {
   const s = ST.boardpub ||= { project: '', building: '', st: '' };
   if (params.project) s.project = params.project;
   const draw = async () => {
-    const d = await api('GET', `/api/board-pub?${qsOf({ project: s.project, building: s.building })}`);
+    const d = await api('GET', `/api/board-pub?${qsOf({ project: s.project, building: s.building, pick: s.pick ? '1' : '' })}`);
     s.project = d.project || ''; s.building = d.building || '';
+    if (s.pick && !d.pick) s.pick = false;
+    if (s.pick && !s.sel) s.sel = new Set(d.sel_ids || []);
+    s.all = d.all_ids || s.all || [];
     const pj = d.projects.find(p => p.id === d.project), cnt = {}; d.units.forEach(u => cnt[u.st] = (cnt[u.st] || 0) + 1);
     const floors = [...new Set(d.units.map(u => u.floor))].sort((a, b) => a - b);
     const priceOf = u => u.price ? fmB(u.price) : u.rent ? `${fmB(u.rent)}/tháng` : u.st === 'con' && u.rentable ? 'Cho thuê' : '';
-    main.innerHTML = `<div class="page bpub">${head('02', 'Bảng hàng', 'fa-table-cells', `${bviewSel('khach')}${d.units.length ? `<button class="btn pri" id="bpFull">${ico('fa-expand')} Trình chiếu cho khách</button>` : ''}`)}
+    main.innerHTML = `<div class="page bpub">${head('02', 'Bảng hàng', 'fa-table-cells', `${bviewSel('khach')}${s.pick ? `<button class="btn" id="bpCancel">Hủy</button><button class="btn pri" id="bpSave">${ico('fa-floppy-disk')} Lưu căn cho khách xem (<span id="bpN">${s.sel.size}</span>)</button>`
+      : `${d.can_pick && d.projects.length ? `<button class="btn" id="bpPick">${ico('fa-list-check')} Chọn căn cho khách xem</button>` : ''}${d.units.length ? `<button class="btn pri" id="bpFull">${ico('fa-expand')} Trình chiếu cho khách</button>` : ''}`}`)}
       ${!d.projects.length ? `<div class="card"><div class="empty" style="padding:40px 20px">${ico('fa-bullhorn')} Chưa có thông báo mở bán nào được phát hành.<br><span class="small muted">Bảng hàng cho khách chỉ hiện các căn của thông báo mở bán / cho thuê đã được duyệt phát hành (04 › Thông báo mở bán / cho thuê căn hộ).</span></div></div>` : `
       <div class="card mb"><div class="toolbar" style="border:0"><select id="bpp">${d.projects.map(p => `<option value="${p.id}" ${p.id === d.project ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select>
-        <span class="grow"></span><span class="small muted">${ico('fa-circle-info')} Chỉ hiện căn còn trống của thông báo đã phát hành</span></div>
+        <span class="grow"></span><span class="small muted">${ico('fa-circle-info')} ${d.chosen ? `Khách đang xem <b>${d.n_show}</b> / ${d.n_all} căn còn trống (đã chọn${d.chosen_by ? ' — ' + esc(d.chosen_by) : ''}${d.chosen_at ? ' ' + dmy(String(d.chosen_at).slice(0, 10)) : ''})` : 'Chỉ hiện căn còn trống của thông báo đã phát hành'}</span></div>
+        ${s.pick ? `<div class="bp-pk">${ico('fa-hand-pointer')} <span>Bấm căn để <b>bật / tắt</b> cho khách xem — đang chọn <b id="bpN2">${s.sel.size}</b> / ${s.all.length} căn còn trống của dự án.</span><span class="grow"></span><button class="btn sm" id="bpTowOn">Chọn cả tòa này</button><button class="btn sm" id="bpTowOff">Bỏ cả tòa này</button><button class="btn sm" id="bpAllOn">Chọn tất cả</button><button class="btn sm ghost" id="bpAllOff">Bỏ chọn tất cả</button></div>` : ''}
         <div class="bp-hero"><div class="bp-pj">${esc(pj?.name || '')}</div><div class="bp-ns">${d.notices.map(n => `<span class="bp-n">${ico(n.deal === 'thue' ? 'fa-key' : 'fa-bullhorn')} <b>${esc(n.title || n.code)}</b>${n.doc_no ? ` · TB số ${esc(n.doc_no)}` : ''} · nhận hồ sơ từ ${dmy(n.open_on)}${n.close_on ? ' đến ' + dmy(n.close_on) : ''}</span>`).join('')}</div></div>
         <div style="padding:0 14px 12px"><div class="towers">${d.buildings.map(b => `<div class="tower ${b.id === d.building ? 'on' : ''}" data-b="${b.id}"><b>${esc(b.name || 'Tòa ' + b.code)}</b><small>${b.n} căn còn trống</small></div>`).join('')}</div></div></div>
       <div class="card"><div class="toolbar"><div class="legend">${Object.entries(PUB_L).filter(([k]) => cnt[k]).map(([k, l]) => `<span data-st="${k}" style="cursor:pointer;${s.st && s.st !== k ? 'opacity:.4' : ''}"><b class="u g-${PUB_G[k]}" style="width:12px;height:12px;min-height:0;padding:0;border-radius:3px"></b>${l} <b style="background:none;width:auto;height:auto;color:var(--ink)">${cnt[k]}</b></span>`).join('')}</div>${s.st ? '<button class="btn sm ghost" data-st="">Bỏ lọc</button>' : ''}<span class="grow"></span><span class="small muted">${d.units.length} căn · ${floors.length} tầng</span></div>
-      <div class="bd"><div class="floors">${floors.map(fl => `<div class="floor"><div class="fl">Tầng ${fl}</div><div class="us">${d.units.filter(u => u.floor === fl).map(u => `<div class="u g-${PUB_G[u.st]} ${s.st && s.st !== u.st ? 'dim' : ''}" data-u="${u.id}" title="${esc(u.code)} · ${PUB_L[u.st]}"><b class="no">${esc(u.code.split('-').pop())}</b><div class="sp">${u.bedrooms || ''}PN · ${fnum(u.area_tt)}m²</div><div class="pr">${u.st === 'con' ? priceOf(u) : PUB_L[u.st]}</div><div class="cu">${esc(u.direction || '')}</div></div>`).join('')}</div></div>`).join('') || '<div class="empty">Tòa chưa có căn mở bán</div>'}</div></div></div>`}</div>`;
+      <div class="bd"><div class="floors">${floors.map(fl => `<div class="floor"><div class="fl">Tầng ${fl}</div><div class="us">${d.units.filter(u => u.floor === fl).map(u => `<div class="u g-${PUB_G[u.st]} ${s.st && s.st !== u.st ? 'dim' : ''}${s.pick ? (s.sel.has(u.id) ? ' pk-on' : ' pk-off') : ''}" data-u="${u.id}" title="${esc(u.code)} · ${PUB_L[u.st]}"><b class="no">${esc(u.code.split('-').pop())}</b><div class="sp">${u.bedrooms || ''}PN · ${fnum(u.area_tt)}m²</div><div class="pr">${u.st === 'con' ? priceOf(u) : PUB_L[u.st]}</div><div class="cu">${esc(u.direction || '')}</div></div>`).join('')}</div></div>`).join('') || '<div class="empty">Tòa chưa có căn mở bán</div>'}</div></div></div>`}</div>`;
     bviewWire(main);
     if (!d.projects.length) return;
-    $('#bpp', main).onchange = e => { s.project = e.target.value; s.building = ''; draw(); };
+    $('#bpp', main).onchange = e => { s.project = e.target.value; s.building = ''; s.pick = false; s.sel = null; draw(); };
   };
+  const pkCount = () => { for (const id of ['#bpN', '#bpN2']) { const x = $(id, main); if (x) x.textContent = s.sel.size; } };
+  const pkSet = (ids, on) => { for (const id of ids) on ? s.sel.add(id) : s.sel.delete(id); for (const el of $$('[data-u]', main)) { const v = s.sel.has(+el.dataset.u); el.classList.toggle('pk-on', v); el.classList.toggle('pk-off', !v); } pkCount(); };
   main.onclick = run(async e => {
+    if (e.target.closest('#bpPick')) { s.pick = true; s.sel = null; return draw(); }
+    if (e.target.closest('#bpCancel')) { s.pick = false; s.sel = null; return draw(); }
+    if (s.pick) {
+      const tw = () => $$('[data-u]', main).map(el => +el.dataset.u);
+      if (e.target.closest('#bpTowOn')) return pkSet(tw(), true);
+      if (e.target.closest('#bpTowOff')) return pkSet(tw(), false);
+      if (e.target.closest('#bpAllOn')) return pkSet(s.all, true);
+      if (e.target.closest('#bpAllOff')) return pkSet([...s.sel], false);
+      if (e.target.closest('#bpSave')) {
+        if (!s.sel.size) return toast('Chọn ít nhất 1 căn cho khách xem', true);
+        const all = s.sel.size === s.all.length && s.all.every(id => s.sel.has(id));
+        await api('PUT', '/api/board-pub/pick', { project: s.project, ids: all ? null : [...s.sel] });
+        toast(all ? 'Đã lưu — khách xem tất cả căn còn trống' : `Đã lưu — khách chỉ xem ${s.sel.size} căn đã chọn`);
+        s.pick = false; s.sel = null; return draw();
+      }
+      const el = e.target.closest('[data-u]'); if (el) return pkSet([+el.dataset.u], !s.sel.has(+el.dataset.u));
+    }
     if (e.target.closest('#bpFull')) { const pg = $('.bpub', main); return document.fullscreenElement ? document.exitFullscreen() : pg.requestFullscreen?.(); }
     const b = e.target.closest('[data-b]'); if (b) { s.building = b.dataset.b; return draw(); }
     const st = e.target.closest('[data-st]'); if (st) { s.st = s.st === st.dataset.st ? '' : st.dataset.st; return draw(); }

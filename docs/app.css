@@ -2698,3 +2698,9 @@ table.t.uc-t td.num, table.t.uc-t th.num { white-space: nowrap; overflow-wrap: n
 select.bview { appearance: none; -webkit-appearance: none; font-weight: 600; color: var(--cobalt-d, #1F3A68); background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%231F3A68' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 12px center;
   border: 1px solid var(--line2); border-radius: 10px; padding: 8px 36px 8px 12px; min-width: 230px; cursor: pointer; }
 .bpub:fullscreen select.bview { display: none; }
+
+/* 18/11/2026: chọn căn cho khách xem */
+.bp-pk { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 14px 12px; padding: 10px 14px; border-radius: 12px; background: #FFF7E8; border: 1px solid #F5C77A; color: #7A4B00; font-size: 13px; }
+.u.pk-on { box-shadow: 0 0 0 2px #2A4F8A inset; position: relative; }
+.u.pk-on::after { content: '✓'; position: absolute; top: 4px; right: 7px; font-weight: 800; color: #2A4F8A; }
+.u.pk-off { opacity: .38; filter: grayscale(.6); border-style: dashed; }

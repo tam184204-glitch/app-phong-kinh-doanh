@@ -380,19 +380,39 @@ async function boardPub(db, user, f) {
   }
   const all = await db.q(`SELECT u.id, u.building_id FROM kd_unit u WHERE u.project_id = $1 AND u.status IN ('con_ban', 'chua_mo_ban')
     AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND coalesce(c.nature, 'thue') <> 'ban' AND c.status NOT IN ('huy','thanh_ly') AND coalesce(c.exp_on, 'infinity'::date) >= $2)`, [pid, today()]), cnt = {};
-  for (const u of all) if (pub.has(u.id)) cnt[u.building_id] = (cnt[u.building_id] || 0) + 1;
+  // 18/11/2026 Tâm: chọn căn cho khách xem trong số căn của thông báo (VD SXD duyệt 100 căn, chỉ cho khách xem 50) — kd_setting 'board_pub' { <id dự án>: { ids, by, at } };
+  // chưa chọn = hiện mọi căn còn trống của thông báo đã phát hành. pick=1 (quản lý): hiện đủ căn để bật / tắt
+  const cfg = (await db.one("SELECT value FROM kd_setting WHERE key = 'board_pub'"))?.value || {}, sel = Array.isArray(cfg[pid]?.ids) ? new Set(cfg[pid].ids.map(Number)) : null;
+  const canPick = can(user, E.sale_notice, 'a'), pick = f.pick === '1' && canPick, show = id => pick || !sel || sel.has(id);
+  const freeIds = all.filter(u => pub.has(u.id)).map(u => u.id);
+  for (const u of all) if (pub.has(u.id) && show(u.id)) cnt[u.building_id] = (cnt[u.building_id] || 0) + 1;
   const buildings = (await db.q('SELECT b.id, b.code, b.name FROM kd_building b WHERE b.project_id = $1 ORDER BY b.code', [pid])).filter(b => cnt[b.id]).map(b => ({ ...b, n: cnt[b.id] }));
   const bid = buildings.some(b => b.id === +f.building) ? +f.building : buildings[0]?.id;
   const d = await board(db, C.SYS, { project: pid, building: bid });
   const ST = { con_ban: 'con', chua_mo_ban: 'con', giu_cho: 'giu', da_coc: 'giu', da_ky_hd: 'ban', da_ban_giao: 'ban' };
-  const units = d.units.filter(u => pub.has(u.id) && ST[u.status] === 'con' && !u.rent).map(u => {   // chỉ căn còn trống
+  const units = d.units.filter(u => pub.has(u.id) && ST[u.status] === 'con' && !u.rent && show(u.id)).map(u => {   // chỉ căn còn trống (+ đã chọn cho khách xem)
     const x = pub.get(u.id), st = u.rent ? 'thue' : ST[u.status], free = st === 'con';
     return { id: u.id, code: u.code, floor: u.floor, kind: u.kind, bedrooms: u.bedrooms, area_tt: u.area_tt, direction: u.direction, handover_plan: u.handover_plan, st,
-      sale: !!x.saleN, rentable: !!x.rentN, price: free && x.saleN ? u.total_price : null, rent: free && x.rentN ? x.rent : null };
+      sale: !!x.saleN, rentable: !!x.rentN, price: free && x.saleN ? u.total_price : null, rent: free && x.rentN ? x.rent : null, on: !sel || sel.has(u.id) };
   });
   const used = new Set(); for (const u of units) { const x = pub.get(u.id); x.saleN && used.add(x.saleN.id); x.rentN && used.add(x.rentN.id); }
   const notices = byP.get(pid).filter(n => used.has(n.id)).map(n => ({ id: n.id, code: n.code, title: n.title, deal: n.deal || 'ban', doc_no: n.doc_no, open_on: n.open_on, close_on: n.close_on }));
-  return { projects, project: pid, buildings, building: bid, units, notices, policy: d.policy };
+  return { projects, project: pid, buildings, building: bid, units, notices, policy: d.policy, can_pick: canPick, pick, chosen: !!sel,
+    n_all: freeIds.length, n_show: sel ? freeIds.filter(id => sel.has(id)).length : freeIds.length, ...(pick ? { all_ids: freeIds, sel_ids: sel ? freeIds.filter(id => sel.has(id)) : freeIds } : {}),
+    ...(sel && canPick ? { chosen_by: cfg[pid].by_l || '', chosen_at: cfg[pid].at || null } : {}) };
+}
+// lưu danh sách căn cho khách xem của dự án; ids = null → bỏ giới hạn (hiện mọi căn còn trống)
+async function boardPubPick(db, user, b = {}) {
+  if (!can(user, E.sale_notice, 'a')) deny();
+  const pid = +b.project; if (!pid) bad('Chọn dự án');
+  const ids = b.ids == null ? null : [...new Set((Array.isArray(b.ids) ? b.ids : []).map(Number).filter(n => n > 0))];
+  if (ids && !ids.length) bad('Chọn ít nhất 1 căn cho khách xem');
+  if (ids) { const ok = await db.q('SELECT id FROM kd_unit WHERE project_id = $1 AND id = ANY($2)', [pid, ids]); if (ok.length !== ids.length) bad('Có căn không thuộc dự án đã chọn'); }
+  await db.q("INSERT INTO kd_setting (key, value) VALUES ('board_pub', '{}'::jsonb) ON CONFLICT (key) DO NOTHING");
+  const v = (await db.one("SELECT value FROM kd_setting WHERE key = 'board_pub' FOR UPDATE")).value || {};
+  if (ids) v[pid] = { ids, by: user.id ?? null, by_l: user.full_name || '', at: new Date().toISOString() }; else delete v[pid];
+  await db.q("UPDATE kd_setting SET value = $1, updated_at = now(), updated_by = $2 WHERE key = 'board_pub'", [JSON.stringify(v), user.id ?? null]);
+  return { ok: true, n: ids ? ids.length : null };
 }
 
 // ======================= TÌNH TRẠNG CĂN HỘ & CÔNG NỢ (CN-06) =======================
@@ -2122,4 +2142,4 @@ async function monthly(db, period, projectId) {
   };
 }
 
-module.exports = { boardPub, ypList, ypGet, ypSave, ypDecide, ypNewVer, ypDel, dueDebt, ddPlanToggle, ddUnitHist, ddUnitDetail, saleUnits, saleUnitPlan, saleUnitSched, planSplitWeeks, salePlanCreate, planLink, planList, planReport, planAdjust, planRollover, planYear, debtStatus, setDebtClass, setDebtDays, debtCfg, debtGrpOf, debtGrpL, customerLedger, myDay, debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, voucherList, contractTrack, setLateRate, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
+module.exports = { boardPub, boardPubPick, ypList, ypGet, ypSave, ypDecide, ypNewVer, ypDel, dueDebt, ddPlanToggle, ddUnitHist, ddUnitDetail, saleUnits, saleUnitPlan, saleUnitSched, planSplitWeeks, salePlanCreate, planLink, planList, planReport, planAdjust, planRollover, planYear, debtStatus, setDebtClass, setDebtDays, debtCfg, debtGrpOf, debtGrpL, customerLedger, myDay, debtSummary, debtSummaryXlsx, loanTrack, loanItems, contractVouchers, voucherList, contractTrack, setLateRate, unitStatus, payouts, loans, finishPay, priceSheet, dashboard, drill, alerts, ALERT_CAT, approvals, approvalsFor, board, unit360, customer360, search, ledger, readyList, signing, vault, report, REPORTS, monthly, signedContracts, period };
