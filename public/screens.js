@@ -2099,8 +2099,11 @@ const planWeek = async main => {
   const scope = () => `${s.project ? M.projects.find(p => p.id === +s.project)?.name || '' : 'Tất cả dự án'}${s.building ? ' · Tòa ' + (M.buildings.find(b => b.id === +s.building)?.code || '') : ''}`;
   // ---- dải 3 chỉ tiêu + bảng
   const draw = () => { const F = flat(), T = F[F.length - 1];
-    kbox.innerHTML = `<div class="pw-kpi"><div><span>Tiền kế hoạch</span><b>${fm(T.plan)}</b></div><div><span>Tiền thực hiện</span><b>${fm(T.act)}</b></div><div><span>Tỷ lệ hoàn thành</span><b>${pct(T.act, T.plan)}</b></div>
-      <div class="pw-kp"><span class="small muted">${esc(period())}${d.closed ? ' · đã chốt' : ''}</span></div></div>`;
+    // 18/11/2026: 3 thẻ chỉ tiêu — Tổng kế hoạch thu · Đã thực thu · Tỷ lệ hoàn thành (thanh tiến độ, còn phải thu)
+    const rt = T.plan > 0 ? Math.min(100, T.act / T.plan * 100) : 0;
+    kbox.innerHTML = `<div class="pk3"><div class="pk3-c"><span>Tổng kế hoạch thu</span><b>${fm(T.plan)}</b><small>Đơn vị: đồng · ${esc(period())}${d.closed ? ' · đã chốt' : ''}</small></div>
+      <div class="pk3-c"><span>Đã thực thu</span><b>${fm(T.act)}</b><small>Đã phân bổ cho kế hoạch kỳ này</small></div>
+      <div class="pk3-c"><span>Tỷ lệ hoàn thành</span><b>${pct(T.act, T.plan)}</b><small>Còn phải thu: ${fm(Math.max(0, T.plan - T.act))} đ</small><div class="pk3-pb"><i style="width:${rt.toFixed(2)}%"></i></div></div></div>`;
     const hid = r => (r.anc || []).some(k => s.shut[k]);
     const tw = r => r.lv >= 0 && r.lv <= 2 ? `<span class="pr-tg" data-prtg="${esc(r.key)}">${ico(s.shut[r.key] ? 'fa-caret-right' : 'fa-caret-down')}</span> ` : '';
     box.innerHTML = `<div class="pr-h"><span class="pr-tt">CHI TIẾT THỰC HIỆN KẾ HOẠCH THU</span><div>${esc(period())}</div><div class="small muted">${esc(done())} · ${esc(scope())} · Đơn vị: đồng</div></div>
@@ -2126,13 +2129,15 @@ const planWeek = async main => {
     else xs = yr.map(m => { const W = MW(m.m);
       return { k: m.m, l: `Tháng ${m.m.slice(5)}/${m.m.slice(0, 4)}`, sub: '', plan: m.plan, act: m.act, cin: m.cin, cout: m.cout, st: stOf(`${m.m}-01`, W[W.length - 1].to, m.n) }; });
     const mx = Math.max(1, ...xs.map(x => Math.max(x.plan, x.act))), on = x => s.by === 'tuan' ? x.k === String(s.week) : x.k === s.ym;
-    const bar = (v, c) => `<span class="hb-tr"><span class="hb-f" style="width:${(v / mx * 100).toFixed(2)}%;background:${c}"></span></span><span class="hb-v">${tr(v)}</span>`;
-    const note = x => [x.cin ? `nhận chuyển tiếp ${tr(x.cin)}` : '', x.cout ? `chuyển tiếp ${tr(x.cout)}` : '', x.plan && x.act >= x.plan ? 'hoàn thành' : ''].filter(Boolean).join(' · ');
-    cbox.innerHTML = `<div class="hb-top"><div class="hb-ttl">${ico('fa-chart-bar')} Kế hoạch và thực thu ${s.by === 'tuan' ? `theo tuần · Tháng ${s.ym.slice(5)}/${s.ym.slice(0, 4)}` : `theo tháng · Năm ${s.ym.slice(0, 4)}`}<span class="small muted"> · đơn vị: triệu đồng</span></div>
-        <div class="hb-lg"><span><i style="background:#2E66C2"></i>Kế hoạch</span><span><i style="background:#E8833A"></i>Thực thu</span><span class="pw-st done">Đã chốt</span><span class="pw-st run">Đang thực hiện</span><span class="pw-st next">Chưa đến kỳ</span><span class="pw-st none">Chưa có kế hoạch</span></div></div>
-      <div class="hb-list">${xs.map(x => x.st[0] === 'none' ? `<div class="hb-k none ${on(x) ? 'on' : ''}" data-hb="${x.k}"><span class="hb-t">${esc(x.l)}${x.sub ? ` <span class="muted">· ${esc(x.sub)}</span>` : ''}</span><span class="pw-st none">Chưa có kế hoạch</span></div>`
-        : `<div class="hb-k ${on(x) ? 'on' : ''}" data-hb="${x.k}"><div class="hb-lb"><span class="hb-t">${esc(x.l)}</span>${x.sub ? `<span class="small muted">${esc(x.sub)}</span>` : ''}<span class="pw-st ${x.st[0]}">${x.st[1]}</span></div>
-          <div class="hb-bars"><div class="hb-r">${bar(x.plan, '#2E66C2')}</div><div class="hb-r">${bar(x.act, '#E8833A')}</div></div><div class="hb-nt"><b>${pct(x.act, x.plan)}</b><span class="small muted">${esc(note(x))}</span></div></div>`).join('')}</div>
+    // 18/11/2026: biểu đồ cột đứng — mỗi kỳ 1 cột đôi Kế hoạch / Thực thu, số kế hoạch (triệu đồng) trên đầu cột, kỳ chưa có kế hoạch «—», kỳ đang chọn tô nền; bấm kỳ → xem chi tiết
+    const hp = v => v > 0 ? `height:max(2px,${(v / mx * 100).toFixed(2)}%)` : 'height:0';
+    const tri = v => v >= 1e7 ? Math.round(v / 1e6).toLocaleString('vi-VN') : tr(v);
+    const lb = x => s.by === 'tuan' ? (x.k === '0' ? 'Chưa PB tuần' : `Tuần ${x.k}`) : `T${+x.k.slice(5)}`;
+    cbox.innerHTML = `<div class="pc-hd"><div><div class="pc-tt">Kế hoạch & thực thu ${s.by === 'tuan' ? `tháng ${s.ym.slice(5)}/${s.ym.slice(0, 4)}` : `năm ${s.ym.slice(0, 4)}`}</div><div class="pc-sub">Chọn kỳ để xem chi tiết · số trên cột: kế hoạch, triệu đồng</div></div>
+        <div class="pc-lg"><span><i class="p"></i>Kế hoạch</span><span><i class="a"></i>Thực thu</span></div></div>
+      <div class="pc-cols" style="grid-template-columns:repeat(${xs.length},minmax(0,1fr))">${xs.map(x => `<div class="pc-c ${on(x) ? 'on' : ''}" data-hb="${x.k}">
+          <div class="pc-v">${x.plan > 0 ? tri(x.plan) : '—'}</div><div class="pc-b"><span class="p" style="${hp(x.plan)}"></span><span class="a" style="${hp(x.act)}"></span></div>
+          <div class="pc-l">${esc(lb(x))}</div>${x.sub ? `<div class="pc-s">${esc(x.sub)}</div>` : ''}</div>`).join('')}</div>
       <div class="hb-tip"></div>`;
     const tip = $('.hb-tip', cbox);
     cbox.onmousemove = e => { const k = e.target.closest('[data-hb]'); if (!k) { tip.style.display = 'none'; return; } const x = xs.find(y => y.k === k.dataset.hb), rc = cbox.getBoundingClientRect();
