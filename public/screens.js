@@ -2115,149 +2115,101 @@ const planWeek = async main => {
   main.addEventListener('sdchange', run(async e => { const v = segVal(e.target); if (v === null) return; if (e.target.id === 'prFr') s.from = v; else s.to = v || today(); await load(); }));
   try { await load(); } catch (er) { box.innerHTML = `<div class="empty">${esc(er.message)}</div>`; }
 };
-// 17/11/2026 (bản 3 — bố cục 3 phần): TẠO KẾ HOẠCH THU BÁN MỚI — (1) Chọn sản phẩm: một hàng Dự án → Tòa → danh sách căn đủ điều kiện tự xổ, tích căn là đưa ngay vào bảng;
-// (2) Lập kế hoạch từng căn: bảng nhóm Dự án → Tòa, cột Căn hộ · Diện tích · Giá trị HĐ (danh mục sản phẩm) · Tháng/năm bán · Lịch thu (tóm tắt + Thiết lập/Sửa → hộp thoại riêng) · Xóa;
-// thanh thao tác chung chỉ hiện khi tích chọn căn; (3) Tổng hợp 1 hàng + «Xem thêm» (giá bình quân), Người phụ trách, Ghi chú. Lịch thu độc lập với chính sách bán hàng
+// 18/11/2026 (bản 4 — bảng nhập trực tiếp theo mẫu): TẠO KẾ HOẠCH THU BÁN MỚI — 1 bảng, tiêu đề 2 hàng: Dự án · Tòa · Căn · Diện tích · Đơn giá · Thành tiền · Tháng dự kiến bán · [Phân bổ dòng thu: Đợt 1…n] · Chưa phân bổ kỳ;
+// chọn Dự án → Tòa → Căn ngay trên dòng (lọc theo lựa chọn trước, chọn nhiều căn → mỗi căn 1 dòng, chặn trùng); Thành tiền = «Giá trị HĐ» danh mục sản phẩm (không tính lại);
+// mỗi ô đợt: Ngày dự kiến thu · Tỷ lệ % · Số tiền (nhập 1 trong 2, tự tính phần kia theo Thành tiền); không tự chia / dồn phần còn lại; tổng ≤ Thành tiền; khoản chưa có ngày / chưa phân bổ → «Chưa phân bổ kỳ»;
+// lịch thu riêng từng căn, không theo chính sách bán hàng; lưu → tổng hợp vào tháng / tuần theo ngày thu
 const saleUnitDlg = (onDone, preset = {}) => {
   const ymAdd = (ym, k) => { const [y, m] = ym.split('-').map(Number), x = new Date(Date.UTC(y, m - 1 + k, 1)); return `${x.getUTCFullYear()}-${String(x.getUTCMonth() + 1).padStart(2, '0')}`; };
-  const ymDiff = (a, b) => (+b.slice(0, 4) - +a.slice(0, 4)) * 12 + (+b.slice(5) - +a.slice(5));
-  const T0 = today().slice(0, 7), months = Array.from({ length: 48 }, (_, i) => ymAdd(T0, i - 2)), mOpt = (sel, blank) => (blank ? `<option value="" ${!sel ? 'selected' : ''}>Chưa phân bổ kỳ</option>` : '') + months.map(x => `<option value="${x}" ${x === sel ? 'selected' : ''}>${x.slice(5)}/${x.slice(0, 4)}</option>`).join('');
-  const pctS = v => String(Math.round(v * 100) / 100).replace('.', ',');
-  let rows = [], seq = 0, av = [], avKey = '';
-  const sel = { project: preset.project || '', building: '' };
+  const T0 = today().slice(0, 7), months = Array.from({ length: 48 }, (_, i) => ymAdd(T0, i - 2));
+  const mOpt = sel => months.map(x => `<option value="${x}" ${x === sel ? 'selected' : ''}>${x.slice(5)}/${x.slice(0, 4)}</option>`).join('');
+  const pS = v => String(Math.round(v * 100) / 100).replace('.', ','), p4 = v => Math.round(v * 1e4) / 1e4;
+  const AV = {}, getAv = async pid => AV[pid] ||= (await api('GET', '/api/sale-units?project=' + pid)).units;
+  let rows = [], seq = 0, NC = 4;
+  const newRow = (o = {}) => ({ id: ++seq, project: o.project ?? (preset.project || ''), building: o.building || '', unit: null, sale: o.sale || T0, items: [] });
+  rows.push(newRow());
   const m = modal({ title: `${ico('fa-bullhorn')} Tạo kế hoạch thu bán mới`, wide: true,
-    body: `<div class="su3"><div class="su3-hint">Chọn căn, chọn tháng bán và thiết lập lịch thu cho từng căn.</div>
-      <section><h4><span>1</span>Chọn sản phẩm</h4><div class="su3-pick"><label>Dự án<select id="suP"></select></label><label>Tòa<select id="suB"></select></label>
-        <label class="su3-u">Căn dự kiến bán<button type="button" id="suU" class="su3-dd"><span id="suUl">Chọn dự án trước</span>${ico('fa-caret-down')}</button></label></div>
-        <div class="su3-list" id="suL" hidden><div class="su3-lh"><input class="inp" id="pkQ" placeholder="Tìm mã căn…" autocomplete="off"><span class="small muted" id="pkN"></span><span class="grow"></span><button type="button" class="btn sm" id="pkX">Đóng danh sách</button></div><div class="su3-lb" id="pkL"></div></div></section>
-      <section><h4><span>2</span>Lập kế hoạch cho từng căn</h4>
-        <div class="su3-bulk" id="suBk" hidden><b id="suBn"></b><span class="grow"></span><select class="inp" id="suSM">${mOpt(T0)}</select><button type="button" class="btn sm" id="suSMA">Áp dụng tháng bán</button><button type="button" class="btn sm" id="suCp">Sao chép lịch thu</button><button type="button" class="btn sm ghost" id="suBx">Bỏ chọn</button></div>
-        <div class="su3-tw"><table class="su3-t"><colgroup><col style="width:34px"><col><col style="width:90px"><col style="width:170px"><col style="width:150px"><col style="width:270px"><col style="width:44px"></colgroup>
-          <thead><tr><th><input type="checkbox" id="suAll" title="Chọn tất cả"></th><th>Căn hộ</th><th class="n">Diện tích (m²)</th><th class="n">Giá trị HĐ</th><th>Tháng/năm bán</th><th>Lịch thu</th><th class="c">Xóa</th></tr></thead><tbody id="suT"></tbody></table></div></section>
-      <section><h4><span>3</span>Tổng hợp và lưu</h4><div class="su3-sum" id="suSum"></div><details class="su3-more"><summary>Xem thêm</summary><div id="suMore"></div></details>
-        <div class="su3-g"><div class="fld"><label>Người phụ trách</label><select class="inp" id="suO"><option value="">—</option></select></div><div class="fld"><label>Ghi chú</label><input class="inp" id="suR" autocomplete="off"></div></div></section></div>`,
-    foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="suSave">${ico('fa-check')} Lưu kế hoạch</button>` });
-  m.el.classList.add('su3-modal');
+    body: `<div class="sg"><div class="sg-hint">Chọn Dự án → Tòa → Căn ngay trên dòng, chọn tháng dự kiến bán và nhập phân bổ dòng thu từng đợt (ngày thu · tỷ lệ hoặc số tiền). Thành tiền lấy theo «Giá trị HĐ» trong Danh mục sản phẩm; lịch thu riêng từng căn, không theo chính sách bán hàng.</div>
+      <div class="sg-wrap"><table class="sg-t" id="sgT"></table></div>
+      <div class="sg-bar"><button type="button" class="btn sm" id="sgAddR">${ico('fa-plus')} Thêm dòng</button><button type="button" class="btn sm" id="sgAddC">${ico('fa-plus')} Thêm đợt</button><span class="grow"></span><span class="small muted">Khoản chưa có ngày thu hoặc chưa phân bổ được theo dõi tại «Chưa phân bổ kỳ», không tự gán tháng.</span></div>
+      <div class="sg-sum" id="sgSum"></div>
+      <div class="su3-g"><div class="fld"><label>Người phụ trách</label><select class="inp" id="suO"><option value="">—</option></select></div><div class="fld"><label>Ghi chú</label><input class="inp" id="suR" autocomplete="off"></div></div></div>`,
+    foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="suSave">${ico('fa-check')} Lưu kế hoạch</button>`, onClose: () => document.querySelector('.sg-pop')?.remove() });
+  m.el.querySelector('.modal').classList.add('sg-modal');
   api('GET', '/api/plan-report?by=thang&ym=' + T0).then(r => { $('#suO', m.el).innerHTML = '<option value="">—</option>' + r.users.map(([i, n]) => `<option value="${i}" ${i === M.me?.id ? 'selected' : ''}>${esc(n)}</option>`).join(''); }).catch(() => {});
-  const R = id => rows.find(r => r.id === +id);
-  const alloc = r => (r.items || []).filter(z => z.month).reduce((a, z) => a + (+z.amount || 0), 0);
-  const unal = r => Math.max(0, (r.value || 0) - alloc(r));
-  const pName = id => { const p = M.projects.find(x => x.id === +id); return p ? `${p.code} · ${p.name}` : ''; };
-  // 1. chọn sản phẩm
-  const drawPick = () => {
-    $('#suP', m.el).innerHTML = '<option value="">— Chọn dự án —</option>' + M.projects.map(p => `<option value="${p.id}" ${+sel.project === p.id ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('');
-    $('#suB', m.el).innerHTML = '<option value="">Tất cả tòa</option>' + M.buildings.filter(b => b.project_id === +sel.project).map(b => `<option value="${b.id}" ${+sel.building === b.id ? 'selected' : ''}>Tòa ${esc(b.code)}</option>`).join('');
-    $('#suB', m.el).disabled = !sel.project; $('#suU', m.el).disabled = !sel.project;
-    const n = rows.filter(r => r.unit.project_id === +sel.project && (!sel.building || r.unit.building_id === +sel.building)).length;
-    $('#suUl', m.el).textContent = !sel.project ? 'Chọn dự án trước' : n ? `Đã chọn ${n} căn — bấm để chọn thêm` : 'Chọn căn (chọn được nhiều căn)…'; };
-  const drawList = () => { const box = $('#pkL', m.el), qq = $('#pkQ', m.el).value.trim().toLowerCase(), inT = new Set(rows.map(r => r.unit.id));
-    const xs = av.filter(u => (u.ok || inT.has(u.id)) && (!sel.building || u.building_id === +sel.building) && (!qq || u.code.toLowerCase().includes(qq)));
-    box.innerHTML = xs.map(u => `<label class="${inT.has(u.id) ? 'on' : ''}"><input type="checkbox" data-pk="${u.id}" ${inT.has(u.id) ? 'checked' : ''}><b>${esc(u.code)}</b><span class="muted">Tòa ${esc(u.building)} · ${u.area ?? '—'} m²</span>${u.rent ? '<span class="su3-tag">Đang cho thuê</span>' : ''}<span class="grow"></span><span class="n">${u.hd_value ? fm(u.hd_value) : '<span class="su3-warn">Chưa có giá trị HĐ</span>'}</span></label>`).join('') || '<div class="small muted" style="padding:10px 12px">Không có căn đủ điều kiện bán</div>';
-    $('#pkN', m.el).textContent = `${xs.length} căn đủ điều kiện`; };
-  const openList = async () => { if (!sel.project) return; const k = sel.project; if (avKey !== k) { $('#pkL', m.el).innerHTML = '<div class="small muted" style="padding:10px 12px">Đang tải…</div>'; $('#suL', m.el).hidden = false; av = (await api('GET', '/api/sale-units?project=' + k)).units; avKey = k; }
-    $('#suL', m.el).hidden = false; drawList(); };
-  const addUnit = u => { if (rows.some(r => r.unit.id === u.id)) return; const v = u.hd_value || 0; rows.push({ id: ++seq, unit: u, value: v, area: u.area, sale: T0, items: [], pick: false }); };
-  // 2. bảng kế hoạch — nhóm Dự án → Tòa
-  const schedCell = r => { if (!(r.value > 0)) return '<span class="su3-warn">Thiếu giá trị HĐ — không lập được lịch thu</span>';
-    const n = r.items.filter(z => z.grp !== 'maint').length, tp = r.items.reduce((a, z) => a + (+z.pct || 0), 0), al = alloc(r), pa = r.value ? al / r.value * 100 : 0;
-    return `<div class="su3-lt"><span class="${n ? '' : 'su3-warn'}">${n ? `${n} đợt · Đã phân bổ ${pctS(pa)}%` : '⚠ Chưa thiết lập'}</span>${n && (tp < 100 || pa < tp) ? `<small>Chưa phân bổ ${fm(unal(r))}</small>` : ''}</div><button type="button" class="btn sm" data-k="sched">${n ? 'Sửa' : 'Thiết lập'}</button>`; };
-  const draw = () => { drawPick();
-    const grp = []; for (const r of rows) { const k = `${r.unit.project_id}|${r.unit.building_id}`; let g = grp.find(x => x.k === k); if (!g) grp.push(g = { k, p: r.unit.project_id, b: r.unit.building, rs: [] }); g.rs.push(r); }
-    grp.sort((a, b) => pName(a.p).localeCompare(pName(b.p)) || a.b.localeCompare(b.b)); grp.forEach(g => g.rs.sort((x, y) => x.unit.code.localeCompare(y.unit.code)));
-    $('#suT', m.el).innerHTML = grp.map(g => `<tr class="su3-gh"><td colspan="7">${esc(pName(g.p))} <span>›</span> Tòa ${esc(g.b)} <em>${g.rs.length} căn · ${fm(g.rs.reduce((a, r) => a + (r.value || 0), 0))}</em></td></tr>` + g.rs.map(r => `<tr data-r="${r.id}" class="${r.pick ? 'pk' : ''}"><td><input type="checkbox" data-k="pick" ${r.pick ? 'checked' : ''}></td>
-      <td><b>${esc(r.unit.code)}</b>${r.unit.rent ? '<div><span class="su3-tag">Đang cho thuê</span></div>' : ''}</td><td class="n">${r.area != null ? String(r.area).replace('.', ',') : '—'}</td>
-      <td class="n">${r.value > 0 ? `<b>${fm(r.value)}</b>` : '<span class="su3-warn">⚠ Chưa có giá trị hợp đồng trong danh mục sản phẩm</span>'}</td>
-      <td><select class="inp" data-k="sale">${mOpt(r.sale)}</select></td><td><div class="su3-lc">${schedCell(r)}</div></td>
-      <td class="c"><button type="button" class="btn sm ghost" data-k="del" title="Xóa căn khỏi kế hoạch">${ico('fa-trash')}</button></td></tr>`).join('')).join('')
-      || '<tr><td colspan="7" class="su3-empty">Chưa có căn nào — chọn Dự án, Tòa rồi tích căn ở phần 1</td></tr>';
-    const ps = rows.filter(r => r.pick); $('#suBk', m.el).hidden = !ps.length; $('#suBn', m.el).textContent = `Đã chọn ${ps.length} căn`; $('#suCp', m.el).disabled = ps.length < 2;
-    $('#suCp', m.el).title = ps.length < 2 ? 'Tích ít nhất 2 căn: căn đầu tiên là căn mẫu' : `Sao chép lịch thu của căn ${ps[0].unit.code} cho ${ps.length - 1} căn còn lại`;
-    $('#suAll', m.el).checked = !!rows.length && ps.length === rows.length;
-    const vs = rows.filter(r => r.value > 0), tv = vs.reduce((a, r) => a + r.value, 0), ta = rows.reduce((a, r) => a + alloc(r), 0), tu = vs.reduce((a, r) => a + unal(r), 0);
-    $('#suSum', m.el).innerHTML = [['Số căn', rows.length], ['Tổng giá trị dự kiến bán', fm(tv)], ['Đã phân bổ thu', fm(ta)], ['Chưa phân bổ', fm(tu)]].map(([l, v], i) => `<div class="${i === 3 && tu ? 'w' : ''}"><span>${l}</span><b>${v}</b></div>`).join('');
-    const ns = rows.filter(r => r.value > 0 && !r.items.length).length, nv = rows.length - vs.length;
-    $('#suMore', m.el).innerHTML = `<div>Giá bán bình quân: <b>${vs.length ? fm(Math.round(tv / vs.length)) : '0'}</b>${nv ? ` <span class="muted">(không tính ${nv} căn chưa có giá trị HĐ)</span>` : ''}</div>${ns ? `<div class="su3-warn">${ns} căn chưa thiết lập lịch thu</div>` : ''}<div class="muted">Phần chưa phân bổ được ghi nhận riêng «Chưa phân bổ kỳ», không tự gán tháng.</div>`; };
-  // 17/11/2026 (bản 4): THIẾT LẬP LỊCH THU 1 CĂN — bố cục như các đợt thanh toán HĐMB, lịch thu dự kiến riêng của kế hoạch bán mới (không lấy / không đổi theo chính sách bán hàng):
-  // Đợt · Nội dung thanh toán (nhiều dòng) · Ngày dự kiến thu (dd/mm/yyyy → tự vào tháng / tuần) · Tỷ lệ % · Số tiền · Xóa; cơ sở tính tỷ lệ = Giá trị HĐ − phí bảo trì (phí bảo trì là dòng riêng);
-  // cuối bảng: Tổng tỷ lệ – Tổng tiền – Đã phân bổ theo ngày – Chưa phân bổ kỳ; đợt chưa có ngày vẫn lưu (chưa vào tháng); không tự dồn tiền vào đợt; cảnh báo vượt
-  const dAdd = (dt, k) => { if (!dt) return null; const [y, m, dd] = dt.split('-').map(Number), x = new Date(Date.UTC(y, m - 1 + k, 1)), last = new Date(Date.UTC(x.getUTCFullYear(), x.getUTCMonth() + 1, 0)).getUTCDate(); return `${x.getUTCFullYear()}-${String(x.getUTCMonth() + 1).padStart(2, '0')}-${String(Math.min(dd, last)).padStart(2, '0')}`; };
-  const mvIt = (z, k) => { const date = z.date ? dAdd(z.date, k) : null; return { ...z, date, month: date ? date.slice(0, 7) : z.month && !z.date ? ymAdd(z.month, k) : null }; };
-  const schedDlg = r => { if (!(r.value > 0)) return toast(`Căn ${r.unit.code}: chưa có giá trị hợp đồng trong danh mục sản phẩm — cập nhật «Tổng giá căn hộ» ở Danh mục sản phẩm trước`, true);
-    const V0 = r.value, MT = r.unit.maint || 0, BASE = V0 - MT, p2 = v => Math.round(v * 1e4) / 1e4, pS = v => String(Math.round(v * 100) / 100).replace('.', ',');
-    let its = r.items.filter(z => z.grp !== 'maint').map((z, k) => ({ dot: z.dot || k + 1, content: z.content ?? z.name ?? '', date: z.date || '', pct: z.pct != null ? +z.pct : null, amount: Math.round(+z.amount || 0), by: z.by || 'pct' }));
-    const mi = r.items.find(z => z.grp === 'maint'), mt = { date: mi?.date || '', content: mi?.content || 'Phí bảo trì 2%' };
-    if (!its.length) its.push({ dot: 1, content: '', date: '', pct: null, amount: 0, by: 'pct' });
-    const m3 = modal({ wide: true, title: `${ico('fa-calendar-days')} Thiết lập lịch thu`, body: `<div class="sc3-hd"><div><span>Mã căn</span><b>${esc(r.unit.code)}</b></div><div><span>Giá trị HĐ (danh mục sản phẩm)</span><b>${fm(V0)}</b></div><div><span>Tháng/năm dự kiến bán</span><b>${r.sale.slice(5)}/${r.sale.slice(0, 4)}</b></div>
-        ${MT ? `<div><span>Giá trị tính tỷ lệ các đợt</span><b>${fm(BASE)}</b><small>= Giá trị HĐ − phí bảo trì ${fm(MT)}</small></div>` : ''}</div>
-      <div class="su3-tw"><table class="su3-t sc4-t"><colgroup><col style="width:70px"><col><col style="width:170px"><col style="width:100px"><col style="width:170px"><col style="width:48px"></colgroup>
-        <thead><tr><th>Đợt</th><th>Nội dung thanh toán</th><th>Ngày dự kiến thu</th><th class="n">Tỷ lệ (%)</th><th class="n">Số tiền</th><th class="c">Xóa</th></tr></thead><tbody id="scT"></tbody><tbody id="scM"></tbody><tfoot id="scF"></tfoot></table></div>
-      <div class="sc3-bt"><button type="button" class="btn sm" id="scAdd">${ico('fa-plus')} Thêm đợt</button><span class="small muted">Nhập Tỷ lệ thì tự tính Số tiền, nhập Số tiền thì tự tính Tỷ lệ (theo ${MT ? 'giá trị tính tỷ lệ' : 'Giá trị HĐ'}). Đợt chưa có ngày vẫn lưu, ghi «Chưa phân bổ kỳ».</span></div><div id="scW"></div>`,
-      foot: `<button class="btn" data-x>Hủy</button><button class="btn pri" id="scOk">${ico('fa-check')} Lưu lịch thu</button>` });
-    const tot = () => its.reduce((a, z) => a + (z.amount || 0), 0) + MT, totP = () => its.reduce((a, z) => a + (+z.pct || 0), 0);
-    const foot = () => { const t = tot(), tp = totP(), hs = t - MT, al = its.filter(z => z.date).reduce((a, z) => a + (z.amount || 0), 0) + (MT && mt.date ? MT : 0), over = hs > BASE || tp > 100.0001;
-      const nm = t - al, nl = Math.max(0, V0 - t);
-      $('#scF', m3.el).innerHTML = `<tr><td colspan="3">Tổng cộng (${its.length} đợt${MT ? ' + phí bảo trì' : ''})</td><td class="n ${tp > 100.0001 ? 'neg' : ''}">${pS(tp)}%</td><td class="n ${over ? 'neg' : ''}">${fm(t)}</td><td></td></tr>
-        <tr class="sc3-sub"><td colspan="4">Đã phân bổ theo ngày</td><td class="n">${fm(al)}</td><td></td></tr>
-        <tr class="sc3-sub"><td colspan="4">Chưa phân bổ kỳ <span class="muted">= đợt chưa có ngày ${fm(nm)} + phần chưa lập đợt ${fm(nl)}</span></td><td class="n"><b>${fm(nm + nl)}</b></td><td></td></tr>`;
-      $('#scW', m3.el).innerHTML = over ? `<div class="yp-msg r">${ico('fa-triangle-exclamation')} ${tp > 100.0001 ? `Tổng tỷ lệ ${pS(tp)}% vượt 100%. ` : ''}${hs > BASE ? `Tổng tiền các đợt ${fm(hs)} vượt giá trị cần lập kế hoạch ${fm(BASE)}${MT ? ' (đã trừ phí bảo trì)' : ''}.` : ''} Giảm các đợt trước khi lưu.</div>` : ''; };
-    const rowH = (z, i) => `<tr data-i="${i}"><td><input class="inp c" data-f="dot" inputmode="numeric" value="${z.dot}" title="Số đợt"></td>
-      <td><textarea class="inp sc4-c" data-f="content" rows="2" placeholder="VD: Thanh toán đợt ${z.dot} trong vòng 07 ngày kể từ ngày ký HĐMB…">${esc(z.content)}</textarea></td><td>${segDate('scD' + i, z.date)}</td>
-      <td><input class="inp n" data-f="pct" inputmode="decimal" value="${z.pct != null ? pS(z.pct) : ''}"></td><td><input class="inp n" data-f="amount" inputmode="numeric" value="${z.amount ? moneyStr(z.amount) : ''}"></td>
-      <td class="c"><button type="button" class="btn sm ghost" data-f="del" title="Xóa đợt">${ico('fa-trash')}</button></td></tr>`;
-    const dr = () => { $('#scT', m3.el).innerHTML = its.map(rowH).join('');
-      $('#scM', m3.el).innerHTML = MT ? `<tr class="sc4-m"><td class="c">—</td><td><textarea class="inp sc4-c" data-m="content" rows="2">${esc(mt.content)}</textarea><div class="small muted">Dòng riêng — không tính vào tỷ lệ các đợt</div></td><td>${segDate('scDM', mt.date)}</td><td class="n muted">—</td><td class="n"><b>${fm(MT)}</b></td><td></td></tr>` : '';
-      wireSegDate(m3.el); foot(); };
-    dr();
-    m3.el.addEventListener('sdchange', e => { const v = segVal(e.target); if (v === null) return; if (e.target.id === 'scDM') mt.date = v || ''; else { const tr = e.target.closest('tr[data-i]'); if (!tr) return; its[+tr.dataset.i].date = v || ''; } foot(); });
-    m3.el.addEventListener('input', e => { if (e.target.dataset.m === 'content') { mt.content = e.target.value; return; } const tr = e.target.closest('tr[data-i]'); if (!tr) return; const z = its[+tr.dataset.i], f = e.target.dataset.f;
-      if (f === 'content') z.content = e.target.value;
-      if (f === 'dot') z.dot = Math.max(1, parseInt(e.target.value, 10) || 1);
-      if (f === 'pct') { const v = e.target.value.trim() === '' ? null : num(e.target.value); z.pct = v == null || isNaN(v) ? null : v; z.amount = z.pct != null ? Math.round(BASE * z.pct / 100) : 0; z.by = 'pct'; tr.querySelector('[data-f=amount]').value = z.amount ? moneyStr(z.amount) : ''; }
-      if (f === 'amount') { const v = num(e.target.value, true) || 0; z.amount = v; z.pct = v ? p2(v / BASE * 100) : null; z.by = 'amt'; e.target.value = v ? moneyStr(v) : ''; tr.querySelector('[data-f=pct]').value = z.pct != null ? pS(z.pct) : ''; }
-      if (f !== 'content') foot(); });
-    m3.el.addEventListener('click', e => { const d0 = e.target.closest('[data-f=del]'); if (d0) { its.splice(+d0.closest('tr').dataset.i, 1); return dr(); }
-      if (e.target.closest('#scAdd')) { its.push({ dot: Math.max(0, ...its.map(z => +z.dot || 0)) + 1, content: '', date: '', pct: null, amount: 0, by: 'pct' }); dr(); return $$('#scT tr', m3.el).pop()?.querySelector('textarea')?.focus(); }   // không tự dồn tiền vào đợt mới
-      if (e.target.closest('#scOk')) { const ok = its.filter(z => z.amount > 0), hs = ok.reduce((a, z) => a + z.amount, 0), tp = ok.reduce((a, z) => a + (+z.pct || 0), 0);
-        if (!ok.length) return toast('Nhập tỷ lệ hoặc số tiền cho ít nhất 1 đợt', true);
-        if (tp > 100.0001) return toast(`Tổng tỷ lệ ${pS(tp)}% vượt 100%`, true); if (hs > BASE) return toast(`Tổng tiền các đợt ${fm(hs)} vượt giá trị cần lập kế hoạch ${fm(BASE)}`, true);
-        const bad0 = [...ok, ...(MT ? [{ date: mt.date }] : [])].find(z => z.date && z.date.slice(0, 7) < r.sale); if (bad0) return toast(`Có đợt thu ngày ${dmy(bad0.date)} trước tháng dự kiến bán ${r.sale.slice(5)}/${r.sale.slice(0, 4)}`, true);
-        r.items = ok.sort((a, b) => a.dot - b.dot).map(z => ({ dot: z.dot, content: z.content.trim(), name: `Đợt ${z.dot}${z.content.trim() ? ' — ' + z.content.trim().split('\n')[0] : ''}`, date: z.date || null, month: z.date ? z.date.slice(0, 7) : null, pct: z.pct, amount: z.amount, by: z.by, grp: 'house' }));
-        if (MT) r.items.push({ dot: 0, content: mt.content.trim(), name: mt.content.trim().split('\n')[0] || 'Phí bảo trì', date: mt.date || null, month: mt.date ? mt.date.slice(0, 7) : null, pct: null, amount: MT, by: 'amt', grp: 'maint' });
-        m3.close(); draw(); toast(`Căn ${r.unit.code}: đã lưu lịch thu ${ok.length} đợt${MT ? ' + phí bảo trì' : ''}`); } }); };
-  // sự kiện phần 1
-  $('#suP', m.el).onchange = run(async e => { sel.project = e.target.value; sel.building = ''; drawPick(); if (sel.project) await openList(); else $('#suL', m.el).hidden = true; });
-  $('#suB', m.el).onchange = run(async e => { sel.building = e.target.value; drawPick(); await openList(); });
-  $('#suU', m.el).onclick = run(async () => { if ($('#suL', m.el).hidden) await openList(); else $('#suL', m.el).hidden = true; });
-  $('#pkX', m.el).onclick = () => { $('#suL', m.el).hidden = true; };
-  $('#pkQ', m.el).oninput = drawList;
-  $('#pkL', m.el).addEventListener('change', e => { const c = e.target.closest('[data-pk]'); if (!c) return; const u = av.find(z => z.id === +c.dataset.pk);
-    if (c.checked) addUnit(u); else rows = rows.filter(r => r.unit.id !== u.id); c.closest('label').classList.toggle('on', c.checked); draw(); });
+  const R = id => rows.find(r => r.id === +id), it = (r, k) => r.items[k] ||= { date: '', pct: null, amount: 0, by: 'pct' };
+  const val = r => r.unit?.hd_value || 0, tot = r => r.items.reduce((a, z) => a + (z?.amount || 0), 0), dated = r => r.items.reduce((a, z) => a + (z?.date ? z.amount || 0 : 0), 0);
+  const unal = r => r.unit ? Math.max(0, val(r) - dated(r)) : 0;
+  const used = (except) => new Set(rows.filter(r => r.unit && r.id !== except).map(r => r.unit.id));
+  const unitOpts = (r) => { const xs = (AV[r.project] || []).filter(u => (u.ok || u.id === r.unit?.id) && (!r.building || u.building_id === +r.building)), us = used(r.id);
+    return `<option value="">${AV[r.project] ? `— Chọn căn (${xs.filter(u => !us.has(u.id)).length}) —` : 'Đang tải…'}</option>` + xs.map(u => `<option value="${u.id}" ${u.id === r.unit?.id ? 'selected' : ''} ${us.has(u.id) ? 'disabled' : ''}>${esc(u.code)}${u.rent ? ' · đang cho thuê' : ''}${us.has(u.id) ? ' · đã có dòng' : ''}${!u.hd_value ? ' · chưa có giá trị HĐ' : ''}</option>`).join(''); };
+  const cellH = (r, k) => { const z = r.items[k] || {}, dis = r.unit && val(r) ? '' : 'disabled';
+    return `<td class="sg-d" data-k="${k}"><div class="sg-dc">${segDate(`sgd_${r.id}_${k}`, z.date || '')}<div class="sg-pa"><input class="inp n" data-f="pct" inputmode="decimal" placeholder="Tỷ lệ" value="${z.pct != null ? pS(z.pct) : ''}" ${dis}><span>%</span></div><input class="inp n" data-f="amt" inputmode="numeric" placeholder="Số tiền" value="${z.amount ? moneyStr(z.amount) : ''}" ${dis}></div></td>`; };
+  const rowH = r => { const over = r.unit && tot(r) > val(r);
+    return `<tr data-r="${r.id}" class="${over ? 'sg-over' : ''}"><td class="sg-s s1"><select class="inp" data-f="project"><option value="">— Dự án —</option>${M.projects.map(p => `<option value="${p.id}" ${+r.project === p.id ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select></td>
+      <td class="sg-s s2"><select class="inp" data-f="building" ${r.project ? '' : 'disabled'}><option value="">Tất cả tòa</option>${M.buildings.filter(b => b.project_id === +r.project).map(b => `<option value="${b.id}" ${+r.building === b.id ? 'selected' : ''}>Tòa ${esc(b.code)}</option>`).join('')}</select></td>
+      <td class="sg-s s3"><div class="sg-u"><select class="inp" data-f="unit" ${r.project ? '' : 'disabled'}>${r.project ? unitOpts(r) : '<option>Chọn dự án trước</option>'}</select><button type="button" class="btn sm ghost" data-f="multi" title="Chọn nhiều căn — mỗi căn 1 dòng" ${r.project ? '' : 'disabled'}>${ico('fa-list-check')}</button></div>${r.unit?.rent ? '<span class="su3-tag">Đang cho thuê</span>' : ''}${r.unit && !val(r) ? '<div class="su3-warn">Chưa có giá trị HĐ trong danh mục</div>' : ''}</td>
+      <td class="n">${r.unit?.area != null ? String(r.unit.area).replace('.', ',') : ''}</td><td class="n">${r.unit?.uprice ? fm(r.unit.uprice) : r.unit ? '—' : ''}</td><td class="n"><b>${val(r) ? fm(val(r)) : ''}</b></td>
+      <td><select class="inp" data-f="sale" ${r.unit ? '' : 'disabled'}>${mOpt(r.sale)}</select></td>
+      ${Array.from({ length: NC }, (_, k) => cellH(r, k)).join('')}
+      <td class="n sg-un" data-un>${r.unit ? (over ? `<span class="neg">Vượt ${fm(tot(r) - val(r))}</span>` : fm(unal(r))) : ''}</td><td class="c"><button type="button" class="btn sm ghost" data-f="del" title="Xóa dòng">${ico('fa-trash')}</button></td></tr>`; };
+  const footH = () => { const us = rows.filter(r => r.unit), tv = us.reduce((a, r) => a + val(r), 0), col = k => us.reduce((a, r) => a + (r.items[k]?.amount || 0), 0), dd = us.reduce((a, r) => a + dated(r), 0);
+    return `<tr><td class="sg-s s1" colspan="1">Tổng cộng</td><td class="sg-s s2"></td><td class="sg-s s3">${us.length} căn</td><td></td><td></td><td class="n">${fm(tv)}</td><td></td>${Array.from({ length: NC }, (_, k) => `<td class="n sg-d">${fm(col(k))}</td>`).join('')}<td class="n">${fm(us.reduce((a, r) => a + unal(r), 0))}</td><td></td></tr>`; };
+  const sumH = () => { const us = rows.filter(r => r.unit), tv = us.reduce((a, r) => a + val(r), 0), dd = us.reduce((a, r) => a + dated(r), 0), ta = us.reduce((a, r) => a + tot(r), 0);
+    $('#sgSum', m.el).innerHTML = [['Số căn', us.length], ['Thành tiền', fm(tv)], ['Tổng tiền các đợt', fm(ta)], ['Đã phân bổ (có ngày thu)', fm(dd)], ['Chưa phân bổ kỳ', fm(us.reduce((a, r) => a + unal(r), 0))]].map(([l, v], i) => `<div class="${i === 4 && v !== '0' ? 'w' : ''}"><span>${l}</span><b>${v}</b></div>`).join(''); };
+  const draw = () => { $('#sgT', m.el).innerHTML = `<colgroup><col style="width:180px"><col style="width:110px"><col style="width:190px"><col style="width:80px"><col style="width:110px"><col style="width:130px"><col style="width:110px">${'<col style="width:168px">'.repeat(NC)}<col style="width:130px"><col style="width:46px"></colgroup>
+      <thead><tr><th rowspan="2" class="sg-s s1">Dự án</th><th rowspan="2" class="sg-s s2">Tòa</th><th rowspan="2" class="sg-s s3">Căn</th><th rowspan="2" class="n">Diện tích (m²)</th><th rowspan="2" class="n">Đơn giá (đ/m²)</th><th rowspan="2" class="n">Thành tiền</th><th rowspan="2">Tháng dự kiến bán</th>
+        <th colspan="${NC}" class="sg-g">Phân bổ dòng thu <small>(Ngày dự kiến thu · Tỷ lệ % · Số tiền)</small></th><th rowspan="2" class="n">Chưa phân bổ kỳ</th><th rowspan="2"></th></tr>
+      <tr>${Array.from({ length: NC }, (_, k) => `<th class="sg-g c">Đợt ${k + 1}${k >= 4 && rows.every(r => !r.items[k]?.amount && !r.items[k]?.date) ? ` <a href="#" data-delc="${k}" title="Bỏ cột đợt này">×</a>` : ''}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map(rowH).join('')}</tbody><tfoot>${footH()}</tfoot>`;
+    wireSegDate($('#sgT', m.el)); sumH(); };
+  // cập nhật 1 dòng sau khi nhập (giữ con trỏ — không vẽ lại cả bảng)
+  const upd = r => { const tr = $(`tr[data-r="${r.id}"]`, m.el), over = tot(r) > val(r); tr.classList.toggle('sg-over', over);
+    tr.querySelector('[data-un]').innerHTML = over ? `<span class="neg">Vượt ${fm(tot(r) - val(r))}</span>` : fm(unal(r)); $('#sgT tfoot', m.el).innerHTML = footH(); sumH(); };
+  const setUnit = (r, u) => { r.unit = u; if (u && val(r)) r.items = r.items.map(z => z && z.pct != null && z.by === 'pct' ? { ...z, amount: Math.round(val(r) * z.pct / 100) } : z && z.by === 'amt' ? { ...z, pct: z.amount ? p4(z.amount / val(r) * 100) : null } : z); };
+  // chọn nhiều căn: danh sách thả xuống ngay dưới ô căn, mỗi căn tích chọn = 1 dòng
+  const multi = async (r, btn) => { await getAv(r.project); document.querySelector('.sg-pop')?.remove();
+    const us = used(r.id), xs = AV[r.project].filter(u => u.ok && (!r.building || u.building_id === +r.building));
+    const pop = document.createElement('div'); pop.className = 'sg-pop'; const b = btn.getBoundingClientRect(); pop.style.left = Math.min(b.left, innerWidth - 380) + 'px'; pop.style.top = (b.bottom + 4) + 'px';
+    pop.innerHTML = `<div class="sg-ph"><input class="inp" placeholder="Tìm mã căn…" data-q><span class="small muted" data-n></span></div><div class="sg-pl" data-l></div><div class="sg-pf"><button type="button" class="btn sm" data-x2>Đóng</button><button type="button" class="btn sm pri" data-go>${ico('fa-check')} Thêm căn đã chọn</button></div>`;
+    document.body.appendChild(pop);
+    const dl = () => { const q = $('[data-q]', pop).value.trim().toLowerCase(), ys = xs.filter(u => !q || u.code.toLowerCase().includes(q));
+      $('[data-l]', pop).innerHTML = ys.map(u => `<label class="${us.has(u.id) ? 'off' : ''}"><input type="checkbox" value="${u.id}" ${us.has(u.id) ? 'disabled' : ''}><b>${esc(u.code)}</b><span class="muted">Tòa ${esc(u.building)} · ${u.area ?? '—'} m²</span>${u.rent ? '<span class="su3-tag">Đang cho thuê</span>' : ''}<span class="grow"></span><span class="n">${u.hd_value ? fm(u.hd_value) : '<span class="su3-warn">chưa có giá trị HĐ</span>'}</span></label>`).join('') || '<div class="small muted" style="padding:8px">Không có căn đủ điều kiện</div>';
+      $('[data-n]', pop).textContent = `${ys.length} căn`; };
+    dl(); $('[data-q]', pop).oninput = dl; $('[data-q]', pop).focus();
+    $('[data-x2]', pop).onclick = () => pop.remove();
+    $('[data-go]', pop).onclick = () => { const ids = $$('[data-l] input:checked', pop).map(c => +c.value); if (!ids.length) return toast('Tích chọn ít nhất 1 căn', true); pop.remove();
+      const ix = rows.indexOf(r), add = []; ids.forEach((uid, k) => { const u = xs.find(z => z.id === uid); if (!k && !r.unit) setUnit(r, u); else { const t = newRow({ project: r.project, building: r.building, sale: r.sale }); setUnit(t, u); add.push(t); } });
+      rows.splice(ix + 1, 0, ...add); draw(); }; };
   // sự kiện bảng
-  $('#suT', m.el).addEventListener('change', e => { const tr = e.target.closest('tr[data-r]'); if (!tr) return; const r = R(tr.dataset.r), k = e.target.dataset.k;
-    if (k === 'pick') { r.pick = e.target.checked; draw(); }
-    if (k === 'sale') { const dd = ymDiff(r.sale, e.target.value); r.sale = e.target.value; r.items = r.items.map(z => mvIt(z, dd)); draw(); } });
-  $('#suT', m.el).addEventListener('click', e => { const tr = e.target.closest('tr[data-r]'); if (!tr) return; const r = R(tr.dataset.r), k = e.target.closest('[data-k]')?.dataset.k;
-    if (k === 'sched') return schedDlg(r);
-    if (k === 'del') { rows = rows.filter(x => x.id !== r.id); draw(); if (!$('#suL', m.el).hidden) drawList(); } });
-  $('#suAll', m.el).onchange = e => { rows.forEach(r => { r.pick = e.target.checked; }); draw(); };
-  $('#suBx', m.el).onclick = () => { rows.forEach(r => { r.pick = false; }); draw(); };
-  // áp dụng chung — chỉ cho các căn đã tích, có xác nhận
-  $('#suSMA', m.el).onclick = run(async () => { const ps = rows.filter(r => r.pick); if (!ps.length) return; const v = $('#suSM', m.el).value;
-    if (!await ask('Áp dụng tháng bán', `Đặt tháng bán ${v.slice(5)}/${v.slice(0, 4)} cho ${ps.length} căn đã chọn? Các đợt thu đã có tháng của từng căn dời theo cùng khoảng cách.`)) return;
-    for (const r of ps) { const dd = ymDiff(r.sale, v); r.sale = v; r.items = r.items.map(z => mvIt(z, dd)); } draw(); });
-  $('#suCp', m.el).onclick = run(async () => { const ps = rows.filter(r => r.pick); if (ps.length < 2) return; const [src, ...dst] = ps;
-    if (!src.items.length) return toast(`Căn mẫu ${src.unit.code} chưa thiết lập lịch thu`, true);
-    if (!await ask('Sao chép lịch thu', `Áp dụng lịch thu của căn ${src.unit.code} (tỷ lệ từng đợt, khoảng cách tháng so với tháng bán) cho ${dst.length} căn: ${dst.map(r => r.unit.code).join(', ')}?`)) return;
-    for (const r of dst) if (r.value > 0) { const k = ymDiff(src.sale, r.sale), mt = r.unit.maint || 0, sm = src.items.find(z => z.grp === 'maint');
-      r.items = src.items.filter(z => z.grp !== 'maint').map(z => mvIt({ ...z, amount: Math.round((r.value - mt) * (+z.pct || 0) / 100), by: 'pct' }, k));
-      if (mt) r.items.push(mvIt({ dot: 0, content: sm?.content || 'Phí bảo trì 2%', name: sm?.name || 'Phí bảo trì', date: sm?.date || null, month: sm?.month || null, pct: null, amount: mt, by: 'amt', grp: 'maint' }, sm ? k : 0)); }
-    draw(); });
-  $('#suSave', m.el).onclick = run(async () => { if (!rows.length) return toast('Chọn ít nhất 1 căn', true);
-    for (const r of rows) { if (!(r.value > 0)) return toast(`Căn ${r.unit.code}: chưa có giá trị hợp đồng trong danh mục sản phẩm`, true); if (!r.items.length) return toast(`Căn ${r.unit.code}: chưa thiết lập lịch thu`, true); }
+  const T = $('#sgT', m.el);
+  T.addEventListener('change', run(async e => { const tr = e.target.closest('tr[data-r]'); if (!tr) return; const r = R(tr.dataset.r), f = e.target.dataset.f;
+    if (f === 'project') { r.project = e.target.value; r.building = ''; r.unit = null; draw(); if (r.project) { await getAv(r.project); draw(); } }
+    if (f === 'building') { r.building = e.target.value; if (r.unit && r.building && r.unit.building_id !== +r.building) r.unit = null; draw(); }
+    if (f === 'unit') { const u = (AV[r.project] || []).find(z => z.id === +e.target.value) || null; if (u && used(r.id).has(u.id)) { toast(`Căn ${u.code} đã có ở dòng khác`, true); return draw(); } setUnit(r, u); draw(); }
+    if (f === 'sale') r.sale = e.target.value; }));
+  T.addEventListener('input', e => { const tr = e.target.closest('tr[data-r]'), td = e.target.closest('td[data-k]'); if (!tr || !td) return; const r = R(tr.dataset.r), z = it(r, +td.dataset.k), f = e.target.dataset.f, V = val(r); if (!V) return;
+    if (f === 'pct') { const v = e.target.value.trim() === '' ? null : num(e.target.value); z.pct = v == null || isNaN(v) ? null : v; z.amount = z.pct != null ? Math.round(V * z.pct / 100) : 0; z.by = 'pct'; td.querySelector('[data-f=amt]').value = z.amount ? moneyStr(z.amount) : ''; }
+    if (f === 'amt') { const v = num(e.target.value, true) || 0; z.amount = v; z.pct = v ? p4(v / V * 100) : null; z.by = 'amt'; e.target.value = v ? moneyStr(v) : ''; td.querySelector('[data-f=pct]').value = z.pct != null ? pS(z.pct) : ''; }
+    upd(r); });
+  T.addEventListener('sdchange', e => { const mm = /^sgd_(\d+)_(\d+)$/.exec(e.target.id || ''); if (!mm) return; const v = segVal(e.target); if (v === null) return; const r = R(mm[1]); it(r, +mm[2]).date = v || ''; upd(r); });
+  T.addEventListener('click', run(async e => { const dc = e.target.closest('[data-delc]'); if (dc) { e.preventDefault(); const k = +dc.dataset.delc; rows.forEach(r => r.items.splice(k, 1)); NC--; return draw(); }
+    const tr = e.target.closest('tr[data-r]'); if (!tr) return; const r = R(tr.dataset.r), f = e.target.closest('[data-f]')?.dataset.f;
+    if (f === 'multi') return multi(r, e.target.closest('[data-f]'));
+    if (f === 'del') { rows = rows.filter(x => x !== r); if (!rows.length) rows.push(newRow()); draw(); } }));
+  m.el.addEventListener('mousedown', e => { const p = document.querySelector('.sg-pop'); if (p && !p.contains(e.target) && !e.target.closest('[data-f=multi]')) p.remove(); });
+  $('#sgAddR', m.el).onclick = () => { const l = rows[rows.length - 1]; rows.push(newRow({ project: l?.project, building: l?.building, sale: l?.sale })); draw(); };
+  $('#sgAddC', m.el).onclick = () => { NC++; draw(); const w = $('.sg-wrap', m.el); w.scrollLeft = w.scrollWidth; };
+  $('#suSave', m.el).onclick = run(async () => { const us = rows.filter(r => r.unit); if (!us.length) return toast('Chọn ít nhất 1 căn', true);
+    const ids = us.map(r => r.unit.id); if (new Set(ids).size !== ids.length) return toast('Có căn bị chọn trùng ở 2 dòng', true);
+    for (const r of us) { const c = r.unit.code; if (!val(r)) return toast(`Căn ${c}: chưa có giá trị hợp đồng trong danh mục sản phẩm`, true);
+      if (tot(r) > val(r)) return toast(`Căn ${c}: tổng tiền các đợt ${fm(tot(r))} vượt Thành tiền ${fm(val(r))}`, true);
+      if (!r.items.some(z => z?.amount > 0 && z.date)) return toast(`Căn ${c}: nhập ít nhất 1 đợt có ngày dự kiến thu và tỷ lệ / số tiền`, true);
+      const b0 = r.items.find(z => z?.date && z.date.slice(0, 7) < r.sale); if (b0) return toast(`Căn ${c}: đợt thu ngày ${dmy(b0.date)} trước tháng dự kiến bán ${r.sale.slice(5)}/${r.sale.slice(0, 4)}`, true); }
     const x = await api('POST', '/api/sale-plan-units', { owner_id: $('#suO', m.el).value || null, note: $('#suR', m.el).value.trim(),
-      units: rows.map(r => ({ unit_id: r.unit.id, value: r.value, sale_month: r.sale, items: r.items.map(z => ({ name: z.name, grp: z.grp || 'house', date: z.date || null, month: z.month || null, pct: z.pct, by: z.by || 'pct', amount: z.by === 'amt' ? Math.round(+z.amount || 0) : Math.round(r.value * (+z.pct || 0) / 100) })) })) });
+      units: us.map(r => ({ unit_id: r.unit.id, value: val(r), sale_month: r.sale, base: 'value', items: r.items.map((z, k) => z && z.amount > 0 ? { name: `Đợt ${k + 1}`, grp: 'house', date: z.date || null, month: z.date ? z.date.slice(0, 7) : null, pct: z.pct, by: 'amt', amount: z.amount } : null).filter(Boolean) })) });
     toast(x.msg); m.close(); onDone && onDone(); });
-  draw(); if (sel.project) openList().catch(() => {});
+  draw(); if (rows[0].project) getAv(rows[0].project).then(draw).catch(() => {});
 };
 // 17/11/2026 (bản 3 nguồn, giao diện theo mẫu Ke_hoach_dong_thu_nam.html): KẾ HOẠCH DÒNG THU NĂM — Công nợ còn lại · Bán mới · Cho thuê (dữ liệu thật, không hệ số giả lập);
 // bộ lọc Năm / Dự án dùng chung cho chỉ tiêu, biểu đồ cột chồng 12 tháng, bảng 4 dòng × 12 tháng (bấm ô → chi tiết đúng nguồn + tháng), Chưa phân bổ kỳ, chi tiết tháng Dự án → Tòa → Căn → Đợt/kỳ
@@ -2498,7 +2450,7 @@ V.planyear = async (main, params = {}) => {
     const TABS = [['', 'Tất cả'], ['nhap', 'Nháp'], ['cho_duyet', 'Chờ duyệt'], ['da_duyet', 'Đã duyệt'], ['yeu_cau_sua', 'Yêu cầu chỉnh sửa']];
     const m = modal({ title: `${ico('fa-folder-open')} Danh sách bản kế hoạch dòng thu năm`, wide: true, body: `<div class="yp-lf"><div class="yp-tabs" id="ylTb"></div><span class="grow"></span><label>Năm<select class="inp" id="ylY"></select></label>
       <button type="button" class="btn pri sm" id="ylNew">${ico('fa-file-circle-plus')} Tạo bản kế hoạch</button></div><div class="tbl-wrap" id="ylT"></div>` });
-    m.el.classList.add('yp-lm'); let rows = [];
+    m.el.querySelector('.modal').classList.add('yp-lm'); let rows = [];
     const draw = () => { ST.ypTab = f.tab; const t0 = +today().slice(0, 4);
       $('#ylY', m.el).innerHTML = '<option value="">Tất cả năm</option>' + [...new Set([t0 - 1, t0, t0 + 1, t0 + 2, ...rows.map(r => +r.year), ...(f.year ? [+f.year] : [])])].sort().map(y => `<option value="${y}" ${f.year === String(y) ? 'selected' : ''}>${y}</option>`).join('');
       const inY = rows.filter(r => !f.year || String(r.year) === f.year), cnt = k => inY.filter(r => !k || r.status === k).length;

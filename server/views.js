@@ -1070,7 +1070,7 @@ async function saleUnits(db, user, f) {
   const p = [], w = [];
   if (f.project) { p.push(+f.project); w.push(`u.project_id = $${p.length}`); } if (f.building) { p.push(+f.building); w.push(`u.building_id = $${p.length}`); }
   if (!w.length) bad('Chọn dự án');
-  const us = await db.q(`SELECT u.id, u.code, u.status, u.area_tt, u.total_price, u.list_price, u.maint_fee, u.floor, pr.code project, pr.id project_id, b.code building, b.id building_id,
+  const us = await db.q(`SELECT u.id, u.code, u.status, u.area_tt, u.total_price, u.list_price, u.maint_fee, u.base_price, u.floor, pr.code project, pr.id project_id, b.code building, b.id building_id,
       (SELECT c.number || ' (' || c.status || ')' FROM kd_contract c WHERE c.unit_id = u.id AND ${SALE_LIVE} ORDER BY c.id DESC LIMIT 1) sale_ct,
       (SELECT c.number FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND coalesce(c.nature, 'thue') <> 'ban' AND c.status NOT IN ('huy','thanh_ly') AND coalesce(c.exp_on, 'infinity'::date) >= current_date ORDER BY c.id DESC LIMIT 1) rent_ct,
       (SELECT string_agg(DISTINCT x.month, ', ') FROM kd_collect_plan x WHERE x.unit_id = u.id AND x.scope = 'moi' AND x.status NOT IN ('thay_the','dong','tu_choi','da_chot')) moi_plan
@@ -1078,7 +1078,7 @@ async function saleUnits(db, user, f) {
   const ST = Object.fromEntries(E.unit.fields.find(x => x.k === 'status').o.map(o => [o[0], o[1]]));
   return { units: us.map(u => { const free = ['chua_mo_ban', 'con_ban', 'giu_cho', 'da_coc'].includes(u.status);
     const ok = !u.sale_ct && !u.moi_plan && (free || !!u.rent_ct);
-    return { id: u.id, code: u.code, project: u.project, project_id: u.project_id, building: u.building, building_id: u.building_id, area: u.area_tt != null ? +u.area_tt : null, price: +(u.total_price || u.list_price || 0) || null, hd_value: +u.total_price > 0 ? Math.round(+u.total_price) : null, maint: +u.maint_fee > 0 && +u.maint_fee < +u.total_price ? Math.round(+u.maint_fee) : 0,
+    return { id: u.id, code: u.code, project: u.project, project_id: u.project_id, building: u.building, building_id: u.building_id, area: u.area_tt != null ? +u.area_tt : null, price: +(u.total_price || u.list_price || 0) || null, hd_value: +u.total_price > 0 ? Math.round(+u.total_price) : null, uprice: +u.base_price > 0 ? Math.round(+u.base_price) : null, maint: +u.maint_fee > 0 && +u.maint_fee < +u.total_price ? Math.round(+u.maint_fee) : 0,
       status_l: ST[u.status] || u.status, ok, rent: !!u.rent_ct, note: u.sale_ct ? `Đã có HĐ bán ${u.sale_ct}` : u.moi_plan ? `Đã có kế hoạch bán mới (tháng ${u.moi_plan})` : u.rent_ct ? `Đang cho thuê – HĐ số ${u.rent_ct}` : free ? ST[u.status] || '' : `Trạng thái «${ST[u.status] || u.status}» — chưa thể bán` }; }) };
 }
 // 17/11/2026: LỊCH THU GỢI Ý CỦA 1 CĂN theo chính sách bán đang áp dụng (đã ban hành) — giá trị dự kiến bán, các đợt (nội dung, mốc tính, tỷ lệ, số tiền, tháng thu):
@@ -1124,7 +1124,7 @@ async function saleUnitPlan(db, user, b) {
     // 17/11/2026: giá trị dự kiến bán = «Giá trị HĐ» (Tổng giá căn hộ) trong Danh mục sản phẩm — không lấy chính sách bán hàng, thiếu thì không lập (không mặc định 0)
     const value = u.hd_value; if (!(value > 0)) bad(`Căn ${u.code}: chưa có giá trị hợp đồng trong danh mục sản phẩm`);
     // tiền từng đợt: nhập theo số tiền (by = amt) giữ đúng số tiền, tỷ lệ suy ra; nhập theo tỷ lệ → số tiền = Giá trị HĐ × tỷ lệ
-    const mt = u.maint || 0, base = value - mt;   // 17/11/2026: phí bảo trì là dòng riêng, không nằm trong cơ sở tính tỷ lệ các đợt
+    const mt = x.base === 'value' ? 0 : u.maint || 0, base = value - mt;   // base = value: bảng phân bổ trực tiếp — tỷ lệ tính theo Thành tiền (Giá trị HĐ)   // 17/11/2026: phí bảo trì là dòng riêng, không nằm trong cơ sở tính tỷ lệ các đợt
     if (Array.isArray(x.items)) x.items = x.items.map(z => z.grp === 'maint' ? { ...z, amount: mt, pct: null } : z.by === 'amt' && +z.amount > 0 ? { ...z, amount: Math.round(+z.amount), pct: Math.round(+z.amount / base * 1e6) / 1e4 } : z.pct != null && z.pct !== '' ? { ...z, amount: Math.round(base * +z.pct / 100) } : z).filter(z => z.grp !== 'maint' || mt > 0);
     const sm = /^\d{4}-\d{2}$/.test(x.sale_month || '') ? x.sale_month : bad(`Căn ${u.code}: chọn tháng/năm dự kiến bán`);
     // 17/11/2026: lịch thu riêng từng căn theo đợt (items: tên đợt, nhóm, tháng thu | trống = chưa phân bổ kỳ, tỷ lệ, số tiền) — ưu tiên hơn lịch % kiểu cũ
