@@ -1336,6 +1336,10 @@ H.reservation = {
     const u = r.unit_id ? await raw(db, 'unit', r.unit_id) : null;
     if (!u) bad('Chọn mã căn hộ', { fields: ['unit_id'] });   // chưa chọn căn: báo rõ thay vì lỗi máy chủ
     r.notice_id = (await saleWarn(db, r, warn))?.hit?.id ?? null;   // 17/11/2026: gắn đợt thông báo mở bán / cho thuê có căn
+    if (!old && !opts?.system) {   // 18/11/2026: giao dịch mới chỉ khi căn thuộc thông báo mở bán (đăng ký mua) / cho thuê (đăng ký thuê) đang áp dụng
+      const dl = dealOf(r), hit = ((await activeNoticeMap(db, u.project_id)).get(u.id) || []).find(n => n.deal === dl);
+      if (!hit) bad(`Căn ${u.code} chưa thuộc thông báo ${dl === 'thue' ? 'cho thuê' : 'mở bán'} đang áp dụng (đã phát hành, còn hiệu lực) — chưa tạo được phiếu đăng ký ${dl === 'thue' ? 'thuê' : 'mua'}`, { fields: ['unit_id'] });
+      r.notice_id = hit.id; }
     // ngày giờ đăng ký (reg_at) → ngày đăng ký (reg_date, giờ VN); phiếu hệ thống tạo chỉ có ngày thì suy ra giờ
     const vnDay = iso => new Date(Date.parse(iso) + 7 * 3600e3).toISOString().slice(0, 10);
     if (!old && r.reg_date && (!r.reg_at || vnDay(r.reg_at) !== r.reg_date)) r.reg_at = new Date(r.reg_date === today() ? Date.now() : Date.parse(r.reg_date + 'T09:00:00+07:00')).toISOString();
@@ -1621,6 +1625,35 @@ async function noticeUnits(db, n) {
   return us.filter(u => g.includes('*') || g.includes(String(u.b).toUpperCase()) || g.includes(u.code.toUpperCase()));
 }
 const SN_L = r => r?.deal === 'thue' ? 'cho thuê' : 'mở bán';
+// 18/11/2026: TRẠNG THÁI MỞ BÁN / CHO THUÊ theo thông báo đang áp dụng (đã phát hành, còn hiệu lực — chưa hết hạn nhận hồ sơ, chưa hủy / thu hồi):
+// id căn → [thông báo có căn] (mới nhất trước); tự cập nhật theo danh sách căn hiện tại của thông báo (rút căn / hủy / hết hạn thì căn không còn)
+async function activeNoticeMap(db, projectId) {
+  const ns = await db.q("SELECT * FROM kd_sale_notice WHERE project_id = $1 AND status = 'da_duyet' AND (close_on IS NULL OR close_on >= $2) ORDER BY notice_on DESC NULLS LAST, id DESC", [+projectId, today()]);
+  const m = new Map();
+  for (const n of ns) { const x = { id: n.id, code: n.code, doc_no: n.doc_no || null, title: n.title || null, deal: n.deal === 'thue' ? 'thue' : 'ban', notice_on: d10(n.notice_on), open_on: d10(n.open_on), close_on: d10(n.close_on) };
+    for (const u of await noticeUnits(db, n)) (m.get(u.id) || m.set(u.id, []).get(u.id)).push(x); }
+  return m;
+}
+const unLog = (db, units, n, action, user, note) => units.length ? db.q('INSERT INTO kd_unit_notice_log (unit_id, notice_id, deal, action, user_id, note) SELECT x, $2, $3, $4, $5, $6 FROM unnest($1::int[]) x',
+  [units.map(u => u.id), n.id, n.deal === 'thue' ? 'thue' : 'ban', action, user?.id ?? null, note || null]) : null;
+// lịch sử căn vào / ngừng áp dụng thông báo: nhật ký (phát hành, rút căn, hủy) + mốc hết hiệu lực; thông báo phát hành trước khi có nhật ký thì suy ra từ ngày phát hành
+async function unitNoticeHist(db, unitId) {
+  const u = await db.one('SELECT id, code, project_id FROM kd_unit WHERE id = $1', [+unitId]); if (!u) bad('Không tìm thấy căn hộ');
+  const logs = await db.q('SELECT l.*, x.full_name who FROM kd_unit_notice_log l LEFT JOIN kd_user x ON x.id = l.user_id WHERE l.unit_id = $1 ORDER BY l.at, l.id', [u.id]);
+  const ns = await db.q("SELECT n.*, (SELECT max(a.decided_at) FROM kd_approval a WHERE a.ent = 'sale_notice' AND a.rec_id = n.id AND a.status = 'da_duyet') pub_at FROM kd_sale_notice n WHERE n.project_id = $1 AND n.status IN ('da_duyet', 'huy')", [u.project_id]);
+  const logged = new Set((await db.q('SELECT DISTINCT notice_id FROM kd_unit_notice_log WHERE notice_id = ANY($1)', [ns.map(n => n.id)])).map(x => x.notice_id));
+  const ev = logs.map(l => ({ at: l.at, notice_id: l.notice_id, action: l.action, who: l.who || '', note: l.note || '' }));
+  for (const n of ns) {
+    const inN = (await noticeUnits(db, n)).some(x => x.id === u.id), mine = ev.filter(e => e.notice_id === n.id);
+    if (!logged.has(n.id) && inN) { ev.push({ at: n.pub_at || n.notice_on, notice_id: n.id, action: 'vao', who: '', note: 'Theo thông báo đã phát hành (trước khi có nhật ký)' });
+      if (n.status === 'huy') ev.push({ at: n.updated_at, notice_id: n.id, action: 'huy', who: '', note: '' }); }
+    const last = (logged.has(n.id) ? mine : ev.filter(e => e.notice_id === n.id)).slice(-1)[0];
+    if (n.status === 'da_duyet' && n.close_on && d10(n.close_on) < today() && inN && last?.action === 'vao') ev.push({ at: d10(n.close_on) + 'T23:59:00+07:00', notice_id: n.id, action: 'het_han', who: '', note: 'Hết thời gian nhận hồ sơ' });
+  }
+  const NM = new Map(ns.map(n => [n.id, n])), AL = { vao: 'Đưa vào thông báo', rut: 'Rút khỏi thông báo', huy: 'Thông báo bị hủy / thu hồi', het_han: 'Thông báo hết hiệu lực' };
+  const t = v => v instanceof Date ? +v : Date.parse(String(v));
+  return { unit: u.code, rows: ev.map(e => { const n = NM.get(e.notice_id); return { ...e, code: n?.code || '#' + e.notice_id, doc_no: n?.doc_no || null, deal: n?.deal === 'thue' ? 'thue' : 'ban', action_l: AL[e.action] || e.action }; }).sort((a, b) => t(a.at) - t(b.at)) };
+}
 // 17/11/2026: đơn giá thuê từng căn của thông báo cho thuê — chính sách cho thuê của thông báo (nếu có căn), không có thì chính sách cho thuê đã phát hành, còn hạn, duyệt gần nhất có căn;
 // căn chưa có chính sách cho thuê = «Chưa thiết lập» (không lấy giá bán thay). rent_price = đơn giá (đ/m²/tháng theo vị trí căn, hoặc đ/căn/tháng), rent_month = tiền thuê/tháng (+ nội thất)
 const rentUnitPrice = (p, u) => !p ? null : p.rent_mode === 'co_dinh' ? (+p.rent_fixed || null) : (u.position === 'goc' && +p.rent_price_goc) || (u.position === 'thang' && +p.rent_price_thang) || +p.rent_price || null;
@@ -1770,18 +1803,20 @@ H.sale_notice = {
   },
   async onApprove(r, ok, { db }) { if (ok) await noticeConflict(db, r); },   // phát hành: kiểm tra lại
   acts: {   // 17/11/2026: rút căn khỏi thông báo đã phát hành / hủy thông báo
-    async rut_can(r, d, { db }) {
+    async rut_can(r, d, { db, user }) {
       const codes = bgCodes(d.codes); if (!codes.length) bad('Nhập mã căn cần rút');
       const us = await noticeUnits(db, r), miss = codes.filter(c => !us.some(u => u.code.toUpperCase() === c)), keep = us.filter(u => !codes.includes(u.code.toUpperCase()));
       if (miss.length) bad(`Căn không thuộc thông báo ${r.code}: ${miss.join(', ')}`);
       if (!keep.length) bad('Rút hết căn của thông báo — dùng «Hủy thông báo»');
+      await unLog(db, us.filter(u => codes.includes(u.code.toUpperCase())), r, 'rut', user, d.reason);   // 18/11/2026: lịch sử căn ngừng áp dụng thông báo
       return { patch: { unit_group: keep.map(u => u.code).join(',') }, msg: `Đã rút ${codes.length} căn khỏi thông báo ${r.code}: ${codes.join(', ')}` };
     },
-    async huy_tb(r) { return { patch: { status: 'huy' }, msg: `Đã hủy thông báo ${r.code}` }; },
+    async huy_tb(r, d, { db, user }) { await unLog(db, await noticeUnits(db, r), r, 'huy', user, d?.reason); return { patch: { status: 'huy' }, msg: `Đã hủy thông báo ${r.code}` }; },
   },
   // duyệt (phát hành): căn trong đợt chưa mở bán → kích hoạt «Còn bán» (còn trống — đăng ký mua / thuê được)
   async afterApprove(r, ok, { db, user }) {
     if (!ok) return;
+    await unLog(db, await noticeUnits(db, r), r, 'vao', user, `Phát hành thông báo ${SN_L(r)} ${r.code}`);   // 18/11/2026: lịch sử căn được đưa vào thông báo
     for (const u of await noticeUnits(db, r)) if (!u.activated && !u.lock) { await sys(db, 'unit', u.id, { activated: true }, user, 'kich_hoat', `Theo thông báo ${SN_L(r)} ${r.code}`); await recomputeUnit(db, u.id, user); }
   },
   // theo dõi: số căn trong đợt, đã đăng ký / giữ chỗ (đã có phiếu đăng ký hoặc hợp đồng), còn trống
@@ -3220,4 +3255,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { saleTrack, policyUnits, policyNotices, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, noticeHist, noticeUnits, noticeRent, rentPrices, noticeConflict, unitNotes, saleSchedPolicy, saleSchedRows, rentBackfill, noxhSyncAll, unitDeals, bgDueSet, loanNet, loanPairOf, loanAutoFinish, saleValues, rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };
+module.exports = { saleTrack, policyUnits, policyNotices, activeNoticeMap, unitNoticeHist, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, noticeHist, noticeUnits, noticeRent, rentPrices, noticeConflict, unitNotes, saleSchedPolicy, saleSchedRows, rentBackfill, noxhSyncAll, unitDeals, bgDueSet, loanNet, loanPairOf, loanAutoFinish, saleValues, rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs };

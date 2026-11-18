@@ -320,7 +320,10 @@ async function board(db, user, f) {
   // khách hàng: chỉ người có quyền xem khách mới thấy tên
   if (!can(user, E.customer, 'r')) units.forEach(u => { u.customer = u.customer ? '•••' : null; });
   const policy = await db.one("SELECT code, version, start_on, end_on, src_file FROM kd_price_policy WHERE $1 = ANY(project_ids) AND status = 'phat_hanh' AND start_on <= $2 AND end_on >= $2 ORDER BY start_on DESC LIMIT 1", [pid, today()]);
-  return { projects, project: pid, buildings, building: bid, units, policy };
+  // 18/11/2026: trạng thái mở bán / cho thuê theo thông báo đang áp dụng — từng căn + số căn cả dự án
+  const am = await B.activeNoticeMap(db, pid); units.forEach(u => { u.nts = am.get(u.id) || []; });
+  const ob = { ban: 0, thue: 0, none: 0 }; for (const x of await db.q('SELECT id FROM kd_unit WHERE project_id = $1', [pid])) { const ns = am.get(x.id) || []; if (ns.some(n => n.deal === 'ban')) ob.ban++; if (ns.some(n => n.deal === 'thue')) ob.thue++; if (!ns.length) ob.none++; }
+  return { projects, project: pid, buildings, building: bid, units, policy, ob };
 }
 
 // ======================= TÌNH TRẠNG CĂN HỘ & CÔNG NỢ (CN-06) =======================
