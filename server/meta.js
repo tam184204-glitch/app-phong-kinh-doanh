@@ -119,7 +119,7 @@ def('price_policy', {
     { k: 'project_ids', l: 'Dự án', t: 'refs', ref: 'project', req: 1, help: 'Chọn được nhiều dự án cùng áp dụng một chính sách' },
     { k: 'project_id', l: 'Dự án chính', t: 'ref', ref: 'project', hide: 1 },
     // 18/11/2026: Loại chính sách → Dự án → Thông báo đang áp dụng → Tòa → Căn; notice_snap = thông tin thông báo lúc lưu (chính sách đã duyệt giữ nguyên khi thông báo đổi)
-    { k: 'notice_ids', l: 'Thông báo đang áp dụng', t: 'text', pick: 'notices', help: 'Tự áp dụng — không cần chọn: chính sách bán lấy mọi thông báo mở bán, chính sách cho thuê lấy mọi thông báo cho thuê đang có hiệu lực của từng dự án (đã ban hành, chưa hết hạn, chưa hủy / thu hồi). Căn hộ áp dụng chỉ lấy trong các thông báo này' },
+    { k: 'notice_ids', l: 'Thông báo đang áp dụng', t: 'text', pick: 'notices', help: 'Tự áp dụng — không cần chọn: chính sách bán lấy thông báo mở bán, chính sách cho thuê lấy thông báo cho thuê BAN HÀNH SAU CÙNG của từng dự án (thông báo mới thay thế thông báo trước; thông báo sau cùng bị thu hồi = chưa có thông báo áp dụng). Căn hộ áp dụng chỉ lấy trong thông báo này' },
     { k: 'notice_snap', l: 'Thông báo áp dụng (lúc lưu)', t: 'json', hide: 1, ro: 1 },   // = dự án đầu tiên trong project_ids (giữ cho chỗ cần 1 dự án)
     { k: 'mode', l: 'Cách tính giá', t: 'sel', hide: 1, def: 'bang_hang', o: [['bang_hang', 'Theo giá từng căn trên bảng hàng'], ['don_gia', 'Đơn giá × diện tích thông thủy']] },
     money('unit_price', 'Đơn giá (đ/m² thông thủy)', { show: { mode: ['don_gia'] } }),
@@ -162,7 +162,7 @@ def('price_policy', {
     { k: 'ref_fee_val', l: 'Mức hưởng', t: 'num', show: PT, help: 'Số tháng / % / số tiền theo cách tính ở trên' },
     { k: 'ref_fee_types', l: 'Đối tượng hưởng', t: 'tags', o: SELLER_T.filter(x => x[0] !== 'truc_tiep'), show: PT },
     { k: 'ref_fee_terms', l: 'Điều kiện và thời điểm chi trả', t: 'long', show: PT },
-    { k: 'unit_group', l: 'Căn hộ áp dụng', t: 'text', req: 1, def: '', pick: 'units', help: 'Chỉ hiện căn thuộc các thông báo đang có hiệu lực (gộp căn trùng), còn trong bảng hàng (chưa ký HĐMB / vay / thuê). Bấm Tòa để lọc, tích từng căn hoặc cả tòa; «Chọn tất cả» = cả dự án.' },
+    { k: 'unit_group', l: 'Căn hộ áp dụng', t: 'text', req: 1, def: '', pick: 'units', help: 'Chỉ hiện căn thuộc thông báo đang áp dụng (ban hành sau cùng), còn trong bảng hàng (chưa ký HĐMB / vay / thuê). Bấm Tòa để lọc, tích từng căn hoặc cả tòa; «Chọn tất cả» = cả dự án.' },
     // 14/11/2026: giá trị hoàn thiện từng căn khai ở bảng chọn căn { 'CTS-O-0103': 120000000 } — chính sách có hiệu lực thì cập nhật căn chưa bán / phiếu / HĐMB dự thảo
     { k: 'finish_vals', l: 'Căn hộ có hoàn thiện / nội thất', t: 'json', pick: 'finish', help: 'Bán: giá trị hoàn thiện (nội thất) từng căn · Cho thuê: tiền thuê nội thất/tháng của căn (nếu có — cộng vào tiền thuê/tháng). Tích nhiều căn rồi nhập 1 lần và bấm «Áp cho căn đã tích»; xóa số ở ô của căn = bỏ' },
     // tiến độ thu tiền (16/11/2026): HĐMB của các căn đã tích tự lấy «Lần thanh toán» theo đây — hạn = ngày ký HĐMB + số ngày; đợt bàn giao theo thông báo bàn giao

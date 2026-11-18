@@ -65,6 +65,10 @@ CREATE TABLE IF NOT EXISTS kd_approval (
 );
 CREATE INDEX IF NOT EXISTS kd_approval_rec ON kd_approval (ent, rec_id);
 CREATE UNIQUE INDEX IF NOT EXISTS kd_approval_one_open ON kd_approval (ent, rec_id) WHERE status = 'cho_duyet';
+-- 18/11/2026: lịch sử căn được đưa vào / ngừng áp dụng thông báo mở bán / cho thuê (phát hành, rút căn, hủy thông báo)
+CREATE TABLE IF NOT EXISTS kd_unit_notice_log (
+  id serial PRIMARY KEY, unit_id integer NOT NULL, notice_id integer NOT NULL, deal text, action text NOT NULL, at timestamptz NOT NULL DEFAULT now(), user_id integer, note text);
+CREATE INDEX IF NOT EXISTS kd_unit_notice_log_u ON kd_unit_notice_log (unit_id);
 CREATE TABLE IF NOT EXISTS kd_year_plan (
   id serial PRIMARY KEY, code text NOT NULL, name text NOT NULL, year integer NOT NULL, from_on date NOT NULL, to_on date NOT NULL, project_id integer, asof date NOT NULL,
   version integer NOT NULL DEFAULT 1, root_id integer, status text NOT NULL DEFAULT 'nhap' CHECK (status IN ('nhap','cho_duyet','da_duyet','yeu_cau_sua','thay_the')),
