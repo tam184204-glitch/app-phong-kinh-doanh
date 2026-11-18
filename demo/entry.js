@@ -421,6 +421,24 @@ async function boot(pgliteUrl) {
       localStorage.setItem('ctg-kd-demo-gcn', '1');
     }
   } catch (e) { console.warn('thông báo GCN thử', e); }
+  // bộ thử (18/11/2026): thông báo mở bán ĐÃ PHÁT HÀNH dự án TNS (tầng 1–3 tòa đầu tiên có căn trống) → Bảng hàng cho khách xem có dự án TNS kèm ảnh phối cảnh
+  try {
+    if (!localStorage.getItem('ctg-kd-demo-tbmb-tns')) {
+      const C = require('../server/core'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1"), ld = await one("SELECT * FROM kd_user WHERE role = 'lanh_dao' AND active ORDER BY id LIMIT 1");
+      const pj = await one("SELECT id FROM kd_project WHERE code = 'TNS'");
+      const us = pj ? await q(`SELECT u.id, u.code, u.building_id FROM kd_unit u WHERE u.project_id = $1 AND u.floor BETWEEN 1 AND 3 AND coalesce(u.lock, '') = '' AND u.status IN ('chua_mo_ban', 'con_ban')
+        AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.status NOT IN ('huy', 'thanh_ly')) AND NOT EXISTS (SELECT 1 FROM kd_reservation r WHERE r.unit_id = u.id AND r.status IN ('cho_duyet', 'giu_cho', 'qua_han', 'da_coc'))
+        AND NOT EXISTS (SELECT 1 FROM kd_noxh_check h WHERE h.unit_id = u.id AND h.status = 'cho_duyet') ORDER BY u.building_id, u.floor, u.code`, [pj.id]) : [];
+      const b0 = us[0]?.building_id, pick = us.filter(x => x.building_id === b0);
+      if (u && ld && pick.length) {
+        say('Đang dựng thông báo mở bán thử dự án TNS…');
+        const C2 = C, n = (await C2.create('sale_notice', { deal: 'ban', project_id: pj.id, title: 'Mở bán thử – Thống Nhất Smart City', doc_no: '01/2026/TB-TNS', notice_on: C.addDays(C.today(), -2), open_on: C.addDays(C.today(), -1), close_on: '2026-12-31',
+          unit_group: pick.map(x => x.code).join(','), note: 'Dữ liệu thử: thông báo đã phát hành — Bảng hàng cho khách xem dự án TNS (có ảnh dự án)' }, u, { demo: true })).row;
+        await C.submit('sale_notice', n.id, u, { demo: true }); await C.approve('sale_notice', n.id, ld, { ok: true });
+      }
+      localStorage.setItem('ctg-kd-demo-tbmb-tns', '1');
+    }
+  } catch (e) { console.warn('thông báo mở bán thử TNS', e); }
   const job = async () => { try { await tx(db => biz.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.warn('job', e.message); } };
   await job(); setInterval(job, 2 * 60e3);
 

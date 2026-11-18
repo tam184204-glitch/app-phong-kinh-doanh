@@ -2704,3 +2704,15 @@ select.bview { appearance: none; -webkit-appearance: none; font-weight: 600; col
 .u.pk-on { box-shadow: 0 0 0 2px #2A4F8A inset; position: relative; }
 .u.pk-on::after { content: '✓'; position: absolute; top: 4px; right: 7px; font-weight: 800; color: #2A4F8A; }
 .u.pk-off { opacity: .38; filter: grayscale(.6); border-style: dashed; }
+
+/* 18/11/2026: thẻ tòa có ảnh dự án / tòa (Bảng hàng cho khách xem) */
+.bp-tws { gap: 14px; }
+.tower.bp-tw { width: 340px; padding: 0; background: #fff; }
+.bp-tw::before { top: auto; bottom: 12px; height: 34px; }
+.bp-im { height: 210px; background: linear-gradient(135deg, #eef3fa, #e2eaf5); display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12.5px; }
+.bp-im img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.bp-tw.on .bp-im img { cursor: zoom-in; }
+.bp-tx { padding: 10px 14px 12px 18px; }
+.bp-tx b { font-size: 17px; }
+.bpub:fullscreen .tower.bp-tw { width: 420px; } .bpub:fullscreen .bp-im { height: 260px; }
+@media (max-width: 700px) { .tower.bp-tw { width: 78vw; } .bp-im { height: 170px; } }
