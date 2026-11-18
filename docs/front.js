@@ -3037,7 +3037,7 @@ const BGRP_L = { trong: 'Chưa bán', giu: 'Giữ chỗ', ky: 'Đã bán', thue:
 const USTAT = { con_ban: 'Còn bán', giu_cho: 'Giữ chỗ', da_coc: 'Đã cọc', da_ky_hd: 'Đã ký HĐ', da_ban_giao: 'Đã bàn giao', chua_mo_ban: 'Chưa mở bán', tam_khoa: 'Tạm khóa', ngung_kd: 'Ngừng KD' };
 // 18/11/2026: 1 màn Bảng hàng — ô sổ xuống chọn «Bảng hàng nội bộ» / «Bảng hàng cho khách xem» (nhớ lựa chọn theo máy)
 const BVIEW_K = 'ctg-kd-board-view';
-const bviewSel = v => `<select id="bview" class="bview" title="Chọn bảng hàng"><option value="noi_bo" ${v !== 'khach' ? 'selected' : ''}>Bảng hàng nội bộ</option><option value="khach" ${v === 'khach' ? 'selected' : ''}>Bảng hàng cho khách xem</option></select>`;
+const bviewSel = v => `<select id="bview" class="bview" title="Chọn bảng hàng"><option value="noi_bo" ${v !== 'khach' ? 'selected' : ''}>Bảng hàng nội bộ</option><option value="khach" ${v === 'khach' ? 'selected' : ''}>Bảng hàng</option></select>`;
 const bviewWire = main => { const el = $('#bview', main); if (el) el.onchange = () => { try { localStorage.setItem(BVIEW_K, el.value); } catch { } (el.value === 'khach' ? boardPubView : V.board)(main, {}); }; };
 V.board = async (main, params) => {
   const s = ST.board ||= { project: '', building: '', st: '', kind: '' };
