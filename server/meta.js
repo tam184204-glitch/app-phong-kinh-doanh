@@ -1006,12 +1006,43 @@ def('gcn_notice', {
     { k: 'handover_on', l: 'Ngày bàn giao Giấy chứng nhận', t: 'date', req: 1, help: 'Ngày bắt đầu bàn giao Giấy chứng nhận (sổ hồng) cho khách' },
     { k: 'pay_from', l: 'Hạn nộp tiền tính từ', t: 'sel', def: 'ban_giao', o: [['ban_giao', 'Ngày bàn giao Giấy chứng nhận'], ['thong_bao', 'Ngày thông báo']] },
     { k: 'pay_days', l: 'Số ngày được nộp tiền (mặc định)', t: 'int', def: 0, help: 'Hạn đợt thu gắn GCN = ngày bàn giao GCN (hoặc ngày thông báo) + số ngày. Dùng cho HĐMB chưa ghi số ngày riêng; đợt ghi «… 15 ngày kể từ … Giấy chứng nhận» thì lấy 15' },
+    // 18/11/2026: thông tin sổ hồng (theo bộ hồ sơ Word sổ hồng các dự án: đăng ký biến động, tờ khai LPTB, tờ khai thuế SDĐ PNN, PLHĐ thửa đất) — in «Thông báo sổ hồng» ở Bộ hồ sơ theo căn.
+    // Khai 1 lần: thông báo mới tự chép từ thông báo trước cùng dự án (ô còn trống)
+    { k: 'company', l: 'Tên công ty ghi trên thông báo', t: 'text', sec: 'Đơn vị thông báo', sug: ['CÔNG TY CỔ PHẦN CÁT TƯỜNG', 'CÔNG TY CP TM&ĐTPT THỐNG NHẤT'] },
+    { k: 'signer', l: 'Người ký thông báo', t: 'text', sec: 'Đơn vị thông báo' },
+    { k: 'signer_title', l: 'Chức vụ người ký', t: 'text', sec: 'Đơn vị thông báo', sug: ['Tổng Giám đốc', 'TUQ Tổng Giám đốc – Trưởng phòng Kinh doanh'] },
+    { k: 'gcn_seri', l: 'Số seri GCN đã cấp cho chủ đầu tư', t: 'text', sec: 'Giấy chứng nhận đã cấp cho chủ đầu tư', help: 'VD CT695815' },
+    { k: 'gcn_book', l: 'Số vào sổ cấp GCN', t: 'text', sec: 'Giấy chứng nhận đã cấp cho chủ đầu tư', help: 'VD CT37204' },
+    { k: 'gcn_issuer', l: 'Cơ quan cấp GCN', t: 'text', sec: 'Giấy chứng nhận đã cấp cho chủ đầu tư', sug: ['Sở Tài nguyên và Môi trường tỉnh Bắc Ninh'] },
+    { k: 'gcn_on', l: 'Ngày cấp GCN', t: 'date', sec: 'Giấy chứng nhận đã cấp cho chủ đầu tư' },
+    { k: 'map_sheet', l: 'Tờ bản đồ số', t: 'text', sec: 'Thửa đất' },
+    { k: 'parcel_no', l: 'Thửa đất số', t: 'text', sec: 'Thửa đất' },
+    { k: 'parcel_area', l: 'Diện tích thửa đất (m²)', t: 'num', sec: 'Thửa đất' },
+    { k: 'parcel_addr', l: 'Địa chỉ thửa đất', t: 'text', sec: 'Thửa đất', sug: ['Xã Tam Đa, tỉnh Bắc Ninh'] },
+    { k: 'use_form', l: 'Hình thức sử dụng', t: 'text', sec: 'Thửa đất', sug: ['Sử dụng chung', 'Sử dụng riêng'] },
+    { k: 'use_purpose', l: 'Mục đích sử dụng đất', t: 'text', sec: 'Thửa đất', sug: ['Đất ở tại nông thôn (Đất nhà ở xã hội)', 'Đất ở tại đô thị (Đất nhà ở xã hội)'] },
+    { k: 'land_type', l: 'Loại đất (tờ khai thuế SDĐ PNN)', t: 'text', sec: 'Thửa đất', sug: ['Xây dựng nhà ở xã hội'] },
+    { k: 'use_term', l: 'Thời hạn sử dụng', t: 'text', sec: 'Thửa đất', help: 'VD Đến ngày 13/12/2069' },
+    { k: 'use_origin', l: 'Nguồn gốc sử dụng', t: 'text', sec: 'Thửa đất', sug: ['Nhà nước giao đất có thu tiền sử dụng đất'] },
+    { k: 'land_origin', l: 'Nguồn gốc nhà đất (tờ khai lệ phí trước bạ)', t: 'text', sec: 'Thửa đất', sug: ['Nhận chuyển nhượng'] },
+    { k: 'ward', l: 'Xã / phường', t: 'text', sec: 'Thửa đất' },
+    { k: 'province', l: 'Tỉnh / thành phố', t: 'text', sec: 'Thửa đất', sug: ['Bắc Ninh'] },
+    { k: 'house_type', l: 'Loại nhà', t: 'text', sec: 'Nhà ở / công trình', sug: ['Căn hộ chung cư', 'Nhà liền kề'] },
+    { k: 'structure', l: 'Kết cấu', t: 'text', sec: 'Nhà ở / công trình', sug: ['Bê tông cốt thép'] },
+    { k: 'floors_up', l: 'Số tầng nổi', t: 'int', sec: 'Nhà ở / công trình' },
+    { k: 'floors_down', l: 'Số tầng hầm', t: 'int', sec: 'Nhà ở / công trình' },
+    { k: 'build_year', l: 'Năm hoàn thành xây dựng', t: 'int', sec: 'Nhà ở / công trình' },
+    { k: 'reg_office', l: 'Nơi nộp hồ sơ đăng ký biến động', t: 'text', sec: 'Bàn giao Giấy chứng nhận', sug: ['Văn phòng đăng ký đất đai Bắc Ninh'] },
+    { k: 'place', l: 'Địa điểm bàn giao Giấy chứng nhận', t: 'text', sec: 'Bàn giao Giấy chứng nhận', sug: ['Văn phòng Công ty – Tầng 4, chung cư Cát Tường New, đường Lý Thái Tổ, phường Kinh Bắc, tỉnh Bắc Ninh'] },
+    { k: 'work_hours', l: 'Thời gian làm việc', t: 'text', sec: 'Bàn giao Giấy chứng nhận', sug: ['Sáng 8h00 – 11h30, chiều 13h30 – 17h00 (thứ Hai – thứ Bảy)'] },
+    { k: 'docs_need', l: 'Giấy tờ khách mang theo khi nhận', t: 'long', sec: 'Bàn giao Giấy chứng nhận', def: 'Căn cước công dân bản gốc của bên mua (và vợ / chồng nếu đồng sở hữu); Hợp đồng mua bán căn hộ bản gốc; Biên bản bàn giao căn hộ; Phiếu thu / chứng từ nộp tiền các đợt; Giấy ủy quyền có công chứng (nếu nhận thay)' },
+    { k: 'contact', l: 'Liên hệ', t: 'text', sec: 'Bàn giao Giấy chứng nhận', help: 'VD Phòng Kinh doanh – 0829.376.666' },
     { k: 'unit_list', l: 'Căn hộ được bàn giao Giấy chứng nhận', t: 'text', req: 1, def: '', pick: 'gcn_units', help: 'Tự tích các căn có HĐMB đã ký của tòa — bỏ tích căn chưa có Giấy chứng nhận đợt này' },
     { k: 'note', l: 'Ghi chú', t: 'long' },
     { k: 'applied', l: 'Hạn thu đã cập nhật', t: 'json', ro: 1, hide: 1 },
     { k: 'status', l: 'Trạng thái', t: 'sel', o: [['nhap', 'Nháp', 's'], ['cho_duyet', 'Chờ duyệt', 'a'], ['da_duyet', 'Đã phát hành', 'g'], ['tu_choi', 'Từ chối', 'r'], ['huy', 'Đã hủy', 's']], ro: 1, def: 'nhap' },
   ], list: ['doc_no', 'project_id', 'building_id', 'notice_on', 'handover_on', 'n_units', 'n_hd', 'bg_amount', 'status'],
-  lock: ['cho_duyet', 'da_duyet', 'huy'], lockKeep: ['note'], flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'da_duyet', no: 'tu_choi' }, submitLabel: 'Trình duyệt' },
+  lock: ['cho_duyet', 'da_duyet', 'huy'], lockKeep: ['note', 'company', 'signer', 'signer_title', 'gcn_seri', 'gcn_book', 'gcn_issuer', 'gcn_on', 'map_sheet', 'parcel_no', 'parcel_area', 'parcel_addr', 'use_form', 'use_purpose', 'land_type', 'use_term', 'use_origin', 'land_origin', 'ward', 'province', 'house_type', 'structure', 'floors_up', 'floors_down', 'build_year', 'reg_office', 'place', 'work_hours', 'docs_need', 'contact'], flow: { field: 'status', submit: ['nhap', 'tu_choi'], approve: { ok: 'da_duyet', no: 'tu_choi' }, submitLabel: 'Trình duyệt' },
   acts: [{ k: 'revoke', l: 'Hủy thông báo', icon: 'fa-ban', from: ['da_duyet'], roles: MGR, ask: [{ k: 'reason', l: 'Lý do hủy', t: 'long', req: 1 }], help: 'Trả hạn đợt thu gắn Giấy chứng nhận về như trước khi phát hành (đợt nào đã bị sửa tay sau đó thì giữ)' }],
 });
 
@@ -1207,7 +1238,7 @@ def('template', {
     { k: 'kind', l: 'Loại', t: 'sel', req: 1, o: [['hop_dong', 'Hợp đồng'], ['phu_luc', 'Phụ lục'], ['bien_ban', 'Biên bản'], ['de_nghi', 'Phiếu đề nghị'], ['thong_bao', 'Thông báo'], ['bao_cao', 'Báo cáo'], ['dang_ky_can', 'Bản đăng ký căn hộ'], ['dang_ky_noi_that', 'Bản đăng ký nội thất'], ['bien_ban_giao_nhan', 'Biên bản giao nhận hồ sơ'], ['ban_ve', 'Bản vẽ (mô tả căn hộ)']] },
     { k: 'ent', l: 'Hiện ở module', t: 'sel', o: [], help: 'Mẫu hiện ở nút «In theo mẫu» khi mở một bản ghi của màn này. Tạo / sửa mẫu ngay trong từng module: nút «Mẫu biểu» trên đầu danh sách' },   // o: điền sau MENU (TPL_PLACES)
     { k: 'content', l: 'Nội dung mẫu', t: 'long', req: 1, help: 'Trường trộn: {so_hd} {ten_kh} {dien_thoai} {cccd} {dia_chi} {ma_can} {du_an} {toa} {tang} {dien_tich} {gia_tri} {gia_tri_chu} {ngay} {lich_thanh_toan} — bản đăng ký: {ma_phieu} {ngay_dk} {tien_coc} {trang_thai} {tien_trinh} {ghi_chu} {goi_hoan_thien} {gia_tri_hoan_thien} {gia_tri_hoan_thien_chu} {danh_muc_noi_that} {so_don} {ky_hieu} {ngay_viet} {don_gia} {gia_truoc_thue} {thue_vat} {phi_bao_tri} {tong_gia} {tong_gia_chu} {chinh_sach} — nội dung bắt đầu bằng thẻ HTML thì in theo HTML' },
-    { k: 'bo', l: 'Thuộc bộ hồ sơ', t: 'sel', o: [['mua_ban', 'HS mua bán'], ['vay', 'HS hợp đồng vay'], ['tl_vay', 'HS thanh lý hợp đồng vay'], ['ban_giao', 'HS bàn giao'], ['tl_mua_ban', 'HS thanh lý mua bán']], help: 'Mẫu thuộc bộ hồ sơ nào ở màn «Bộ hồ sơ theo căn» (05): gõ mã căn → chọn bộ → in cả bộ / tải Word, số liệu tự điền theo căn. Để trống = không thuộc bộ nào' },   // 12/11/2026
+    { k: 'bo', l: 'Thuộc bộ hồ sơ', t: 'sel', o: [['mua_ban', 'HS mua bán'], ['vay', 'HS hợp đồng vay'], ['tl_vay', 'HS thanh lý hợp đồng vay'], ['ban_giao', 'HS bàn giao'], ['tl_mua_ban', 'HS thanh lý mua bán'], ['so_hong', 'HS sổ hồng']], help: 'Mẫu thuộc bộ hồ sơ nào ở màn «Bộ hồ sơ theo căn» (05): gõ mã căn → chọn bộ → in cả bộ / tải Word, số liệu tự điền theo căn. Để trống = không thuộc bộ nào' },   // 12/11/2026
     { k: 'scope', l: 'Áp dụng cho dự án / tòa', t: 'text', help: 'Tích chọn dự án / tòa ở khung bên dưới. Không tích = mẫu chung cho mọi dự án. Căn thuộc dự án / tòa nào chỉ thấy mẫu của dự án / tòa đó và mẫu chung' },
     { k: 'bedrooms', l: 'Áp dụng cho căn số phòng ngủ', t: 'int', help: 'Để trống = mọi loại căn' },
     { k: 'active', l: 'Đang dùng', t: 'bool', def: true },
@@ -1288,4 +1319,5 @@ const VIRT = {
   b_name: 'Họ và tên', days_out: 'Ngày tại cơ quan', sla: 'SLA', n_units: 'Số căn', n_hd: 'Căn có HĐMB', bg_amount: 'Tiền đợt bàn giao', bg_from: 'Tòa bàn giao từ ngày', n_reg: 'Đã đăng ký / giữ chỗ', n_free: 'Còn trống', project: 'Dự án', building: 'Tòa', stt: 'STT', prints: 'In bản đăng ký', ret_files: 'File scan trả hồ sơ', bbgn: 'In biên bản giao nhận',
 };
 
-module.exports = { M4, SELLERS, PROSPECT_ST, VIRT,  ROLES, ALL, MGR, PII_ROLES, E, MENU, VIEW_ROLES, LOOKUPS, SETTINGS, UNIT_ST, TPL_PLACES };
+const GCN_INFO = ['company', 'signer', 'signer_title', 'gcn_seri', 'gcn_book', 'gcn_issuer', 'gcn_on', 'map_sheet', 'parcel_no', 'parcel_area', 'parcel_addr', 'use_form', 'use_purpose', 'land_type', 'use_term', 'use_origin', 'land_origin', 'ward', 'province', 'house_type', 'structure', 'floors_up', 'floors_down', 'build_year', 'reg_office', 'place', 'work_hours', 'docs_need', 'contact'];
+module.exports = { GCN_INFO, M4, SELLERS, PROSPECT_ST, VIRT,  ROLES, ALL, MGR, PII_ROLES, E, MENU, VIEW_ROLES, LOOKUPS, SETTINGS, UNIT_ST, TPL_PLACES };

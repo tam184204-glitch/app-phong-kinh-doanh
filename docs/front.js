@@ -192,6 +192,8 @@ async function bgPicker(el, form) {
 }
 function show(f, row, { plain } = {}) {
   if (f.pick === 'units' && Array.isArray(row._units) && !plain) return unitsTable(row._units);
+  if (f.pick === 'notices') { const ns = Array.isArray(row.notice_snap) ? row.notice_snap : []; if (!ns.length) return row[f.k] ? esc(row[f.k]) : '<span class="muted">—</span>';   // 18/11/2026: thông tin thông báo lưu lúc lập chính sách
+    return plain ? ns.map(n => n.code).join(', ') : noticeTable(ns); }
   if (f.pick === 'liq' && Array.isArray(row[f.k])) return plain ? row[f.k].map(x => x.number).join(' + ') : liqTable(row[f.k]);   // phiếu thanh lý chung: bảng từng hợp đồng + tổng
   if (f.pick === 'bg_units' && Array.isArray(row._bg) && !plain) return `<div class="small muted mb">${row._bg.length} căn · hạn thu đợt bàn giao ${row.status === 'da_duyet' ? 'đã cập nhật vào HĐMB' : 'sẽ cập nhật khi phát hành'}</div>` + bgTable(row._bg);
   if (f.pick === 'gcn_units' && Array.isArray(row._bg) && !plain) return `<div class="small muted mb">${row._bg.length} căn · hạn thu đợt gắn Giấy chứng nhận ${row.status === 'da_duyet' ? 'đã cập nhật vào HĐMB' : row.status === 'huy' ? 'đã trả về như trước khi phát hành' : 'sẽ cập nhật khi phát hành'}</div>` + bgTable(row._bg, { mode: 'gcn' });
@@ -316,6 +318,7 @@ function input(f, v, rec = {}, { ro, id } = {}) {
   if (ro) return `<div class="ro">${show(f, rec)}</div>`;
   if (f.upload) return `<div class="upfile"><input type="file" accept="${f.upload}" ${f.multi ? 'multiple ' : ''}${nm}>${v ? `<span class="small muted">Đang có: ${esc(v)} — chọn tệp mới để thay</span>` : ''}</div>`;
   if (f.pick === 'bg_units' || f.pick === 'gcn_units') return `<div class="upick" data-pick-bg${f.pick === 'gcn_units' ? ' data-mode="gcn"' : ''}><input type="hidden" ${nm} value="${esc(v ?? '')}"><div class="upick-bd"></div></div>`;
+  if (f.pick === 'notices') return `<div class="npick" data-pick-notices><input type="hidden" ${nm} value="${esc(v ?? '')}"><div class="npick-bd"></div></div>`;
   if (f.pick === 'units') return `<div class="upick" data-pick-units><input type="hidden" ${nm} value="${esc(v ?? f.def ?? '*')}"${f.def === '' ? ' data-none' : ''}><div class="upick-bd"></div></div>`;   // def '' = chưa chọn căn nào
   switch (f.t) {
     case 'long': return `<textarea ${nm} rows="3">${esc(v ?? '')}</textarea>`;
@@ -1518,6 +1521,7 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
     const out = { pretax: Math.round(F), tax_amt: Math.round(H), price_net: I, maint_fee: J, total_price: I + J + (+rd('finish_value') || 0) };
     for (const [k, v] of Object.entries(out)) if (form.elements[k]) form.elements[k].value = moneyStr(v);
   });
+  $$('[data-pick-notices]', form).forEach(el => noticePicker(el, form).catch(e => toast(e.message, true)));
   $$('[data-pick-units]', form).forEach(el => unitPicker(el, form, ent === 'price_policy' ? { policy: true, self: id || 0 } : {}).catch(e => toast(e.message, true)));
   $$('[data-pick-fin]', form).forEach(el => finishPicker(el, form, { self: id || 0 }));
   $$('[data-pick-liq]', form).forEach(el => liqPicker(el, form, { self: id || 0 }));   // phiếu thanh lý chung (16/11/2026)
@@ -1733,6 +1737,39 @@ function policyTabs(form) {
   form.addEventListener('change', e => { if (e.target.name !== 'pkind') return; lab(); show(cur); $('[data-pick-units]', form)?._reload?.(); $('[data-pick-fin]', form)?._refresh?.(); });
   form._ptab = show; show('a');
 }
+// 18/11/2026: THÔNG BÁO ĐANG ÁP DỤNG của chính sách — TỰ ÁP DỤNG, không chọn: theo Loại chính sách + Dự án, hệ thống lấy toàn bộ thông báo mở bán (chính sách bán) /
+// cho thuê (chính sách cho thuê) đang có hiệu lực của từng dự án (đã phát hành, đã tới ngày áp dụng, chưa hết hạn, chưa hủy). Khu này chỉ hiển thị để đối chiếu;
+// danh sách căn lấy từ các thông báo đó. Dự án không có thông báo → báo và không có căn để chọn
+const SND = v => v ? dmy(v) : '';
+function noticeTable(ns) {
+  return `<div class="tbl-wrap npick-t"><table class="t compact noclick"><thead><tr><th>Số thông báo</th><th>Tên đợt</th><th>Hình thức</th><th>Ngày ban hành</th><th>Hiệu lực</th><th>Nhận hồ sơ</th><th class="num">Số căn</th></tr></thead><tbody>
+    ${ns.map(n => `<tr><td><b>${esc(n.code)}</b>${n.doc_no ? `<div class="small muted">Số VB ${esc(n.doc_no)}</div>` : ''}</td><td>${esc(n.title || '')}${n.project ? ` <span class="small muted">· ${esc(n.project)}</span>` : ''}</td>
+      <td>${n.deal === 'thue' ? 'Cho thuê' : 'Bán'}</td><td>${SND(n.notice_on) || '—'}</td><td>${SND(n.notice_on) || 'từ khi ban hành'} – ${n.close_on ? SND(n.close_on) : 'chưa có ngày kết thúc'}</td><td>${SND(n.open_on) || '—'} – ${SND(n.close_on) || '—'}</td><td class="num">${n.n_units ?? ''}</td></tr>`).join('')}</tbody></table></div>`;
+}
+async function noticePicker(el, root) {
+  const hid = $('input[type=hidden]', el), box = $('.npick-bd', el), projEl = $('[name="project_ids"]', root) || $('[name="project_id"]', root);
+  const kind = () => $('[name="pkind"]', root)?.value === 'thue' ? 'thue' : 'ban', L = () => kind() === 'thue' ? 'cho thuê' : 'bán';
+  let seq = 0;
+  const load = async () => {
+    const my = ++seq;
+    if (!projEl?.value) { box.innerHTML = '<div class="muted small">Chọn dự án — hệ thống tự lấy các thông báo đang có hiệu lực của dự án.</div>'; return apply(''); }
+    box.innerHTML = '<div class="muted small">Đang xác định thông báo đang có hiệu lực…</div>';
+    let r; try { r = await api('GET', `/api/policy-notices?project=${projEl.value}&pkind=${kind()}&_=${Date.now()}`); }
+    catch (e) { if (my !== seq) return; box.innerHTML = `<div class="npick-none err">${ico('fa-triangle-exclamation')} Không tải được thông báo — ${esc(e.message || 'lỗi kết nối')} <button type="button" class="btn sm" data-nretry>${ico('fa-rotate-right')} Thử lại</button></div>`; return; }   // giữ nguyên thông báo / căn đang có, không coi là «chưa có thông báo»
+    if (my !== seq) return;
+    const LB = L() === 'bán' ? 'mở bán' : 'cho thuê';
+    box.innerHTML = `${r.rows.length ? `<div class="upick-sum"><b>${ico('fa-bullhorn')} Tự áp dụng ${r.rows.length} thông báo ${LB} đang có hiệu lực</b></div>${noticeTable(r.rows)}` : ''}
+      ${(r.none || []).map(p => `<div class="npick-none">${ico('fa-circle-exclamation')} Dự án <b>${esc(p.code)}</b>${p.name ? ' · ' + esc(p.name) : ''} chưa có thông báo ${LB} đang có hiệu lực — không chọn được căn của dự án này</div>`).join('')}
+      ${(r.off || []).length ? `<div class="small muted" style="margin-top:6px">Thông báo ${LB} không áp dụng: ${r.off.map(n => `<b>${esc(n.code)}</b>${n.doc_no ? ' (số ' + esc(n.doc_no) + ')' : ''} · ${esc(n.project)} — ${esc(n.why)}`).join('; ')}</div>` : ''}`;
+    apply(r.rows.map(n => n.id).join(','));
+  };
+  box.addEventListener('click', e => { if (e.target.closest('[data-nretry]')) load(); });
+  const onF = () => { if (!document.contains(el)) return window.removeEventListener('focus', onF); load(); }; window.addEventListener('focus', onF);   // vừa ban hành / sửa thông báo ở tab khác → cập nhật
+  const apply = val => { if (val === hid.value) return; hid.value = val; $('[data-pick-units]', root)?._reload?.(true); };   // thông báo đổi → tải lại danh sách căn
+  root.addEventListener('change', e => { if (e.target.name === 'pkind') load().catch(er => toast(er.message, true)); });
+  projEl?.addEventListener('change', () => load().catch(er => toast(er.message, true)));
+  await load();
+}
 async function unitPicker(el, root, { policy, self } = {}) {
   const projEl = $('[name="project_ids"]', root) || $('[name="project_id"]', root), hid = $('input[type=hidden]', el), box = $('.upick-bd', el);
   let units = [], sel = new Set(String(hid.value).toUpperCase().split(/[,;\s]+/).filter(Boolean)), loadedFor = null, q = '', bf = '', kf = '', df = false, hidden = 0;
@@ -1747,6 +1784,8 @@ async function unitPicker(el, root, { policy, self } = {}) {
   const rPrice = u => rMode() === 'co_dinh' ? rv('rent_fixed') : (u.position === 'goc' && rv('rent_price_goc')) || (u.position === 'thang' && rv('rent_price_thang')) || rv('rent_price');
   // 17/11/2026: form thông báo loại «Cho thuê» — cột «Đơn giá thuê» theo chính sách cho thuê áp dụng cho từng căn (chưa có = Chưa thiết lập, không lấy giá bán)
   const RN = () => !policy && $('[name="deal"]', root)?.value === 'thue';
+  // 18/11/2026: chính sách — chỉ căn thuộc thông báo đang áp dụng đã chọn; lưu đích danh mã căn (không gộp cả dự án / cả tòa)
+  const ntEl = () => policy ? $('[name="notice_ids"]', root) : null, NT = () => !!ntEl(), ntV = () => ntEl()?.value || '';
   let rentMap = new Map(), rentKey = '', allU = null;
   const loadRent = async () => { if (policy) return; const pid = projEl?.value || '', deal = RN() ? 'thue' : 'ban', pol = RN() ? $('[name="policy_id"]', root)?.value || '' : '', op = readField(root, { k: 'open_on', t: 'date' }) || '', k = [pid, deal, pol, op].join(':'); if (!pid || k === rentKey) return; rentKey = k;
     rentMap = new Map((await api('GET', `/api/rent-prices?project=${pid}&deal=${deal}&policy=${pol}&open=${op}&self=${root.dataset.id || ''}`)).rows.map(x => [x.id, x])); };
@@ -1768,7 +1807,7 @@ async function unitPicker(el, root, { policy, self } = {}) {
   };
   // chuẩn hóa: chọn đủ cả dự án → '*', đủ cả tòa → mã tòa — so với MỌI căn của dự án (kể cả căn đã ẩn vì đã ký HĐMB): tòa có căn ẩn thì ghi đích danh mã căn
   const norm = picked => {
-    if (RN()) return picked.map(u => u.code.toUpperCase()).join(',');   // cho thuê: ghi đúng mã căn (không gộp cả dự án / cả tòa — tránh lẫn căn đang mở bán)
+    if (RN() || NT()) return picked.map(u => u.code.toUpperCase()).join(',');   // cho thuê: ghi đúng mã căn (không gộp cả dự án / cả tòa — tránh lẫn căn đang mở bán)
     const full = allU || units;
     if (full.length && picked.length === full.length) return '*';
     const out = [];
@@ -1778,6 +1817,8 @@ async function unitPicker(el, root, { policy, self } = {}) {
   const setVal = picked => { hid.value = norm(picked); sel = new Set(hid.value.split(',').filter(Boolean)); draw(); };
   const draw = () => {
     if (!projEl?.value) { box.innerHTML = '<div class="muted small">Chọn dự án trước — danh sách căn hộ của dự án hiện ở đây.</div>'; return; }
+    if (NT() && !ntV()) { box.innerHTML = `<div class="muted small">${ico('fa-circle-exclamation')} Dự án chưa có thông báo ${RT() ? 'cho thuê' : 'bán'} đang có hiệu lực — chưa có căn để lập chính sách.</div>`; return; }
+    if (NT() && !units.length) { box.innerHTML = '<div class="muted small">Các thông báo đang có hiệu lực không còn căn nào đủ điều kiện (đã ký hợp đồng / đang giữ chỗ / ngừng kinh doanh).</div>'; return; }
     if (!units.length) { box.innerHTML = '<div class="muted small">Dự án đã chọn chưa có căn hộ trong danh mục sản phẩm.</div>'; return; }
     const on = units.filter(isOn), tot = on.reduce((s, u) => s + (+u.total_price || 0), 0), cnt = f => units.filter(f).length;
     const chip = (k, v, cur, l, n, sub) => `<button type="button" class="upick-c${cur === v ? ' on' : ''}" data-${k}="${esc(v)}">${l} <b>${n}</b>${sub ? ` <span class="muted">· chọn ${sub}</span>` : ''}</button>`;
@@ -1794,12 +1835,14 @@ async function unitPicker(el, root, { policy, self } = {}) {
   };
   const load = async () => {
     const pid = projEl?.value || ''; if (pid === loadedFor) return draw(); loadedFor = pid; units = [];
-    if (pid && policy) { box.innerHTML = '<div class="muted small">Đang tải các căn còn trong bảng hàng…</div>'; const r = await api('GET', `/api/policy-units?project=${pid}&self=${self || 0}&pkind=${$('[name="pkind"]', root)?.value || 'ban'}`); units = r.rows; hidden = r.hidden; if (bf && !units.some(u => u.b === bf)) bf = ''; }
+    if (pid && policy) { box.innerHTML = '<div class="muted small">Đang tải các căn còn trong bảng hàng…</div>'; const r = await api('GET', `/api/policy-units?project=${pid}&self=${self || 0}&pkind=${$('[name="pkind"]', root)?.value || 'ban'}${NT() ? '&notices=' + encodeURIComponent(ntV()) : ''}`); units = r.rows; hidden = r.hidden; if (bf && !units.some(u => u.b === bf)) bf = '';
+      if (NT() && ntV()) { const keep = units.filter(isOn), drop = [...sel].filter(s => s !== '*' && !units.some(u => u.code.toUpperCase() === s || u.b === s)).length;   // bỏ căn đã chọn không còn đúng điều kiện
+        hid.value = keep.map(u => u.code.toUpperCase()).join(','); sel = new Set(hid.value.split(',').filter(Boolean)); if (drop) toast(`Đã bỏ ${drop} căn / tòa đã chọn không thuộc thông báo đang có hiệu lực`); } }
     else if (pid) { box.innerHTML = '<div class="muted small">Đang tải danh sách căn…</div>'; units = (await Promise.all(pid.split(',').map(p => api('GET', `/api/e/unit?project=${p}&limit=20000`)))).flatMap(r => r.rows).map(u => ({ ...u, b: String(u.building_id__l || '').split(' · ')[0].toUpperCase() })).sort((a, c) => a.code.localeCompare(c.code, 'vi', { numeric: true })); }
     allU = units; await loadRent().catch(() => {}); filterRN();
     draw();
   };
-  el._reload = () => { loadedFor = null; load().catch(e => toast(e.message, true)); };
+  el._reload = byNotice => { loadedFor = null; if (byNotice && NT() && !ntV() && hid.value) { const n = sel.size; hid.value = ''; sel = new Set(); toast(`Đã bỏ ${n} căn / tòa đã chọn — dự án chưa có thông báo đang có hiệu lực`); } load().catch(e => toast(e.message, true)); };   // 18/11/2026: bỏ hết thông báo → bỏ các căn đã chọn
   if (!policy) root.addEventListener('change', e => { if (['deal', 'policy_id', 'open_on'].includes(e.target.name) && (allU || units).length) loadRent().then(() => { filterRN(); draw(); }).catch(er => toast(er.message, true)); });   // đổi loại giao dịch / chính sách cho thuê   // đổi loại chính sách (bán / cho thuê)
   if (policy) root.addEventListener('change', e => { if (RT() && ['rent_mode', 'rent_price', 'rent_price_goc', 'rent_price_thang', 'rent_fixed'].includes(e.target.name) && units.length) draw(); });   // sửa giá thuê → cột đơn giá đổi theo
   box.addEventListener('input', e => { if (!e.target.matches('.upick-q')) return; e.stopPropagation(); q = e.target.value.trim().toLowerCase(); applyQ(); });
@@ -1826,7 +1869,7 @@ async function unitPicker(el, root, { policy, self } = {}) {
   projEl && projEl.addEventListener('change', async () => {
     if (loadedFor === null || projEl.value === loadedFor) return load();
     await load(); const keep = [...sel].filter(s => s !== '*' && units.some(u => u.b === s || u.code.toUpperCase() === s));
-    hid.value = keep.length && !sel.has('*') ? keep.join(',') : 'none' in hid.dataset ? '' : '*'; sel = new Set(hid.value.split(',').filter(Boolean)); draw();   // data-none: đổi dự án thì bỏ chọn hết
+    hid.value = keep.length && !sel.has('*') ? keep.join(',') : 'none' in hid.dataset || NT() ? '' : '*'; sel = new Set(hid.value.split(',').filter(Boolean)); draw();   // data-none: đổi dự án thì bỏ chọn hết
   });
   await load();
 }
@@ -3845,7 +3888,7 @@ async function hsTabs(main, params = {}) {
 // · Bước «Tự động»: mỗi căn in đúng bộ của bước căn đó đang làm (căn A bộ mua bán, căn B bộ bàn giao… trong cùng 1 lần in)
 // · Kiểm tra thiếu dữ liệu tự chạy khi đổi lựa chọn, có nút «Sửa» mở thẳng HĐ / khách
 // · Trên 30 căn tự chia phần để máy không treo; «Lưu vào kho» cả loạt; nhớ dự án / bước / mẫu bỏ chọn theo máy
-const HSB_STEPS = [['mua_ban', 'Mua bán', '#2563eb'], ['vay', 'HĐ vay', '#7c3aed'], ['ban_giao', 'Bàn giao', '#059669'], ['tl_vay', 'Thanh lý HĐ vay', '#d97706'], ['tl_mua_ban', 'Thanh lý mua bán', '#dc2626']];
+const HSB_STEPS = [['mua_ban', 'Mua bán', '#2563eb'], ['vay', 'HĐ vay', '#7c3aed'], ['ban_giao', 'Bàn giao', '#059669'], ['tl_vay', 'Thanh lý HĐ vay', '#d97706'], ['tl_mua_ban', 'Thanh lý mua bán', '#dc2626'], ['so_hong', 'Sổ hồng', '#0891b2']];
 const HSB_PART = 30;
 async function batchPanel(main, { openOne } = {}) {
   let saved0 = {}; try { saved0 = JSON.parse(lsGet(HSB_KEY) || '{}'); } catch { }

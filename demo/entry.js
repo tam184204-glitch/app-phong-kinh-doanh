@@ -343,6 +343,10 @@ async function boot(pgliteUrl) {
         AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.status <> 'huy') ORDER BY u.code LIMIT 3`, [pj?.id || 0]);
       if (u && ld && units.length === 3) {
         say('Đang dựng chính sách có tiến độ thu tiền…');
+        // 18/11/2026: chính sách chỉ lập cho căn thuộc thông báo mở bán đang có hiệu lực → phát hành thông báo cho 3 căn trước (trước khi lập HĐMB dự thảo)
+        try { const n = (await C.create('sale_notice', { deal: 'ban', project_id: pj.id, title: 'Mở bán thử – chính sách có tiến độ (tòa O)', doc_no: '00/2026/TB-THU', notice_on: day(-2), open_on: day(-1), close_on: '2026-12-31',
+            unit_group: units.map(x => x.code).join(','), note: 'Dữ liệu thử: thông báo cho chính sách CSBH-TDTT-CTS' }, u, { demo: true })).row;
+          await C.submit('sale_notice', n.id, u, { demo: true }); await C.approve('sale_notice', n.id, ld, { ok: true }); } catch (e) { console.warn('thông báo cho chính sách thử', e.message); }
         for (const [i, un] of units.slice(0, 2).entries()) {
           const k = (await C.create('customer', { full_name: `${['Vũ Thị Hạnh', 'Đỗ Quang Huy'][i]} (khách thử)`, phone: `09880001${i + 1}${i + 1}`, source: 'truc_tiep', note: 'Dữ liệu thử: HĐMB dự thảo — Lần thanh toán theo chính sách CSBH-TDTT-CTS' }, u, { demo: true })).row;
           const on = day(3 + i * 2);
@@ -365,7 +369,7 @@ async function boot(pgliteUrl) {
     }
   } catch (e) { console.warn('chính sách có tiến độ thử', e); }
   // bộ thử «Bảng hàng cho khách xem» (18/11/2026): TB mở bán đợt 1 tòa K (tầng 1–3) ĐÃ PHÁT HÀNH + 3 phiếu giữ chỗ trong đợt → căn hiện ở bảng hàng khách;
-  // TB mở bán đợt 2 tòa O (tầng 2–4) CHỜ DUYỆT → chưa hiện, duyệt xong mới hiện. Chỉ lấy căn còn trống (căn đã có HĐ / phiếu không lập thông báo được)
+  // TB mở bán đợt 2 tòa O (tầng 3–5) CHỜ DUYỆT → chưa hiện, duyệt xong mới hiện. Chỉ lấy căn còn trống (căn đã có HĐ / phiếu không lập thông báo được)
   try {
     if (!localStorage.getItem('ctg-kd-demo-tbmb')) {
       const C = require('../server/core'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1"), ld = await one("SELECT * FROM kd_user WHERE role = 'lanh_dao' AND active ORDER BY id LIMIT 1");
@@ -387,9 +391,9 @@ async function boot(pgliteUrl) {
             catch (e) { console.warn('giữ chỗ thử', x.code, e.message); }
           }
         }
-        const o2 = await free('O', 2, 4);
+        const o2 = await free('O', 3, 5);
         if (o2.length) {
-          const n = (await C.create('sale_notice', { deal: 'ban', project_id: pj.id, title: 'Mở bán đợt 2 – tòa O (tầng 2–4)', doc_no: '02/2026/TB-CTG', notice_on: day(0), open_on: day(7), close_on: day(60),
+          const n = (await C.create('sale_notice', { deal: 'ban', project_id: pj.id, title: 'Mở bán đợt 2 – tòa O (tầng 3–5)', doc_no: '02/2026/TB-CTG', notice_on: day(0), open_on: day(7), close_on: day(60),
             channels: 'Website công ty', unit_group: o2.map(x => x.code).join(','), note: 'Dữ liệu thử: thông báo CHỜ DUYỆT — duyệt phát hành thì các căn này mới hiện ở «Bảng hàng cho khách xem»' }, u, { demo: true })).row;
           await C.submit('sale_notice', n.id, u, { demo: true });
         }
@@ -397,6 +401,26 @@ async function boot(pgliteUrl) {
       localStorage.setItem('ctg-kd-demo-tbmb', '1');
     }
   } catch (e) { console.warn('thông báo mở bán thử', e); }
+  // bộ thử «Thông báo sổ hồng» (18/11/2026): Thông báo bàn giao Giấy chứng nhận (nháp) tòa O cho các căn đã ký HĐMB, đủ thông tin GCN chủ đầu tư / thửa đất
+  // theo bộ hồ sơ Word sổ hồng dự án Cát Tường Smart City → Bộ hồ sơ theo căn › bước «Sổ hồng» in được «Thông báo bàn giao Giấy chứng nhận (sổ hồng)»
+  try {
+    if (!localStorage.getItem('ctg-kd-demo-gcn')) {
+      const C = require('../server/core'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1");
+      const b = await one("SELECT b.id, b.project_id FROM kd_building b JOIN kd_project p ON p.id = b.project_id WHERE p.code = 'CTS' AND b.code = 'O'");
+      const us = b ? await q("SELECT DISTINCT u.code FROM kd_unit u JOIN kd_contract c ON c.unit_id = u.id WHERE u.building_id = $1 AND c.kind = 'hdmb' AND c.status = 'da_ky' ORDER BY u.code", [b.id]) : [];
+      if (u && us.length) {
+        say('Đang dựng thông báo bàn giao Giấy chứng nhận thử…');
+        await C.create('gcn_notice', { doc_no: '01/2026/TB-GCN-CTS', project_id: b.project_id, building_id: b.id, notice_on: C.today(), handover_on: C.addDays(C.today(), 10), pay_from: 'ban_giao', pay_days: 15,
+          unit_list: us.map(x => x.code).join(','), company: 'Công ty Cổ phần Cát Tường', signer: 'Phạm Tiến Dũng', signer_title: 'Tổng Giám đốc',
+          gcn_seri: 'CT695815', gcn_book: 'CT37204', gcn_issuer: 'Sở Tài nguyên và Môi trường tỉnh Bắc Ninh', gcn_on: '2020-10-15', map_sheet: '18', parcel_no: '859', parcel_area: 9621.1, parcel_addr: 'Xã Tam Đa, tỉnh Bắc Ninh',
+          use_form: 'Sử dụng chung', use_purpose: 'Đất ở tại nông thôn (Đất nhà ở xã hội)', land_type: 'Xây dựng nhà ở xã hội', use_term: 'Đến ngày 13/12/2069', use_origin: 'Nhà nước giao đất có thu tiền sử dụng đất', land_origin: 'Nhận chuyển nhượng',
+          ward: 'Tam Đa', province: 'Bắc Ninh', house_type: 'Căn hộ chung cư', structure: 'Bê tông cốt thép', floors_up: 9, floors_down: 1, build_year: 2026, reg_office: 'Văn phòng đăng ký đất đai Bắc Ninh',
+          place: 'Văn phòng Công ty – Tầng 4, chung cư Cát Tường New, đường Lý Thái Tổ, phường Kinh Bắc, tỉnh Bắc Ninh', work_hours: 'Sáng 8h00 – 11h30, chiều 13h30 – 17h00 (thứ Hai – thứ Bảy)', contact: 'Phòng Kinh doanh – 0829.376.666',
+          note: 'Dữ liệu thử: thông báo bàn giao Giấy chứng nhận (nháp) — in «Thông báo sổ hồng» ở Hồ sơ & lưu trữ theo căn' }, u, { demo: true });
+      }
+      localStorage.setItem('ctg-kd-demo-gcn', '1');
+    }
+  } catch (e) { console.warn('thông báo GCN thử', e); }
   const job = async () => { try { await tx(db => biz.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.warn('job', e.message); } };
   await job(); setInterval(job, 2 * 60e3);
 

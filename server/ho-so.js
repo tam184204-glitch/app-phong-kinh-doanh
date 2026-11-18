@@ -8,7 +8,7 @@ const { E } = require('./meta');
 const { zip } = require('./xlsx');
 const { bad, deny, can, fmtMoney, dmy } = C;
 
-const BO = [['mua_ban', 'HS mua bán'], ['vay', 'HS hợp đồng vay'], ['tl_vay', 'HS thanh lý hợp đồng vay'], ['ban_giao', 'HS bàn giao'], ['tl_mua_ban', 'HS thanh lý mua bán']];
+const BO = [['mua_ban', 'HS mua bán'], ['vay', 'HS hợp đồng vay'], ['tl_vay', 'HS thanh lý hợp đồng vay'], ['ban_giao', 'HS bàn giao'], ['tl_mua_ban', 'HS thanh lý mua bán'], ['so_hong', 'HS sổ hồng']];
 const MAU_TNS = () => require('./mau-tns.json').map(t => ({ code: t.code, name: t.name, kind: t.kind, bo: t.bo, scope: t.scope, ent: 'unit', content: t.content }));
 const PII_PRINT = ['truong_phong', 'lanh_dao', 'ho_so', 'admin'];
 
@@ -23,9 +23,16 @@ const LABEL = {
   ngay_hdtt: 'Ngày ký HĐ thỏa thuận', gia_tri_ht: 'Giá trị hoàn thiện', so_hdv: 'Số HĐ vay', ngay_hdv: 'Ngày ký HĐ vay', tien_vay: 'Số tiền vay', vay_dot1: 'Giải ngân đợt 1 (HĐ vay)', vay_dot2: 'Giải ngân đợt 2 (HĐ vay)',
   vay_dot3: 'Giải ngân đợt 3 (HĐ vay)', vay_dot4: 'Giải ngân đợt 4 (HĐ vay)', da_tt: 'Số tiền đã thanh toán HĐMB', da_tt_ht: 'Số tiền đã thanh toán HĐ thỏa thuận', dot: 'Đợt thu tiền', phai_nop: 'Số tiền phải nộp',
   da_nop: 'Số tiền đã nộp', con_nop: 'Số tiền còn phải nộp', tong_phai_nop: 'Tổng số tiền phải nộp', so_vbtt_sc: 'Số VBTT sở hữu chung', ngay_vbtt_sc: 'Ngày VBTT sở hữu chung', tien_s_chung: 'Tiền sở hữu chung',
+  // 18/11/2026: thông báo sổ hồng — lấy theo Thông báo bàn giao Giấy chứng nhận có căn (08 · SH-02) và Hồ sơ cấp sổ hồng của căn
+  tb_gcn_so: 'Số thông báo bàn giao GCN (chưa có thông báo GCN chứa căn này)', tb_cong_ty: 'Tên công ty (Thông báo bàn giao GCN)', tb_nguoi_ky: 'Người ký (Thông báo bàn giao GCN)', tb_chuc_vu: 'Chức vụ người ký',
+  ngay_bg_gcn: 'Ngày bàn giao Giấy chứng nhận', gcn_seri: 'Số seri GCN của chủ đầu tư', gcn_vao_so: 'Số vào sổ cấp GCN', gcn_co_quan: 'Cơ quan cấp GCN', gcn_ngay_cap: 'Ngày cấp GCN',
+  to_ban_do: 'Tờ bản đồ số', thua_dat: 'Thửa đất số', dt_thua: 'Diện tích thửa đất', dia_chi_thua: 'Địa chỉ thửa đất', hinh_thuc_sd: 'Hình thức sử dụng', muc_dich_sd: 'Mục đích sử dụng đất', thoi_han_sd: 'Thời hạn sử dụng',
+  nguon_goc_sd: 'Nguồn gốc sử dụng', nam_xd: 'Năm hoàn thành xây dựng', ket_cau: 'Kết cấu', so_tang_noi: 'Số tầng nổi', so_tang_ham: 'Số tầng hầm', dia_diem_bg_gcn: 'Địa điểm bàn giao GCN', gio_lam_viec: 'Thời gian làm việc',
+  giay_to_mang: 'Giấy tờ mang theo', lien_he: 'Liên hệ', dot_gcn: 'Đợt thu gắn Giấy chứng nhận (Lần thanh toán HĐMB)', tien_dot_gcn: 'Số tiền đợt gắn Giấy chứng nhận', han_dot_gcn: 'Hạn nộp đợt gắn Giấy chứng nhận', con_tong: 'Tổng số tiền còn phải nộp',
+  so_gcn: 'Số Giấy chứng nhận của căn (Hồ sơ cấp sổ hồng)',
 };
 const MONEY = ['gia_truoc_thue', 'thue_vat', 'phi_bao_tri', 'gia_sau_thue', 'tong_gia', 'gia_tri_hdmb', 'gia_tri_ht', 'tien_vay', 'vay_dot1', 'vay_dot2', 'vay_dot3', 'vay_dot4', 'da_tt', 'da_tt_ht',
-  'phai_nop', 'da_nop', 'con_nop', 'con_tien_nha', 'con_hoan_thien', 'tong_phai_nop', 'tien_s_chung'];
+  'phai_nop', 'da_nop', 'con_nop', 'con_tien_nha', 'con_hoan_thien', 'tong_phai_nop', 'tien_s_chung', 'tien_dot_gcn', 'con_tong'];
 
 const live = r => r && !['huy', 'thanh_ly'].includes(r.status);
 const pick = (cts, kind) => cts.find(c => c.kind === kind && live(c)) || cts.find(c => c.kind === kind);
@@ -136,6 +143,22 @@ async function hsData(unitId, user, custId) {
       tong_phai_nop: im.reduce((s, i) => s + +i.amount, 0) + ih.reduce((s, i) => s + +i.amount, 0) });
     S.dot = String(dot.seq);
   } else S.dot = '';
+  // 18/11/2026: thông báo sổ hồng — Thông báo bàn giao GCN có căn (đã phát hành trước, rồi chờ duyệt / nháp), Hồ sơ cấp sổ hồng, đợt thu gắn GCN của HĐMB
+  const gn = (await q("SELECT * FROM kd_gcn_notice WHERE building_id = $1 AND status IN ('da_duyet', 'cho_duyet', 'nhap') ORDER BY (status = 'da_duyet') DESC, coalesce(handover_on, notice_on) DESC NULLS LAST, id DESC", [u.building_id]))
+    .find(n => String(n.unit_list || '').toUpperCase().split(/[,;\s]+/).includes(u.code.toUpperCase())) || null;
+  const pb = await one("SELECT * FROM kd_pinkbook WHERE unit_id = $1 ORDER BY (status = 'da_giao_so') DESC, id DESC LIMIT 1", [u.id]);
+  { const g = gn || {}, T = v => v == null ? '' : String(v), nd = g.notice_on ? dmy(g.notice_on).split('/') : null;
+    Object.assign(S, { tb_gcn_so: T(g.doc_no), tb_gcn_ngay: dmy(g.notice_on), ngay_viet_tb: nd ? `ngày ${nd[0]} tháng ${nd[1]} năm ${nd[2]}` : S.ngay_viet || '', ngay_bg_gcn: dmy(g.handover_on),
+      tb_cong_ty: T(g.company).toUpperCase(), tb_nguoi_ky: T(g.signer), tb_chuc_vu: T(g.signer_title), gcn_seri: T(g.gcn_seri), gcn_vao_so: T(g.gcn_book), gcn_co_quan: T(g.gcn_issuer), gcn_ngay_cap: dmy(g.gcn_on),
+      to_ban_do: T(g.map_sheet), thua_dat: T(g.parcel_no), dt_thua: area(g.parcel_area), dia_chi_thua: T(g.parcel_addr), hinh_thuc_sd: T(g.use_form), muc_dich_sd: T(g.use_purpose), loai_dat: T(g.land_type),
+      thoi_han_sd: T(g.use_term), nguon_goc_sd: T(g.use_origin), nguon_goc_nha_dat: T(g.land_origin), xa_phuong: T(g.ward), tinh: T(g.province), loai_nha: T(g.house_type), ket_cau: T(g.structure),
+      so_tang_noi: T(g.floors_up), so_tang_ham: T(g.floors_down), nam_xd: T(g.build_year), noi_nop_hs: T(g.reg_office), dia_diem_bg_gcn: T(g.place), gio_lam_viec: T(g.work_hours), giay_to_mang: T(g.docs_need), lien_he: T(g.contact),
+      so_gcn: T(pb?.cert_no), ngay_cap_gcn_can: dmy(pb?.result_on), ma_ho_so_sh: T(pb?.file_no) });
+    const GRE = /gi[ấa]y\s*ch[ứu]ng\s*nh[ậa]n|\bGCN\b|s[ổo]\s*h[ồo]ng/i;
+    const gi = im.filter(x => x.is_gcn).length ? im.filter(x => x.is_gcn) : im.filter(x => !x.is_maint && !x.is_bg && GRE.test(x.name || '')).slice(0, 1);
+    S.dot_gcn = gi.map(x => x.name || `Đợt ${x.seq}`).join(' + '); S.han_dot_gcn = gi[0]?.due_on ? dmy(gi[0].due_on) : '';
+    N.tien_dot_gcn = gi.length ? gi.reduce((a, x) => a + +x.amount, 0) : null;
+    N.con_tong = N.tong_phai_nop != null ? Math.max(0, N.tong_phai_nop - (N.da_nop || 0)) : null; }
   const { moneyWords } = require('./io');
   for (const [key, v] of Object.entries(N)) {
     if (MONEY.includes(key)) { S[key] = v == null ? '' : fmtMoney(v); S[key + '_chu'] = v == null || v === '' ? '' : moneyWords(v); }   // 0 → «Không đồng» (không báo thiếu)
@@ -143,7 +166,7 @@ async function hsData(unitId, user, custId) {
   }
   const d = C.today().split('-');
   Object.assign(S, { ngay: dmy(C.today()), ngay_viet: `ngày ${d[2]} tháng ${d[1]} năm ${d[0]}`, nguoi_lap: user.full_name || '' });
-  return { map: S, nums: N, ctx: { u, hdmb, ht, vay, res, k, nx, cts } };
+  return { map: S, nums: N, ctx: { u, hdmb, ht, vay, res, k, nx, cts, gn, pb } };
 }
 
 // ---- biểu thức {=…}: số, trường số, + - * / ( ), round(x, n), chu(x) — không dùng eval ----
@@ -203,7 +226,8 @@ const missOf = (content, D) => { const s = new Set(); merge(content, D, s); retu
 
 // bước hiện tại của căn (gợi ý bộ hồ sơ)
 function stepOf(ctx) {
-  const { hdmb, vay, ht, cts } = ctx;
+  const { hdmb, vay, ht, cts, gn } = ctx;
+  if (gn?.status === 'da_duyet' && hdmb) return 'so_hong';   // 18/11/2026: căn đã có thông báo bàn giao Giấy chứng nhận phát hành → bộ sổ hồng
   if (cts.some(c => ['hdmb', 'hoan_thien'].includes(c.kind) && c.status === 'thanh_ly')) return 'tl_mua_ban';
   if (vay && (vay.status === 'thanh_ly' || vay.closed)) return 'tl_vay';
   if (hdmb && hdmb.status === 'da_ky' && ht) return 'ban_giao';
@@ -223,7 +247,7 @@ async function autoProjectTemplates(unitId, user) {
   const IO = require('./io');
   const sc = await IO.recScope('unit', unitId); if (!sc.pcode) return 0;
   const have = (await q('SELECT code, bo, scope, bedrooms FROM kd_template WHERE active AND bo IS NOT NULL')).filter(t => IO.tplFitLevel(t, sc) >= 0);
-  const STD = /^[A-Z0-9]+-(MB|VAY|TLV|BG|TLMB)-\d/i;   // mã theo chuẩn <DỰ ÁN>-<LOẠI>-<SỐ>; bộ có mẫu đặt mã riêng (tự tải lên) thì không chép thêm vào bộ đó
+  const STD = /^[A-Z0-9]+-(MB|VAY|TLV|BG|TLMB|SH)-\d/i;   // mã theo chuẩn <DỰ ÁN>-<LOẠI>-<SỐ>; bộ có mẫu đặt mã riêng (tự tải lên) thì không chép thêm vào bộ đó
   const P = String(sc.pcode).toUpperCase(), base = MAU_TNS().filter(t => /^TNS-/.test(t.code)), done = new Set(); let n = 0;
   const sysU = await one("SELECT * FROM kd_user WHERE role = 'admin' AND active ORDER BY id LIMIT 1") || C.SYS;
   for (const [bo] of BO) {
@@ -530,7 +554,7 @@ const unitCopies = v => { const m = new Map();
     m.set(r[1].toUpperCase(), Math.min(50, Math.max(1, +r[2] || 1))); }
   return m; };
 // bước tự động (13/11/2026): bo = 'auto' → mỗi căn in bộ hồ sơ của bước đang làm của căn đó (theo HĐ của khách đang giao dịch)
-const BO_L = Object.fromEntries(BO), BO_PFX = { mua_ban: 'MB', vay: 'VAY', tl_vay: 'TLV', ban_giao: 'BG', tl_mua_ban: 'TLMB' };
+const BO_L = Object.fromEntries(BO), BO_PFX = { mua_ban: 'MB', vay: 'VAY', tl_vay: 'TLV', ban_giao: 'BG', tl_mua_ban: 'TLMB', so_hong: 'SH' };
 const boFor = (bo, D) => bo && bo !== 'auto' ? bo : stepOf(D.ctx);
 const keyOk = (want, t) => !want.size || want.has(tplKey(t.code));
 async function batchPlan(units, bo, user, keys) {

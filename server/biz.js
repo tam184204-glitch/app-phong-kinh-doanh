@@ -2170,6 +2170,10 @@ async function gcnReapply(db, contractId, user, skip) {
 H.gcn_notice = {
   noDelete: r => !['nhap', 'tu_choi'].includes(r.status) && 'Chỉ xóa được thông báo đang ở bản nháp / bị từ chối',
   async beforeSave(r, old, { db }) {
+    if (!old && r.project_id) {   // 18/11/2026: khai 1 lần — thông tin sổ hồng còn trống lấy từ thông báo GCN trước của dự án (cùng tòa trước)
+      const prev = await db.one('SELECT * FROM kd_gcn_notice WHERE project_id = $1 AND status <> \'huy\' ORDER BY (building_id = $2) DESC, id DESC LIMIT 1', [+r.project_id, +r.building_id || 0]);
+      if (prev) for (const k of require('./meta').GCN_INFO) if ((r[k] == null || r[k] === '') && prev[k] != null && prev[k] !== '') r[k] = prev[k];
+    }
     const b = r.building_id && await db.one('SELECT project_id FROM kd_building WHERE id = $1', [+r.building_id]);
     if (b && r.project_id && +b.project_id !== +r.project_id) bad('Tòa không thuộc dự án đã chọn');
     if (r.pay_days != null && +r.pay_days < 0) bad('Số ngày được nộp tiền không được âm');
@@ -3330,4 +3334,4 @@ async function doSyncStages(db) {
   return n;
 }
 
-module.exports = { holdDay, markDirty, syncIfDirty, buyerCarry, noxhSpouse, spouseCo, polFinish, saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs, noticeHist, noticeUnits, noticeRent, rentPrices, noticeConflict, rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan, unitNotes, saleSchedPolicy, saleSchedRows, rentBackfill, noxhSyncAll, unitDeals, bgDueSet, loanNet, loanPairOf, loanAutoFinish, saleValues, policyNotices };
+module.exports = { holdDay, markDirty, syncIfDirty, buyerCarry, noxhSpouse, spouseCo, polFinish, saleTrack, policyUnits, resPolicy, unitCustomers, noxhGate, schedPolicy, policyApplyOne, polFin, liqContracts, liqSync, unitContracts, liqSlipOpts, bgReapply, bgSet, bgSuggest, gcnReapply, gcnSet, gcnSuggest, fillTplEnt, tplEntOf, fixBaseDiscount, loanPayVouchers, loanPaySync, voucherPrefill, fillVoucherInfo, LIVE_CT, rentWord, loanPlan, loanSchedule, loanRebase, ckItem, saleCheck, nextContractNo, contractPrefill, syncStages, H, LEAD_CH, intakeLead, debtOf, PAY_ST, recomputeUnit, expireHolds, pricing, normSchedule, writeSchedule, syncContractValue, fixRentValue, fixLiquidated, contractPrice, cancelPrefill, refreshCommission, handoverCond, defaultList, noticeTargets, jobs, noticeHist, noticeUnits, noticeRent, rentPrices, noticeConflict, rentPolicyFor, rentOf, rentApply, rentTerms, rentTxt, rentPlan, unitNotes, saleSchedPolicy, saleSchedRows, rentBackfill, noxhSyncAll, unitDeals, bgDueSet, loanNet, loanPairOf, loanAutoFinish, saleValues, policyNotices, gcnNoticeOf };

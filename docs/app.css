@@ -2677,3 +2677,19 @@ table.t.uc-t td.num, table.t.uc-t th.num { white-space: nowrap; overflow-wrap: n
 .bp-n { font-size: 12.5px; background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.25); padding: 4px 10px; border-radius: 999px; }
 .bpub:fullscreen { background: var(--paper); overflow: auto; padding: 18px 24px; }
 .bpub:fullscreen .ph .eyebrow { display: none; }
+/* 18/11/2026: chính sách — chọn Thông báo đang áp dụng */
+.npick{border:1px solid var(--line2);border-radius:10px;padding:10px;background:#fbfdff}
+.npick-t{max-height:240px}.npick-t tr.off td{background:#fdf6f6}.npick-t td .neg{margin-top:2px}
+
+/* 18/11/2026: Bảng hàng — nhãn trạng thái mở bán / cho thuê theo thông báo đang áp dụng */
+.u .obr{display:flex;flex-wrap:wrap;gap:3px;margin-top:4px}
+.ob{display:inline-block;font-size:10px;font-weight:700;line-height:1.5;padding:0 6px;border-radius:8px;white-space:nowrap;border:1px solid transparent}
+.ob.b{background:#fff;color:#0b6b3a;border-color:#64c08a}.ob.t{background:#fff;color:#5b2ea6;border-color:#b79be8}.ob.n{background:rgba(255,255,255,.6);color:#6b7787;border:1px dashed #b8c3d1}
+.ob-f{gap:8px;flex-wrap:wrap;border-top:1px solid var(--line2)}
+.ob-c{border:1px solid var(--line2);background:var(--card);border-radius:16px;padding:3px 12px;font:inherit;font-size:12.5px;cursor:pointer;color:var(--ink)}
+.ob-c b{margin-left:3px}.ob-c.on{border-color:var(--cobalt);background:var(--cobalt-50)}
+.ob-c.ban{box-shadow:inset 3px 0 0 #64c08a}.ob-c.thue{box-shadow:inset 3px 0 0 #b79be8}.ob-c.none{box-shadow:inset 3px 0 0 #b8c3d1}
+.ob-ns{display:flex;flex-direction:column;gap:6px}.ob-n{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:start;padding:7px 9px;border:1px solid var(--line2);border-radius:8px;font-size:13px}
+
+.npick-none{margin-top:6px;padding:7px 10px;border-radius:8px;background:#fff7e8;border:1px solid #f3d9a4;color:#7a4b00;font-size:13px}
+.npick-none.err{background:#fdeeee;border-color:#f1b5b5;color:#8f1d1d;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
