@@ -495,44 +495,49 @@ async function policyUnits(db, qs) {
     rows = rows.filter(u => map.has(u.code.toUpperCase())).map(u => ({ ...u, nt: map.get(u.code.toUpperCase()).code })); }
   return { rows, hidden: all.length - rows.length };
 }
-// 18/11/2026: CHÍNH SÁCH ↔ THÔNG BÁO TỰ ÁP DỤNG — chọn Loại chính sách + Dự án → hệ thống tự lấy TOÀN BỘ thông báo đang có hiệu lực của từng dự án
-// (chính sách bán → thông báo mở bán; cho thuê → thông báo cho thuê; thông báo cũ chưa ghi loại = mở bán). Liên kết theo ID dự án.
-// Đang có hiệu lực — cùng cách xác định với phân hệ Thông báo mở bán / cho thuê: đã phát hành (status da_duyet; hủy / thu hồi = huy),
-// đã tới NGÀY BAN HÀNH (notice_on ≤ hôm nay), chưa hết hạn (close_on ≥ hôm nay giờ Việt Nam — tính đến hết ngày kết thúc, hoặc chưa có ngày kết thúc).
-// 18/11/2026 sửa: trước đây lấy nhầm «Ngày bắt đầu nhận hồ sơ» (open_on) làm ngày bắt đầu hiệu lực → thông báo đã ban hành nhưng chưa tới ngày nhận hồ sơ bị loại sai.
-// Thời gian nhận hồ sơ (open_on – close_on) chỉ hiển thị để đối chiếu, không dùng để loại thông báo. Căn lập chính sách = gộp căn của các thông báo đó
+// 18/11/2026: THÔNG BÁO ĐANG ÁP DỤNG = thông báo BAN HÀNH SAU CÙNG của từng (dự án, hình thức Bán / Cho thuê) — thông báo mới ban hành thay thế thông báo trước
+// (không gộp căn của các thông báo cũ). Sau cùng theo thời điểm ban hành (lần duyệt phát hành; thiếu thì ngày ban hành), không theo lúc sửa; nháp / chờ duyệt chưa thay thế.
+// Thông báo sau cùng bị hủy / thu hồi → dự án chưa có thông báo đang áp dụng (không tự kích hoạt lại thông báo cũ) cho tới khi ban hành thông báo thay thế.
+// Không dùng thời gian nhận hồ sơ để loại thông báo. Liên kết theo ID dự án; thông báo cũ chưa ghi loại = mở bán. Dùng chung: form chính sách, Bảng hàng, chặn đăng ký mới.
 const dmyS = v => v ? d10(v).split('-').reverse().join('/') : '';
 const noticeIds = v => [...new Set(String(v || '').split(/[,;\s]+/).map(Number).filter(n => n > 0))];
-const NOTICE_LIVE = "n.status = 'da_duyet' AND (n.notice_on IS NULL OR n.notice_on <= $T::date) AND (n.close_on IS NULL OR n.close_on >= $T::date)";   // $T = ngày hôm nay giờ VN
-// lý do thông báo (cùng dự án, cùng loại) không được tự áp dụng — hiện trên form để đối chiếu
-const noticeOff = n => n.status === 'huy' ? 'đã hủy / thu hồi' : n.status === 'cho_duyet' ? 'đang chờ duyệt, chưa ban hành' : n.status !== 'da_duyet' ? 'chưa ban hành'
-  : n.notice_on && d10(n.notice_on) > today() ? `chưa tới ngày ban hành ${dmyS(n.notice_on)}` : n.close_on && d10(n.close_on) < today() ? `đã hết hiệu lực từ sau ngày ${dmyS(n.close_on)}` : null;
-const liveSql = k => NOTICE_LIVE.replace(/\$T/g, '$' + k);
-// thông báo đang có hiệu lực của các dự án theo hình thức; map: mã căn → thông báo (gộp căn trùng, thông báo mới nhất trước); none: dự án không có thông báo nào
+const NOTICE_PUB = `SELECT n.*, p.code project, coalesce(n.deal, 'ban') dk,
+    coalesce((SELECT max(a.decided_at) FROM kd_approval a WHERE a.ent = 'sale_notice' AND a.rec_id = n.id AND a.status = 'da_duyet'), n.notice_on::timestamptz, n.created_at) pub_at
+  FROM kd_sale_notice n JOIN kd_project p ON p.id = n.project_id WHERE n.project_id = ANY($1) AND n.status IN ('da_duyet', 'huy')`;
+// all: mọi thông báo đã ban hành (kể cả đã thu hồi) mới nhất trước; latest: (dự án:hình thức) → thông báo ban hành sau cùng; live: các thông báo sau cùng chưa thu hồi
+async function latestNotices(db, pids) {
+  const all = pids.length ? await db.q(NOTICE_PUB + ' ORDER BY n.project_id, dk, pub_at DESC, n.id DESC', [pids]) : [];
+  const latest = new Map(); for (const n of all) { const k = n.project_id + ':' + n.dk; if (!latest.has(k)) latest.set(k, n); }
+  return { all, latest, live: [...latest.values()].filter(n => n.status === 'da_duyet') };
+}
+// thông báo đang áp dụng của các dự án theo hình thức (mỗi dự án tối đa 1); map: mã căn → thông báo; none: dự án chưa có; revoked: thông báo sau cùng đã bị thu hồi
 async function policyAutoNotices(db, pids, deal) {
-  const ok = pids.length ? await db.q(`SELECT n.*, p.code project FROM kd_sale_notice n JOIN kd_project p ON p.id = n.project_id WHERE n.project_id = ANY($1) AND coalesce(n.deal, 'ban') = $2 AND ${liveSql(3)} ORDER BY n.notice_on DESC NULLS LAST, n.id DESC`, [pids, deal, today()]) : [];
-  const map = new Map(), cnt = new Map();
+  const L = await latestNotices(db, pids), ok = L.live.filter(n => n.dk === deal), map = new Map(), cnt = new Map();
   for (const n of ok) { const us = await noticeUnits(db, n); cnt.set(n.id, us.length); for (const u of us) if (!map.has(u.code.toUpperCase())) map.set(u.code.toUpperCase(), n); }
-  return { ok, map, cnt, none: pids.filter(p => !ok.some(n => +n.project_id === p)) };
+  return { ok, map, cnt, L, none: pids.filter(p => !ok.some(n => +n.project_id === p)), revoked: pids.map(p => L.latest.get(p + ':' + deal)).filter(n => n?.status === 'huy') };
 }
 // khu «Thông báo đang áp dụng» trên form chính sách — chỉ hiển thị để đối chiếu
 async function policyNotices(db, qs) {
   const pids = String(qs.project || '').split(',').map(Number).filter(Boolean), deal = qs.pkind === 'thue' ? 'thue' : 'ban';
   if (!pids.length) return { rows: [], none: [] };
   const x = await policyAutoNotices(db, pids, deal), P = new Map((await db.q('SELECT id, code, name FROM kd_project WHERE id = ANY($1)', [pids])).map(p => [p.id, p]));
-  const off = (await db.q(`SELECT n.*, p.code project FROM kd_sale_notice n JOIN kd_project p ON p.id = n.project_id WHERE n.project_id = ANY($1) AND coalesce(n.deal, 'ban') = $2 AND n.status IN ('cho_duyet', 'da_duyet', 'huy') AND n.id <> ALL($3) ORDER BY n.id DESC LIMIT 12`, [pids, deal, x.ok.map(n => n.id)]))
-    .map(n => ({ code: n.code, doc_no: n.doc_no, project: n.project, why: noticeOff(n) })).filter(n => n.why);
-  return { rows: x.ok.map(n => ({ id: n.id, code: n.code, doc_no: n.doc_no, title: n.title, deal, project: n.project, notice_on: d10(n.notice_on), open_on: d10(n.open_on), close_on: d10(n.close_on), n_units: x.cnt.get(n.id) || 0 })),
-    none: x.none.map(id => ({ id, code: P.get(id)?.code || '#' + id, name: P.get(id)?.name || '' })), off };
+  // thông báo cùng dự án / hình thức không áp dụng: đã được thay thế (ban hành trước), đã thu hồi, đang chờ duyệt (chưa thay thế)
+  const lt = n => x.L.latest.get(n.project_id + ':' + deal);
+  const off = x.L.all.filter(n => n.dk === deal && !x.ok.includes(n)).slice(0, 12).map(n => ({ code: n.code, doc_no: n.doc_no, project: n.project,
+    why: n.status === 'huy' ? `đã hủy / thu hồi${lt(n) === n ? ' — là thông báo sau cùng, chưa có thông báo thay thế' : ''}` : `đã được thay thế bởi ${lt(n)?.code || 'thông báo ban hành sau'}` }));
+  for (const n of await db.q("SELECT n.code, n.doc_no, p.code project FROM kd_sale_notice n JOIN kd_project p ON p.id = n.project_id WHERE n.project_id = ANY($1) AND coalesce(n.deal, 'ban') = $2 AND n.status = 'cho_duyet' ORDER BY n.id DESC LIMIT 5", [pids, deal]))
+    off.push({ ...n, why: 'đang chờ duyệt — chưa thay thế thông báo đang áp dụng' });
+  return { rows: x.ok.map(n => ({ id: n.id, code: n.code, doc_no: n.doc_no, title: n.title, deal, project: n.project, pub_on: vnDay(n.pub_at), notice_on: d10(n.notice_on), open_on: d10(n.open_on), close_on: d10(n.close_on), n_units: x.cnt.get(n.id) || 0 })),
+    none: x.none.map(id => { const rv = x.revoked.find(n => +n.project_id === id); return { id, code: P.get(id)?.code || '#' + id, name: P.get(id)?.name || '', revoked: rv ? rv.code : null }; }), off };
 }
 // lưu / trình duyệt chính sách: tự xác định lại thông báo đang có hiệu lực, kiểm tra từng căn (thuộc thông báo đó, chưa ký HĐ, không ngừng kinh doanh);
 // lưu đích danh mã căn + liên kết thông báo tự áp dụng + bản chụp thông tin thông báo lúc lưu (chính sách đã duyệt giữ nguyên, không tự đổi theo thông báo)
 async function policyNoticeCheck(db, r, { units = true } = {}) {
   const pids = (r.project_ids || []).map(Number), deal = r.pkind === 'thue' ? 'thue' : 'ban', L = deal === 'thue' ? 'cho thuê' : 'mở bán';
   const x = await policyAutoNotices(db, pids, deal), noneL = async () => (await db.q('SELECT code FROM kd_project WHERE id = ANY($1)', [x.none])).map(p => p.code).join(', ');
-  if (!x.ok.length) bad(`Dự án chưa có thông báo ${L} đang có hiệu lực (đã ban hành, đã tới ngày ban hành, chưa hết hạn, chưa hủy / thu hồi) — chưa lập được chính sách ${deal === 'thue' ? 'cho thuê' : 'bán hàng'}`, { fields: ['project_ids'] });
+  if (!x.ok.length) bad(`Dự án chưa có thông báo ${L} đang áp dụng (thông báo ban hành sau cùng, chưa hủy / thu hồi) — chưa lập được chính sách ${deal === 'thue' ? 'cho thuê' : 'bán hàng'}`, { fields: ['project_ids'] });
   r.notice_ids = x.ok.map(n => n.id).join(',');
-  r.notice_snap = x.ok.map(n => ({ id: n.id, code: n.code, doc_no: n.doc_no || null, title: n.title || null, deal, project: n.project, notice_on: d10(n.notice_on), open_on: d10(n.open_on), close_on: d10(n.close_on), n_units: x.cnt.get(n.id) || 0, at: today() }));
+  r.notice_snap = x.ok.map(n => ({ id: n.id, code: n.code, doc_no: n.doc_no || null, title: n.title || null, deal, project: n.project, pub_on: vnDay(n.pub_at), notice_on: d10(n.notice_on), open_on: d10(n.open_on), close_on: d10(n.close_on), n_units: x.cnt.get(n.id) || 0, at: today() }));
   const noneP = x.none.length ? await noneL() : '';
   if (!units) return;
   const g = String(r.unit_group || '').toUpperCase().split(/[,;\s]+/).filter(Boolean);
@@ -540,7 +545,7 @@ async function policyNoticeCheck(db, r, { units = true } = {}) {
   const all = await db.q(`SELECT u.code, u.project_id, upper(b.code) b, u.lock, EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.kind IN ('hdmb','thue_mua','vay','thue') AND c.status = 'da_ky') signed
     FROM kd_unit u JOIN kd_building b ON b.id = u.building_id WHERE u.project_id = ANY($1)`, [pids]);
   const us = all.filter(u => g.includes('*') || g.includes(u.b) || g.includes(u.code.toUpperCase())), unk = g.filter(t => t !== '*' && !all.some(u => u.b === t || u.code.toUpperCase() === t));
-  const why = u => !x.map.has(u.code.toUpperCase()) ? (noneP && x.none.includes(+u.project_id) ? `dự án chưa có thông báo ${L} đang có hiệu lực` : `không thuộc thông báo ${L} đang có hiệu lực`) : u.signed ? 'đã ký hợp đồng' : u.lock === 'ngung_kd' ? 'ngừng kinh doanh' : null;
+  const why = u => !x.map.has(u.code.toUpperCase()) ? (noneP && x.none.includes(+u.project_id) ? `dự án chưa có thông báo ${L} đang áp dụng` : `không thuộc thông báo ${L} đang áp dụng (ban hành sau cùng)`) : u.signed ? 'đã ký hợp đồng' : u.lock === 'ngung_kd' ? 'ngừng kinh doanh' : null;
   const bads = [...unk.map(c => `${c} (không có trong dự án)`), ...us.filter(why).map(u => `${u.code} (${why(u)})`)];
   if (bads.length) bad(`Căn không hợp lệ: ${bads.slice(0, 10).join('; ')}${bads.length > 10 ? ` … (${bads.length} căn)` : ''} — bỏ tích các căn này`, { fields: ['unit_group'] });
   r.unit_group = [...new Set(us.map(u => u.code.toUpperCase()))].join(',');
@@ -1630,9 +1635,9 @@ const SN_L = r => r?.deal === 'thue' ? 'cho thuê' : 'mở bán';
 // 18/11/2026: TRẠNG THÁI MỞ BÁN / CHO THUÊ theo thông báo đang áp dụng (đã phát hành, còn hiệu lực — chưa hết hạn nhận hồ sơ, chưa hủy / thu hồi):
 // id căn → [thông báo có căn] (mới nhất trước); tự cập nhật theo danh sách căn hiện tại của thông báo (rút căn / hủy / hết hạn thì căn không còn)
 async function activeNoticeMap(db, projectId) {
-  const ns = await db.q(`SELECT n.* FROM kd_sale_notice n WHERE n.project_id = $1 AND ${liveSql(2)} ORDER BY n.notice_on DESC NULLS LAST, n.id DESC`, [+projectId, today()]);   // đã phát hành, đã tới ngày áp dụng, chưa hết hạn, chưa hủy
+  const ns = (await latestNotices(db, [+projectId])).live;   // thông báo ban hành sau cùng của từng hình thức, chưa thu hồi
   const m = new Map();
-  for (const n of ns) { const x = { id: n.id, code: n.code, doc_no: n.doc_no || null, title: n.title || null, deal: n.deal === 'thue' ? 'thue' : 'ban', notice_on: d10(n.notice_on), open_on: d10(n.open_on), close_on: d10(n.close_on) };
+  for (const n of ns) { const x = { id: n.id, code: n.code, doc_no: n.doc_no || null, title: n.title || null, deal: n.deal === 'thue' ? 'thue' : 'ban', pub_on: vnDay(n.pub_at), notice_on: d10(n.notice_on), open_on: d10(n.open_on), close_on: d10(n.close_on) };
     for (const u of await noticeUnits(db, n)) (m.get(u.id) || m.set(u.id, []).get(u.id)).push(x); }
   return m;
 }
@@ -1650,9 +1655,10 @@ async function unitNoticeHist(db, unitId) {
     if (!logged.has(n.id) && inN) { ev.push({ at: n.pub_at || n.notice_on, notice_id: n.id, action: 'vao', who: '', note: 'Theo thông báo đã phát hành (trước khi có nhật ký)' });
       if (n.status === 'huy') ev.push({ at: n.updated_at, notice_id: n.id, action: 'huy', who: '', note: '' }); }
     const last = (logged.has(n.id) ? mine : ev.filter(e => e.notice_id === n.id)).slice(-1)[0];
-    if (n.status === 'da_duyet' && n.close_on && d10(n.close_on) < today() && inN && last?.action === 'vao') ev.push({ at: d10(n.close_on) + 'T23:59:00+07:00', notice_id: n.id, action: 'het_han', who: '', note: 'Hết thời gian nhận hồ sơ' });
+    const nx = n.status === 'da_duyet' && ns.filter(m => m.id !== n.id && (m.deal === 'thue' ? 'thue' : 'ban') === (n.deal === 'thue' ? 'thue' : 'ban') && +new Date(m.pub_at || m.notice_on) > +new Date(n.pub_at || n.notice_on)).sort((a, b) => +new Date(a.pub_at || a.notice_on) - +new Date(b.pub_at || b.notice_on))[0];
+    if (nx && inN && last?.action === 'vao') ev.push({ at: nx.pub_at || nx.notice_on, notice_id: n.id, action: 'thay', who: '', note: `Thay thế bởi ${nx.code}${nx.doc_no ? ' (số ' + nx.doc_no + ')' : ''} — thông báo ban hành sau` });
   }
-  const NM = new Map(ns.map(n => [n.id, n])), AL = { vao: 'Đưa vào thông báo', rut: 'Rút khỏi thông báo', huy: 'Thông báo bị hủy / thu hồi', het_han: 'Thông báo hết hiệu lực' };
+  const NM = new Map(ns.map(n => [n.id, n])), AL = { vao: 'Đưa vào thông báo', rut: 'Rút khỏi thông báo', huy: 'Thông báo bị hủy / thu hồi', thay: 'Ngừng áp dụng — thông báo được thay thế' };
   const t = v => v instanceof Date ? +v : Date.parse(String(v));
   return { unit: u.code, rows: ev.map(e => { const n = NM.get(e.notice_id); return { ...e, code: n?.code || '#' + e.notice_id, doc_no: n?.doc_no || null, deal: n?.deal === 'thue' ? 'thue' : 'ban', action_l: AL[e.action] || e.action }; }).sort((a, b) => t(a.at) - t(b.at)) };
 }
