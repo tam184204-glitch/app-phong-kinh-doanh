@@ -3035,8 +3035,15 @@ const BGRP = { chua_mo_ban: 'trong', con_ban: 'trong', giu_cho: 'giu', da_coc: '
 const bgOf = u => u.rent ? 'thue' : BGRP[u.status];   // căn có HĐ thuê còn hiệu lực = nhóm Cho thuê
 const BGRP_L = { trong: 'Chưa bán', giu: 'Giữ chỗ', ky: 'Đã bán', thue: 'Cho thuê', tam_khoa: 'Tạm khóa', ngung_kd: 'Ngừng KD' };
 const USTAT = { con_ban: 'Còn bán', giu_cho: 'Giữ chỗ', da_coc: 'Đã cọc', da_ky_hd: 'Đã ký HĐ', da_ban_giao: 'Đã bàn giao', chua_mo_ban: 'Chưa mở bán', tam_khoa: 'Tạm khóa', ngung_kd: 'Ngừng KD' };
+// 18/11/2026: 1 màn Bảng hàng — ô sổ xuống chọn «Bảng hàng nội bộ» / «Bảng hàng cho khách xem» (nhớ lựa chọn theo máy)
+const BVIEW_K = 'ctg-kd-board-view';
+const bviewSel = v => `<select id="bview" class="bview" title="Chọn bảng hàng"><option value="noi_bo" ${v !== 'khach' ? 'selected' : ''}>Bảng hàng nội bộ</option><option value="khach" ${v === 'khach' ? 'selected' : ''}>Bảng hàng cho khách xem</option></select>`;
+const bviewWire = main => { const el = $('#bview', main); if (el) el.onchange = () => { try { localStorage.setItem(BVIEW_K, el.value); } catch { } (el.value === 'khach' ? boardPubView : V.board)(main, {}); }; };
 V.board = async (main, params) => {
   const s = ST.board ||= { project: '', building: '', st: '', kind: '' };
+  let bv = params.view; if (!bv) try { bv = localStorage.getItem(BVIEW_K); } catch { }
+  if (params.view) try { localStorage.setItem(BVIEW_K, params.view); } catch { }
+  if (bv === 'khach') return boardPubView(main, params);
   if (params.project) s.project = params.project;
   // tra cứu căn: mã căn (0905, K-0905, CTS-K-0905) hoặc tên khách — căn khớp sáng viền, căn khác mờ
   const norm = v => String(v ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
@@ -3047,7 +3054,7 @@ V.board = async (main, params) => {
     const cnt = {}; d.units.forEach(u => cnt[bgOf(u)] = (cnt[bgOf(u)] || 0) + 1);
     const floors = [...new Set(d.units.map(u => u.floor))].sort((a, b) => a - b);   // 14/11/2026: trình bày từ tầng 1 lên tầng trên cùng
     const kinds = [...new Set(d.units.map(u => u.kind))];
-    main.innerHTML = `<div class="page">${head('02', 'Bảng hàng', 'fa-table-cells', M.ents.reservation.perm.c ? `<span class="small muted">Bấm căn còn trống để lập phiếu đăng ký</span>` : '')}
+    main.innerHTML = `<div class="page">${head('02', 'Bảng hàng', 'fa-table-cells', `${M.ents.reservation.perm.c ? `<span class="small muted" style="align-self:center">Bấm căn còn trống để lập phiếu đăng ký</span>` : ''}${bviewSel('noi_bo')}`)}
       <div class="card mb"><div class="toolbar" style="border:0"><select id="bp">${d.projects.filter(p => p.n).map(p => `<option value="${p.id}" ${p.id === d.project ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)} (${p.n} căn)</option>`).join('')}</select>
         <select id="bk"><option value="">Mọi loại căn</option>${kinds.map(k => `<option value="${k}" ${s.kind === k ? 'selected' : ''}>${esc(M.ents.unit.fields.find(f => f.k === 'kind').o.find(o => o[0] === k)?.[1] || k)}</option>`).join('')}</select>
         <div class="search" style="max-width:300px"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="bq" placeholder="Tra cứu căn: mã căn, tên khách…" value="${esc(s.q || '')}" autocomplete="off"></div><span class="small muted" id="bqN"></span>
@@ -3055,6 +3062,7 @@ V.board = async (main, params) => {
         <div style="padding:0 14px 12px"><div class="towers">${d.buildings.map(b => `<div class="tower ${b.id === d.building ? 'on' : ''}" data-b="${b.id}"><b>${esc(b.name || 'Tòa ' + b.code)}</b><small>${b.n} căn</small></div>`).join('')}</div></div></div>
       <div class="card"><div class="toolbar"><div class="legend">${Object.entries(BGRP_L).filter(([k]) => cnt[k]).map(([k, l]) => `<span data-st="${k}" style="cursor:pointer;${s.st && s.st !== k ? 'opacity:.4' : ''}"><b class="u g-${k}" style="width:12px;height:12px;min-height:0;padding:0;border-radius:3px"></b>${l} <b style="background:none;width:auto;height:auto;color:var(--ink)">${cnt[k]}</b></span>`).join('')}</div>${s.st ? '<button class="btn sm ghost" data-st="">Bỏ lọc</button>' : ''}<span class="grow"></span><span class="small muted">${d.units.length} căn · ${floors.length} tầng</span></div>
       <div class="bd"><div class="floors">${floors.map(fl => `<div class="floor"><div class="fl">Tầng ${fl}</div><div class="us">${d.units.filter(u => u.floor === fl).map(u => `<div class="u g-${bgOf(u)} ${(s.st && s.st !== bgOf(u)) || (s.kind && s.kind !== u.kind) || !hitU(u) ? 'dim' : ''}${s.q && hitU(u) ? ' hit' : ''}" data-u="${u.id}" title="${esc(u.code)} · ${BGRP_L[bgOf(u)]}${u.rent && u.rent_to ? ' đến ' + dmy(u.rent_to) : ''}${!u.rent && u.res_rent ? ' (đăng ký thuê)' : ''}${u.sale_doc ? ` (bán qua ${u.sale_doc === 'vay' ? 'HĐ vay' : 'HĐ thuê'} — chờ HĐMB)` : ''}${!u.rent && u.rent_ended ? ' · đã hết hạn thuê ' + dmy(u.rent_ended) + ' — bán / cho thuê tiếp được' : ''}${u.cancelled ? ' · đã hủy đăng ký' : ''}${u.customer ? ' · ' + esc(u.customer) : ''}">${u.hold_until ? `<span class="hold">${ico('fa-clock')}</span>` : ''}<b class="no">${esc(u.code.split('-').pop())}</b><div class="sp">${u.bedrooms || ''}PN · ${fnum(u.area_tt)}m²</div><div class="pr">${u.rent && u.rent_amt ? `${fmB(u.rent_amt)}/tháng` : u.res_rent ? `${fmB(u.res_rent)}/tháng` : fmB(u.total_price)}</div><div class="cu">${esc(u.customer || u.direction || '')}</div></div>`).join('')}</div></div>`).join('') || '<div class="empty">Tòa chưa có căn</div>'}</div></div></div></div>`;
+    bviewWire(main);
     $('#bp', main).onchange = e => { s.project = e.target.value; s.building = ''; draw(); };
     $('#bk', main).onchange = e => { s.kind = e.target.value; draw(); };
     const applyQ = () => {   // lọc tại chỗ, không tải lại
@@ -3102,7 +3110,8 @@ function unitPop(u, after) {
 // chỉ hiện căn thuộc thông báo mở bán / cho thuê ĐÃ PHÁT HÀNH (đã duyệt) — thông báo nháp / chờ duyệt chưa hiện; không tên khách, không thông tin nội bộ,
 // giá chỉ hiện ở căn còn trống. Nút «Trình chiếu» = toàn màn hình để mở cho khách xem trên TV / laptop
 const PUB_G = { con: 'trong', giu: 'giu', ban: 'ky', thue: 'thue' }, PUB_L = { con: 'Còn trống', giu: 'Đã giữ chỗ', ban: 'Đã bán', thue: 'Đã cho thuê' };
-V.boardpub = async (main, params) => {
+V.boardpub = (main, params) => V.board(main, { ...params, view: 'khach' });   // link cũ #/v/boardpub
+async function boardPubView(main, params) {
   const s = ST.boardpub ||= { project: '', building: '', st: '' };
   if (params.project) s.project = params.project;
   const draw = async () => {
@@ -3111,7 +3120,7 @@ V.boardpub = async (main, params) => {
     const pj = d.projects.find(p => p.id === d.project), cnt = {}; d.units.forEach(u => cnt[u.st] = (cnt[u.st] || 0) + 1);
     const floors = [...new Set(d.units.map(u => u.floor))].sort((a, b) => a - b);
     const priceOf = u => u.price ? fmB(u.price) : u.rent ? `${fmB(u.rent)}/tháng` : u.st === 'con' && u.rentable ? 'Cho thuê' : '';
-    main.innerHTML = `<div class="page bpub">${head('02', 'Bảng hàng cho khách xem', 'fa-store', d.units.length ? `<button class="btn pri" id="bpFull">${ico('fa-expand')} Trình chiếu cho khách</button>` : '')}
+    main.innerHTML = `<div class="page bpub">${head('02', 'Bảng hàng', 'fa-table-cells', `${bviewSel('khach')}${d.units.length ? `<button class="btn pri" id="bpFull">${ico('fa-expand')} Trình chiếu cho khách</button>` : ''}`)}
       ${!d.projects.length ? `<div class="card"><div class="empty" style="padding:40px 20px">${ico('fa-bullhorn')} Chưa có thông báo mở bán nào được phát hành.<br><span class="small muted">Bảng hàng cho khách chỉ hiện các căn của thông báo mở bán / cho thuê đã được duyệt phát hành (04 › Thông báo mở bán / cho thuê căn hộ).</span></div></div>` : `
       <div class="card mb"><div class="toolbar" style="border:0"><select id="bpp">${d.projects.map(p => `<option value="${p.id}" ${p.id === d.project ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select>
         <span class="grow"></span><span class="small muted">${ico('fa-circle-info')} Chỉ hiện căn của thông báo đã phát hành</span></div>
@@ -3119,6 +3128,7 @@ V.boardpub = async (main, params) => {
         <div style="padding:0 14px 12px"><div class="towers">${d.buildings.map(b => `<div class="tower ${b.id === d.building ? 'on' : ''}" data-b="${b.id}"><b>${esc(b.name || 'Tòa ' + b.code)}</b><small>${b.n} căn mở bán</small></div>`).join('')}</div></div></div>
       <div class="card"><div class="toolbar"><div class="legend">${Object.entries(PUB_L).filter(([k]) => cnt[k]).map(([k, l]) => `<span data-st="${k}" style="cursor:pointer;${s.st && s.st !== k ? 'opacity:.4' : ''}"><b class="u g-${PUB_G[k]}" style="width:12px;height:12px;min-height:0;padding:0;border-radius:3px"></b>${l} <b style="background:none;width:auto;height:auto;color:var(--ink)">${cnt[k]}</b></span>`).join('')}</div>${s.st ? '<button class="btn sm ghost" data-st="">Bỏ lọc</button>' : ''}<span class="grow"></span><span class="small muted">${d.units.length} căn · ${floors.length} tầng</span></div>
       <div class="bd"><div class="floors">${floors.map(fl => `<div class="floor"><div class="fl">Tầng ${fl}</div><div class="us">${d.units.filter(u => u.floor === fl).map(u => `<div class="u g-${PUB_G[u.st]} ${s.st && s.st !== u.st ? 'dim' : ''}" data-u="${u.id}" title="${esc(u.code)} · ${PUB_L[u.st]}"><b class="no">${esc(u.code.split('-').pop())}</b><div class="sp">${u.bedrooms || ''}PN · ${fnum(u.area_tt)}m²</div><div class="pr">${u.st === 'con' ? priceOf(u) : PUB_L[u.st]}</div><div class="cu">${esc(u.direction || '')}</div></div>`).join('')}</div></div>`).join('') || '<div class="empty">Tòa chưa có căn mở bán</div>'}</div></div></div>`}</div>`;
+    bviewWire(main);
     if (!d.projects.length) return;
     $('#bpp', main).onchange = e => { s.project = e.target.value; s.building = ''; draw(); };
   };
@@ -3135,7 +3145,7 @@ V.boardpub = async (main, params) => {
       foot: '<button class="btn" data-x>Đóng</button>' });
   });
   await draw();
-};
+}
 
 // ======================= 02. DANH MỤC DỰ ÁN / SẢN PHẨM =======================
 const UST_C = { con_ban: 'g', giu_cho: 'a', da_coc: 'v', da_ky_hd: 'b', da_ban_giao: 't', tam_khoa: 'r' };
