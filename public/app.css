@@ -2361,3 +2361,26 @@ table.t.uc-t td.num, table.t.uc-t th.num { white-space: nowrap; overflow-wrap: n
 .sg-sep{width:1px;height:20px;background:#f3d9a4}
 .sg-ct{font-size:11.5px;color:#46628a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media (max-width:800px){.st{grid-template-columns:1fr}.st-l{max-height:220px}}
+/* 18/11/2026: Kế hoạch thu tuần/tháng — 3 thẻ chỉ tiêu + biểu đồ cột đứng theo kỳ */
+.pk3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.pk3-c{background:var(--card);border:1px solid var(--line2);border-radius:14px;padding:20px 22px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.pk3-c>span{font-size:14px;color:var(--muted)}
+.pk3-c>b{font-size:27px;font-weight:800;letter-spacing:-.3px;font-variant-numeric:tabular-nums;color:var(--text);line-height:1.25;overflow-wrap:anywhere}
+.pk3-c>small{font-size:12.5px;color:var(--muted)}
+.pk3-pb{height:5px;border-radius:3px;background:rgba(148,163,184,.25);overflow:hidden;margin-top:6px}.pk3-pb i{display:block;height:100%;min-width:4px;background:#dd8f3c;border-radius:3px}
+.pw2 .pr-chart{padding:20px 22px 16px;border-radius:14px}
+.pc-hd{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.pc-tt{font-weight:700;font-size:16px;color:var(--text)}.pc-sub{font-size:12.5px;color:var(--muted);margin-top:2px}
+.pc-lg{display:flex;gap:16px;font-size:13px;color:var(--muted);align-items:center}.pc-lg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.pc-lg i.p,.pc-b .p{background:#234e8c}.pc-lg i.a,.pc-b .a{background:#dd8f3c}
+.pc-cols{display:grid;gap:8px}
+.pc-c{display:flex;flex-direction:column;align-items:center;padding:10px 4px 10px;border-radius:10px;cursor:pointer;min-width:0}
+.pc-c:hover{background:rgba(35,78,140,.05)}.pc-c.on{background:rgba(35,78,140,.09)}
+.pc-v{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;height:16px}
+.pc-b{height:140px;width:100%;display:flex;justify-content:center;align-items:flex-end;gap:4px;margin:8px 0 10px}
+.pc-b span{width:clamp(6px,22%,15px);border-radius:2px 2px 0 0}
+.pc-l{font-size:13.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.pc-s{font-size:11px;color:var(--muted);white-space:nowrap}
+@media (max-width:900px){.pk3{grid-template-columns:1fr}.pc-cols{overflow-x:auto}.pc-v{font-size:10.5px}}
+.pc-s{overflow:hidden;text-overflow:ellipsis;max-width:100%}
+@media (max-width:900px){.pc-cols{grid-template-columns:none!important;grid-auto-flow:column;grid-auto-columns:72px;padding-bottom:4px}}
