@@ -378,13 +378,14 @@ async function boardPub(db, user, f) {
     const us = await B.noticeUnits(db, n), rs = n.deal === 'thue' ? await B.noticeRent(db, pid, n.policy_id, us) : us;
     for (const u of rs) { const x = pub.get(u.id) || {}; if (n.deal === 'thue') { x.rentN = n; x.rent = u.rent_month || null; } else x.saleN = n; pub.set(u.id, x); }
   }
-  const all = await db.q('SELECT u.id, u.building_id FROM kd_unit u WHERE u.project_id = $1', [pid]), cnt = {};
+  const all = await db.q(`SELECT u.id, u.building_id FROM kd_unit u WHERE u.project_id = $1 AND u.status IN ('con_ban', 'chua_mo_ban')
+    AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.kind = 'thue' AND coalesce(c.nature, 'thue') <> 'ban' AND c.status NOT IN ('huy','thanh_ly') AND coalesce(c.exp_on, 'infinity'::date) >= $2)`, [pid, today()]), cnt = {};
   for (const u of all) if (pub.has(u.id)) cnt[u.building_id] = (cnt[u.building_id] || 0) + 1;
   const buildings = (await db.q('SELECT b.id, b.code, b.name FROM kd_building b WHERE b.project_id = $1 ORDER BY b.code', [pid])).filter(b => cnt[b.id]).map(b => ({ ...b, n: cnt[b.id] }));
   const bid = buildings.some(b => b.id === +f.building) ? +f.building : buildings[0]?.id;
   const d = await board(db, C.SYS, { project: pid, building: bid });
   const ST = { con_ban: 'con', chua_mo_ban: 'con', giu_cho: 'giu', da_coc: 'giu', da_ky_hd: 'ban', da_ban_giao: 'ban' };
-  const units = d.units.filter(u => pub.has(u.id) && ST[u.status]).map(u => {
+  const units = d.units.filter(u => pub.has(u.id) && ST[u.status] === 'con' && !u.rent).map(u => {   // chỉ căn còn trống
     const x = pub.get(u.id), st = u.rent ? 'thue' : ST[u.status], free = st === 'con';
     return { id: u.id, code: u.code, floor: u.floor, kind: u.kind, bedrooms: u.bedrooms, area_tt: u.area_tt, direction: u.direction, handover_plan: u.handover_plan, st,
       sale: !!x.saleN, rentable: !!x.rentN, price: free && x.saleN ? u.total_price : null, rent: free && x.rentN ? x.rent : null };
