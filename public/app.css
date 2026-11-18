@@ -2346,3 +2346,18 @@ table.t.uc-t td.num, table.t.uc-t th.num { white-space: nowrap; overflow-wrap: n
 .sg-t .s0{position:sticky;left:0;z-index:2}.sg-t thead .s0{z-index:4}.sg-t tfoot .s0{z-index:3}
 .sg-t .s1{left:36px}.sg-t .s2{left:216px}.sg-t .s3{left:326px}
 .sg-t tr.sg-pk td{background:#f7fbff}.sg-t tr.sg-pk td.sg-d{background:#eaf3fd}
+
+/* 18/11/2026: tab Thiết lập tháng bán & lịch thu (các căn đã tích) */
+.modal.st-modal{width:min(1240px,96vw)!important;max-width:96vw!important}
+.st{display:grid;grid-template-columns:260px minmax(0,1fr);gap:14px;min-height:420px;font-size:13px}
+.st-l{border:1px solid #d6dfec;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;max-height:calc(100vh - 260px)}
+.st-lh{display:flex;flex-direction:column;gap:2px;padding:8px 10px;background:#f6f9fd;border-bottom:1px solid var(--line2)}.st-lh label{display:flex;gap:6px;align-items:center}
+.st-lb{overflow:auto;flex:1}
+.st-i{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-bottom:1px solid var(--line2);cursor:pointer;border-left:3px solid transparent}
+.st-i:hover{background:#f6f9fd}.st-i.on{background:#eaf3ff;border-left-color:#3568ac}.st-i.bad b{color:#b91c1c}
+.st-i input{margin-top:3px}.st-ib{display:flex;flex-direction:column;gap:1px;min-width:0}.st-ib span{font-size:12px}
+.st-r{min-width:0}
+.st-sale{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}.st-sale label{display:flex;gap:8px;align-items:center;font-weight:600}.st-sale select{height:32px;width:auto;min-width:130px}
+.sg-sep{width:1px;height:20px;background:#f3d9a4}
+.sg-ct{font-size:11.5px;color:#46628a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:800px){.st{grid-template-columns:1fr}.st-l{max-height:220px}}
