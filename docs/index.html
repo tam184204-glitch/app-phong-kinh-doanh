@@ -7,7 +7,7 @@
 <link rel="icon" href="logo.png">
 <link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="fa.css">
-<link rel="stylesheet" href="app.css?v=9d8948c4b4">
+<link rel="stylesheet" href="app.css?v=28ba5a6c86">
 <style>
 #demobar{position:fixed;left:12px;bottom:12px;z-index:9999;background:#1E4E8C;color:#fff;font:12px/1.4 system-ui,sans-serif;padding:6px 10px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.2);opacity:.9}
 #demobar a{color:#F5A623;cursor:pointer;margin-left:8px;text-decoration:underline}
@@ -25,7 +25,7 @@ const url = local ? new URL('pglite/index.js', location.href).href : 'https://cd
 const bar = document.getElementById('demobar');
 try {
   await window.__ctgBoot(url);
-  for (const s of ['front.js?v=6d2a76680f']) await new Promise((res, rej) => { const el = document.createElement('script'); el.src = s; el.onload = res; el.onerror = rej; document.body.append(el); });
+  for (const s of ['front.js?v=98bf218fd6']) await new Promise((res, rej) => { const el = document.createElement('script'); el.src = s; el.onload = res; el.onerror = rej; document.body.append(el); });
   document.getElementById('boot').remove();
   setInterval(() => { if (!bar.isConnected) document.body.append(bar); }, 800);
 } catch (e) {
