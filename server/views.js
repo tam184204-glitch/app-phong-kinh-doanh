@@ -1128,7 +1128,7 @@ async function saleUnitPlan(db, user, b) {
     if (Array.isArray(x.items)) x.items = x.items.map(z => z.grp === 'maint' ? { ...z, amount: mt, pct: null } : z.by === 'amt' && +z.amount > 0 ? { ...z, amount: Math.round(+z.amount), pct: Math.round(+z.amount / base * 1e6) / 1e4 } : z.pct != null && z.pct !== '' ? { ...z, amount: Math.round(base * +z.pct / 100) } : z).filter(z => z.grp !== 'maint' || mt > 0);
     const sm = /^\d{4}-\d{2}$/.test(x.sale_month || '') ? x.sale_month : bad(`Căn ${u.code}: chọn tháng/năm dự kiến bán`);
     // 17/11/2026: lịch thu riêng từng căn theo đợt (items: tên đợt, nhóm, tháng thu | trống = chưa phân bổ kỳ, tỷ lệ, số tiền) — ưu tiên hơn lịch % kiểu cũ
-    if (Array.isArray(x.items) && (x.items.length || x.no_sched)) {   // 18/11/2026: no_sched = không áp dụng lịch thu — cả Thành tiền theo dõi ở «Chưa phân bổ kỳ»
+    if (Array.isArray(x.items) && x.items.length) {
       const its = x.items.map(z => { const dt = isoDay(z.date); return { name: String(z.name || '').trim() || 'Đợt thu', grp: z.grp === 'maint' ? 'maint' : 'house', date: dt, month: dt ? dt.slice(0, 7) : /^\d{4}-\d{2}$/.test(z.month || '') ? z.month : null, pct: z.pct != null && z.pct !== '' ? +z.pct : null, amount: Math.round(+z.amount || 0) }; }).filter(z => z.amount > 0);
       { const hs = its.filter(z => z.grp === 'house').reduce((a, z) => a + z.amount, 0); if (hs > base) bad(`Căn ${u.code}: tổng các đợt ${fmtMoney(hs)} vượt giá trị tính tỷ lệ ${fmtMoney(base)}${mt ? ' (Giá trị HĐ trừ phí bảo trì)' : ''}`); }
       for (const z of its) if (z.month && z.month < sm) bad(`Căn ${u.code}: «${z.name.slice(0, 40)}» thu tháng ${z.month.slice(5)}/${z.month.slice(0, 4)} trước tháng dự kiến bán`);
@@ -1138,11 +1138,6 @@ async function saleUnitPlan(db, user, b) {
         await C.create('collect_plan', { scope: 'moi', unit_id: u.id, project_id: u.project_id, building_id: u.building_id, title: z.name.slice(0, 200), units_n: 1, unit_price: value, rate: z.pct, sale_month: sm, month: z.month, plan_week: wk ? wk.n : 0,
           expected: z.amount, expected_on: wk ? wk.to : W[W.length - 1].to, owner_id: b.owner_id ? +b.owner_id : null, basis: 'khac', fund_src: 'khach_tu_tra', basis_note: [z.date ? `Ngày dự kiến thu ${C.dmy(z.date)}` : '', x.policy ? `Theo chính sách ${x.policy}` : '', String(x.note || '').trim(), String(b.note || '').trim()].filter(Boolean).join(' · ') || null,
           explain: 'Kế hoạch thu bán mới', grp_key: grp }, user, { db, system: true, note: `Kế hoạch thu bán mới căn ${u.code} (giá trị dự kiến bán ${fmtMoney(value)}, bán tháng ${sm.slice(5)}/${sm.slice(0, 4)}${x.policy ? ', chính sách ' + x.policy : ''}) — đợt ${k + 1}: ${z.name.slice(0, 80)} · thu tháng ${z.month.slice(5)}/${z.month.slice(0, 4)} · ${fmtMoney(z.amount)}${un > 0 ? ` (chưa phân bổ kỳ của căn ${fmtMoney(un)})` : ''}` }); n++; }
-      // chưa có đợt nào có ngày thu (không áp dụng lịch thu / mọi đợt chưa có ngày): ghi nhận căn bằng 1 dòng 0 đồng ở tháng dự kiến bán → toàn bộ giá trị ở «Chưa phân bổ kỳ», không tự gán tháng
-      if (!its.some(z => z.month)) { const W = monthWeeks(sm);
-        await C.create('collect_plan', { scope: 'moi', unit_id: u.id, project_id: u.project_id, building_id: u.building_id, title: 'Chưa lập lịch thu — giá trị bán theo dõi ở Chưa phân bổ kỳ', units_n: 1, unit_price: value, rate: null, sale_month: sm, month: sm, plan_week: 0,
-          expected: 0, expected_on: W[W.length - 1].to, owner_id: b.owner_id ? +b.owner_id : null, basis: 'khac', fund_src: 'khach_tu_tra', basis_note: [String(x.note || '').trim(), String(b.note || '').trim()].filter(Boolean).join(' · ') || null,
-          explain: 'Kế hoạch thu bán mới', grp_key: grp }, user, { db, system: true, note: `Kế hoạch thu bán mới căn ${u.code} (giá trị dự kiến bán ${fmtMoney(value)}, bán tháng ${sm.slice(5)}/${sm.slice(0, 4)}) — chưa lập lịch thu, ${fmtMoney(value)} chưa phân bổ kỳ` }); n++; }
       total += value; continue;
     }
     const sched = (Array.isArray(x.sched) ? x.sched : []).map(z => ({ month: z.month, pct: +z.pct || 0 })).filter(z => z.pct > 0);

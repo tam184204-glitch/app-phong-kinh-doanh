@@ -2881,7 +2881,7 @@ H.collect_plan = {
       [+r.contract_id, r.month, r.plan_week == null || r.plan_week === '' ? -1 : +r.plan_week])) bad('Hợp đồng này đã có khoản kế hoạch thu trong cùng kỳ — chỉnh ngày / số tiền ở Kế hoạch dự kiến dòng thu tuần/ tháng');   // 17/11/2026: tháng kế hoạch tự theo ngày dự kiến thu
     if (!r.month) bad('Nhập ngày dự kiến thu', { fields: ['expected_on'] });
     if (!r.scope && r.contract_id) r.scope = (await db.one('SELECT kind FROM kd_contract WHERE id = $1', [+r.contract_id]))?.kind === 'thue' ? 'thue' : 'ban';
-    if (!(r.expected > 0) && !(r.scope === 'moi' && r.unit_id && +r.expected === 0 && String(r.grp_key || '').startsWith('moiu:'))) bad('Số dự kiến thu phải > 0');   // 18/11/2026: căn bán mới chưa lập lịch thu = 1 dòng 0 đồng (giá trị theo dõi ở Chưa phân bổ kỳ)
+    if (!(r.expected > 0)) bad('Số dự kiến thu phải > 0');
     if (r.scope !== 'moi' && r.expected > (r.debt_left || 0) && !r.explain) bad(`Số dự kiến ${fmtMoney(r.expected)} vượt công nợ còn lại ${fmtMoney(r.debt_left)} — cần nhập giải trình`);
     if (r.month && r.expected_on && r.expected_on.slice(0, 7) !== r.month) warn.push('Ngày dự kiến thu không nằm trong tháng kế hoạch');
   },
