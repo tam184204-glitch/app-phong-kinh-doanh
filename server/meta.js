@@ -117,7 +117,10 @@ def('price_policy', {
     { k: 'doc_no', l: 'Số văn bản', t: 'text', help: 'Số quyết định / văn bản ban hành chính sách' },
     { k: 'version', l: 'Phiên bản', t: 'int', ro: 1, def: 1 },
     { k: 'project_ids', l: 'Dự án', t: 'refs', ref: 'project', req: 1, help: 'Chọn được nhiều dự án cùng áp dụng một chính sách' },
-    { k: 'project_id', l: 'Dự án chính', t: 'ref', ref: 'project', hide: 1 },   // = dự án đầu tiên trong project_ids (giữ cho chỗ cần 1 dự án)
+    { k: 'project_id', l: 'Dự án chính', t: 'ref', ref: 'project', hide: 1 },
+    // 18/11/2026: Loại chính sách → Dự án → Thông báo đang áp dụng → Tòa → Căn; notice_snap = thông tin thông báo lúc lưu (chính sách đã duyệt giữ nguyên khi thông báo đổi)
+    { k: 'notice_ids', l: 'Thông báo đang áp dụng', t: 'text', pick: 'notices', help: 'Chính sách bán → thông báo mở bán; chính sách cho thuê → thông báo cho thuê. Chỉ hiện thông báo đã phát hành, còn hiệu lực, chưa hủy. Căn hộ áp dụng chỉ lấy trong các thông báo đã chọn' },
+    { k: 'notice_snap', l: 'Thông báo áp dụng (lúc lưu)', t: 'json', hide: 1, ro: 1 },   // = dự án đầu tiên trong project_ids (giữ cho chỗ cần 1 dự án)
     { k: 'mode', l: 'Cách tính giá', t: 'sel', hide: 1, def: 'bang_hang', o: [['bang_hang', 'Theo giá từng căn trên bảng hàng'], ['don_gia', 'Đơn giá × diện tích thông thủy']] },
     money('unit_price', 'Đơn giá (đ/m² thông thủy)', { show: { mode: ['don_gia'] } }),
     { k: 'maint_pct', l: 'Phí bảo trì (%)', t: 'num', def: 2, show: { mode: ['don_gia'] } },
@@ -159,7 +162,7 @@ def('price_policy', {
     { k: 'ref_fee_val', l: 'Mức hưởng', t: 'num', show: PT, help: 'Số tháng / % / số tiền theo cách tính ở trên' },
     { k: 'ref_fee_types', l: 'Đối tượng hưởng', t: 'tags', o: SELLER_T.filter(x => x[0] !== 'truc_tiep'), show: PT },
     { k: 'ref_fee_terms', l: 'Điều kiện và thời điểm chi trả', t: 'long', show: PT },
-    { k: 'unit_group', l: 'Căn hộ áp dụng', t: 'text', req: 1, def: '', pick: 'units', help: 'Chỉ hiện căn còn trong bảng hàng (chưa ký HĐMB / vay / thuê). Bấm Tòa để lọc, tích từng căn hoặc cả tòa; «Chọn tất cả» = cả dự án.' },
+    { k: 'unit_group', l: 'Căn hộ áp dụng', t: 'text', req: 1, def: '', pick: 'units', help: 'Chỉ hiện căn thuộc thông báo đang áp dụng đã chọn, còn trong bảng hàng (chưa ký HĐMB / vay / thuê). Bấm Tòa để lọc, tích từng căn hoặc cả tòa; «Chọn tất cả» = cả dự án.' },
     // 14/11/2026: giá trị hoàn thiện từng căn khai ở bảng chọn căn { 'CTS-O-0103': 120000000 } — chính sách có hiệu lực thì cập nhật căn chưa bán / phiếu / HĐMB dự thảo
     { k: 'finish_vals', l: 'Căn hộ có hoàn thiện / nội thất', t: 'json', pick: 'finish', help: 'Bán: giá trị hoàn thiện (nội thất) từng căn · Cho thuê: tiền thuê nội thất/tháng của căn (nếu có — cộng vào tiền thuê/tháng). Tích nhiều căn rồi nhập 1 lần và bấm «Áp cho căn đã tích»; xóa số ở ô của căn = bỏ' },
     // tiến độ thu tiền (16/11/2026): HĐMB của các căn đã tích tự lấy «Lần thanh toán» theo đây — hạn = ngày ký HĐMB + số ngày; đợt bàn giao theo thông báo bàn giao
@@ -260,7 +263,7 @@ def('sale_notice', {
   title: 'Thông báo mở bán / cho thuê căn hộ', one: 'thông báo', code: 'GD-03', mod: '04', icon: 'fa-bullhorn', disp: "t.code||coalesce(' · '||t.title,'')",
   purpose: 'Theo dõi các đợt thông báo mở bán / cho thuê và tình hình đăng ký theo đợt', users: 'Trưởng phòng / nhân viên kinh doanh',
   how: 'Lập thông báo (loại giao dịch Bán / Cho thuê, dự án, căn, thời gian nhận hồ sơ, nơi đăng; cho thuê: chính sách cho thuê) → trình duyệt → phát hành thì căn chưa mở bán trong đợt chuyển «Còn bán» (còn trống) → đăng ký mua / thuê theo đợt → theo dõi số căn đã đăng ký / còn trống',
-  rules: 'Bắt buộc chọn loại giao dịch; ngày kết thúc nhận hồ sơ phải sau ngày bắt đầu; thông báo cho thuê phải có chính sách cho thuê khi trình duyệt',
+  rules: 'Bắt buộc chọn loại giao dịch; ngày kết thúc nhận hồ sơ phải sau ngày bắt đầu; thông báo cho thuê chưa có chính sách vẫn trình được — chính sách cho thuê chọn thông báo này khi được duyệt sẽ tự gắn',
   c: ['truong_phong', 'ban_hang'], u: ['truong_phong', 'ban_hang'], d: ['truong_phong', 'ban_hang'], a: MGR, search: ['code', 'title', 'doc_no'], files: [['van_ban', 'Văn bản thông báo mở bán']], fields: [
     { k: 'code', l: 'Mã thông báo', t: 'code', prefix: 'TB-{Y}-', pad: 4 },
     { k: 'deal', l: 'Loại giao dịch', t: 'sel', req: 1, def: 'ban', o: [['ban', 'Bán', 'b'], ['thue', 'Cho thuê', 'v']], help: 'Bán: thông báo mở bán · Cho thuê: thông báo cho thuê (kèm chính sách cho thuê)' },
