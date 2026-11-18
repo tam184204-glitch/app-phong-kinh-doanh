@@ -160,7 +160,7 @@ const CHECKS = {
   reservation: ["hold_until >= reg_date"],
   installment: ["amount > 0", "pct IS NULL OR (pct >= 0 AND pct <= 100)"],
   receipt: ["amount > 0"],
-  collect_plan: ["expected > 0", "month ~ '^\\d{4}-(0[1-9]|1[0-2])$'"],
+  collect_plan: ["expected > 0 OR (scope = 'moi' AND expected = 0)",   /* 18/11/2026: căn bán mới chưa lập lịch thu = dòng 0 đồng */ "month ~ '^\\d{4}-(0[1-9]|1[0-2])$'"],
   target: ["period ~ '^\\d{4}-(0[1-9]|1[0-2])$'"],
   report: ["period ~ '^\\d{4}-(0[1-9]|1[0-2])$'"],
   refund: ["amount > 0"],

@@ -2346,3 +2346,43 @@ table.t.uc-t td.num, table.t.uc-t th.num { white-space: nowrap; overflow-wrap: n
 .sg-t .s0{position:sticky;left:0;z-index:2}.sg-t thead .s0{z-index:4}.sg-t tfoot .s0{z-index:3}
 .sg-t .s1{left:36px}.sg-t .s2{left:216px}.sg-t .s3{left:326px}
 .sg-t tr.sg-pk td{background:#f7fbff}.sg-t tr.sg-pk td.sg-d{background:#eaf3fd}
+/* 18/11/2026 (bản 5): Tạo kế hoạch thu bán mới — bảng căn + tab Lịch thu & Đợt thanh toán HĐMB */
+.modal.sv-modal{width:96vw!important;max-width:96vw!important}
+.modal.sv-modal .mb{max-height:calc(100vh - 200px)}
+.sv{display:grid;gap:10px;font-size:13px}
+.sv-hint{color:var(--muted);font-size:12.5px}
+.sv-pick,.sv-tool{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 10px;background:#f6f9fd;border:1px solid #d6dfec;border-radius:10px}
+.sv-pick select{height:32px;width:auto;min-width:220px}.sv-tool select{height:30px;width:auto;min-width:110px;margin-left:4px}
+.sv-tool label{display:flex;align-items:center;gap:2px;font-size:12.5px}.sv-tool .btn:disabled{opacity:.5}.sv-sep{width:1px;height:22px;background:#d6dfec;margin:0 4px}.sv-ck input{margin-right:4px}
+.sv-plist{border:1px solid #cfdcee;border-radius:10px;overflow:hidden;background:#fff}
+.sv-plh{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 10px;background:#f6f9fd;border-bottom:1px solid var(--line2)}.sv-plh .inp{height:30px;max-width:220px}
+.sv-plb{max-height:230px;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr))}
+.sv-plb label{display:flex;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid var(--line2);border-right:1px solid var(--line2);cursor:pointer;font-size:12.5px}
+.sv-plb label.on{background:#eaf3ff}.sv-plb label.off{opacity:.55;cursor:default}
+.sv-wrap{max-height:46vh;overflow:auto;border:1px solid #d6dfec;border-radius:10px}
+.sv-t{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed}
+.sv-t th,.sv-t td{padding:7px 8px;border-bottom:1px solid #e7ecf3;vertical-align:top;background:#fff}
+.sv-t thead th{position:sticky;top:0;z-index:2;background:#f1f5fb;font-size:12.5px;font-weight:600;text-align:left;white-space:nowrap}
+.sv-t tfoot td{position:sticky;bottom:0;background:#eef3fa;font-weight:700;border-top:2px solid #cfdcee}
+.sv-t .n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.sv-t .c{text-align:center}
+.sv-t select.inp{height:30px;width:100%}
+.sv-t tr.on td{background:#eef5ff}.sv-t tr.sv-over td{background:#fff5f5}
+.sv-ap{display:flex;align-items:center;gap:5px;margin-top:5px;font-size:12px;color:#1e4e8c;cursor:pointer}.sv-lk{display:block;font-size:12px;margin-top:2px}
+.sv-empty{text-align:center;color:var(--muted);padding:18px!important}
+.sv-tab{border:1px solid #cfdcee;border-radius:10px;overflow:hidden;background:#f5f9fe}
+.sv-tabs{display:flex;gap:4px;flex-wrap:wrap;padding:6px 8px 0;background:#e9f1fb;border-bottom:1px solid #cfdcee}
+.sv-tabs button{border:1px solid transparent;border-bottom:0;background:transparent;padding:6px 12px;border-radius:8px 8px 0 0;font:inherit;font-size:12.5px;cursor:pointer;color:#334155}
+.sv-tabs button small{margin-left:6px;color:var(--muted)}.sv-tabs button.on{background:#fff;border-color:#cfdcee;color:#1e4e8c;font-weight:600;margin-bottom:-1px}.sv-tabs button.bad{color:#b91c1c}
+.sv-tb{padding:10px 12px;background:#fff}
+.sv-th{display:flex;gap:18px;align-items:baseline;flex-wrap:wrap;margin-bottom:8px}.sv-th h4{margin:0;font-size:14px;color:#1e4e8c}.sv-th span{font-size:12.5px;color:var(--muted)}.sv-th b{color:var(--ink,#1f2937)}
+.sv-st{width:100%;border-collapse:collapse;table-layout:fixed}
+.sv-st th{background:#f1f5fb;font-size:12.5px;font-weight:600;padding:7px 8px;text-align:left;border-bottom:1px solid #d6dfec}
+.sv-st td{padding:6px 8px;border-bottom:1px solid #e7ecf3;vertical-align:top}
+.sv-st .n{text-align:right;font-variant-numeric:tabular-nums}.sv-st .c{text-align:center}
+.sv-st .inp{height:32px;width:100%}.sv-st textarea.inp{height:auto;min-height:52px;resize:vertical;line-height:1.4;padding:6px 8px;font:inherit}.sv-st .sdate{width:100%}
+.sv-st tr.sv-mt td{background:#fbf8f1}
+.sv-st tfoot td{background:#f1f5fb;font-weight:700;border-top:2px solid #d6dfec}.sv-st tfoot tr.sub td{font-weight:500;background:#f8fafd;border-top:1px solid var(--line2)}.sv-st tfoot tr.bad td{background:#fdecec;color:#991b1b;font-weight:500}
+.sv-tf{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.sv-sum{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:1px solid var(--line2);border-radius:10px;overflow:hidden}
+.sv-sum>div{padding:8px 14px;border-left:1px solid var(--line2)}.sv-sum>div:first-child{border-left:0}.sv-sum span{display:block;font-size:12px;color:var(--muted)}.sv-sum b{font-size:15px;font-variant-numeric:tabular-nums}.sv-sum>div.w b{color:#b45309}
+@media (max-width:800px){.sv-sum{grid-template-columns:1fr 1fr}}
