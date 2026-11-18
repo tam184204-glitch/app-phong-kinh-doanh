@@ -2397,3 +2397,5 @@ table.t.uc-t td.num, table.t.uc-t th.num { white-space: nowrap; overflow-wrap: n
 .ob-c b{margin-left:3px}.ob-c.on{border-color:var(--cobalt);background:var(--cobalt-50)}
 .ob-c.ban{box-shadow:inset 3px 0 0 #64c08a}.ob-c.thue{box-shadow:inset 3px 0 0 #b79be8}.ob-c.none{box-shadow:inset 3px 0 0 #b8c3d1}
 .ob-ns{display:flex;flex-direction:column;gap:6px}.ob-n{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:start;padding:7px 9px;border:1px solid var(--line2);border-radius:8px;font-size:13px}
+
+.npick-none{margin-top:6px;padding:7px 10px;border-radius:8px;background:#fff7e8;border:1px solid #f3d9a4;color:#7a4b00;font-size:13px}

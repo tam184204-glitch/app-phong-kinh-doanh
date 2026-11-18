@@ -1630,36 +1630,29 @@ function policyTabs(form) {
   form.addEventListener('change', e => { if (e.target.name !== 'pkind') return; lab(); show(cur); $('[data-pick-units]', form)?._reload?.(); $('[data-pick-fin]', form)?._refresh?.(); });
   form._ptab = show; show('a');
 }
-// 18/11/2026: THÔNG BÁO ĐANG ÁP DỤNG của chính sách — thông báo mở bán (chính sách bán) / cho thuê (chính sách cho thuê) đã phát hành, còn hiệu lực, chưa hủy, của các dự án đã chọn;
-// hiện số thông báo, ngày ban hành, thời gian áp dụng, hình thức để đối chiếu; chọn nhiều, Chọn tất cả / Bỏ chọn tất cả; đổi loại chính sách / dự án → tải lại, bỏ thông báo không còn đúng
+// 18/11/2026: THÔNG BÁO ĐANG ÁP DỤNG của chính sách — TỰ ÁP DỤNG, không chọn: theo Loại chính sách + Dự án, hệ thống lấy toàn bộ thông báo mở bán (chính sách bán) /
+// cho thuê (chính sách cho thuê) đang có hiệu lực của từng dự án (đã phát hành, đã tới ngày áp dụng, chưa hết hạn, chưa hủy). Khu này chỉ hiển thị để đối chiếu;
+// danh sách căn lấy từ các thông báo đó. Dự án không có thông báo → báo và không có căn để chọn
 const SND = v => v ? dmy(v) : '';
-function noticeTable(ns, { pick, sel } = {}) {
-  return `<div class="tbl-wrap npick-t"><table class="t compact noclick"><thead><tr>${pick ? '<th style="width:30px"></th>' : ''}<th>Số thông báo</th><th>Tên đợt</th><th>Hình thức</th><th>Ngày ban hành</th><th>Thời gian áp dụng</th>${pick ? '<th class="num">Số căn</th>' : ''}</tr></thead><tbody>
-    ${ns.map(n => `<tr${n.why ? ' class="off"' : ''}>${pick ? `<td><input type="checkbox" data-n="${n.id}" ${sel.has(n.id) ? 'checked' : ''}${n.why && !sel.has(n.id) ? ' disabled' : ''}></td>` : ''}<td><b>${esc(n.code)}</b>${n.doc_no ? `<div class="small muted">Số VB ${esc(n.doc_no)}</div>` : ''}</td><td>${esc(n.title || '')}${n.project && pick ? ` <span class="small muted">· ${esc(n.project)}</span>` : ''}${n.why ? `<div class="small neg">Không dùng được: ${esc(n.why)}${sel?.has(n.id) ? ' — bỏ chọn' : ''}</div>` : ''}</td>
-      <td>${n.deal === 'thue' ? 'Cho thuê' : 'Bán'}</td><td>${SND(n.notice_on) || '—'}</td><td>${SND(n.open_on) || '—'} – ${n.close_on ? SND(n.close_on) : 'chưa có ngày kết thúc'}</td>${pick ? `<td class="num">${n.n_units}</td>` : ''}</tr>`).join('')}</tbody></table></div>`;
+function noticeTable(ns) {
+  return `<div class="tbl-wrap npick-t"><table class="t compact noclick"><thead><tr><th>Số thông báo</th><th>Tên đợt</th><th>Hình thức</th><th>Ngày ban hành</th><th>Thời gian áp dụng</th><th class="num">Số căn</th></tr></thead><tbody>
+    ${ns.map(n => `<tr><td><b>${esc(n.code)}</b>${n.doc_no ? `<div class="small muted">Số VB ${esc(n.doc_no)}</div>` : ''}</td><td>${esc(n.title || '')}${n.project ? ` <span class="small muted">· ${esc(n.project)}</span>` : ''}</td>
+      <td>${n.deal === 'thue' ? 'Cho thuê' : 'Bán'}</td><td>${SND(n.notice_on) || '—'}</td><td>${SND(n.open_on) || '—'} – ${n.close_on ? SND(n.close_on) : 'chưa có ngày kết thúc'}</td><td class="num">${n.n_units ?? ''}</td></tr>`).join('')}</tbody></table></div>`;
 }
 async function noticePicker(el, root) {
   const hid = $('input[type=hidden]', el), box = $('.npick-bd', el), projEl = $('[name="project_ids"]', root) || $('[name="project_id"]', root);
-  let rows = [], sel = new Set(String(hid.value).split(/[,;\s]+/).map(Number).filter(Boolean));
-  const kind = () => $('[name="pkind"]', root)?.value === 'thue' ? 'thue' : 'ban', L = () => kind() === 'thue' ? 'cho thuê' : 'mở bán';
-  const set = ids => { sel = new Set(ids); const v = [...sel].join(','); if (v === hid.value) return draw(); hid.value = v; draw(); $('[data-pick-units]', root)?._reload?.(true); };
-  const draw = () => {
-    if (!projEl?.value) { box.innerHTML = '<div class="muted small">Chọn dự án trước — danh sách thông báo đang áp dụng của dự án hiện ở đây.</div>'; return; }
-    const okN = rows.filter(n => !n.why), on = rows.filter(n => sel.has(n.id));
-    box.innerHTML = rows.length ? `<div class="upick-sum"><b>Đã chọn ${on.length}/${okN.length} thông báo ${L()}</b><span class="grow"></span><button type="button" class="btn sm" data-na="1">Chọn tất cả</button><button type="button" class="btn sm ghost" data-na="0">Bỏ chọn tất cả</button></div>${noticeTable(rows, { pick: true, sel })}`
-      : `<div class="muted small">${ico('fa-circle-info')} Dự án chưa có thông báo ${L()} đã phát hành còn hiệu lực — lập và phát hành thông báo ${L()} trước (Giao dịch bán hàng → Thông báo mở bán / cho thuê).</div>`;
-  };
+  const kind = () => $('[name="pkind"]', root)?.value === 'thue' ? 'thue' : 'ban', L = () => kind() === 'thue' ? 'cho thuê' : 'bán';
+  let seq = 0;
   const load = async () => {
-    if (!projEl?.value) { rows = []; return draw(); }
-    box.innerHTML = '<div class="muted small">Đang tải thông báo…</div>';
-    rows = (await api('GET', `/api/policy-notices?project=${projEl.value}&pkind=${kind()}&sel=${[...sel].join(',')}`)).rows;
-    // đổi loại chính sách / dự án: bỏ thông báo khác hình thức / không còn thuộc dự án (thông báo hết hiệu lực vẫn hiện để người dùng tự bỏ chọn)
-    const bad = [...sel].filter(id => { const n = rows.find(x => x.id === id); return !n || n.deal !== kind() || /dự án/.test(n.why || ''); });
-    if (bad.length) { rows = rows.filter(n => !bad.includes(n.id)); toast(`Đã bỏ ${bad.length} thông báo không đúng loại chính sách / dự án`); set([...sel].filter(id => !bad.includes(id))); }
-    else draw();
+    const my = ++seq;
+    if (!projEl?.value) { box.innerHTML = '<div class="muted small">Chọn dự án — hệ thống tự lấy các thông báo đang có hiệu lực của dự án.</div>'; return apply(''); }
+    box.innerHTML = '<div class="muted small">Đang xác định thông báo đang có hiệu lực…</div>';
+    const r = await api('GET', `/api/policy-notices?project=${projEl.value}&pkind=${kind()}`); if (my !== seq) return;
+    box.innerHTML = `${r.rows.length ? `<div class="upick-sum"><b>${ico('fa-bullhorn')} Tự áp dụng ${r.rows.length} thông báo ${L() === 'bán' ? 'mở bán' : 'cho thuê'} đang có hiệu lực</b></div>${noticeTable(r.rows)}` : ''}
+      ${(r.none || []).map(p => `<div class="npick-none">${ico('fa-circle-exclamation')} Dự án <b>${esc(p.code)}</b>${p.name ? ' · ' + esc(p.name) : ''} chưa có thông báo ${L()}/cho thuê đang có hiệu lực — không chọn được căn của dự án này</div>`.replace(`thông báo ${L()}/cho thuê`, `thông báo ${L()}`)).join('')}`;
+    apply(r.rows.map(n => n.id).join(','));
   };
-  box.addEventListener('change', e => { const c = e.target; if (!c.dataset.n) return; e.stopPropagation(); const id = +c.dataset.n; set(c.checked ? [...sel, id] : [...sel].filter(x => x !== id)); });
-  box.addEventListener('click', e => { const a = e.target.closest('[data-na]'); if (!a) return; set(a.dataset.na === '1' ? [...new Set([...sel, ...rows.filter(n => !n.why).map(n => n.id)])] : []); });
+  const apply = val => { if (val === hid.value) return; hid.value = val; $('[data-pick-units]', root)?._reload?.(true); };   // thông báo đổi → tải lại danh sách căn
   root.addEventListener('change', e => { if (e.target.name === 'pkind') load().catch(er => toast(er.message, true)); });
   projEl?.addEventListener('change', () => load().catch(er => toast(er.message, true)));
   await load();
@@ -1711,8 +1704,8 @@ async function unitPicker(el, root, { policy, self } = {}) {
   const setVal = picked => { hid.value = norm(picked); sel = new Set(hid.value.split(',').filter(Boolean)); draw(); };
   const draw = () => {
     if (!projEl?.value) { box.innerHTML = '<div class="muted small">Chọn dự án trước — danh sách căn hộ của dự án hiện ở đây.</div>'; return; }
-    if (NT() && !ntV()) { box.innerHTML = `<div class="muted small">${ico('fa-bullhorn')} Chọn <b>Thông báo đang áp dụng</b> trước — chỉ hiện căn thuộc thông báo ${RT() ? 'cho thuê' : 'mở bán'} đã chọn.</div>`; return; }
-    if (NT() && !units.length) { box.innerHTML = '<div class="muted small">Các thông báo đã chọn không còn căn nào đủ điều kiện (đã ký hợp đồng / đang giữ chỗ / ngừng kinh doanh).</div>'; return; }
+    if (NT() && !ntV()) { box.innerHTML = `<div class="muted small">${ico('fa-circle-exclamation')} Dự án chưa có thông báo ${RT() ? 'cho thuê' : 'bán'} đang có hiệu lực — chưa có căn để lập chính sách.</div>`; return; }
+    if (NT() && !units.length) { box.innerHTML = '<div class="muted small">Các thông báo đang có hiệu lực không còn căn nào đủ điều kiện (đã ký hợp đồng / đang giữ chỗ / ngừng kinh doanh).</div>'; return; }
     if (!units.length) { box.innerHTML = '<div class="muted small">Dự án đã chọn chưa có căn hộ trong danh mục sản phẩm.</div>'; return; }
     const on = units.filter(isOn), tot = on.reduce((s, u) => s + (+u.total_price || 0), 0), cnt = f => units.filter(f).length;
     const chip = (k, v, cur, l, n, sub) => `<button type="button" class="upick-c${cur === v ? ' on' : ''}" data-${k}="${esc(v)}">${l} <b>${n}</b>${sub ? ` <span class="muted">· chọn ${sub}</span>` : ''}</button>`;
@@ -1731,12 +1724,12 @@ async function unitPicker(el, root, { policy, self } = {}) {
     const pid = projEl?.value || ''; if (pid === loadedFor) return draw(); loadedFor = pid; units = [];
     if (pid && policy) { box.innerHTML = '<div class="muted small">Đang tải các căn còn trong bảng hàng…</div>'; const r = await api('GET', `/api/policy-units?project=${pid}&self=${self || 0}&pkind=${$('[name="pkind"]', root)?.value || 'ban'}${NT() ? '&notices=' + encodeURIComponent(ntV()) : ''}`); units = r.rows; hidden = r.hidden; if (bf && !units.some(u => u.b === bf)) bf = '';
       if (NT() && ntV()) { const keep = units.filter(isOn), drop = [...sel].filter(s => s !== '*' && !units.some(u => u.code.toUpperCase() === s || u.b === s)).length;   // bỏ căn đã chọn không còn đúng điều kiện
-        hid.value = keep.map(u => u.code.toUpperCase()).join(','); sel = new Set(hid.value.split(',').filter(Boolean)); if (drop) toast(`Đã bỏ ${drop} căn / tòa đã chọn không thuộc thông báo đang áp dụng`); } }
+        hid.value = keep.map(u => u.code.toUpperCase()).join(','); sel = new Set(hid.value.split(',').filter(Boolean)); if (drop) toast(`Đã bỏ ${drop} căn / tòa đã chọn không thuộc thông báo đang có hiệu lực`); } }
     else if (pid) { box.innerHTML = '<div class="muted small">Đang tải danh sách căn…</div>'; units = (await Promise.all(pid.split(',').map(p => api('GET', `/api/e/unit?project=${p}&limit=20000`)))).flatMap(r => r.rows).map(u => ({ ...u, b: String(u.building_id__l || '').split(' · ')[0].toUpperCase() })).sort((a, c) => a.code.localeCompare(c.code, 'vi', { numeric: true })); }
     allU = units; await loadRent().catch(() => {}); filterRN();
     draw();
   };
-  el._reload = byNotice => { loadedFor = null; if (byNotice && NT() && !ntV() && hid.value) { const n = sel.size; hid.value = ''; sel = new Set(); toast(`Đã bỏ ${n} căn / tòa đã chọn — chọn lại thông báo đang áp dụng`); } load().catch(e => toast(e.message, true)); };   // 18/11/2026: bỏ hết thông báo → bỏ các căn đã chọn
+  el._reload = byNotice => { loadedFor = null; if (byNotice && NT() && !ntV() && hid.value) { const n = sel.size; hid.value = ''; sel = new Set(); toast(`Đã bỏ ${n} căn / tòa đã chọn — dự án chưa có thông báo đang có hiệu lực`); } load().catch(e => toast(e.message, true)); };   // 18/11/2026: bỏ hết thông báo → bỏ các căn đã chọn
   if (!policy) root.addEventListener('change', e => { if (['deal', 'policy_id', 'open_on'].includes(e.target.name) && (allU || units).length) loadRent().then(() => { filterRN(); draw(); }).catch(er => toast(er.message, true)); });   // đổi loại giao dịch / chính sách cho thuê   // đổi loại chính sách (bán / cho thuê)
   if (policy) root.addEventListener('change', e => { if (RT() && ['rent_mode', 'rent_price', 'rent_price_goc', 'rent_price_thang', 'rent_fixed'].includes(e.target.name) && units.length) draw(); });   // sửa giá thuê → cột đơn giá đổi theo
   box.addEventListener('input', e => { if (!e.target.matches('.upick-q')) return; e.stopPropagation(); q = e.target.value.trim().toLowerCase(); applyQ(); });
