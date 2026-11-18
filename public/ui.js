@@ -1741,9 +1741,9 @@ function policyTabs(form) {
 // danh sách căn lấy từ các thông báo đó. Dự án không có thông báo → báo và không có căn để chọn
 const SND = v => v ? dmy(v) : '';
 function noticeTable(ns) {
-  return `<div class="tbl-wrap npick-t"><table class="t compact noclick"><thead><tr><th>Số thông báo</th><th>Tên đợt</th><th>Hình thức</th><th>Ngày ban hành</th><th>Thời gian áp dụng</th><th class="num">Số căn</th></tr></thead><tbody>
+  return `<div class="tbl-wrap npick-t"><table class="t compact noclick"><thead><tr><th>Số thông báo</th><th>Tên đợt</th><th>Hình thức</th><th>Ngày ban hành</th><th>Hiệu lực</th><th>Nhận hồ sơ</th><th class="num">Số căn</th></tr></thead><tbody>
     ${ns.map(n => `<tr><td><b>${esc(n.code)}</b>${n.doc_no ? `<div class="small muted">Số VB ${esc(n.doc_no)}</div>` : ''}</td><td>${esc(n.title || '')}${n.project ? ` <span class="small muted">· ${esc(n.project)}</span>` : ''}</td>
-      <td>${n.deal === 'thue' ? 'Cho thuê' : 'Bán'}</td><td>${SND(n.notice_on) || '—'}</td><td>${SND(n.open_on) || '—'} – ${n.close_on ? SND(n.close_on) : 'chưa có ngày kết thúc'}</td><td class="num">${n.n_units ?? ''}</td></tr>`).join('')}</tbody></table></div>`;
+      <td>${n.deal === 'thue' ? 'Cho thuê' : 'Bán'}</td><td>${SND(n.notice_on) || '—'}</td><td>${SND(n.notice_on) || 'từ khi ban hành'} – ${n.close_on ? SND(n.close_on) : 'chưa có ngày kết thúc'}</td><td>${SND(n.open_on) || '—'} – ${SND(n.close_on) || '—'}</td><td class="num">${n.n_units ?? ''}</td></tr>`).join('')}</tbody></table></div>`;
 }
 async function noticePicker(el, root) {
   const hid = $('input[type=hidden]', el), box = $('.npick-bd', el), projEl = $('[name="project_ids"]', root) || $('[name="project_id"]', root);
@@ -1753,11 +1753,17 @@ async function noticePicker(el, root) {
     const my = ++seq;
     if (!projEl?.value) { box.innerHTML = '<div class="muted small">Chọn dự án — hệ thống tự lấy các thông báo đang có hiệu lực của dự án.</div>'; return apply(''); }
     box.innerHTML = '<div class="muted small">Đang xác định thông báo đang có hiệu lực…</div>';
-    const r = await api('GET', `/api/policy-notices?project=${projEl.value}&pkind=${kind()}`); if (my !== seq) return;
-    box.innerHTML = `${r.rows.length ? `<div class="upick-sum"><b>${ico('fa-bullhorn')} Tự áp dụng ${r.rows.length} thông báo ${L() === 'bán' ? 'mở bán' : 'cho thuê'} đang có hiệu lực</b></div>${noticeTable(r.rows)}` : ''}
-      ${(r.none || []).map(p => `<div class="npick-none">${ico('fa-circle-exclamation')} Dự án <b>${esc(p.code)}</b>${p.name ? ' · ' + esc(p.name) : ''} chưa có thông báo ${L()}/cho thuê đang có hiệu lực — không chọn được căn của dự án này</div>`.replace(`thông báo ${L()}/cho thuê`, `thông báo ${L()}`)).join('')}`;
+    let r; try { r = await api('GET', `/api/policy-notices?project=${projEl.value}&pkind=${kind()}&_=${Date.now()}`); }
+    catch (e) { if (my !== seq) return; box.innerHTML = `<div class="npick-none err">${ico('fa-triangle-exclamation')} Không tải được thông báo — ${esc(e.message || 'lỗi kết nối')} <button type="button" class="btn sm" data-nretry>${ico('fa-rotate-right')} Thử lại</button></div>`; return; }   // giữ nguyên thông báo / căn đang có, không coi là «chưa có thông báo»
+    if (my !== seq) return;
+    const LB = L() === 'bán' ? 'mở bán' : 'cho thuê';
+    box.innerHTML = `${r.rows.length ? `<div class="upick-sum"><b>${ico('fa-bullhorn')} Tự áp dụng ${r.rows.length} thông báo ${LB} đang có hiệu lực</b></div>${noticeTable(r.rows)}` : ''}
+      ${(r.none || []).map(p => `<div class="npick-none">${ico('fa-circle-exclamation')} Dự án <b>${esc(p.code)}</b>${p.name ? ' · ' + esc(p.name) : ''} chưa có thông báo ${LB} đang có hiệu lực — không chọn được căn của dự án này</div>`).join('')}
+      ${(r.off || []).length ? `<div class="small muted" style="margin-top:6px">Thông báo ${LB} không áp dụng: ${r.off.map(n => `<b>${esc(n.code)}</b>${n.doc_no ? ' (số ' + esc(n.doc_no) + ')' : ''} · ${esc(n.project)} — ${esc(n.why)}`).join('; ')}</div>` : ''}`;
     apply(r.rows.map(n => n.id).join(','));
   };
+  box.addEventListener('click', e => { if (e.target.closest('[data-nretry]')) load(); });
+  const onF = () => { if (!document.contains(el)) return window.removeEventListener('focus', onF); load(); }; window.addEventListener('focus', onF);   // vừa ban hành / sửa thông báo ở tab khác → cập nhật
   const apply = val => { if (val === hid.value) return; hid.value = val; $('[data-pick-units]', root)?._reload?.(true); };   // thông báo đổi → tải lại danh sách căn
   root.addEventListener('change', e => { if (e.target.name === 'pkind') load().catch(er => toast(er.message, true)); });
   projEl?.addEventListener('change', () => load().catch(er => toast(er.message, true)));
