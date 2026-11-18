@@ -252,12 +252,12 @@ table.t.noclick tbody tr { cursor: default; }
 .fld .ro { padding: 8px 11px; background: #f5f8fb; border-radius: 10px; border: 1px dashed #d4dfeb; min-height: 38px; }
 .dwrap { position: relative; } .dwrap button { position: absolute; right: 4px; top: 4px; height: 30px; width: 32px; border: 0; background: transparent; color: var(--cobalt); cursor: pointer; border-radius: 8px; }
 .dwrap button:hover { background: var(--cobalt-50); } .dwrap input[type=date], .dwrap input[type=datetime-local], .dwrap input[type=month] { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; right: 0; bottom: 0; }
-.combo { position: relative; }
-.combo .opts { position: absolute; z-index: 90; left: 0; right: 0; top: 40px; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--deep); max-height: 260px; overflow: auto; }
-.combo .opts div { padding: 8px 11px; cursor: pointer; display: flex; gap: 8px; justify-content: space-between; }
-.combo .opts div:hover, .combo .opts div.on { background: var(--cobalt-50); }
-.combo .opts small { color: var(--muted); }
-.combo .x { position: absolute; right: 6px; top: 8px; border: 0; background: none; color: var(--muted2); cursor: pointer; }
+.combo, .sugc { position: relative; }
+.combo .opts, .sugc .opts { position: absolute; z-index: 90; left: 0; right: 0; top: 40px; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--deep); max-height: 260px; overflow: auto; }
+.combo .opts div, .sugc .opts div { padding: 8px 11px; cursor: pointer; display: flex; gap: 8px; justify-content: space-between; }
+.combo .opts div:hover, .combo .opts div.on, .sugc .opts div:hover, .sugc .opts div.on { background: var(--cobalt-50); }
+.combo .opts small, .sugc .opts small { color: var(--muted); }
+.combo .x, .sugc .x { position: absolute; right: 6px; top: 8px; border: 0; background: none; color: var(--muted2); cursor: pointer; }
 .cklist { border: 1px solid var(--line2); border-radius: 10px; overflow: hidden; }
 .cklist .it { display: grid; grid-template-columns: 1fr 150px 1fr 76px; gap: 8px; padding: 7px 10px; border-bottom: 1px solid #eef2f6; align-items: center; }
 .cklist .it:last-child { border-bottom: 0; } .cklist .it.hd { background: #f3f7fc; font-weight: 700; font-size: 12px; color: #36506d; }

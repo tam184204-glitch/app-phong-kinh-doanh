@@ -331,7 +331,7 @@ function input(f, v, rec = {}, { ro, id } = {}) {
       if (f.pick === 'finish') return `<div class="upick" data-pick-fin><input type="hidden" ${nm} value="${esc(JSON.stringify(v || {}))}"><div class="upick-bd"></div></div>`;
       return f.k === 'pay_sched' ? `<div data-psched ${nm}></div>` : f.k === 'fin_sched' ? `<div data-fsched ${nm}></div>` : f.k === 'new_schedule' ? `<div data-sched ${nm}></div>` : f.k === 'sale_sched' ? `<div data-ssched ${nm}></div>` : f.grid ? `<div class="gridin" ${nm}>${gridRows(f, v || [])}</div>` : `<div class="ro">${show(f, rec)}</div>`;
     default: if (f.choose) return `<select ${nm}>${[...new Set([...f.choose, ...(v ? [v] : [])])].map(o => `<option ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;   // ô chữ nhưng chọn trong danh sách (giữ giá trị cũ ngoài danh sách)
-      if (f.sugRef) return `<input ${nm} value="${esc(v ?? '')}" autocomplete="off" list="dl_${f.k}" placeholder="Gõ mã hoặc tên để tìm ${esc(M.ents[f.sugRef].one)} đã có…"><datalist id="dl_${f.k}"></datalist>`;   // gợi ý động: xem openForm
+      if (f.sugRef) return `<div class="sugc"><input ${nm} value="${esc(v ?? '')}" autocomplete="off" placeholder="Gõ mã hoặc tên để tìm ${esc(M.ents[f.sugRef].one)} đã có…"><button type="button" class="x" tabindex="-1" title="Xóa">${ico('fa-xmark')}</button></div>`;   // gợi ý động (sổ như ô Mã căn hộ — 18/11/2026): xem openForm
       return `<input ${nm} value="${esc(v ?? '')}" autocomplete="off"${f.sug ? ` list="dl_${f.k}"` : ''}>${f.sug ? sugList('dl_' + f.k, f.sug) : ''}`;
   }
 }
@@ -1196,14 +1196,28 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   };
   // ô chữ có gợi ý từ danh mục (VD Mã khách hàng trên phiếu đăng ký): gõ mã / tên → sổ các mã đã có; chọn đúng 1 mã → điền thông tin theo sugFill
   for (const f of fields.filter(f => f.sugRef)) {
-    const el = form.elements[f.k], dl = el && $('#dl_' + f.k, form); if (!el || !dl) continue;
-    let opts = [];
+    const el = form.elements[f.k], wrap = el && el.closest('.sugc'); if (!el || !wrap) continue;
+    let opts = [], box = null, cur = -1;
     const code = o => String(o.label || '').split(' · ')[0];
+    const close = () => { if (box) box.remove(); box = null; };
+    const pick = o => { el.value = code(o); close(); el.dispatchEvent(new Event('change', { bubbles: true })); };
     const load = debounce(async () => {
-      opts = await api('GET', `/api/opts/${f.sugRef}?` + new URLSearchParams(el.value.trim() ? { q: el.value.trim() } : {}));
-      dl.innerHTML = opts.map(o => `<option value="${esc(code(o))}">${esc(o.label)}${o.sub ? ' · ' + esc(o.sub) : ''}</option>`).join('');
+      try { opts = await api('GET', `/api/opts/${f.sugRef}?` + new URLSearchParams(el.value.trim() ? { q: el.value.trim() } : {})); } catch { opts = []; }
+      if (document.activeElement !== el) return;
+      close(); box = document.createElement('div'); box.className = 'opts'; cur = -1;
+      box.innerHTML = opts.length ? opts.map((o, i) => `<div data-i="${i}"><span>${esc(o.label)}</span><small>${esc(o.sub || '')}</small></div>`).join('') : '<div class="muted">Không tìm thấy — để mã mới, hệ thống tự cấp / tự khớp</div>';
+      box.onmousedown = e => { const d = e.target.closest('[data-i]'); if (d) { e.preventDefault(); pick(opts[+d.dataset.i]); } };
+      wrap.append(box);
     }, 200);
     el.addEventListener('focus', load); el.addEventListener('input', load);
+    el.addEventListener('blur', () => setTimeout(close, 150));
+    el.addEventListener('keydown', e => {
+      if (!box) return; const ds = $$('[data-i]', box);
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); cur = Math.max(0, Math.min(ds.length - 1, cur + (e.key === 'ArrowDown' ? 1 : -1))); ds.forEach((d, i) => d.classList.toggle('on', i === cur)); ds[cur]?.scrollIntoView({ block: 'nearest' }); }
+      if (e.key === 'Enter' && cur >= 0) { e.preventDefault(); pick(opts[cur]); }
+      if (e.key === 'Escape') { e.stopPropagation(); close(); }
+    });
+    $('.x', wrap).onclick = () => { el.value = ''; el.dispatchEvent(new Event('change', { bubbles: true })); el.focus(); };
     el.addEventListener('change', run(async () => {
       const o = opts.find(x => code(x).toUpperCase() === el.value.trim().toUpperCase()); if (!o) return;   // mã mới → để máy chủ tự cấp / tự khớp
       const src = (await api('GET', `/api/e/${f.sugRef}/${o.id}`)).row;
