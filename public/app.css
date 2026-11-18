@@ -2332,3 +2332,17 @@ table.t.uc-t td.num, table.t.uc-t th.num { white-space: nowrap; overflow-wrap: n
 .modal.sg-modal{width:97vw!important;max-width:97vw!important}
 .modal.sg-modal{height:calc(100vh - 40px);display:flex!important;flex-direction:column}.modal.sg-modal .mb{flex:1;min-height:0;height:auto!important;max-height:none!important}.modal.sg-modal .mh,.modal.sg-modal .mf{flex:none}
 .modal.sg-modal{height:calc(100vh - 110px)}
+/* 18/11/2026: chọn căn theo tòa + áp dụng lịch thu cho căn đã tích */
+.sg-pick{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 10px;background:#f6f9fd;border:1px solid #d6dfec;border-radius:10px}
+.sg-pick select{height:32px;width:auto;min-width:160px}
+.sg-plist{border:1px solid #cfdcee;border-radius:10px;overflow:hidden;background:#fff;flex:none}
+.sg-plh{display:flex;gap:8px;align-items:center;padding:8px 10px;background:#f6f9fd;border-bottom:1px solid var(--line2)}.sg-plh .inp{height:30px;max-width:240px}
+.sg-plb{max-height:220px;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr))}
+.sg-plb label{display:flex;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid var(--line2);border-right:1px solid var(--line2);cursor:pointer;font-size:12.5px}
+.sg-plb label.on{background:#eaf3ff}.sg-plb label.off{opacity:.55;cursor:default}
+.sg-plf{display:flex;justify-content:flex-end;gap:6px;padding:8px 10px;border-top:1px solid var(--line2)}
+.sg-apply{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 10px;background:#fff7e8;border:1px solid #f3d9a4;border-radius:10px;flex:none}
+.sg-apply select{height:30px;width:auto;min-width:200px;margin-left:4px}.sg-apply label{display:flex;align-items:center;font-size:13px}.sg-ck input{margin-right:5px}
+.sg-t .s0{position:sticky;left:0;z-index:2}.sg-t thead .s0{z-index:4}.sg-t tfoot .s0{z-index:3}
+.sg-t .s1{left:36px}.sg-t .s2{left:216px}.sg-t .s3{left:326px}
+.sg-t tr.sg-pk td{background:#f7fbff}.sg-t tr.sg-pk td.sg-d{background:#eaf3fd}
