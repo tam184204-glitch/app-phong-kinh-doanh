@@ -119,7 +119,7 @@ def('price_policy', {
     { k: 'project_ids', l: 'Dự án', t: 'refs', ref: 'project', req: 1, help: 'Chọn được nhiều dự án cùng áp dụng một chính sách' },
     { k: 'project_id', l: 'Dự án chính', t: 'ref', ref: 'project', hide: 1 },
     // 18/11/2026: Loại chính sách → Dự án → Thông báo đang áp dụng → Tòa → Căn; notice_snap = thông tin thông báo lúc lưu (chính sách đã duyệt giữ nguyên khi thông báo đổi)
-    { k: 'notice_ids', l: 'Thông báo đang áp dụng', t: 'text', pick: 'notices', help: 'Tự áp dụng — không cần chọn: chính sách bán lấy mọi thông báo mở bán, chính sách cho thuê lấy mọi thông báo cho thuê đang có hiệu lực của từng dự án (đã phát hành, đã tới ngày áp dụng, chưa hết hạn, chưa hủy). Căn hộ áp dụng chỉ lấy trong các thông báo này' },
+    { k: 'notice_ids', l: 'Thông báo đang áp dụng', t: 'text', pick: 'notices', help: 'Tự áp dụng — không cần chọn: chính sách bán lấy mọi thông báo mở bán, chính sách cho thuê lấy mọi thông báo cho thuê đang có hiệu lực của từng dự án (đã ban hành, chưa hết hạn, chưa hủy / thu hồi). Căn hộ áp dụng chỉ lấy trong các thông báo này' },
     { k: 'notice_snap', l: 'Thông báo áp dụng (lúc lưu)', t: 'json', hide: 1, ro: 1 },   // = dự án đầu tiên trong project_ids (giữ cho chỗ cần 1 dự án)
     { k: 'mode', l: 'Cách tính giá', t: 'sel', hide: 1, def: 'bang_hang', o: [['bang_hang', 'Theo giá từng căn trên bảng hàng'], ['don_gia', 'Đơn giá × diện tích thông thủy']] },
     money('unit_price', 'Đơn giá (đ/m² thông thủy)', { show: { mode: ['don_gia'] } }),
