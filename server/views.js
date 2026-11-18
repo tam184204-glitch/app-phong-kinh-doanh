@@ -389,9 +389,6 @@ async function boardPub(db, user, f) {
   const buildings = (await db.q('SELECT b.id, b.code, b.name FROM kd_building b WHERE b.project_id = $1 ORDER BY b.code', [pid])).filter(b => cnt[b.id]).map(b => ({ ...b, n: cnt[b.id] }));
   const bid = buildings.some(b => b.id === +f.building) ? +f.building : buildings[0]?.id;
   const d = await board(db, C.SYS, { project: pid, building: bid });
-  // 18/11/2026: ảnh tòa (tệp «anh» của tòa) — không có thì ảnh dự án; giao diện còn ảnh mặc định theo mã dự án (public/anh/<MÃ>.jpg)
-  const imgs = buildings.length ? await db.q("SELECT id, ent, rec_id FROM kd_file WHERE deleted_at IS NULL AND kind = 'anh' AND mime LIKE 'image/%' AND ((ent = 'building' AND rec_id = ANY($1)) OR (ent = 'project' AND rec_id = $2)) ORDER BY id DESC", [buildings.map(b => b.id), pid]) : [];
-  { const pi = imgs.find(x => x.ent === 'project'); for (const b of buildings) { const x = imgs.find(y => y.ent === 'building' && y.rec_id === b.id) || pi; b.img = x ? `/api/file/${x.id}` : null; } }
   const ST = { con_ban: 'con', chua_mo_ban: 'con', giu_cho: 'giu', da_coc: 'giu', da_ky_hd: 'ban', da_ban_giao: 'ban' };
   const units = d.units.filter(u => pub.has(u.id) && ST[u.status] === 'con' && !u.rent && show(u.id)).map(u => {   // chỉ căn còn trống (+ đã chọn cho khách xem)
     const x = pub.get(u.id), st = u.rent ? 'thue' : ST[u.status], free = st === 'con';
@@ -400,7 +397,7 @@ async function boardPub(db, user, f) {
   });
   const used = new Set(); for (const u of units) { const x = pub.get(u.id); x.saleN && used.add(x.saleN.id); x.rentN && used.add(x.rentN.id); }
   const notices = byP.get(pid).filter(n => used.has(n.id)).map(n => ({ id: n.id, code: n.code, title: n.title, deal: n.deal || 'ban', doc_no: n.doc_no, open_on: n.open_on, close_on: n.close_on }));
-  return { projects, project: pid, buildings, building: bid, units, notices, policy: d.policy, can_pick: canPick, can_upload: can(user, E.project, 'u'), pick, chosen: !!sel,
+  return { projects, project: pid, buildings, building: bid, units, notices, policy: d.policy, can_pick: canPick, pick, chosen: !!sel,
     n_all: freeIds.length, n_show: sel ? freeIds.filter(id => sel.has(id)).length : freeIds.length, ...(pick ? { all_ids: freeIds, sel_ids: sel ? freeIds.filter(id => sel.has(id)) : freeIds } : {}),
     ...(sel && canPick ? { chosen_by: cfg[pid].by_l || '', chosen_at: cfg[pid].at || null } : {}) };
 }

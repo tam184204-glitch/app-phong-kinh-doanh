@@ -597,15 +597,6 @@ function unitPop(u, after) {
 // giá chỉ hiện ở căn còn trống. Nút «Trình chiếu» = toàn màn hình để mở cho khách xem trên TV / laptop
 const PUB_G = { con: 'trong', giu: 'giu', ban: 'ky', thue: 'thue' }, PUB_L = { con: 'Còn trống', giu: 'Đã giữ chỗ', ban: 'Đã bán', thue: 'Đã cho thuê' };
 V.boardpub = (main, params) => V.board(main, { ...params, view: 'khach' });   // link cũ #/v/boardpub
-// ảnh mặc định theo mã dự án (khi chưa tải ảnh ở Danh mục dự án / tòa) — tệp public/anh/<MÃ>.jpg
-const PJ_IMG = { TNS: 'anh/TNS.jpg' }, IMGC = new Map();
-async function bpImgs(main) {
-  for (const im of $$('img[data-src]', main)) {
-    const u = im.dataset.src;
-    if (!u.startsWith('/api/')) { im.src = u; continue; }
-    try { if (!IMGC.has(u)) IMGC.set(u, URL.createObjectURL(await (await fetch(u)).blob())); im.src = IMGC.get(u); } catch { im.remove(); }
-  }
-}
 async function boardPubView(main, params) {
   const s = ST.boardpub ||= { project: '', building: '', st: '' };
   if (params.project) s.project = params.project;
@@ -624,18 +615,16 @@ async function boardPubView(main, params) {
       <div class="card mb"><div class="toolbar" style="border:0"><select id="bpp">${d.projects.map(p => `<option value="${p.id}" ${p.id === d.project ? 'selected' : ''}>${esc(p.code)} · ${esc(p.name)}</option>`).join('')}</select>
         <span class="grow"></span><span class="small muted">${ico('fa-circle-info')} ${d.chosen ? `Khách đang xem <b>${d.n_show}</b> / ${d.n_all} căn còn trống (đã chọn${d.chosen_by ? ' — ' + esc(d.chosen_by) : ''}${d.chosen_at ? ' ' + dmy(String(d.chosen_at).slice(0, 10)) : ''})` : 'Chỉ hiện căn còn trống của thông báo đã phát hành'}</span></div>
         ${s.pick ? `<div class="bp-pk">${ico('fa-hand-pointer')} <span>Bấm căn để <b>bật / tắt</b> cho khách xem — đang chọn <b id="bpN2">${s.sel.size}</b> / ${s.all.length} căn còn trống của dự án.</span><span class="grow"></span><button class="btn sm" id="bpTowOn">Chọn cả tòa này</button><button class="btn sm" id="bpTowOff">Bỏ cả tòa này</button><button class="btn sm" id="bpAllOn">Chọn tất cả</button><button class="btn sm ghost" id="bpAllOff">Bỏ chọn tất cả</button></div>` : ''}
-        <div style="padding:0 14px 12px"><div class="towers bp-tws">${d.buildings.map(b => { const src = b.img || PJ_IMG[pj?.code]; return `<div class="tower bp-tw ${b.id === d.building ? 'on' : ''}" data-b="${b.id}"><div class="bp-im">${src ? `<img data-src="${src}" alt="${esc(b.name || 'Tòa ' + b.code)}">` : `<span>${ico('fa-image')} ${d.can_upload ? 'Chưa có ảnh — tải ở Danh mục dự án' : ''}</span>`}</div><div class="bp-tx"><b>${esc(b.name || 'Tòa ' + b.code)}</b><small>${b.n} căn còn trống</small></div></div>`; }).join('')}</div></div></div>
+        <div style="padding:0 14px 12px"><div class="towers">${d.buildings.map(b => `<div class="tower ${b.id === d.building ? 'on' : ''}" data-b="${b.id}"><b>${esc(b.name || 'Tòa ' + b.code)}</b><small>${b.n} căn còn trống</small></div>`).join('')}</div></div></div>
       <div class="card"><div class="toolbar"><div class="legend">${Object.entries(PUB_L).filter(([k]) => cnt[k]).map(([k, l]) => `<span data-st="${k}" style="cursor:pointer;${s.st && s.st !== k ? 'opacity:.4' : ''}"><b class="u g-${PUB_G[k]}" style="width:12px;height:12px;min-height:0;padding:0;border-radius:3px"></b>${l} <b style="background:none;width:auto;height:auto;color:var(--ink)">${cnt[k]}</b></span>`).join('')}</div>${s.st ? '<button class="btn sm ghost" data-st="">Bỏ lọc</button>' : ''}<span class="grow"></span><span class="small muted">${d.units.length} căn · ${floors.length} tầng</span></div>
       <div class="bd"><div class="floors">${floors.map(fl => `<div class="floor"><div class="fl">Tầng ${fl}</div><div class="us">${d.units.filter(u => u.floor === fl).map(u => `<div class="u g-${PUB_G[u.st]} ${s.st && s.st !== u.st ? 'dim' : ''}${s.pick ? (s.sel.has(u.id) ? ' pk-on' : ' pk-off') : ''}" data-u="${u.id}" title="${esc(u.code)} · ${PUB_L[u.st]}"><b class="no">${esc(u.code.split('-').pop())}</b><div class="sp">${u.bedrooms || ''}PN · ${fnum(u.area_tt)}m²</div><div class="pr">${u.st === 'con' ? priceOf(u) : PUB_L[u.st]}</div><div class="cu">${esc(u.direction || '')}</div></div>`).join('')}</div></div>`).join('') || '<div class="empty">Tòa chưa có căn mở bán</div>'}</div></div></div>`}</div>`;
-    bviewWire(main); bpImgs(main);
+    bviewWire(main);
     if (!d.projects.length) return;
     $('#bpp', main).onchange = e => { s.project = e.target.value; s.building = ''; s.pick = false; s.sel = null; draw(); };
   };
   const pkCount = () => { for (const id of ['#bpN', '#bpN2']) { const x = $(id, main); if (x) x.textContent = s.sel.size; } };
   const pkSet = (ids, on) => { for (const id of ids) on ? s.sel.add(id) : s.sel.delete(id); for (const el of $$('[data-u]', main)) { const v = s.sel.has(+el.dataset.u); el.classList.toggle('pk-on', v); el.classList.toggle('pk-off', !v); } pkCount(); };
   main.onclick = run(async e => {
-    const big = e.target.closest('.bp-tw.on .bp-im img');   // bấm ảnh tòa đang chọn → xem ảnh to
-    if (big && big.src) return modal({ title: `${ico('fa-image')} ${esc(big.alt)}`, wide: true, body: `<img src="${big.src}" style="width:100%;border-radius:12px;display:block">`, foot: '<button class="btn" data-x>Đóng</button>' });
     if (e.target.closest('#bpPick')) { s.pick = true; s.sel = null; return draw(); }
     if (e.target.closest('#bpCancel')) { s.pick = false; s.sel = null; return draw(); }
     if (s.pick) {

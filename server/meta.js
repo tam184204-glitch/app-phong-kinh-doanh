@@ -35,7 +35,7 @@ const def = (key, o) => { E[key] = { key, table: 'kd_' + key, r: ALL, ...o }; };
 // ===================== 02. DỰ ÁN & GIỎ HÀNG =====================
 def('project', {
   title: 'Dự án', one: 'dự án', mod: '02', icon: 'fa-city', disp: "t.code||' · '||t.name",
-  c: ['truong_phong'], files: [['anh', 'Ảnh dự án (phối cảnh) — hiện ở Bảng hàng cho khách xem']], fields: [
+  c: ['truong_phong'], fields: [
     { k: 'code', l: 'Mã dự án', t: 'text', req: 1, uniq: 1, help: 'VD: CTS, TNS' },
     { k: 'name', l: 'Tên dự án', t: 'text', req: 1 },
     { k: 'investor', l: 'Chủ đầu tư', t: 'text' },
@@ -47,7 +47,7 @@ def('project', {
 });
 def('building', {
   title: 'Tòa / khu', one: 'tòa', mod: '02', icon: 'fa-building', disp: "coalesce(t.name, t.code)",
-  c: ['truong_phong'], files: [['anh', 'Ảnh tòa — hiện ở Bảng hàng cho khách xem (không có thì dùng ảnh dự án)']], fields: [
+  c: ['truong_phong'], fields: [
     { k: 'project_id', l: 'Dự án', t: 'ref', ref: 'project', req: 1 },
     { k: 'code', l: 'Mã tòa / khu', t: 'text', req: 1, help: 'P / G / LK' },
     { k: 'name', l: 'Tên tòa', t: 'text' },
