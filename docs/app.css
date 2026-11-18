@@ -2709,3 +2709,6 @@ select.bview { appearance: none; -webkit-appearance: none; font-weight: 600; col
 #bpFull .fs-out { display: none; }
 .bpub:fullscreen #bpFull .fs-in { display: none; } .bpub:fullscreen #bpFull .fs-out { display: inline; }
 .bpub:fullscreen #bpPick, .bpub:fullscreen .bp-noimg, .bpub:fullscreen .toolbar .small.muted { display: none !important; }
+
+/* 18/11/2026: Hồ sơ theo căn — nhãn «căn đang có HĐ» trên nút bộ hồ sơ */
+.hs-step .tag.b { background: #e8f0fb; color: #1F3A68; border: 1px solid #c9d8ef; border-radius: 999px; padding: 1px 8px; font-size: 11.5px; }

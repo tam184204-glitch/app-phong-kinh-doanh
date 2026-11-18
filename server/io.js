@@ -1019,7 +1019,7 @@ async function tplMap(ent, row, user) {
 // chỗ để trống ngày lập văn bản «ngày …… tháng …… năm 2026» / «Ngày   tháng   năm 20…» → tự điền ngày hôm nay (12/11/2026)
 // chỉ thay khi ngày & tháng còn trống (chấm, dấu …, khoảng trắng); ngày đã ghi số hoặc «ký ngày …/…/…» của giấy tờ khác giữ nguyên
 const GAP = String.raw`(?:[\s.…_\u00a0]|&nbsp;)`;
-const TODAY_RE = new RegExp(String.raw`(ngày)${GAP}+(tháng)${GAP}+(năm)(?:${GAP}*(?:20\d\d|20${GAP}*[.…]+|[.…]+))?`, 'gi');
+const TODAY_RE = new RegExp(String.raw`(ngày)${GAP}+(tháng)${GAP}+(năm)(?:${GAP}*(?:20\d\d|20${GAP}*[.…]+|[.…]+|20(?!\d)))?`, 'gi');   // 18/11/2026: «năm 20      tại» (mẫu TONG HOP MAU) — bỏ «20» thừa
 function fillToday(html, today) {
   const [y, m, d] = String(today || C.today()).split('-');
   return String(html).replace(/(<[^>]*>)|([^<]+)/g, (all, tag, text) => tag ? tag : text.replace(TODAY_RE, (s, a, b, c) => `${a} ${d} ${b} ${m} ${c} ${y}`));

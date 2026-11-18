@@ -8,8 +8,12 @@ const { E } = require('./meta');
 const { zip } = require('./xlsx');
 const { bad, deny, can, fmtMoney, dmy } = C;
 
-const BO = [['mua_ban', 'HS mua bán'], ['vay', 'HS hợp đồng vay'], ['tl_vay', 'HS thanh lý hợp đồng vay'], ['ban_giao', 'HS bàn giao'], ['tl_mua_ban', 'HS thanh lý mua bán'], ['so_hong', 'HS sổ hồng']];
-const MAU_TNS = () => require('./mau-tns.json').map(t => ({ code: t.code, name: t.name, kind: t.kind, bo: t.bo, scope: t.scope, ent: 'unit', content: t.content }));
+// 18/11/2026 (Tâm): 4 loại hợp đồng — HĐMB (gồm bàn giao, thông báo thu tiền, thanh lý HĐMB / VBTT sở hữu chung / đơn trả lại), HĐ vay, HĐ hoàn thiện
+// (HĐ thỏa thuận + thanh lý HĐ thỏa thuận), HĐ thuê (mẫu gửi sau) + giữ bộ Sổ hồng. Mẫu từ thư mục «TONG HOP MAU» (server/mau-tong-hop.json, mỗi tòa 1 bộ)
+const BO = [['hdmb', 'HĐ mua bán'], ['vay', 'HĐ vay'], ['hoan_thien', 'HĐ hoàn thiện căn hộ'], ['thue', 'HĐ thuê'], ['so_hong', 'Sổ hồng']];
+const BO_OLD = { mua_ban: 'hdmb', ban_giao: 'hdmb', tl_mua_ban: 'hdmb', tl_vay: 'vay' };   // bộ cũ → bộ mới (mẫu tự tải lên trước 18/11/2026)
+const MAU_TH = () => { const a = require('./mau-tong-hop.json'), by = new Map(a.filter(t => t.content).map(t => [t.code, t.content])); return a.map(t => t.same ? { ...t, content: by.get(t.same) } : t); };   // mẫu trùng nội dung lưu 1 lần («same»)
+const MAU_TNS = () => [...require('./mau-tns.json'), ...MAU_TH()].map(t => ({ code: t.code, name: t.name, kind: t.kind, bo: t.bo, scope: t.scope, ent: 'unit', content: t.content }));
 const PII_PRINT = ['truong_phong', 'lanh_dao', 'ho_so', 'admin'];
 
 // tên trường cho dòng «Thiếu dữ liệu»
@@ -20,11 +24,13 @@ const LABEL = {
   dien_thoai: 'Điện thoại', email: 'Email', mst: 'Mã số thuế', stk: 'Tài khoản ngân hàng', vc_ten: 'Họ tên vợ / chồng', vc_cccd: 'CCCD vợ / chồng', vc_ngay_cap: 'Ngày cấp CCCD vợ / chồng', vc_noi_cap: 'Nơi cấp CCCD vợ / chồng',
   dt_tt: 'Diện tích thông thủy', dt_san: 'Diện tích sàn', don_gia: 'Đơn giá nền', ngay_don: 'Ngày đơn đề nghị mua', gia_truoc_thue: 'Giá trước thuế', thue_vat: 'Thuế VAT', phi_bao_tri: 'Phí bảo trì',
   gia_sau_thue: 'Giá sau thuế', tong_gia: 'Tổng giá căn hộ', so_hdmb: 'Số HĐ mua bán', ngay_hdmb: 'Ngày ký HĐ mua bán', gia_tri_hdmb: 'Giá trị HĐ mua bán', so_hdtt: 'Số HĐ thỏa thuận hoàn thiện',
-  ngay_hdtt: 'Ngày ký HĐ thỏa thuận', gia_tri_ht: 'Giá trị hoàn thiện', so_hdv: 'Số HĐ vay', ngay_hdv: 'Ngày ký HĐ vay', tien_vay: 'Số tiền vay', vay_dot1: 'Giải ngân đợt 1 (HĐ vay)', vay_dot2: 'Giải ngân đợt 2 (HĐ vay)',
+  ngay_hdtt: 'Ngày ký HĐ thỏa thuận', gia_tri_ht: 'Giá trị hoàn thiện', so_hdv: 'Số HĐ vay', ngay_hdv: 'Ngày ký HĐ vay', tien_vay: 'Số tiền vay', vay_da_nhan: 'Số tiền khách đã cho vay (phiếu thu HĐ vay)', ngay_viet_hdv: 'Ngày ký HĐ vay', ngay_viet_hdtt: 'Ngày ký HĐ thỏa thuận hoàn thiện', tien_vay_bs: 'Số tiền vay bổ sung (phụ lục HĐ vay — điền tay)',
+  phai_nop_bg: 'Tổng phải nộp đến bàn giao', con_tien_nha_bg: 'Tiền nhà còn phải nộp (bàn giao)', con_bao_tri_bg: 'Phí bảo trì còn phải nộp', con_hoan_thien_bg: 'Tiền hoàn thiện còn phải nộp',
+  tien_bhcn: 'Tiền bảo hiểm cháy nổ (điền tay)', con_nop_bg: 'Tổng còn phải nộp (bàn giao)', ngay_bg_tb: 'Ngày bàn giao (Thông báo bàn giao căn hộ — chưa có thông báo chứa căn)', han_nop_bg: 'Hạn nộp tiền bàn giao', vay_dot1: 'Giải ngân đợt 1 (HĐ vay)', vay_dot2: 'Giải ngân đợt 2 (HĐ vay)',
   vay_dot3: 'Giải ngân đợt 3 (HĐ vay)', vay_dot4: 'Giải ngân đợt 4 (HĐ vay)', da_tt: 'Số tiền đã thanh toán HĐMB', da_tt_ht: 'Số tiền đã thanh toán HĐ thỏa thuận', dot: 'Đợt thu tiền', phai_nop: 'Số tiền phải nộp',
   da_nop: 'Số tiền đã nộp', con_nop: 'Số tiền còn phải nộp', tong_phai_nop: 'Tổng số tiền phải nộp', so_vbtt_sc: 'Số VBTT sở hữu chung', ngay_vbtt_sc: 'Ngày VBTT sở hữu chung', tien_s_chung: 'Tiền sở hữu chung',
   // 18/11/2026: thông báo sổ hồng — lấy theo Thông báo bàn giao Giấy chứng nhận có căn (08 · SH-02) và Hồ sơ cấp sổ hồng của căn
-  tb_gcn_so: 'Số thông báo bàn giao GCN (chưa có thông báo GCN chứa căn này)', tb_cong_ty: 'Tên công ty (Thông báo bàn giao GCN)', tb_nguoi_ky: 'Người ký (Thông báo bàn giao GCN)', tb_chuc_vu: 'Chức vụ người ký',
+  tb_gcn_so: 'Số thông báo bàn giao GCN (chưa có thông báo GCN chứa căn này)', ngay_viet_tb: 'Ngày thông báo bàn giao GCN', tb_cong_ty: 'Tên công ty (Thông báo bàn giao GCN)', tb_nguoi_ky: 'Người ký (Thông báo bàn giao GCN)', tb_chuc_vu: 'Chức vụ người ký',
   ngay_bg_gcn: 'Ngày bàn giao Giấy chứng nhận', gcn_seri: 'Số seri GCN của chủ đầu tư', gcn_vao_so: 'Số vào sổ cấp GCN', gcn_co_quan: 'Cơ quan cấp GCN', gcn_ngay_cap: 'Ngày cấp GCN',
   to_ban_do: 'Tờ bản đồ số', thua_dat: 'Thửa đất số', dt_thua: 'Diện tích thửa đất', dia_chi_thua: 'Địa chỉ thửa đất', hinh_thuc_sd: 'Hình thức sử dụng', muc_dich_sd: 'Mục đích sử dụng đất', thoi_han_sd: 'Thời hạn sử dụng',
   nguon_goc_sd: 'Nguồn gốc sử dụng', nam_xd: 'Năm hoàn thành xây dựng', ket_cau: 'Kết cấu', so_tang_noi: 'Số tầng nổi', so_tang_ham: 'Số tầng hầm', dia_diem_bg_gcn: 'Địa điểm bàn giao GCN', gio_lam_viec: 'Thời gian làm việc',
@@ -32,7 +38,7 @@ const LABEL = {
   so_gcn: 'Số Giấy chứng nhận của căn (Hồ sơ cấp sổ hồng)',
 };
 const MONEY = ['gia_truoc_thue', 'thue_vat', 'phi_bao_tri', 'gia_sau_thue', 'tong_gia', 'gia_tri_hdmb', 'gia_tri_ht', 'tien_vay', 'vay_dot1', 'vay_dot2', 'vay_dot3', 'vay_dot4', 'da_tt', 'da_tt_ht',
-  'phai_nop', 'da_nop', 'con_nop', 'con_tien_nha', 'con_hoan_thien', 'tong_phai_nop', 'tien_s_chung', 'tien_dot_gcn', 'con_tong'];
+  'phai_nop', 'da_nop', 'con_nop', 'con_tien_nha', 'con_hoan_thien', 'tong_phai_nop', 'tien_s_chung', 'tien_dot_gcn', 'con_tong', 'gia_ban', 'vay_da_nhan', 'tien_vay_bs', 'phai_nop_bg', 'con_tien_nha_bg', 'con_bao_tri_bg', 'con_hoan_thien_bg', 'tien_bhcn', 'con_nop_bg'];
 
 const live = r => r && !['huy', 'thanh_ly'].includes(r.status);
 const pick = (cts, kind) => cts.find(c => c.kind === kind && live(c)) || cts.find(c => c.kind === kind);
@@ -89,7 +95,7 @@ async function hsData(unitId, user, custId) {
     ...(() => { const h = hdmb || c, vc = h.co_owner_vc !== false && mem?.name, fd = v => { const t = String(v ?? '').trim(); return /^\d{4}-\d{2}-\d{2}/.test(t) || v instanceof Date ? dmy(v) : t; };
       return vc ? { vc_ten: mem.name, vc_cccd: P(mem.id_no || h.co_owner_id_no), vc_ngay_cap: P(fd(mem.id_date) || dmy(mem.id_no && mem.id_no !== h.co_owner_id_no ? '' : h.co_owner_id_date)), vc_noi_cap: P(mem.id_place || (mem.id_no && mem.id_no !== h.co_owner_id_no ? '' : h.co_owner_id_place) || '') }
         : { vc_ten: h.co_owner || (h.co_owner_vc === false ? '' : mem?.name) || '', vc_cccd: P(h.co_owner_id_no), vc_ngay_cap: P(dmy(h.co_owner_id_date)), vc_noi_cap: P(h.co_owner_id_place || '') }; })(),
-    ma_can: u.code, du_an: u.pname, // tòa / tầng lấy theo dữ liệu căn (không cắt mã căn theo vị trí — tòa «LK», mã dự án khác 3 ký tự vẫn đúng) (13/11/2026)
+    ma_can: u.code, ma_can_tp: String(u.code).replace(/^[^-]+-/, ''), du_an: u.pname, // tòa / tầng lấy theo dữ liệu căn (không cắt mã căn theo vị trí — tòa «LK», mã dự án khác 3 ký tự vẫn đúng) (13/11/2026)
     toa: u.bcode || u.code.slice(4, 5), tang: u.floor != null && u.floor !== '' ? String(u.floor).padStart(2, '0') : u.code.slice(6, 8), can_so: u.code.slice(-2), so_can4: u.code.slice(-4), ma_can6: u.code.slice(-6), toa_ky: u.bcode ? '-' + u.bcode : u.code.slice(3, 5),
     so_hdmb: hdmb?.number || '', ngay_hdmb: dmy(hdmb?.contract_on), ngay_don: dmy(hdmb?.request_on || res?.reg_date),
     so_hdtt: ht?.number || '', ngay_hdtt: dmy(ht?.contract_on), so_hdv: vay?.number || '', ngay_hdv: dmy(vay?.contract_on || vay?.loan_recv_on),
@@ -116,6 +122,8 @@ async function hsData(unitId, user, custId) {
   if (hdmb && hdmb.value != null && N.gia_ban != null && N.phi_bao_tri != null) N.tong_gia = N.gia_tri_hdmb = N.gia_ban + N.phi_bao_tri;
   N.tong_gia ??= N.gia_ban != null && N.phi_bao_tri != null ? N.gia_ban + N.phi_bao_tri : null;
   { const cd = hdmb?.contract_on ? dmy(hdmb.contract_on).split('/') : null;
+    { const v = vay?.contract_on ? dmy(vay.contract_on).split('/') : null; S.ngay_viet_hdv = v ? `ngày ${v[0]} tháng ${v[1]} năm ${v[2]}` : ''; }
+    { const v = ht?.contract_on ? dmy(ht.contract_on).split('/') : null; S.ngay_viet_hdtt = v ? `ngày ${v[0]} tháng ${v[1]} năm ${v[2]}` : ''; }   // HĐ thỏa thuận hoàn thiện: ngày ký   // HĐ vay: «Hôm nay, ngày …» = ngày ký HĐ vay
     S.ngay_viet_hdmb = cd ? `ngày ${cd[0]} tháng ${cd[1]} năm ${cd[2]}` : (() => { const d = C.today().split('-'); return `ngày ${d[2]} tháng ${d[1]} năm ${d[0]}`; })(); }
   // tiền đã thu (phiếu thu hợp lệ) & lịch thu
   const paid = async ct => ct ? +(await one("SELECT coalesce(sum(amount), 0) s FROM kd_receipt WHERE contract_id = $1 AND status <> 'huy'", [ct.id])).s : null;
@@ -143,6 +151,20 @@ async function hsData(unitId, user, custId) {
       tong_phai_nop: im.reduce((s, i) => s + +i.amount, 0) + ih.reduce((s, i) => s + +i.amount, 0) });
     S.dot = String(dot.seq);
   } else S.dot = '';
+  // 18/11/2026: bộ TONG HOP MAU — tiền khách đã cho vay (phiếu thu HĐ vay); thông báo thu tiền & bàn giao: ngày / hạn theo Thông báo bàn giao căn hộ có căn,
+  // phải nộp đến bàn giao = các đợt tiền nhà tới đợt bàn giao + phí bảo trì + HĐ hoàn thiện; đã nộp trừ dần tiền nhà rồi bảo trì
+  N.vay_da_nhan = vay ? await paid(vay) : null; N.tien_vay_bs = null; N.tien_bhcn = null;
+  { const bn = (await q("SELECT * FROM kd_handover_notice WHERE building_id = $1 AND status IN ('da_duyet', 'cho_duyet', 'nhap') ORDER BY (status = 'da_duyet') DESC, handover_on DESC NULLS LAST, id DESC", [u.building_id]))
+      .find(n => String(n.unit_list || '').toUpperCase().split(/[,;\s]+/).includes(u.code.toUpperCase()));
+    const base = bn && (bn.pay_from === 'thong_bao' ? bn.notice_on : bn.handover_on);
+    S.ngay_bg_tb = bn ? dmy(bn.handover_on) : ''; S.han_nop_bg = base ? dmy(C.addDays(String(base instanceof Date ? base.toISOString() : base).slice(0, 10), +bn.pay_days || 0)) : '';
+    if (im.length) {
+      const bgI = imD.findIndex(x => x.is_bg || /bàn giao|nhận nhà/i.test(x.name || '')), upto = bgI >= 0 ? imD.slice(0, bgI + 1) : imD;
+      const nha = upto.reduce((a, x) => a + +x.amount, 0), bt = im.filter(x => x.is_maint).reduce((a, x) => a + +x.amount, 0), htT = ih.reduce((a, x) => a + +x.amount, 0);
+      const P = N.da_tt || 0;
+      N.con_tien_nha_bg = Math.max(0, nha - P); N.con_bao_tri_bg = Math.max(0, bt - Math.max(0, P - nha)); N.con_hoan_thien_bg = Math.max(0, htT - (N.da_tt_ht || 0));
+      N.phai_nop_bg = nha + bt + htT; N.con_nop_bg = N.con_tien_nha_bg + N.con_bao_tri_bg + N.con_hoan_thien_bg;
+    } else for (const k of ['con_tien_nha_bg', 'con_bao_tri_bg', 'con_hoan_thien_bg', 'phai_nop_bg', 'con_nop_bg']) N[k] = null; }
   // 18/11/2026: thông báo sổ hồng — Thông báo bàn giao GCN có căn (đã phát hành trước, rồi chờ duyệt / nháp), Hồ sơ cấp sổ hồng, đợt thu gắn GCN của HĐMB
   const gn = (await q("SELECT * FROM kd_gcn_notice WHERE building_id = $1 AND status IN ('da_duyet', 'cho_duyet', 'nhap') ORDER BY (status = 'da_duyet') DESC, coalesce(handover_on, notice_on) DESC NULLS LAST, id DESC", [u.building_id]))
     .find(n => String(n.unit_list || '').toUpperCase().split(/[,;\s]+/).includes(u.code.toUpperCase())) || null;
@@ -195,7 +217,7 @@ function evalExpr(src, N, miss0) {
   const add = () => { let v = mul(); while (peek() === '+' || peek() === '-') { const o = take(), b = mul(); v = o === '+' ? v + b : v - b; } return v; };
   return add();
 }
-const NO_MISS = new Set(['cccd_dai_dien']);   // để trống thì in «……» nhưng không báo thiếu
+const NO_MISS = new Set(['cccd_dai_dien', 'tien_bhcn', 'tien_vay_bs']);   // để trống thì in «……» (điền tay) nhưng không báo thiếu   // để trống thì in «……» nhưng không báo thiếu
 const escH = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const DOTS = '…………………';
 const SHORT = new Set(['dot', 'tang', 'can_so', 'toa', 'so_can4', 'toa_ky']);   // trường ngắn: chừa chỗ điền tay ngắn, không đẩy dòng
@@ -225,14 +247,13 @@ function merge(content, D, miss = new Set()) {
 const missOf = (content, D) => { const s = new Set(); merge(content, D, s); return [...s].map(k => LABEL[k] || k); };
 
 // bước hiện tại của căn (gợi ý bộ hồ sơ)
-function stepOf(ctx) {
-  const { hdmb, vay, ht, cts, gn } = ctx;
-  if (gn?.status === 'da_duyet' && hdmb) return 'so_hong';   // 18/11/2026: căn đã có thông báo bàn giao Giấy chứng nhận phát hành → bộ sổ hồng
-  if (cts.some(c => ['hdmb', 'hoan_thien'].includes(c.kind) && c.status === 'thanh_ly')) return 'tl_mua_ban';
-  if (vay && (vay.status === 'thanh_ly' || vay.closed)) return 'tl_vay';
-  if (hdmb && hdmb.status === 'da_ky' && ht) return 'ban_giao';
-  if (vay && !hdmb) return 'vay';
-  return 'mua_ban';
+function stepOf(ctx) {   // 18/11/2026: gợi ý bộ theo hợp đồng căn đang có (vẫn in được bộ khác)
+  const { hdmb, vay, ht, gn } = ctx;
+  if (gn?.status === 'da_duyet' && hdmb) return 'so_hong';
+  if (hdmb) return 'hdmb';
+  if (vay) return 'vay';
+  if (ht) return 'hoan_thien';
+  return 'hdmb';
 }
 
 async function unitTemplates(unitId) {
@@ -247,10 +268,10 @@ async function autoProjectTemplates(unitId, user) {
   const IO = require('./io');
   const sc = await IO.recScope('unit', unitId); if (!sc.pcode) return 0;
   const have = (await q('SELECT code, bo, scope, bedrooms FROM kd_template WHERE active AND bo IS NOT NULL')).filter(t => IO.tplFitLevel(t, sc) >= 0);
-  const STD = /^[A-Z0-9]+-(MB|VAY|TLV|BG|TLMB|SH)-\d/i;   // mã theo chuẩn <DỰ ÁN>-<LOẠI>-<SỐ>; bộ có mẫu đặt mã riêng (tự tải lên) thì không chép thêm vào bộ đó
+  const STD = /^[A-Z0-9]+-(SH)-\d/i;   // mã theo chuẩn <DỰ ÁN>-<LOẠI>-<SỐ>; bộ có mẫu đặt mã riêng (tự tải lên) thì không chép thêm vào bộ đó
   const P = String(sc.pcode).toUpperCase(), base = MAU_TNS().filter(t => /^TNS-/.test(t.code)), done = new Set(); let n = 0;
   const sysU = await one("SELECT * FROM kd_user WHERE role = 'admin' AND active ORDER BY id LIMIT 1") || C.SYS;
-  for (const [bo] of BO) {
+  for (const bo of ['so_hong']) {   // 18/11/2026: bộ hợp đồng đã có mẫu riêng từng tòa (TONG HOP MAU) — chỉ tự chép mẫu Sổ hồng chung
     const mine = have.filter(t => t.bo === bo); if (mine.some(t => !STD.test(t.code))) continue;
     for (const t of base.filter(x => x.bo === bo)) {
       const key = t.code.replace(/-(DEFG|HIJ|DE|FG)$/, ''); if (done.has(key)) continue; done.add(key);
@@ -332,8 +353,8 @@ async function hsInfo(key, user, custId) {
     units: others.length > 1 ? others.map(r => r.code) : [], byCustomer: f.cust ? f.cust.code : null,
     step: stepOf(x), added, demoFill: demoFillOn(),
     // HĐMB + phụ lục (bản vẽ, vật liệu, quy chế) = 1 dòng «Hợp đồng mua bán căn hộ», in chung 1 file (13/11/2026)
-    bos: BO.map(([k, l]) => { const list = ts.filter(t => t.bo === k), hd = list.some(t => tplKey(t.code) === 'MB-02'), anx = hd ? list.filter(t => ANNEX(tplKey(t.code))) : [];
-      return { k, l, tpls: list.filter(t => !anx.includes(t)).map(t => { const isHd = tplKey(t.code) === 'MB-02' && anx.length;
+    bos: BO.map(([k, l]) => { const has = { hdmb: !!x.hdmb, vay: !!x.vay, hoan_thien: !!x.ht }[k] || false, list = ts.filter(t => t.bo === k), hd = list.some(t => tplKey(t.code) === 'MB-02'), anx = hd ? list.filter(t => ANNEX(tplKey(t.code))) : [];
+      return { k, l, has, tpls: list.filter(t => !anx.includes(t)).map(t => { const isHd = tplKey(t.code) === 'MB-02' && anx.length;
         return { code: t.code, name: t.name, kind: t.kind, missing: isHd ? [...new Set([t, ...anx].flatMap(x => missOf(x.content, D)))] : missOf(t.content, D), annex: isHd ? anx.map(x => x.name) : undefined,
         warn: (() => { const K = +(/\btt(\d)_dot/.exec(t.content || '') || [])[1], n = D.map._n_dot;   // số đợt đã khai khác số đợt của mẫu HĐMB
           return K && n && n !== K ? [`Lần thanh toán đã khai ${n} đợt, mẫu HĐMB có ${K} đợt — HĐMB in số tiền theo % ghi trên mẫu`] : undefined; })() }; }) }; }),
@@ -359,7 +380,7 @@ const HD_CSS = '@page{margin:17mm 12mm 15mm 19.5mm} body{font-size:12pt;line-hei
 async function hsDocs(unitId, codes, user, custId) {
   if (!can(user, E.unit, 'r')) deny();
   const ts = await unitTemplates(unitId), want = String(codes || '').split(',').map(s => s.trim()).filter(Boolean);
-  const pickT = withAnnex(want.length ? want.map(c => ts.find(t => t.code === c)).filter(Boolean) : ts, ts.filter(t => t.bo === 'mua_ban'));
+  const pickT = withAnnex(want.length ? want.map(c => ts.find(t => t.code === c)).filter(Boolean) : ts, ts.filter(t => t.bo === 'hdmb'));
   if (!pickT.length) bad('Chưa chọn hồ sơ (hoặc mẫu không áp dụng cho căn này)');
   const D = await hsData(unitId, user, custId);
   return { D, docs: pickT.map(t => ({ t, html: merge(t.content, D) })) };
@@ -465,7 +486,7 @@ async function wordHs(unitId, codes, user, custId) {
 // lưu bản Word của bộ hồ sơ vào Kho hồ sơ: gắn vào HĐ của bộ (vay / thanh lý vay → HĐ vay; còn lại → HĐMB, không có thì HĐ khác của căn), loại «Dự thảo»
 async function saveTarget(unitId, bo, custId) {
   const cts = (await q("SELECT id, kind, status, customer_id FROM kd_contract WHERE unit_id = $1 ORDER BY (status IN ('huy', 'thanh_ly')), id DESC", [+unitId])).filter(c => !+custId || c.customer_id === +custId);
-  const want = ['vay', 'tl_vay'].includes(bo) ? ['vay'] : ['hdmb', 'thue_mua'];
+  const want = bo === 'vay' ? ['vay'] : bo === 'hoan_thien' ? ['hoan_thien'] : bo === 'thue' ? ['thue'] : ['hdmb', 'thue_mua'];
   const c = cts.find(x => want.includes(x.kind)), c0 = c || cts[0];
   const KL = { hdmb: 'HĐMB', thue_mua: 'HĐ thuê mua', hoan_thien: 'HĐ thỏa thuận', vay: 'HĐ vay', thue: 'HĐ thuê' };
   if (c0) return { ent: 'contract', id: c0.id, kind: 'du_thao', what: c ? KL[c0.kind] || 'HĐ' : `${KL[c0.kind] || 'HĐ'} (căn chưa có ${want.includes('vay') ? 'HĐ vay' : 'HĐ mua bán'} — gắn tạm vào HĐ này)` };
@@ -545,7 +566,7 @@ async function demoFill(unitId, user) {
   return { did };
 }
 // ===== In hàng loạt nhiều căn (12/11/2026): chọn dự án / tòa / danh sách mã căn → chọn bước + hồ sơ → In tất cả / Tải Word (mỗi căn 1 phần) =====
-const tplKey = code => String(code).replace(/^[^-]+-/, '').replace(/-(DEFG|HIJ|DE|FG)$/, '');   // TNS-MB-02-DEFG / ABC-MB-02 → MB-02 (cùng loại hồ sơ, mẫu theo tòa / dự án)
+const tplKey = code => String(code).replace(/^[A-Z0-9]+-(?:[A-Z][A-Z0-9]?-)?(?=(?:MB|VAY|HT|SH|THUE|TLV|BG|TLMB)-\d)/i, '').replace(/-(DEFG|HIJ|DE|FG)$/, '');   // CTS-K-MB-02 / TNS-MB-14 / CTS-VAY-01 → MB-02 / MB-14 / VAY-01   // TNS-MB-02-DEFG / ABC-MB-02 → MB-02 (cùng loại hồ sơ, mẫu theo tòa / dự án)
 const shortName = n => String(n).replace(/\s*\(tòa [^)]*\)$/, '');
 const unitList = v => [...new Set((Array.isArray(v) ? v : String(v || '').split(/[\s,;]+/)).map(x => String(x).trim().replace(/\*\d+$/, '')).filter(Boolean))].slice(0, 200);
 // số bản in mỗi căn (13/11/2026): «CTS-K-0201*3» = in căn đó 3 bản giống nhau (tối đa 50 bản / căn)
@@ -554,7 +575,7 @@ const unitCopies = v => { const m = new Map();
     m.set(r[1].toUpperCase(), Math.min(50, Math.max(1, +r[2] || 1))); }
   return m; };
 // bước tự động (13/11/2026): bo = 'auto' → mỗi căn in bộ hồ sơ của bước đang làm của căn đó (theo HĐ của khách đang giao dịch)
-const BO_L = Object.fromEntries(BO), BO_PFX = { mua_ban: 'MB', vay: 'VAY', tl_vay: 'TLV', ban_giao: 'BG', tl_mua_ban: 'TLMB', so_hong: 'SH' };
+const BO_L = Object.fromEntries(BO), BO_PFX = { hdmb: 'MB', vay: 'VAY', hoan_thien: 'HT', thue: 'THUE', so_hong: 'SH' };
 const boFor = (bo, D) => bo && bo !== 'auto' ? bo : stepOf(D.ctx);
 const keyOk = (want, t) => !want.size || want.has(tplKey(t.code));
 async function batchPlan(units, bo, user, keys) {
@@ -646,4 +667,4 @@ async function wordBatch(units, bo, keys, user) {
   const nc = new Set(list.map(u => u.unitId)).size, name = `In_hang_loat_${nc}_can${list.length > nc ? `_${list.length}_ban` : ''}_${bo}_${C.today()}.docx`;
   return { buf: docxOf(flat.map(d => d.html), name, isHdSet(flat.map(d => d.t.code)), list.map(u => u.docs.length)), name };
 }
-module.exports = { batchKeys, batchPlan, batchScan, batchPick, BO_L, printBatch, wordBatch, custHistory, wordFromHtml, demoFill, demoFillOn, saveTarget, BO, MAU_TNS, hsData, hsInfo, printHs, wordHs, merge, evalExpr };
+module.exports = { BO_OLD, batchKeys, batchPlan, batchScan, batchPick, BO_L, printBatch, wordBatch, custHistory, wordFromHtml, demoFill, demoFillOn, saveTarget, BO, MAU_TNS, hsData, hsInfo, printHs, wordHs, merge, evalExpr };

@@ -136,6 +136,10 @@ const SPECIAL = [
 ];
 // chạy trước khi dựng lại ràng buộc: đổi giá trị danh sách chọn đã bỏ
 const PRE = [
+  // 18/11/2026: bộ hồ sơ mẫu in đổi sang 4 loại hợp đồng (TONG HOP MAU) — bộ cũ → bộ mới trước khi dựng lại CHECK của ô «Thuộc bộ hồ sơ»
+  'ALTER TABLE IF EXISTS kd_template DROP CONSTRAINT IF EXISTS ck_kd_template_bo',
+  `DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'kd_template' AND column_name = 'bo') THEN
+     UPDATE kd_template SET bo = CASE bo WHEN 'tl_vay' THEN 'vay' ELSE 'hdmb' END WHERE bo IN ('mua_ban', 'ban_giao', 'tl_mua_ban', 'tl_vay'); END IF; END $$`,
   `UPDATE kd_reservation SET deal = 'mua' WHERE deal IS NULL`,   // phiếu trước 03/11/2026: đăng ký mua
   'DROP INDEX IF EXISTS kd_contract_one_active',   // thay bằng kd_contract_one_sale (HĐ thuê kiểm trùng ở biz — có hạn thuê, bản chất bán)
   `UPDATE kd_noxh_check SET status = 'cho_duyet' WHERE status = 'da_trinh'`,   // bỏ trạng thái «Đã trình duyệt SXD» (03/11/2026)

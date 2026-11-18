@@ -67,6 +67,21 @@ Ngày {ngay}
   ...REG_TEMPLATES(),
 ];
 // mẫu in từ phiếu đăng ký căn hộ (GD-01) — Trưởng phòng sửa / thêm mẫu ở Quản trị › Mẫu biểu
+// 18/11/2026: văn bản chung của đợt Thông báo bàn giao Giấy chứng nhận (In theo mẫu ở màn thông báo; thư từng căn = bộ Sổ hồng ở Hồ sơ theo căn)
+const TB_GCN = `<table style="width:100%;border-collapse:collapse"><tr><td style="width:42%;text-align:center;vertical-align:top"><b>{company}</b><hr style="width:40%;margin:2pt auto;border:0;border-top:1px solid #000"><div>Số: {doc_no}</div><div style="font-size:11pt">V/v bàn giao Giấy chứng nhận</div></td>
+<td style="text-align:center;vertical-align:top"><b>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</b><br><b><span style="border-bottom:1px solid #000">Độc lập - Tự do - Hạnh phúc</span></b><br><i>{province}, ngày {notice_on}</i></td></tr></table>
+<p style="text-align:center;font-size:14pt;font-weight:bold;margin-top:14pt">THÔNG BÁO</p>
+<p style="text-align:center;font-weight:bold">Về việc bàn giao Giấy chứng nhận quyền sử dụng đất, quyền sở hữu nhà ở và tài sản khác gắn liền với đất<br>dự án {project_id} — {building_id}</p>
+<p style="text-align:center">Kính gửi: Quý khách hàng mua căn hộ {building_id} — dự án {project_id}</p>
+<p>Căn cứ Giấy chứng nhận đã cấp cho chủ đầu tư số seri {gcn_seri}, số vào sổ cấp GCN {gcn_book} do {gcn_issuer} cấp ngày {gcn_on} (thửa đất số {parcel_no}, tờ bản đồ số {map_sheet}, diện tích {parcel_area} m², địa chỉ {parcel_addr}; hình thức sử dụng: {use_form}; mục đích sử dụng: {use_purpose}; thời hạn sử dụng: {use_term}; nguồn gốc sử dụng: {use_origin}),</p>
+<p>{company} trân trọng thông báo tới Quý khách hàng việc bàn giao Giấy chứng nhận quyền sở hữu căn hộ như sau:</p>
+<p><b>1. Thời gian:</b> từ ngày {handover_on}; {work_hours}.</p>
+<p><b>2. Địa điểm:</b> {place}.</p>
+<p><b>3. Các căn hộ được bàn giao Giấy chứng nhận đợt này:</b> {unit_list}.</p>
+<p><b>4. Nghĩa vụ tài chính:</b> Quý khách hoàn thành đợt thanh toán gắn với Giấy chứng nhận theo Hợp đồng mua bán trước khi nhận Giấy chứng nhận.</p>
+<p><b>5. Giấy tờ mang theo:</b> {docs_need}</p>
+<p>Mọi thắc mắc xin liên hệ: {contact}.</p><p>Trân trọng thông báo./.</p>
+<table style="width:100%;border-collapse:collapse;margin-top:10pt"><tr><td style="width:50%;vertical-align:top;font-size:11pt"><b><i>Nơi nhận:</i></b><br>- Như trên;<br>- Lưu: VT, P.KD.</td><td style="text-align:center;vertical-align:top"><b>{signer_title}</b><br><i>(Ký, ghi rõ họ tên, đóng dấu)</i><br><br><br><br><br><b>{signer}</b></td></tr></table>`;
 function REG_TEMPLATES() {
   const head = `CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
 Độc lập – Tự do – Hạnh phúc
@@ -161,8 +176,16 @@ async function ensureTemplates() {
         await db.q('UPDATE kd_template SET bo = $2 WHERE code = $1 AND bo IS NULL', [t.code, t.bo]);
         // mẫu chưa ai sửa tay (updated_by trống) → nhận bản chuyển đổi mới nhất
         await db.q('UPDATE kd_template SET content = $2, name = $3, scope = $4 WHERE code = $1 AND updated_by IS NULL AND content IS DISTINCT FROM $2', [t.code, t.content, t.name, t.scope]);
+        // 18/11/2026: mã trùng bộ cũ nhưng khác loại văn bản (VD TNS-VAY-01 cũ = Đơn đăng ký, mới = Hợp đồng vay) → ghi đè theo bộ TONG HOP MAU kể cả đã sửa tay
+        await db.q('UPDATE kd_template SET content = $2, name = $3, scope = $4, kind = $5, bo = $6, active = true WHERE code = $1 AND name IS DISTINCT FROM $3', [t.code, t.content, t.name, t.scope, t.kind, t.bo]);
       }
     }
+    // 18/11/2026: bộ TONG HOP MAU thay bộ MẪU HS TNS — tắt mẫu bộ cũ (TNS-MB-…, CTS-MB-…, bản tự chép theo dự án), giữ phụ lục bản vẽ & mẫu Sổ hồng;
+    // mẫu tự tải lên có bộ cũ → đổi sang bộ mới
+    { const keep = [...require('./ho-so').MAU_TNS().map(t => t.code.toUpperCase()), ...require('./ban-ve.json').map(t => t.code.toUpperCase())];
+      await db.q("UPDATE kd_template SET active = false WHERE active AND bo IS NOT NULL AND bo <> 'so_hong' AND NOT (upper(code) = ANY($1)) AND upper(code) ~ '^[A-Z0-9]+-(MB|VAY|TLV|BG|TLMB)-[0-9]'", [keep]);
+      for (const [o, n] of Object.entries(require('./ho-so').BO_OLD)) await db.q('UPDATE kd_template SET bo = $2 WHERE bo = $1', [o, n]);
+      if (!await db.one("SELECT 1 FROM kd_template WHERE code = 'TB-GCN-01'")) await C.create('template', { code: 'TB-GCN-01', name: 'Thông báo bàn giao Giấy chứng nhận (văn bản chung của đợt)', kind: 'thong_bao', ent: 'gcn_notice', active: true, content: TB_GCN }, sysU, { db, system: true }); }
     // bản chép bộ mẫu sang dự án khác (CTS-MB-01, ABC-MB-01…, tự tạo ở Bộ hồ sơ theo căn) chưa ai sửa tay → nhận bản mới của mẫu chuẩn (12/11/2026)
     { const done = new Set();
       const MAU = require('./ho-so').MAU_TNS(), own = MAU.map(t => t.code.toUpperCase());   // mẫu riêng của dự án (CTS-MB-02…) không bị ghi đè bằng bản TNS

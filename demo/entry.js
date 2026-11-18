@@ -439,6 +439,62 @@ async function boot(pgliteUrl) {
       localStorage.setItem('ctg-kd-demo-tbmb-tns', '1');
     }
   } catch (e) { console.warn('thông báo mở bán thử TNS', e); }
+  // bộ thử «mẫu in TONG HOP MAU» (18/11/2026, Tâm: «tạo dữ liệu căn nào có mẫu rồi»): mỗi tòa có mẫu trong demo (CTS-K, CTS-O, TNS-G) 1 khách đủ thông tin
+  // (CCCD, vợ / chồng đồng sở hữu, MST, TK ngân hàng) + HĐMB đã ký 4 đợt 30/40/25/5% + phí bảo trì + HĐ hoàn thiện + phiếu thu đợt 1–2; thêm 1 căn chỉ có HĐ vay
+  // (gợi ý bộ «HĐ vay») và Thông báo bàn giao căn hộ (nháp) cho căn tòa K → in thử mọi mẫu ở 05 › Hồ sơ & lưu trữ theo căn
+  try {
+    if (!localStorage.getItem('ctg-kd-demo-mau-th')) {
+      const C = require('../server/core'), B = require('../server/biz'), u = await one("SELECT * FROM kd_user WHERE role = 'truong_phong' AND active ORDER BY id LIMIT 1");
+      const day = n => C.addDays(C.today(), n);
+      const freeU = (pc, bc, n) => q(`SELECT u.id, u.code, u.area_tt, u.building_id FROM kd_unit u JOIN kd_building b ON b.id = u.building_id JOIN kd_project p ON p.id = u.project_id
+        WHERE p.code = $1 AND b.code = $2 AND u.status IN ('con_ban', 'chua_mo_ban') AND coalesce(u.lock, '') = ''
+        AND NOT EXISTS (SELECT 1 FROM kd_contract c WHERE c.unit_id = u.id AND c.status <> 'huy') AND NOT EXISTS (SELECT 1 FROM kd_reservation r WHERE r.unit_id = u.id AND r.status NOT IN ('huy', 'het_han'))
+        ORDER BY (coalesce(u.base_price, 0) > 0) DESC, u.floor DESC, u.code DESC LIMIT $3`, [pc, bc, n]);
+      const KH = [['Trần Minh Khoa', 'Nguyễn Thu Hằng', '0912345671'], ['Lê Văn Phúc', 'Đỗ Thị Mai', '0912345672'], ['Phạm Quốc Bảo', 'Vũ Thị Lan', '0912345673'], ['Hoàng Thị Ngọc', '', '0912345674']];
+      let i = 0;
+      const mk = async (un, kind) => {
+        await q('UPDATE kd_unit SET activated = true WHERE id = $1', [un.id]); await tx(db => B.recomputeUnit(db, un.id, u));   // căn thử: coi như đã duyệt mở bán
+        const [ten, vc, sdt] = KH[i], n = i++, id = '0271900' + String(10000 + n * 137).padStart(5, '0');
+        const k = (await C.create('customer', { full_name: `${ten} (khách thử)`, phone: sdt, email: `khachthu${n + 1}@example.com`, tax_code: id, bank_account: `10${n + 1}2345678 - Ngân hàng Vietinbank`,
+          source: 'truc_tiep', id_no: id, id_date: '2021-06-15', id_place: 'Cục Cảnh sát QLHC về TTXH', birth: `198${n + 2}-0${n + 3}-1${n}`, address: `Thôn Đông ${n + 1}, xã Tam Đa, tỉnh Bắc Ninh`,
+          note: 'Dữ liệu thử: in thử bộ mẫu TONG HOP MAU' }, u, { demo: true })).row;
+        const on = day(-150), vcF = vc ? { co_owner_vc: false, co_owner: vc, co_owner_id_no: '0271910' + String(20000 + n * 211).padStart(5, '0'), co_owner_id_date: '2022-03-20', co_owner_id_place: 'Cục Cảnh sát QLHC về TTXH' } : {};
+        if (kind === 'vay') {
+          const c = (await C.create('contract', { kind: 'vay', ptype: 'can_ho', unit_id: un.id, customer_id: k.id, contract_on: on, loan_recv_on: on, eff_on: on, term_months: 24, value: 800000000, int_mode: 'lai_suat', loan_rate: 1, int_period: '1', principal_method: 'dao_han',
+            loan_tranches: 4, note: 'Dữ liệu thử: căn chỉ có HĐ vay — Hồ sơ theo căn gợi ý bộ «HĐ vay»', ...vcF,
+            new_schedule: [{ name: 'Đợt 1: ngay sau khi ký hợp đồng vay', due_on: on, pct: 30 }, { name: 'Đợt 2: sau 60 ngày', due_on: C.addDays(on, 60), pct: 20 }, { name: 'Đợt 3: sau 120 ngày', due_on: C.addDays(on, 120), pct: 20 }, { name: 'Đợt 4: theo đề nghị của bên vay', due_on: C.addDays(on, 300), pct: 30 }] }, u, { demo: true })).row;
+          await tx(async db => { await C.sys(db, 'contract', c.id, { status: 'da_ky', sign_status: 'da_ky', signed_on: on }, u, 'nhap_lich_su', 'Dữ liệu thử'); await B.recomputeUnit(db, un.id, u); });
+          const it = await q('SELECT id, amount FROM kd_installment WHERE contract_id = $1 AND active ORDER BY seq LIMIT 2', [c.id]);
+          for (const [j, x] of it.entries()) await C.create('receipt', { voucher_no: `PT-VTH-${un.code}-${j + 1}`, voucher_date: C.addDays(on, j * 60), contract_id: c.id, amount: +x.amount, installment_id: x.id, content: `Khách chuyển gốc vay đợt ${j + 1} căn ${un.code}`, src: 'misa', synced_at: new Date().toISOString() }, u, { system: true, demo: true });
+          return;
+        }
+        const c = (await C.create('contract', { kind: 'hdmb', ptype: 'can_ho', unit_id: un.id, customer_id: k.id, contract_on: on, request_on: C.addDays(on, -10), area_tt: un.area_tt, ...vcF,
+          agreement: `${un.code.slice(-4)}/2026/VBTT-SC`, agreement_on: C.addDays(on, 5), common_area_amt: 10000000, note: 'Dữ liệu thử: in thử bộ mẫu TONG HOP MAU (HĐMB, bàn giao, thanh lý)',
+          new_schedule: [{ name: 'Đợt 1: sau khi ký hợp đồng', due_on: on, pct: 30 }, { name: 'Đợt 2: sau 60 ngày kể từ ngày ký hợp đồng', due_on: C.addDays(on, 60), pct: 40 },
+            { name: 'Đợt 3: trong 10 ngày kể từ ngày thông báo bàn giao căn hộ', due_on: day(20), pct: 25 }, { name: 'Đợt 4: khi nhận Giấy chứng nhận', due_on: day(400), pct: 5 },
+            { name: 'Thu phí bảo trì (2%) khi bàn giao', due_on: day(20), maint: true }] }, u, { demo: true })).row;
+        await tx(async db => { await C.sys(db, 'contract', c.id, { status: 'da_ky', sign_status: 'da_ky', signed_on: on }, u, 'nhap_lich_su', 'Dữ liệu thử'); await B.recomputeUnit(db, un.id, u); });
+        const it = await q('SELECT id, amount FROM kd_installment WHERE contract_id = $1 AND active AND NOT is_maint ORDER BY seq LIMIT 2', [c.id]);
+        for (const [j, x] of it.entries()) await C.create('receipt', { voucher_no: `PT-MTH-${un.code}-${j + 1}`, voucher_date: C.addDays(on, j * 60), contract_id: c.id, amount: +x.amount, installment_id: x.id, content: `Thu tiền đợt ${j + 1} căn ${un.code}`, src: 'misa', synced_at: new Date().toISOString() }, u, { system: true, demo: true });
+        try {
+          const h = (await C.create('contract', { kind: 'hoan_thien', ptype: 'can_ho', unit_id: un.id, customer_id: k.id, contract_on: C.addDays(on, 2), value: 223000000, prev_id: null, note: 'Dữ liệu thử: HĐ thỏa thuận hoàn thiện (nội thất)',
+            new_schedule: [{ name: 'Đợt 1: khi ký hợp đồng', due_on: C.addDays(on, 2), pct: 70 }, { name: 'Đợt 2: khi bàn giao', due_on: day(20), pct: 30 }] }, u, { demo: true })).row;
+          await tx(async db => C.sys(db, 'contract', h.id, { status: 'da_ky', sign_status: 'da_ky', signed_on: C.addDays(on, 2) }, u, 'nhap_lich_su', 'Dữ liệu thử'));
+        } catch (e) { console.warn('HĐ hoàn thiện thử', un.code, e.message); }
+        return un;
+      };
+      say('Đang dựng dữ liệu thử cho bộ mẫu in…');
+      const made = [];
+      for (const [pc, bc] of [['CTS', 'K'], ['CTS', 'O'], ['TNS', 'G']]) { const [un] = await freeU(pc, bc, 1); if (un) try { made.push(await mk(un, 'hdmb')); } catch (e) { console.warn('mẫu in thử', un.code, e.message); } }
+      { const [un] = await freeU('CTS', 'K', 2).then(r => r.slice(1)); if (un) try { await mk(un, 'vay'); } catch (e) { console.warn('HĐ vay thử', e.message); } }
+      const kU = made.find(x => x && /-K-/.test(x.code));
+      if (kU) try { const pj = await one("SELECT project_id FROM kd_building WHERE id = $1", [kU.building_id]);
+        await C.create('handover_notice', { doc_no: '01/2026/TB-BG-K', project_id: pj.project_id, building_id: kU.building_id, notice_on: C.today(), handover_on: day(10), pay_from: 'ban_giao', pay_days: 10, unit_list: kU.code, note: 'Dữ liệu thử: ngày bàn giao / hạn nộp cho Thông báo thu tiền và bàn giao' }, u, { demo: true });
+      } catch (e) { console.warn('TB bàn giao thử', e.message); }
+      console.log('dữ liệu thử mẫu in:', made.filter(Boolean).map(x => x.code).join(', '));
+      localStorage.setItem('ctg-kd-demo-mau-th', '1');
+    }
+  } catch (e) { console.warn('dữ liệu thử mẫu in', e); }
   const job = async () => { try { await tx(db => biz.jobs(db)); await q('DELETE FROM kd_session WHERE expires_at < now()'); } catch (e) { console.warn('job', e.message); } };
   await job(); setInterval(job, 2 * 60e3);
 
