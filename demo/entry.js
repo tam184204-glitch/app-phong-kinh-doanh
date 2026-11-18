@@ -3,7 +3,8 @@
 const pgShim = require('./shims/pg');
 const fsShim = require('./shims/fs');
 const say = t => { const el = document.getElementById('bootmsg'); if (el) el.textContent = t; };
-const SID_KEY = 'ctg-kd-demo-sid';
+const SID_KEY = 'ctg-kd-demo-sid2';   // đổi khóa: phiên «vào thẳng» của bản trước không còn dùng được, phải đăng nhập
+const LEAD_KEY = 'ctg-public-leads';  // form tư vấn của gioi-thieu.html (trang tĩnh, không có máy chủ) xếp hàng ở đây
 let sid = null;
 try { sid = localStorage.getItem(SID_KEY); } catch {}
 
@@ -179,7 +180,8 @@ async function boot(pgliteUrl) {
   }
   try { sessionStorage.removeItem(FIX); } catch {}
   await q("UPDATE kd_project SET code = 'CTN' WHERE code = 'NEW'");   // đổi mã dự án Chung cư Cát Tường New (27/10/2026)
-  if (!(await one('SELECT count(*) n FROM kd_user')).n) {
+  if ((await one('SELECT count(*) n FROM kd_user')).n) await tx(db => require('../server/seed').ensureAdmin(db));   // gộp thuy-ngan: tài khoản admin
+  else {
     say('Lần đầu mở: đang nạp dữ liệu mẫu (khoảng 20–60 giây)…');
     const seed = require('../server/seed');
     await seed.seedBase();
@@ -515,6 +517,8 @@ async function boot(pgliteUrl) {
   await job(); setInterval(job, 2 * 60e3);
 
   const call = (method, url, headers, body) => new Promise((ok, fail) => { Promise.resolve(handle(fakeReq(method, url, headers, body), fakeRes(ok))).catch(fail); });
+  let leads = []; try { leads = JSON.parse(localStorage.getItem(LEAD_KEY) || '[]'); localStorage.removeItem(LEAD_KEY); } catch {}
+  for (const b of leads) await call('POST', '/api/public/lead', {}, JSON.stringify(b)).catch(e => console.warn('lead', e));
   const realFetch = window.fetch.bind(window);
   window.fetch = async (input, init = {}) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;

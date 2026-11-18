@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tờ khai thông tin khách hàng — Cát Tường Group</title>
+<style>
+  :root { --cobalt:#1E4E8C; --cobalt-dark:#143866; --amber:#F5A623; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Times New Roman', Times, serif; color:#111; max-width:820px; margin:24px auto; padding:0 28px; line-height:1.55; }
+  .top { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid var(--cobalt); padding-bottom:8px; }
+  .brand { color:var(--cobalt-dark); font-weight:bold; font-size:15px; text-transform:uppercase; }
+  .brand small { display:block; font-weight:normal; font-size:12px; color:#444; text-transform:none; }
+  h1 { text-align:center; color:var(--cobalt-dark); font-size:20px; margin:22px 0 14px; }
+  h3 { color:var(--cobalt-dark); border-left:4px solid var(--amber); padding-left:8px; }
+  .row { margin:10px 0; }
+  .row label { font-weight:bold; }
+  .fill { border-bottom:1px dotted #333; display:inline-block; min-width:55%; }
+  .fill.short { min-width:35%; }
+  .sign { display:flex; justify-content:flex-end; margin-top:40px; text-align:center; }
+  .sign div { width:45%; }
+  .note { font-size:12px; color:#666; font-style:italic; margin-top:24px; border-top:1px solid #ccc; padding-top:8px; }
+  .btn-print { position:fixed; top:16px; right:16px; background:var(--amber); color:#111; border:none; padding:10px 16px; border-radius:8px; font-family:Arial; font-weight:bold; cursor:pointer; }
+  @media print { .btn-print { display:none; } body { margin:0; } }
+</style>
+</head>
+<body>
+<button class="btn-print" onclick="window.print()">🖨️ In / Lưu PDF</button>
+<div class="top">
+  <div class="brand">CÁT TƯỜNG GROUP<small>Khối Home — Bộ phận Kinh doanh & Pháp lý</small></div>
+  <div style="text-align:right; font-size:13px;">Mẫu: TK-KH-01<br>Ngày: ......./......./ 20......</div>
+</div>
+
+<h1>TỜ KHAI THÔNG TIN KHÁCH HÀNG</h1>
+
+<h3>A. ĐỐI VỚI CÁ NHÂN</h3>
+<div class="row"><label>Họ và tên:</label> <span class="fill"></span></div>
+<div class="row"><label>Ngày sinh:</label> <span class="fill short"></span> &nbsp; <label>Quốc tịch:</label> <span class="fill short"></span></div>
+<div class="row"><label>Số CCCD/CMND/Hộ chiếu:</label> <span class="fill short"></span> &nbsp; <label>Ngày cấp:</label> <span class="fill short"></span></div>
+<div class="row"><label>Nơi cấp:</label> <span class="fill"></span></div>
+<div class="row"><label>Địa chỉ thường trú:</label> <span class="fill"></span></div>
+<div class="row"><label>Tình trạng hôn nhân:</label> ☐ Độc thân &nbsp; ☐ Đã kết hôn</div>
+<div class="row"><label>Họ tên vợ/chồng (nếu có):</label> <span class="fill"></span></div>
+
+<h3>B. ĐỐI VỚI TỔ CHỨC (nếu là doanh nghiệp)</h3>
+<div class="row"><label>Tên tổ chức:</label> <span class="fill"></span></div>
+<div class="row"><label>Mã số doanh nghiệp:</label> <span class="fill short"></span> &nbsp; <label>Ngày cấp:</label> <span class="fill short"></span></div>
+<div class="row"><label>Người đại diện theo pháp luật:</label> <span class="fill"></span></div>
+<div class="row"><label>Chức vụ:</label> <span class="fill short"></span> &nbsp; <label>SĐT:</label> <span class="fill short"></span></div>
+
+<h3>C. THÔNG TIN LIÊN HỆ & THANH TOÁN</h3>
+<div class="row"><label>Điện thoại:</label> <span class="fill short"></span> &nbsp; <label>Email:</label> <span class="fill short"></span></div>
+<div class="row"><label>Nhu cầu vay ngân hàng:</label> ☐ Có &nbsp; ☐ Không &nbsp; — Ngân hàng dự kiến: <span class="fill short"></span></div>
+
+<div class="sign">
+  <div>KHÁCH HÀNG<br><em>(Ký, ghi rõ họ tên)</em><br><br><br><br>...........................</div>
+</div>
+
+<div class="note">Lưu ý: Thông tin kê khai phải chính xác, thống nhất với giấy tờ tùy thân. Đây là biểu mẫu MẪU minh họa của Cát Tường Group.</div>
+</body>
+</html>

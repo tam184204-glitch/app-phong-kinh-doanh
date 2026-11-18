@@ -243,9 +243,23 @@ async function ensureTemplates() {
   });
 }
 
+// tài khoản Quản trị đăng nhập app nội bộ (admin) — chỉ lưu mã băm; đổi mật khẩu trong app (menu tên › Đổi mật khẩu)
+const ADMIN_PW_HASH = 'scrypt:16384$c45d73a7516d052b3835178174d711d4$f04d7c56caeb14897a6bf3dfe41e1317e72a314f3cb1007ee77834c9518384a9';
+// mật khẩu mặc định cũ của admin → thay bằng mật khẩu hiện hành (mật khẩu người dùng tự đổi trong app thì giữ nguyên)
+const ADMIN_PW_OLD = ['scrypt$3a37567eb4222622e37f2bdee0f1805a$4f0e8f6aaa78ba6621f0495c9c0138b61a1eb60a845427243b7e51f3e2a5bc0c',
+  'scrypt:16384$37264ef749e4b51d79f48f6b67f1709d$b5f6d5338787cb84a8f0efb88832dfa341643bc12a66e0768c8381981a54c930'];
+async function ensureAdmin(db) {
+  const old = await db.one("SELECT id, pw_hash FROM kd_user WHERE lower(username) = 'admin'");
+  if (old) { if (ADMIN_PW_OLD.includes(old.pw_hash)) await db.q('UPDATE kd_user SET pw_hash = $1, must_change = false, active = true WHERE id = $2', [ADMIN_PW_HASH, old.id]); return; }
+  const by = await db.one("SELECT id, username, full_name, role FROM kd_user WHERE role = 'admin' ORDER BY id LIMIT 1");
+  const r = await IO.createUser(db, { username: 'admin', full_name: 'Quản trị hệ thống', role: 'admin', title: 'Quản trị hệ thống' }, by || C.SYS);
+  await db.q('UPDATE kd_user SET pw_hash = $1, must_change = false WHERE id = $2', [ADMIN_PW_HASH, r.id]);
+}
+
 async function seedBase() {
   await tx(async db => {
     await migrate(db);
+    await ensureAdmin(db);
     let admin = await db.one("SELECT id, username, full_name, role FROM kd_user WHERE role = 'admin' ORDER BY id LIMIT 1");
     for (const u of USERS) {
       if (await db.one('SELECT 1 FROM kd_user WHERE lower(username) = $1', [u.username])) continue;
@@ -651,7 +665,7 @@ async function clearDemo() {
   return { removed: out, units_recomputed: touched };
 }
 
-module.exports = { seedBase, loadDemo, clearDemo, ensureTemplates };
+module.exports = { seedBase, loadDemo, clearDemo, ensureTemplates, ensureAdmin };
 
 if (require.main === module) {
   (async () => {

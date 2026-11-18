@@ -160,6 +160,8 @@ const PRE = [
   `UPDATE kd_noxh_check n SET bank_account = c.bank_account FROM kd_customer c WHERE n.customer_id = c.id AND n.bank_account IS NULL AND nullif(c.bank_account, '') IS NOT NULL`,
   `UPDATE kd_reservation r SET bank_account = c.bank_account FROM kd_customer c WHERE r.customer_id = c.id AND nullif(r.bank_account, '') IS NULL AND nullif(c.bank_account, '') IS NOT NULL AND r.status NOT IN ('huy', 'het_han')`,
   `UPDATE kd_contract t SET b_bank_acc = split_part(c.bank_account, ' - ', 1), b_bank_name = coalesce(nullif(t.b_bank_name, ''), nullif(substr(c.bank_account, length(split_part(c.bank_account, ' - ', 1)) + 4), '')) FROM kd_customer c WHERE t.customer_id = c.id AND nullif(t.b_bank_acc, '') IS NULL AND nullif(c.bank_account, '') IS NOT NULL`,
+  // gộp thuy-ngan: 1 khách Messenger (PSID) — 1 hồ sơ (chỉ mục trùng SĐT / CCCD của thuy-ngan không lấy: main đã bỏ để cho bản sao khách)
+  `CREATE UNIQUE INDEX IF NOT EXISTS kd_customer_psid ON kd_customer (fb_psid) WHERE fb_psid IS NOT NULL`,
 ];
 // CHECK nghiệp vụ thêm (ngoài money ≥ 0 và giá trị danh sách chọn)
 const CHECKS = {

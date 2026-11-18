@@ -10,20 +10,25 @@ async function loginView() {
     <div class="box"><form id="lf"><h2>Đăng nhập</h2><p class="muted" style="margin-top:0">Tài khoản nhân viên do Quản trị hệ thống cấp.</p><div id="lerr"></div>
       <div class="fld mb"><label for="lu">Tên đăng nhập</label><input id="lu" autocomplete="username" required></div>
       <div class="fld mb"><label for="lp">Mật khẩu</label><input id="lp" type="password" autocomplete="current-password" required></div>
-      <button class="btn pri" style="width:100%;height:42px;justify-content:center">${ico('fa-right-to-bracket')} Đăng nhập</button><div class="trial" id="trial"></div></form></div></div>`;
+      <button class="btn pri" style="width:100%;height:42px;justify-content:center">${ico('fa-right-to-bracket')} Đăng nhập</button>
+      <a class="btn" href="gioi-thieu.html" style="width:100%;height:42px;justify-content:center;margin-top:10px">${ico('fa-globe')} Về trang giới thiệu công khai</a></form></div></div>`;
+  pwEye(document.body);
   $('#lf').onsubmit = async e => {
     e.preventDefault();
     try { const r = await api('POST', '/api/login', { username: $('#lu').value.trim(), password: $('#lp').value }); history.replaceState(null, '', location.pathname + location.search); await boot(r.must_change); }
     catch (er) { $('#lerr').innerHTML = `<div class="errbar">${esc(er.message)}</div>`; }
   };
-  try {
-    const { trial } = await api('GET', '/api/login-info');
-    if (trial.length) {
-      $('#trial').innerHTML = `<div class="small muted mb">Tài khoản thử theo vai trò (mật khẩu mặc định — ngừng trước khi vận hành):</div>` + trial.map(t => `<button type="button" data-u="${esc(t.username)}"><span>${esc(t.full_name.replace('Người dùng thử – ', ''))}</span><span class="muted">${esc(t.username)}</span></button>`).join('');
-      $$('#trial button').forEach(b => b.onclick = () => { $('#lu').value = b.dataset.u; $('#lp').focus(); });
-    }
-  } catch { }
   $('#lu').focus();
+}
+// nút «mắt» hiện / ẩn mật khẩu cho mọi ô mật khẩu trong root
+function pwEye(root) {
+  $$('input[type=password]', root).forEach(inp => {
+    if (inp.parentElement.classList.contains('pwbox')) return;
+    const box = document.createElement('span'); box.className = 'pwbox'; inp.before(box); box.append(inp);
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'eye'; b.title = 'Hiện mật khẩu'; b.setAttribute('aria-label', 'Hiện mật khẩu'); b.innerHTML = ico('fa-eye');
+    b.onclick = () => { const show = inp.type === 'password'; inp.type = show ? 'text' : 'password'; b.innerHTML = ico(show ? 'fa-eye-slash' : 'fa-eye'); b.title = show ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'; b.setAttribute('aria-label', b.title); inp.focus(); };
+    box.append(b);
+  });
 }
 function forcePassword(first) {
   if ($('#pwModal')) return;
@@ -31,11 +36,21 @@ function forcePassword(first) {
     <div class="fld mb"><label>Mật khẩu hiện tại</label><input type="password" id="p0" autocomplete="current-password"></div><div class="fld mb"><label>Mật khẩu mới (≥ 6 ký tự)</label><input type="password" id="p1" autocomplete="new-password"></div><div class="fld"><label>Nhập lại mật khẩu mới</label><input type="password" id="p2" autocomplete="new-password"></div>`,
     foot: `${first ? '' : '<button class="btn" data-x>Hủy</button>'}<button class="btn pri" id="pOk">Đổi mật khẩu</button>` });
   if (first) $$('[data-x]', m.el).forEach(b => b.remove());
+  pwEye(m.el);
+  const err = t => $('#perr', m.el).innerHTML = `<div class="errbar">${esc(t)}</div>`;
   $('#pOk', m.el).onclick = async () => {
-    if ($('#p1', m.el).value !== $('#p2', m.el).value) return $('#perr', m.el).innerHTML = '<div class="errbar">Hai lần nhập không khớp</div>';
-    try { await api('POST', '/api/password', { old: $('#p0', m.el).value, pw: $('#p1', m.el).value }); m.el.remove(); toast('Đã đổi mật khẩu'); if (first) boot(); }
-    catch (e) { $('#perr', m.el).innerHTML = `<div class="errbar">${esc(e.message)}</div>`; }
+    const pw = $('#p1', m.el).value;
+    if (!$('#p0', m.el).value) return err('Nhập mật khẩu hiện tại');
+    if (pw.length < 6) return err('Mật khẩu mới tối thiểu 6 ký tự');
+    if (pw !== $('#p2', m.el).value) return err('Hai lần nhập không khớp');
+    const b = $('#pOk', m.el); b.disabled = true; b.textContent = 'Đang đổi…'; $('#perr', m.el).innerHTML = '';
+    try {
+      await api('POST', '/api/password', { old: $('#p0', m.el).value, pw });
+      m.close(); toast('Đổi mật khẩu thành công');
+      if (first) boot();
+    } catch (e) { err(e.message); b.disabled = false; b.textContent = 'Đổi mật khẩu'; }
   };
+  $$('input', m.el).forEach(i => i.onkeydown = e => { if (e.key === 'Enter') $('#pOk', m.el).click(); });
 }
 
 // ---------- khung ----------

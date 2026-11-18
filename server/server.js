@@ -26,7 +26,7 @@ const PUBLIC = path.join(__dirname, '..', 'public');
 const FILES = path.join(__dirname, '..', 'data', 'files');
 const SESSION_H = 12;
 const FILE_MAX = 50e6;
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.ico': 'image/x-icon', '.woff2': 'font/woff2' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8','.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.ico': 'image/x-icon', '.woff2': 'font/woff2' };
 const MIME = { '.pdf': 'application/pdf', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', '.doc': 'application/msword', '.xls': 'application/vnd.ms-excel', '.zip': 'application/zip' };
 const INLINE = new Set(['.pdf', '.png', '.jpg', '.jpeg', '.webp']);
 
@@ -40,12 +40,14 @@ const sendFile = (res, buf, name, mime, inline) => {
     'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${encodeURIComponent(name)}"; filename*=UTF-8''${encodeURIComponent(name)}` });
   res.end(buf);
 };
-const readJson = req => new Promise((resolve, reject) => {
+const readRaw = (req, max = 5e6) => new Promise((resolve, reject) => {
   const parts = []; let size = 0;
-  req.on('data', c => { size += c.length; if (size > 5e6) { reject(new HttpError(413, 'Dữ liệu quá lớn')); req.destroy(); } else parts.push(c); });
-  req.on('end', () => { try { resolve(parts.length ? JSON.parse(Buffer.concat(parts).toString('utf8')) : {}); } catch { reject(new HttpError(400, 'JSON không hợp lệ')); } });
+  req.on('data', c => { size += c.length; if (size > max) { reject(new HttpError(413, 'Dữ liệu quá lớn')); req.destroy(); } else parts.push(c); });
+  req.on('end', () => resolve(Buffer.concat(parts)));
   req.on('error', reject);
 });
+const parseJson = buf => { try { return buf.length ? JSON.parse(buf.toString('utf8')) : {}; } catch { throw new HttpError(400, 'JSON không hợp lệ'); } };
+const readJson = async req => parseJson(await readRaw(req));
 const readUpload = req => new Promise((resolve, reject) => {
   const files = [], fields = {}; let failed = null;
   const bb = Busboy({ headers: req.headers, limits: { fileSize: FILE_MAX, files: 30 }, defParamCharset: 'utf8' });
@@ -166,7 +168,7 @@ R('POST', '/api/as/:id', async (req, res, u, p) => {   // chỉ khi NO_LOGIN: đ
   await q("INSERT INTO kd_audit (ent, rec_id, action, user_id, note) VALUES ('user', $1, 'doi_vai_tro_thu', $1, 'NO_LOGIN')", [t.id]);
   await newSession(res, t.id);
 }, { allowMustChange: true });
-R('GET', '/api/login-info', async (req, res) => send(res, 200, { noLogin: NO_LOGIN, trial: await q('SELECT username, full_name, role FROM kd_user WHERE active AND is_trial ORDER BY id') }), { open: true });
+R('GET', '/api/login-info', async (req, res) => send(res, 200, { noLogin: NO_LOGIN }), { open: true });
 R('POST', '/api/password', async (req, res, u) => {
   const { old, pw } = await readJson(req);
   const row = await one('SELECT pw_hash FROM kd_user WHERE id = $1', [u.id]);
@@ -520,6 +522,88 @@ R('POST', '/api/leads', async (req, res) => {
   const lo = process.env.LEAD_OWNER && await one('SELECT id FROM kd_user WHERE lower(username) = lower($1) AND active', [process.env.LEAD_OWNER]);
   send(res, 200, await tx(db => B.intakeLead(db, { ...b, owner_id: lo?.id }, C.SYS)));
 }, { open: true });
+// Facebook Messenger (Page) → webhook trực tiếp của Meta, không qua dịch vụ trung gian. Cấu hình trong .env:
+//   FB_VERIFY_TOKEN (tự đặt, khai báo giống hệt bên Meta), FB_APP_SECRET (kiểm chữ ký), FB_PAGE_TOKEN (lấy tên khách), FB_PAGE_ID (tùy chọn — chỉ nhận Page này)
+// Đăng ký URL gọi lại: https://<tên miền>/api/fb/webhook, trường «messages» + «messaging_postbacks».
+R('GET', '/api/fb/webhook', async (req, res, u, p, qs) => {
+  const tok = process.env.FB_VERIFY_TOKEN;
+  if (!tok || qs['hub.mode'] !== 'subscribe' || qs['hub.verify_token'] !== tok) deny('Sai FB_VERIFY_TOKEN');
+  send(res, 200, String(qs['hub.challenge'] || ''), { 'Content-Type': 'text/plain; charset=utf-8' });
+}, { open: true });
+const fbNames = new Map();
+async function fbName(psid) {
+  if (fbNames.has(psid)) return fbNames.get(psid);
+  let name = '';
+  try {
+    const r = await fetch(`https://graph.facebook.com/v21.0/${encodeURIComponent(psid)}?fields=name,first_name,last_name&access_token=${encodeURIComponent(process.env.FB_PAGE_TOKEN || '')}`);
+    const j = await r.json();
+    if (j.error) console.error('Facebook: không lấy được tên khách', psid, j.error.message);
+    name = j.name || [j.last_name, j.first_name].filter(Boolean).join(' ');
+  } catch (e) { console.error('Facebook: lỗi gọi Graph API', e.message); }
+  if (name) fbNames.set(psid, name);
+  return name;
+}
+R('POST', '/api/fb/webhook', async (req, res) => {
+  const secret = process.env.FB_APP_SECRET;
+  const buf = await readRaw(req);
+  const sig = String(req.headers['x-hub-signature-256'] || '');
+  const want = secret && 'sha256=' + crypto.createHmac('sha256', secret).update(buf).digest('hex');
+  if (!want || sig.length !== want.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(want))) deny('Sai chữ ký X-Hub-Signature-256 (kiểm tra FB_APP_SECRET)');
+  const b = parseJson(buf);
+  send(res, 200, 'EVENT_RECEIVED', { 'Content-Type': 'text/plain' });   // Meta cần 200 trong 20 giây, xử lý sau
+  if (b.object !== 'page') return;
+  const lo = process.env.LEAD_OWNER && await one('SELECT id FROM kd_user WHERE lower(username) = lower($1) AND active', [process.env.LEAD_OWNER]);
+  for (const en of b.entry || []) {
+    if (process.env.FB_PAGE_ID && String(en.id) !== process.env.FB_PAGE_ID) continue;
+    for (const m of en.messaging || []) {
+      const psid = m.sender?.id;
+      if (!psid || psid === String(en.id) || m.message?.is_echo) continue;      // tin Page tự trả lời
+      const text = m.message?.text || (m.message?.attachments?.length ? `[Gửi ${m.message.attachments.map(a => ({ image: 'ảnh', video: 'video', audio: 'ghi âm', file: 'tệp' })[a.type] || a.type).join(', ')}]` : '') || (m.postback ? `[Bấm nút «${m.postback.title}»]` : '');
+      if (!text) continue;
+      const at = new Date(m.timestamp || Date.now());
+      const hm = at.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' });
+      try {
+        const full_name = await fbName(psid);
+        await tx(db => B.intakeLead(db, { channel: 'messenger', psid, full_name, content: `${hm} ${text}`.slice(0, 2000), at: at.toISOString(), merge: true, owner_id: lo?.id }, C.SYS));
+      } catch (e) { console.error('Facebook: không ghi được tin nhắn', psid, e.message); }
+    }
+  }
+}, { open: true });
+// form «Đăng ký tư vấn» trên trang công khai (gioi-thieu.html) — không cần mã, giới hạn 5 lần / 10 phút mỗi IP
+const leadHits = new Map();
+R('POST', '/api/public/lead', async (req, res) => {
+  const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket?.remoteAddress || '?';
+  const h = (leadHits.get(ip) || []).filter(t => Date.now() - t < 10 * 60e3);
+  if (h.length >= 5) bad('Quý khách đã gửi nhiều lần — vui lòng gọi Hotline 082.937.6666');
+  leadHits.set(ip, [...h, Date.now()]);
+  const b = await readJson(req);
+  if (!String(b.full_name || '').trim()) bad('Vui lòng nhập họ tên');
+  if (!/^(0|\+?84)\d{9}$/.test(String(b.phone || '').replace(/[\s.-]/g, ''))) bad('Số điện thoại chưa đúng');
+  const lo = process.env.LEAD_OWNER && await one('SELECT id FROM kd_user WHERE lower(username) = lower($1) AND active', [process.env.LEAD_OWNER]);
+  const content = ['Đăng ký tư vấn trên trang công khai', b.project && `dự án ${b.project}`, b.content].filter(Boolean).join(' — ').slice(0, 1000);
+  await tx(db => B.intakeLead(db, { channel: 'website', full_name: String(b.full_name).slice(0, 120), phone: b.phone, email: b.email || null, project: b.project, content, owner_id: lo?.id }, C.SYS));
+  send(res, 200, { ok: true });
+}, { open: true });
+// trang công khai (gioi-thieu.html, chép từ cattuonggroup.ai.vn): chuyển tiếp /api/public/… sang trang gốc — máy chủ gọi máy chủ,
+// không vướng CORS — để dự án, bảng hàng, bài viết, lượt truy cập, trợ lý AI, đọc hồ sơ scan chạy y như trang gốc.
+// cong-khai/bridge.js nhận ra phản hồi «X-Cong-Khai: live»; không có (bản demo tĩnh) thì dùng dữ liệu đã chụp. Form đăng ký vẫn về /api/public/lead.
+const PUBLIC_SRC = process.env.PUBLIC_SRC || 'https://cattuonggroup.ai.vn';
+const pubLinks = s => s.replace(/(["'])\/marketing\//g, '$1marketing/')   // tài nguyên đã chép về public/marketing/ (thiếu thì chuyển hướng về trang gốc).replace(/(["'])\/blog\/([\w-]+)(?=["'])/g, '$1gioi-thieu.html?blog=$2');
+async function publicProxy(req, res) {
+  const url = new URL(req.url, 'http://x');
+  const body = req.method === 'GET' ? undefined : await readRaw(req, 40e6);
+  const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket?.remoteAddress || '';
+  let r;
+  try {
+    r = await fetch(PUBLIC_SRC + url.pathname + url.search, { method: req.method, body, signal: AbortSignal.timeout(/\/ho-so\//.test(url.pathname) ? 180e3 : 60e3),
+      headers: { Accept: 'application/json', 'User-Agent': 'CTG-PKD-cong-khai', ...(ip && { 'X-Forwarded-For': ip }), ...(req.headers['content-type'] && { 'Content-Type': req.headers['content-type'] }) } });
+  } catch (e) { return send(res, 502, { success: false, error: 'Không kết nối được máy chủ Cát Tường Group — vui lòng gọi Hotline 082.937.6666' }, { 'X-Cong-Khai': 'live' }); }
+  const ct = r.headers.get('content-type') || 'application/json; charset=utf-8';
+  const buf = Buffer.from(await r.arrayBuffer());
+  send(res, r.status, /json/.test(ct) ? pubLinks(buf.toString('utf8')) : buf, { 'Content-Type': ct, 'X-Cong-Khai': 'live' });
+}
+const PUB_RE = /^\/api\/public\/[\w-]+(\/[\w-][\w.-]*)*$/;   // một cấp thư mục trở xuống, không «..»
+routes.push({ method: 'GET', re: PUB_RE, fn: publicProxy, open: true }, { method: 'POST', re: PUB_RE, fn: publicProxy, open: true });   // sau /api/public/lead
 R('POST', '/api/leads/manual', async (req, res, u) => {   // khách gặp trực tiếp / gọi Hotline — nhân viên thêm tay
   if (!can(u, M.E.contact_log, 'c')) deny();
   const b = await readJson(req);
@@ -729,6 +813,10 @@ async function handle(req, res) {
     if (!file.startsWith(PUBLIC)) return send(res, 403, 'Forbidden');
     // 15/11/2026: tệp tĩnh có ETag (trình duyệt hỏi lại, không đổi thì trả 304 — không tải lại ~800KB) + nén gzip cho js / css / html / json / svg
     return fs.stat(file, (se, st) => {
+      // gộp thuy-ngan: tài nguyên trang công khai mới, chưa chép về: lấy từ trang gốc và trả về cùng tên miền (chuyển hướng thì ảnh 720° hỏng vì WebGL cần CORS)
+      if ((se || !st.isFile()) && pth.startsWith('/marketing/')) return fetch(PUBLIC_SRC + url.pathname + url.search, { signal: AbortSignal.timeout(60e3) })
+        .then(async r => r.ok ? send(res, 200, Buffer.from(await r.arrayBuffer()), { 'Content-Type': r.headers.get('content-type') || TYPES[path.extname(pth)] || 'application/octet-stream', 'Cache-Control': 'public, max-age=3600' }) : send(res, r.status, 'Not found', { 'Content-Type': 'text/plain' }))
+        .catch(() => send(res, 502, 'Không lấy được tài nguyên từ trang gốc', { 'Content-Type': 'text/plain; charset=utf-8' }));
       if (se || !st.isFile()) return fs.readFile(path.join(PUBLIC, 'index.html'), (e2, b2) => e2 ? send(res, 404, 'Not found') : send(res, 200, b2, { 'Content-Type': TYPES['.html'] }));
       const hit = STATIC.get(file), type = TYPES[path.extname(file)] || 'application/octet-stream';
       const go = c => {
@@ -775,6 +863,7 @@ async function start() {
   await tx(db => migrate(db));
   const n = (await one('SELECT count(*) n FROM kd_user')).n;
   if (!n) { console.log('CSDL trống — nạp dữ liệu gốc…'); await require('./seed').seedBase(); }
+  else await tx(db => require('./seed').ensureAdmin(db));   // gộp thuy-ngan: tài khoản admin đăng nhập app nội bộ
   await require('./seed').ensureTemplates();
   await B.fixLiquidated({ q, one }).catch(e => console.error('fixLiquidated', e.message));
   await tx(db => B.rentBackfill(db)).then(n => n && console.log(`Bổ sung chi tiết giá thuê cho ${n} HĐ thuê`)).catch(e => console.error('rentBackfill', e.message));   // 16/11/2026

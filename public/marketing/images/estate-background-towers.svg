@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 720" role="img" aria-label="Modern illuminated towers">
+  <defs>
+    <linearGradient id="tower" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#0F1B2D" stop-opacity=".10"/>
+      <stop offset=".54" stop-color="#1E4E8C" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#F5A623" stop-opacity=".34"/>
+    </linearGradient>
+    <linearGradient id="stroke" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1E4E8C"/>
+      <stop offset=".65" stop-color="#2D7DD2"/>
+      <stop offset="1" stop-color="#F5A623"/>
+    </linearGradient>
+  </defs>
+  <rect width="520" height="720" fill="none"/>
+  <g fill="url(#tower)" stroke="url(#stroke)" stroke-width="2" stroke-linejoin="round" opacity=".58">
+    <path d="M46 686V386h86v300z"/>
+    <path d="M154 686V250h118v436z"/>
+    <path d="M300 686V128h122v558z"/>
+    <path d="M434 686V330h58v356z"/>
+    <path d="M190 250l24-74 24 74z"/>
+    <path d="M342 128l22-82 22 82z"/>
+  </g>
+  <g fill="#fff" opacity=".58">
+    <rect x="68" y="420" width="12" height="28" rx="2"/>
+    <rect x="98" y="420" width="12" height="28" rx="2"/>
+    <rect x="68" y="476" width="12" height="28" rx="2"/>
+    <rect x="98" y="476" width="12" height="28" rx="2"/>
+    <rect x="68" y="532" width="12" height="28" rx="2"/>
+    <rect x="98" y="532" width="12" height="28" rx="2"/>
+    <rect x="182" y="296" width="14" height="34" rx="2"/>
+    <rect x="218" y="296" width="14" height="34" rx="2"/>
+    <rect x="182" y="366" width="14" height="34" rx="2"/>
+    <rect x="218" y="366" width="14" height="34" rx="2"/>
+    <rect x="182" y="436" width="14" height="34" rx="2"/>
+    <rect x="218" y="436" width="14" height="34" rx="2"/>
+    <rect x="182" y="506" width="14" height="34" rx="2"/>
+    <rect x="218" y="506" width="14" height="34" rx="2"/>
+    <rect x="330" y="178" width="15" height="38" rx="2"/>
+    <rect x="374" y="178" width="15" height="38" rx="2"/>
+    <rect x="330" y="252" width="15" height="38" rx="2"/>
+    <rect x="374" y="252" width="15" height="38" rx="2"/>
+    <rect x="330" y="326" width="15" height="38" rx="2"/>
+    <rect x="374" y="326" width="15" height="38" rx="2"/>
+    <rect x="330" y="400" width="15" height="38" rx="2"/>
+    <rect x="374" y="400" width="15" height="38" rx="2"/>
+    <rect x="330" y="474" width="15" height="38" rx="2"/>
+    <rect x="374" y="474" width="15" height="38" rx="2"/>
+    <rect x="452" y="372" width="10" height="26" rx="2"/>
+    <rect x="474" y="372" width="10" height="26" rx="2"/>
+    <rect x="452" y="426" width="10" height="26" rx="2"/>
+    <rect x="474" y="426" width="10" height="26" rx="2"/>
+    <rect x="452" y="480" width="10" height="26" rx="2"/>
+    <rect x="474" y="480" width="10" height="26" rx="2"/>
+  </g>
+  <g fill="none" stroke="#F5A623" stroke-linecap="round" opacity=".36">
+    <path d="M64 620h382" stroke-width="2" stroke-dasharray="2 18"/>
+    <path d="M104 574c74-42 154-46 238-10 48 20 92 22 132 6" stroke-width="2.2"/>
+    <path d="M110 220c104-92 234-128 350-108" stroke-width="1.7"/>
+  </g>
+  <circle cx="386" cy="128" r="7" fill="#fff" opacity=".7"/>
+  <circle cx="386" cy="128" r="22" fill="#F5A623" opacity=".12"/>
+  <circle cx="154" cy="342" r="5" fill="#fff" opacity=".5"/>
+  <circle cx="154" cy="342" r="18" fill="#2D7DD2" opacity=".12"/>
+</svg>

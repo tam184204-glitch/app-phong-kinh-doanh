@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 300" role="img" aria-label="Modern real estate skyline line art">
+  <defs>
+    <linearGradient id="line" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1E4E8C"/>
+      <stop offset=".55" stop-color="#2D7DD2"/>
+      <stop offset="1" stop-color="#F5A623"/>
+    </linearGradient>
+    <linearGradient id="soft" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#143866" stop-opacity=".06"/>
+      <stop offset=".72" stop-color="#1E4E8C" stop-opacity=".16"/>
+      <stop offset="1" stop-color="#F5A623" stop-opacity=".26"/>
+    </linearGradient>
+  </defs>
+  <rect width="1440" height="300" fill="none"/>
+  <path d="M24 250H1416" fill="none" stroke="url(#line)" stroke-width="2.2" opacity=".28"/>
+  <path d="M72 250V170l54-32 54 32v80M96 250v-42h60v42M94 184h18M140 184h18M94 207h18M140 207h18" fill="none" stroke="url(#line)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" opacity=".38"/>
+  <path d="M226 250V118h84v132M248 144h14M282 144h14M248 173h14M282 173h14M248 202h14M282 202h14M248 231h14M282 231h14" fill="none" stroke="url(#line)" stroke-width="2.4" stroke-linecap="round" opacity=".34"/>
+  <path d="M352 250V82h110v168M380 113h16M420 113h16M380 148h16M420 148h16M380 183h16M420 183h16M380 218h16M420 218h16" fill="none" stroke="url(#line)" stroke-width="2.8" stroke-linecap="round" opacity=".43"/>
+  <path d="M504 250v-96l68-46 68 46v96M542 250v-54h60v54M540 166h64M540 194h64" fill="none" stroke="url(#line)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" opacity=".35"/>
+  <path d="M688 250V130h86v120M712 158h12M746 158h12M712 188h12M746 188h12M712 218h12M746 218h12" fill="none" stroke="url(#line)" stroke-width="2.4" stroke-linecap="round" opacity=".34"/>
+  <path d="M820 250V96h96v154M846 124h14M884 124h14M846 154h14M884 154h14M846 184h14M884 184h14M846 214h14M884 214h14" fill="none" stroke="url(#line)" stroke-width="2.7" stroke-linecap="round" opacity=".42"/>
+  <path d="M960 250V146l64-42 64 42v104M998 250v-50h52v50M998 158h52M998 184h52" fill="none" stroke="url(#line)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" opacity=".33"/>
+  <path d="M1136 250V112h94v138M1164 140h14M1200 140h14M1164 171h14M1200 171h14M1164 202h14M1200 202h14M1164 233h14M1200 233h14" fill="none" stroke="url(#line)" stroke-width="2.6" stroke-linecap="round" opacity=".4"/>
+  <path d="M1272 250v-84l58-48 58 48v84M1302 250v-44h56v44" fill="none" stroke="url(#line)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" opacity=".36"/>
+  <path d="M100 135l126-34 126 36 126-58 140 76 180-48 196 58 188-46" fill="none" stroke="url(#line)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" opacity=".26"/>
+  <path d="M150 111C310 28 486 40 648 118s338 96 528-18" fill="none" stroke="url(#line)" stroke-width="2.2" stroke-linecap="round" opacity=".16"/>
+  <path d="M96 246c122-52 224-52 344 0M570 250c136-66 294-64 438 0M1092 249c78-40 168-40 250 0" fill="none" stroke="url(#line)" stroke-width="2.3" stroke-linecap="round" opacity=".14"/>
+  <path d="M226 101l126 36 126-58 140 76 180-48 196 58 188-46" fill="none" stroke="#F5A623" stroke-width="1.2" stroke-dasharray="2 16" stroke-linecap="round" opacity=".24"/>
+  <circle cx="226" cy="101" r="5" fill="#F5A623" opacity=".56"/>
+  <circle cx="478" cy="79" r="6" fill="#F5A623" opacity=".5"/>
+  <circle cx="798" cy="107" r="5" fill="#F5A623" opacity=".42"/>
+  <circle cx="1182" cy="119" r="6" fill="#F5A623" opacity=".52"/>
+  <path d="M48 300h1344l-34-34c-154-16-282 4-420-8-170-14-308-56-492-30-158 22-260 32-398 8z" fill="url(#soft)"/>
+</svg>
