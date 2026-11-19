@@ -367,7 +367,9 @@ const HS_CSS = `@page{size:A4;margin:20mm 15mm 20mm 30mm} body{font:13pt/1.2 "Ti
   .wd p{margin:0 0 4pt} table.bd{width:100%;border-collapse:collapse;margin:4pt 0} table.bd td{border:1px solid #000;padding:2pt 4pt;vertical-align:top} table.bd p{margin:0}
   section.hs + section.hs{page-break-before:always;break-before:page} .hs-t{font:600 12px system-ui;color:#5b6b7f;margin:18px 0 6px}
   @page bv{size:A4 landscape;margin:12mm 15mm} .bv-page{page:bv} .bv-img{display:block;margin:0 auto;max-width:100%;max-height:150mm} .bv-page + .bv-page .bv-img{max-height:128mm}
-  @media print{.hs-t{display:none} body{max-width:none}}`;
+  @media print{.hs-t{display:none} body{max-width:none;margin:0 !important;width:165mm} .bv-page{width:267mm}}`;
+// 19/11/2026 (Tâm: «bản in bị lệch»): bộ có trang bản vẽ khổ ngang → Chrome dàn cả bản in theo bề ngang trang ngang (267 mm), thân văn bản margin:auto bị đẩy lệch phải ~4,5 cm
+// → khi in: thân văn bản đặt cố định đúng bề ngang vùng in trang dọc, không căn giữa; trang bản vẽ (.bv-page) tự rộng theo trang ngang
 const ANNEX = k => /^MB-02-/.test(k) || k === 'MB-03';
 const isHdSet = codes => codes.length && codes.some(c => tplKey(c) === 'MB-02') && codes.every(c => tplKey(c) === 'MB-02' || ANNEX(tplKey(c)));
 function withAnnex(pick, ts) {
@@ -376,7 +378,7 @@ function withAnnex(pick, ts) {
   return [...pick, ...add].map((t, i) => [t, i]).sort((a, b) => tplKey(a[0].code).localeCompare(tplKey(b[0].code)) || a[1] - b[1]).map(x => x[0]);
 }
 // HĐMB (kèm phụ lục): khổ in theo bản HĐMB đã ký của phòng KD (HĐMB.pdf đo lại 13/11/2026) — lề trên 17, phải 12, dưới 15, trái 19,5 mm; Times 12, giãn dòng 1,15
-const HD_CSS = '@page{margin:17mm 12mm 15mm 19.5mm} body{font-size:12pt;line-height:1.15;max-width:178.5mm} table.xl td{padding:4pt 2pt}';
+const HD_CSS = '@page{margin:17mm 12mm 15mm 19.5mm} body{font-size:12pt;line-height:1.15;max-width:178.5mm} table.xl td{padding:4pt 2pt} @media print{body{max-width:none;width:178.5mm}}';
 async function hsDocs(unitId, codes, user, custId) {
   if (!can(user, E.unit, 'r')) deny();
   const ts = await unitTemplates(unitId), want = String(codes || '').split(',').map(s => s.trim()).filter(Boolean);

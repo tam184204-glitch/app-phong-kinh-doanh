@@ -549,10 +549,11 @@ const EDIT_CSS = `.pt{position:fixed;top:0;left:0;right:0;z-index:50;display:fle
       html.pv .pvp{position:absolute;left:0;right:0;background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.28)}
       html.pv .pvm{position:absolute;white-space:pre;color:#000;line-height:1} html.pv .pvn{position:absolute;left:0;right:0;text-align:center;font:11px system-ui;color:#6b7785}
       html.pv .doc{position:relative;z-index:1;column-fill:auto;column-gap:0;column-wrap:wrap;outline:none!important} html.pv .hs-t{display:none}
-      html.pv [data-pvb]{break-before:column} html.pv [data-pva]{break-after:column} html:not(.pv) .pvs{display:none}}`;
+      html.pv [data-pvb]{break-before:column!important} html.pv [data-pva]{break-after:column!important} html:not(.pv) .pvs{display:none}}`;
 // 13/11/2026: «Xem dạng trang giấy» — màn sửa hiện đúng từng tờ A4 như bản in (lề lấy từ @page của trang, ngắt trang = ngắt cột của khối nhiều cột xuống dòng,
 // số trang / «Trang HĐ x/y» vẽ ở lề), sửa chữ đến đâu trang tự dàn lại đến đó. Trình duyệt chưa hỗ trợ column-wrap thì giữ màn cũ.
 // 17/11/2026: nút bật / tắt chuyển lên thanh công cụ (window.__pv), tính cả mức thu phóng (window.__ptZ).
+// 19/11/2026 (Tâm: «in ra nhìn như nào thì bản ở đây cũng hiện như thế»): ngắt trang ghi trong mẫu (style="page-break-before:always" ngay trên thẻ) đè luật ngắt cột → màn xem không sang trang; luật ngắt cột thêm !important
 function pvView() {
   const d = document.querySelector('.doc'), H = document.documentElement; if (!d || !window.CSS || !CSS.supports('column-wrap', 'wrap')) return;
   const MM = (() => { const e = document.createElement('div'); e.style.cssText = 'position:absolute;visibility:hidden;width:100mm'; document.body.append(e); const w = e.getBoundingClientRect().width / 100; e.remove(); return w; })();
