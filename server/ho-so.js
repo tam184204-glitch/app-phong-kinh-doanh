@@ -366,7 +366,7 @@ const HS_CSS = `@page{size:A4;margin:20mm 15mm 20mm 30mm} body{font:13pt/1.2 "Ti
   table.xl{width:100%;border-collapse:collapse;table-layout:fixed} table.xl td{padding:3pt 2pt;vertical-align:top;overflow-wrap:break-word}
   .wd p{margin:0 0 4pt} table.bd{width:100%;border-collapse:collapse;margin:4pt 0} table.bd td{border:1px solid #000;padding:2pt 4pt;vertical-align:top} table.bd p{margin:0}
   section.hs + section.hs{page-break-before:always;break-before:page} .hs-t{font:600 12px system-ui;color:#5b6b7f;margin:18px 0 6px}
-  @page bv{size:A4 landscape;margin:12mm 15mm} .bv-page{page:bv} .bv-img{display:block;margin:0 auto;max-width:100%;max-height:150mm} .bv-page + .bv-page .bv-img{max-height:128mm}
+  @page bv{size:A4 landscape;margin:12mm 15mm} .bv-page{page:bv} .bv-img{display:block;margin:0 auto;max-width:100%;max-height:184mm}
   @media print{.hs-t{display:none} body{max-width:none;margin:0 !important;width:165mm} .bv-page{width:267mm}}`;
 // 19/11/2026 (Tâm: «bản in bị lệch»): bộ có trang bản vẽ khổ ngang → Chrome dàn cả bản in theo bề ngang trang ngang (267 mm), thân văn bản margin:auto bị đẩy lệch phải ~4,5 cm
 // → khi in: thân văn bản đặt cố định đúng bề ngang vùng in trang dọc, không căn giữa; trang bản vẽ (.bv-page) tự rộng theo trang ngang
@@ -379,21 +379,21 @@ function withAnnex(pick, ts) {
 }
 // HĐMB (kèm phụ lục): khổ in theo bản HĐMB đã ký của phòng KD (HĐMB.pdf đo lại 13/11/2026) — lề trên 17, phải 12, dưới 15, trái 19,5 mm; Times 12, giãn dòng 1,15
 const HD_CSS = '@page{margin:17mm 12mm 15mm 19.5mm} body{font-size:12pt;line-height:1.15;max-width:178.5mm} table.xl td{padding:4pt 2pt} @media print{body{max-width:none;width:178.5mm}}';
-async function hsDocs(unitId, codes, user, custId) {
+async function hsDocs(unitId, codes, user, custId, goc) {
   if (!can(user, E.unit, 'r')) deny();
   const ts = await unitTemplates(unitId), want = String(codes || '').split(',').map(s => s.trim()).filter(Boolean);
   const pickT = withAnnex(want.length ? want.map(c => ts.find(t => t.code === c)).filter(Boolean) : ts, ts.filter(t => t.bo === 'hdmb'));
   if (!pickT.length) bad('Chưa chọn hồ sơ (hoặc mẫu không áp dụng cho căn này)');
-  const D = await hsData(unitId, user, custId);
-  return { D, docs: pickT.map(t => ({ t, html: merge(t.content, D) })) };
+  const D = await hsData(unitId, user, custId), sv = goc ? new Map() : await savedEdits([unitId]);
+  return { D, docs: pickT.map(t => { const k = sv.get(`${KID(unitId)}|${t.code}`); return { t, html: k ? k.html : merge(t.content, D), saved: k ? k.at : null }; }) };
 }
 // in cả bộ: 1 trang HTML, mỗi hồ sơ một trang mới, sửa được trực tiếp trước khi in
-async function printHs(unitId, codes, user, bo, custId) {
+async function printHs(unitId, codes, user, bo, custId, { goc } = {}) {
   const IO = require('./io');
-  const { D, docs } = await hsDocs(unitId, codes, user, custId);
+  const { D, docs } = await hsDocs(unitId, codes, user, custId, goc);
   await C.audit({ q }, 'unit', +unitId, 'in_bo_ho_so', null, null, user, docs.map(d => d.t.code).join(', '));
   const hasAnx = isHdSet(docs.map(d => d.t.code)) && docs.some(d => ANNEX(tplKey(d.t.code)));
-  const body = docs.map(d => `<section class="hs${hasAnx && ANNEX(tplKey(d.t.code)) ? ' pl' : ''}" data-code="${escH(d.t.code)}"><div class="hs-t" contenteditable="false">${escH(d.t.name)}</div>${d.html}</section>`).join('');
+  const body = docs.map(d => `<section class="hs${hasAnx && ANNEX(tplKey(d.t.code)) ? ' pl' : ''}" data-unit="${escH(KID(unitId) || unitId)}" data-code="${escH(d.t.code)}"><div class="hs-t" contenteditable="false">${escH(d.t.name)}</div>${d.html}</section>`).join('');
   // nút «Lưu bản đã sửa vào kho»: gửi đúng nội dung đang thấy (kể cả chữ đã sửa tay) → file Word trong Kho, gắn vào HĐ của căn (12/11/2026)
   const saveBtn = `<button type="button" class="pt-b" id="hsSave" title="Lưu đúng bản đang thấy (kể cả chỗ đã sửa) thành file Word trong Kho hồ sơ của căn — mở lại lúc nào cũng còn (Ctrl+S)">${IO.ICON.save}<span class="t">Lưu vào kho</span></button>`;
   const saveJs = `<script>(() => { const b = document.getElementById('hsSave'); if (!b) return;
@@ -431,7 +431,7 @@ async function printHs(unitId, codes, user, bo, custId) {
     window.addEventListener('beforeprint', count); window.addEventListener('load', count);
   })()</` + `script>` : '';
   return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Hồ sơ ${escH(D.map.ma_can)}</title><style>${HS_CSS} ${isHd ? HD_CSS : ''} ${pageCss} ${anxCss}
-    ${IO.EDIT_CSS}</style></head><body>${IO.editBar(`Bộ hồ sơ căn <b>${escH(D.map.ma_can)}</b> · ${docs.length} hồ sơ — số liệu lấy theo dữ liệu đã khai báo; chỗ «${DOTS}» là dữ liệu còn trống`, { extra: saveBtn, docx: `/print/hs/${+unitId}?fmt=docx&cust=${+custId || ''}&tpl=${encodeURIComponent(docs.map(d => d.t.code).join(','))}` })}${IO.editDoc(body)}${saveJs}${anxJs}</body></html>`;
+    ${IO.EDIT_CSS}</style></head><body>${IO.editBar(`Bộ hồ sơ căn <b>${escH(D.map.ma_can)}</b> · ${docs.length} hồ sơ — số liệu lấy theo dữ liệu đã khai báo; chỗ «${DOTS}» là dữ liệu còn trống${savedNote(docs)}`, { extra: KEEP_BTN + saveBtn, docx: `/print/hs/${+unitId}?fmt=docx&cust=${+custId || ''}&tpl=${encodeURIComponent(docs.map(d => d.t.code).join(','))}` })}${IO.editDoc(body)}${KEEP_JS}${saveJs}${anxJs}</body></html>`;
 }
 // bản đã sửa trên trang in → Word (bỏ script / thuộc tính on…, contenteditable)
 async function wordFromHtml(unitId, docs, user) {
@@ -567,6 +567,69 @@ async function demoFill(unitId, user) {
   await C.audit({ q }, 'unit', u.id, 'du_lieu_thu_ho_so', null, null, user, did.join('; ') || 'đã đủ');
   return { did };
 }
+// ===== Bản in đã sửa (19/11/2026): «Lưu chỉnh sửa» trên trang in → lần in sau của căn + mẫu đó ra đúng bản đã lưu (kể cả In hàng loạt, Word);
+// «Bản gốc» (?goc=1) = in lại theo dữ liệu, lưu tiếp thì bản mới thay bản cũ. Tệp HTML trong kho tệp của module (kd_file: ent 'unit', kind 'ban_in_sua',
+// name = mã mẫu, mỗi lần lưu 1 phiên bản). Không cần bảng mới.
+const KID = v => { const t = String(v ?? '').trim(); return /^\d+$/.test(t) && +t > 0 ? +t : null; };   // bản chạy riêng: mã bản ghi là số
+const EDIT_KIND = 'ban_in_sua', FILES_DIR = process.env.FILES_DIR || require('path').join(__dirname, '..', 'data', 'files');
+async function savedEdits(unitIds) {
+  const ids = [...new Set(unitIds.map(x => KID(x)).filter(Boolean))], out = new Map();
+  if (!ids.length) return out;
+  const rows = await q(`SELECT DISTINCT ON (rec_id, name) rec_id, name, path, uploaded_at FROM kd_file WHERE ent = 'unit' AND kind = $1 AND rec_id = ANY($2) AND deleted_at IS NULL
+    ORDER BY rec_id, name, version DESC, uploaded_at DESC`, [EDIT_KIND, ids]);
+  for (const r of rows) { try { out.set(`${KID(r.rec_id)}|${r.name}`, { html: require('fs').readFileSync(require('path').join(FILES_DIR, r.path), 'utf8'), at: r.uploaded_at }); } catch (e) { console.error('ban in sua', r.path, e.message); } }
+  return out;
+}
+const savedNote = docs => { const n = docs.filter(d => d.saved).length; return n ? ` · <b>${n} hồ sơ đang dùng bản đã lưu chỉnh sửa</b> (bấm «Bản gốc» để in theo dữ liệu)` : ''; };
+async function saveEdits(items, user) {
+  if (!can(user, E.unit, 'r')) deny();
+  if (!Array.isArray(items) || !items.length) bad('Không có nội dung để lưu');
+  if (items.length > 300) bad('Quá nhiều hồ sơ trong một lần lưu (tối đa 300)');
+  const fs = require('fs'), path = require('path'), crypto = require('crypto');
+  const clean = h => String(h || '').replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<(iframe|object|embed)[\s\S]*?<\/\1>/gi, '').replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/\scontenteditable="[^"]*"/gi, '').replace(/(href|src)\s*=\s*(["'])\s*javascript:[^"']*\2/gi, '$1=$2#$2');
+  const units = new Map(), out = [];
+  for (const it of items) {
+    const id = KID(it && it.unit) || bad('Mã căn không hợp lệ'), code = String(it.code || '').trim();
+    if (!code || code.length > 100) bad('Thiếu mã mẫu');
+    const html = clean(it.html); if (!html.trim()) bad(`Hồ sơ ${code}: nội dung trống`); if (html.length > 5e6) bad(`Hồ sơ ${code} quá lớn`);
+    if (!units.has(id)) units.set(id, await one('SELECT id, code, is_demo FROM kd_unit WHERE id = $1', [id]) || bad('Không tìm thấy căn'));
+    const u = units.get(id);
+    const dir = path.join(FILES_DIR, 'unit', String(u.id), 'ban-in-sua'); fs.mkdirSync(dir, { recursive: true });
+    const disk = path.join(dir, `${Date.now()}-${crypto.randomBytes(3).toString('hex')}-${code.replace(/[^\w.-]+/g, '_')}.html`);
+    fs.writeFileSync(disk, html, 'utf8');
+    const ver = (await one("SELECT coalesce(max(version), 0) + 1 AS v FROM kd_file WHERE ent = 'unit' AND rec_id = $1 AND kind = $2 AND name = $3", [u.id, EDIT_KIND, code])).v;
+    await q('INSERT INTO kd_file (ent, rec_id, kind, name, mime, size, path, version, uploaded_by, is_demo) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+      ['unit', u.id, EDIT_KIND, code, 'text/html', Buffer.byteLength(html), path.relative(FILES_DIR, disk), ver, user.id, !!u.is_demo]);
+    out.push({ unit: u.code, code, version: ver });
+  }
+  for (const [id, u] of units) await C.audit({ q }, 'unit', id, 'luu_ban_in_sua', null, null, user, out.filter(x => x.unit === u.code).map(x => `${x.code} (lần ${x.version})`).join(', '), u.is_demo);
+  return { saved: out.length, units: units.size };
+}
+// nút + mã chạy trên trang in (dùng chung In bộ hồ sơ / In hàng loạt): gửi đúng nội dung đang thấy của từng hồ sơ (section có data-unit, data-code)
+const KEEP_BTN = `<button type="button" class="pt-b pri" id="hsKeep" title="Lưu đúng bản đang thấy (kể cả chỗ đã sửa, đã điền) — lần in sau của căn + hồ sơ này ra y hệt bản đã lưu (Ctrl+S)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg><span class="t">Lưu chỉnh sửa</span></button>`;
+const KEEP_JS = `<script>(() => { const b = document.getElementById('hsKeep'); if (!b) return; const L = b.querySelector('.t');
+  b.onclick = async () => { if (b.disabled) return; b.disabled = true; const t0 = L.textContent; L.textContent = 'Đang lưu…';
+    try { const seen = new Set(), items = [];
+      for (const s of document.querySelectorAll('section.hs[data-unit][data-code]')) { const k = s.dataset.unit + '|' + s.dataset.code; if (seen.has(k)) continue; seen.add(k);
+        const c = s.cloneNode(true); c.querySelectorAll('.hs-t,.pvs').forEach(x => x.remove()); c.querySelectorAll('[data-pvb],[data-pva]').forEach(x => { x.removeAttribute('data-pvb'); x.removeAttribute('data-pva'); });
+        items.push({ unit: s.dataset.unit, code: s.dataset.code, html: c.innerHTML }); }
+      if (!items.length) throw new Error('Không có hồ sơ để lưu');
+      // chia đợt ≤ 3,5 MB / lần gửi (máy chủ nhận tối đa 5 MB / yêu cầu; HĐMB kèm bản vẽ ~1 MB / căn)
+      const lots = [[]]; let sz = 0; for (const it of items) { const n = it.html.length * 1.1 + 200; if (sz + n > 3.5e6 && lots[lots.length - 1].length) { lots.push([]); sz = 0; } lots[lots.length - 1].push(it); sz += n; }
+      let done = 0;
+      for (const [i, lot] of lots.entries()) { if (lots.length > 1) L.textContent = 'Đang lưu ' + (i + 1) + '/' + lots.length + '…';
+      const url = '/api/hs-edit/save', init = { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Duan-Csrf': '1' }, body: JSON.stringify({ items: lot }) };
+      const j = location.protocol === 'blob:' ? await new Promise((ok, no) => { const ch = new BroadcastChannel('ctg-hs'), id = Math.random().toString(36).slice(2);
+          const tm = setTimeout(() => { ch.close(); no(new Error('Không kết nối được tab ứng dụng — mở lại tab ứng dụng rồi bấm Lưu lại')); }, 60000);
+          ch.onmessage = e => { const m = e.data || {}; if (m.t !== 'res' || m.id !== id) return; clearTimeout(tm); ch.close(); m.ok ? ok(m.body) : no(new Error((m.body && m.body.error) || 'Không lưu được')); };
+          ch.postMessage({ t: 'req', id, url, init }); })
+        : await fetch(url, init).then(async r => { const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error((j.error || 'Không lưu được') + (done ? ' — đã lưu được ' + done + ' hồ sơ trước đó' : '')); return j; });
+      done += j.saved; }
+      L.textContent = '✓ Đã lưu ' + done + ' hồ sơ'; b.title = 'Đã lưu — lần in sau ra đúng bản này'; window.__ptSaved && window.__ptSaved();
+      setTimeout(() => { L.textContent = t0; b.disabled = false; }, 4000);
+    } catch (e) { alert(e.message); L.textContent = t0; b.disabled = false; } };
+})()</` + `script>`;
 // ===== In hàng loạt nhiều căn (12/11/2026): chọn dự án / tòa / danh sách mã căn → chọn bước + hồ sơ → In tất cả / Tải Word (mỗi căn 1 phần) =====
 const tplKey = code => String(code).replace(/^[A-Z0-9]+-(?:[A-Z][A-Z0-9]?-)?(?=(?:MB|VAY|HT|SH|THUE|TLV|BG|TLMB)-\d)/i, '').replace(/-(DEFG|HIJ|DE|FG)$/, '');   // CTS-K-MB-02 / TNS-MB-14 / CTS-VAY-01 → MB-02 / MB-14 / VAY-01   // TNS-MB-02-DEFG / ABC-MB-02 → MB-02 (cùng loại hồ sơ, mẫu theo tòa / dự án)
 const shortName = n => String(n).replace(/\s*\(tòa [^)]*\)$/, '');
@@ -646,27 +709,31 @@ async function batchPick(units, bo, keys, user) {
   if (!out.length) bad('Không có căn nào có hồ sơ phù hợp để in');
   return out;
 }
-async function batchDocs(units, bo, keys, user) {
-  const out = [];
-  for (const x of await batchPick(units, bo, keys, user)) {
-    const docs = x.ts.map(t => ({ t, html: merge(t.content, x.D) })), n = x.copies;
+async function batchDocs(units, bo, keys, user, goc, picked) {
+  const out = [], pick = picked || await batchPick(units, bo, keys, user), sv = goc ? new Map() : await savedEdits(pick.map(x => x.f.id));
+  for (const x of pick) {
+    const docs = x.ts.map(t => { const k = sv.get(`${KID(x.f.id)}|${t.code}`); return { t, html: k ? k.html : merge(t.content, x.D), saved: k ? k.at : null }; }), n = x.copies;
     for (let i = 1; i <= n; i++) out.push({ unitId: x.f.id, code: x.D.map.ma_can, bo: x.bo, copy: i, copies: n, docs });   // mỗi bản là 1 phần riêng (Word: số trang đánh lại từ 1)
     await C.audit({ q }, 'unit', x.f.id, 'in_hang_loat', null, null, user, x.ts.map(t => t.code).join(', ') + (n > 1 ? ` · ${n} bản` : ''));
   }
   return out;
 }
-async function printBatch(units, bo, keys, user) {
-  const IO = require('./io'), list = await batchDocs(units, bo, keys, user);
-  const body = list.map(u => u.docs.map(d => `<section class="hs"><div class="hs-t" contenteditable="false">Căn ${escH(u.code)} · ${escH(BO_L[u.bo] || '')}${u.copies > 1 ? ` · bản ${u.copy}/${u.copies}` : ''} · ${escH(shortName(d.t.name))}</div>${d.html}</section>`).join('')).join('');
+async function printBatch(units, bo, keys, user, { goc } = {}) {
+  // 1 căn, 1 bản: in đúng như «In bộ hồ sơ» của căn (định dạng HĐMB, «Trang HĐ: x/y», phụ lục không đánh số) — 19/11/2026
+  const pick = await batchPick(units, bo, keys, user);
+  if (pick.length === 1 && pick[0].copies === 1) { const x = pick[0]; return printHs(x.f.id, x.ts.map(t => t.code).join(','), user, x.bo, x.f.cust?.id, { goc }); }
+  const IO = require('./io'), list = await batchDocs(units, bo, keys, user, goc, pick);
+  const isHd = list.length && list.every(u => isHdSet(u.docs.map(d => d.t.code)));   // HĐMB: cùng cỡ chữ / lề như bản HĐMB đã ký
+  const body = list.map(u => u.docs.map(d => `<section class="hs" data-unit="${escH(KID(u.unitId) || u.unitId)}" data-code="${escH(d.t.code)}"><div class="hs-t" contenteditable="false">Căn ${escH(u.code)} · ${escH(BO_L[u.bo] || '')}${u.copies > 1 ? ` · bản ${u.copy}/${u.copies}` : ''} · ${escH(shortName(d.t.name))}</div>${d.html}</section>`).join('')).join('');
   const n = list.reduce((s, u) => s + u.docs.length, 0), nc = new Set(list.map(u => u.unitId)).size, codes = [...new Set(list.map(u => u.code))];
   // in liền nhiều căn: không đánh số trang chung (số trang từng căn đánh lại từ 1 có ở bản Word)
   const pageCss = `@page{${['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right'].map(k => `@${k}{content:""}`).join('')}}`;
-  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>In hàng loạt ${nc} căn</title><style>${HS_CSS} ${pageCss}
-    ${IO.EDIT_CSS}</style></head><body>${IO.editBar(`In hàng loạt <b>${nc} căn</b>${list.length > nc ? ` · <b>${list.length} bản</b>` : ''} · ${n} hồ sơ (${escH(codes.slice(0, 8).join(', '))}${codes.length > 8 ? '…' : ''}) — mỗi hồ sơ sang trang mới. Cần số trang «Trang HĐ: x/y» riêng từng căn thì dùng «Word»`, { docx: `/print/hs-batch?fmt=docx&bo=${encodeURIComponent(bo || '')}&keys=${encodeURIComponent(keys || '')}&units=${encodeURIComponent(units || '')}` })}${IO.editDoc(body)}</body></html>`;
+  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>In hàng loạt ${nc} căn</title><style>${HS_CSS} ${isHd ? HD_CSS : ''} ${pageCss}
+    ${IO.EDIT_CSS}</style></head><body>${IO.editBar(`In hàng loạt <b>${nc} căn</b>${list.length > nc ? ` · <b>${list.length} bản</b>` : ''} · ${n} hồ sơ (${escH(codes.slice(0, 8).join(', '))}${codes.length > 8 ? '…' : ''}) — mỗi hồ sơ sang trang mới. Cần số trang «Trang HĐ: x/y» riêng từng căn thì dùng «Word»${savedNote(list.flatMap(u => u.docs))}`, { extra: KEEP_BTN, docx: `/print/hs-batch?fmt=docx&bo=${encodeURIComponent(bo || '')}&keys=${encodeURIComponent(keys || '')}&units=${encodeURIComponent(units || '')}` })}${IO.editDoc(body)}${KEEP_JS}</body></html>`;
 }
 async function wordBatch(units, bo, keys, user) {
   const list = await batchDocs(units, bo, keys, user), flat = list.flatMap(u => u.docs);
   const nc = new Set(list.map(u => u.unitId)).size, name = `In_hang_loat_${nc}_can${list.length > nc ? `_${list.length}_ban` : ''}_${bo}_${C.today()}.docx`;
   return { buf: docxOf(flat.map(d => d.html), name, isHdSet(flat.map(d => d.t.code)), list.map(u => u.docs.length)), name };
 }
-module.exports = { BO_OLD, batchKeys, batchPlan, batchScan, batchPick, BO_L, printBatch, wordBatch, custHistory, wordFromHtml, demoFill, demoFillOn, saveTarget, BO, MAU_TNS, hsData, hsInfo, printHs, wordHs, merge, evalExpr };
+module.exports = { saveEdits, savedEdits, BO_OLD, batchKeys, batchPlan, batchScan, batchPick, BO_L, printBatch, wordBatch, custHistory, wordFromHtml, demoFill, demoFillOn, saveTarget, BO, MAU_TNS, hsData, hsInfo, printHs, wordHs, merge, evalExpr };

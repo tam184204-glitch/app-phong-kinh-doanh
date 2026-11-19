@@ -1950,6 +1950,6 @@
 "bo": "hdmb",
 "ent": "unit",
 "scope": "CTS,TNS",
-"content": "<div class=\"bv-page\">\n<p style=\"text-align:center;font-weight:bold;font-size:14pt;margin:0\">PHỤ LỤC: MÔ TẢ CĂN HỘ</p>\n<p style=\"text-align:center;font-style:italic;margin:0\">(Kèm theo Hợp đồng mua bán căn hộ số {so_hdmb} ngày {ngay_hdmb})</p>\n<p style=\"text-align:center;margin:2pt 0 4pt\">Căn hộ <b>{ma_can}</b> — tầng {tang}, mã hiệu căn {can_so}, tòa {toa} — {du_an}. Diện tích sàn xây dựng: {dt_san} m²; diện tích sử dụng (thông thủy): {dt_tt} m²</p>\n{ban_ve_can}\n</div>\n<div class=\"bv-page\" style=\"page-break-before:always;break-before:page\">\n<p style=\"text-align:center;font-weight:bold;margin:0 0 4pt\">VỊ TRÍ CĂN HỘ {ma_can} TRÊN MẶT BẰNG TẦNG {tang} (mã hiệu căn {can_so})</p>\n{ban_ve_tang}\n<table class=\"xl\" style=\"width:100%;margin-top:8pt;break-inside:avoid;page-break-inside:avoid\"><tr><td style=\"text-align:center;font-weight:bold;width:50%\">BÊN BÁN</td><td style=\"text-align:center;font-weight:bold\">BÊN MUA</td></tr>\n<tr><td style=\"text-align:center;font-style:italic\">(Ký, ghi rõ họ tên, đóng dấu)</td><td style=\"text-align:center;font-style:italic\">(Ký và ghi rõ họ tên)</td></tr>\n<tr style=\"height:45pt\"><td></td><td></td></tr><tr><td></td><td style=\"text-align:center;font-weight:bold\">{ten_kh}</td></tr></table>\n</div>"
+"content": "<div class=\"bv-page\">\n{ban_ve_can}\n</div>\n<div class=\"bv-page\" style=\"page-break-before:always;break-before:page\">\n{ban_ve_tang}\n</div>"
 }
 ]

@@ -691,7 +691,7 @@ R('POST', '/api/hs-batch/plan', async (req, res, u) => { const b = await readJso
 R('GET', '/api/hs-batch/scan', async (req, res, u, p, qs) => send(res, 200, await HS.batchScan(qs.project, u)));   // quét dự án: bước / khách / lần in gần nhất của từng căn   // in hàng loạt: kiểm tra căn + hồ sơ
 R('GET', '/print/hs-batch', async (req, res, u, p, qs) => {
   if (qs.fmt === 'docx') { const x = await HS.wordBatch(qs.units, qs.bo, qs.keys, u); return sendFile(res, x.buf, x.name, MIME['.docx']); }
-  send(res, 200, await HS.printBatch(qs.units, qs.bo, qs.keys, u), { 'Content-Type': 'text/html; charset=utf-8' });
+  send(res, 200, await HS.printBatch(qs.units, qs.bo, qs.keys, u, { goc: qs.goc === '1' }), { 'Content-Type': 'text/html; charset=utf-8' });
 }, { html: true });
 async function saveHsFile(u, unitId, bo, x, cust) {   // cất bản Word của bộ hồ sơ vào Kho hồ sơ (gắn vào hợp đồng của khách đang xem)
   const t = await HS.saveTarget(unitId, bo, cust);
@@ -710,10 +710,11 @@ R('POST', '/api/hs-batch/save', async (req, res, u) => { const b = await readJso
   for (const x of await HS.batchPick(b.units, b.bo, b.keys, u)) { try { const cust = x.D.ctx.k?.id; await saveHsFile(u, x.f.id, x.bo, await HS.wordHs(x.f.id, x.ts.map(t => t.code).join(','), u, cust), cust); ok.push(x.D.map.ma_can); } catch (e) { err.push(`${x.D.map.ma_can}: ${e.message}`); } }
   send(res, 200, { ok, err }); });
 R('POST', '/api/hs/:id/save', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await saveHsFile(u, p.id, b.bo, await HS.wordHs(p.id, b.tpl, u, b.cust), b.cust)); });
+R('POST', '/api/hs-edit/save', async (req, res, u) => { const b = await readJson(req); send(res, 200, await HS.saveEdits(b.items, u)); });   // «Lưu chỉnh sửa» trên trang in → lần in sau dùng bản này (19/11/2026)
 R('POST', '/api/hs/:id/save-html', async (req, res, u, p) => { const b = await readJson(req); send(res, 200, await saveHsFile(u, p.id, b.bo, await HS.wordFromHtml(p.id, b.docs, u), b.cust)); });   // bản đã sửa trên trang in
 R('GET', '/print/hs/:id', async (req, res, u, p, qs) => {
   if (qs.fmt === 'docx') { const x = await HS.wordHs(p.id, qs.tpl, u, qs.cust); return sendFile(res, x.buf, x.name, MIME['.docx']); }
-  send(res, 200, await HS.printHs(p.id, qs.tpl, u, qs.bo, qs.cust), { 'Content-Type': 'text/html; charset=utf-8' });
+  send(res, 200, await HS.printHs(p.id, qs.tpl, u, qs.bo, qs.cust, { goc: qs.goc === '1' }), { 'Content-Type': 'text/html; charset=utf-8' });
 }, { html: true });
 R('GET', '/print/tpl/:ent/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printGeneric(p.ent, p.id, u, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });
 R('GET', '/print/contract/:id', async (req, res, u, p, qs) => send(res, 200, await IO.printContract(p.id, u, qs.tpl), { 'Content-Type': 'text/html; charset=utf-8' }), { html: true });

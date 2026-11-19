@@ -1033,6 +1033,24 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   if (ent === 'handover_notice' || ent === 'gcn_notice') $('.modal', m.el).classList.add('full');
   if (ent === 'price_policy') $('.modal', m.el).classList.add('full');   // bảng tiến độ thu tiền rộng như Lần thanh toán HĐMB   // bảng căn bàn giao nhiều cột
   if (ent === 'contract') { bravoLayout(form, HD_LAYOUT); $('.modal', m.el).classList.add('full'); if (rec.kind !== 'hoan_thien') htp = hdPair(form, { ht: htRec, locked: htLocked, tab, draft: htDraft, oldFinish: +rec.finish_value > 0, kind: rec.kind, debt: rec._debt, rec0: rec }); }
+  // thông báo mở bán / cho thuê (19/11/2026): ngày kết thúc nhận hồ sơ = ngày bắt đầu + 30 ngày lịch (addDays: tự qua tháng / năm / năm nhuận,
+  // VD 22/01/2026 → 21/02/2026). Chỉ khi tạo mới / sửa bản nháp — thông báo đã trình / ban hành không tự đổi. Xóa ngày bắt đầu → xóa ngày kết thúc nếu là số tự tính.
+  if (ent === 'sale_notice' && (!id || ['nhap', 'tu_choi'].includes(rec.status))) {
+    const oEl = $('[name=open_on]', form), cEl = $('[name=close_on]', form);
+    if (oEl && cEl && !cEl.readOnly && !cEl.disabled) {
+      $('[data-f=close_on]', form)?.insertAdjacentHTML('beforeend', '<div class="help">Tự động tính bằng ngày bắt đầu + 30 ngày</div>');
+      const iso = () => { try { const v = readField(form, { k: 'open_on', t: 'date' }); return /^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v : null; } catch { return null; } };
+      const calc = () => { const v = iso(); return v ? dmy(addDays(v, 30)) : null; };
+      let auto = cEl.value && cEl.value === calc() ? cEl.value : null;   // bản nháp mở lại: ngày kết thúc đang đúng = số tự tính
+      const put = v => { if (cEl.value === v) return; cEl.value = v; cEl.dispatchEvent(new Event('change', { bubbles: true })); };
+      const sync = () => {
+        if (!oEl.value.trim()) { if (auto !== null && cEl.value === auto) put(''); auto = null; return; }
+        const v = calc(); if (!v) return;   // đang gõ dở ngày bắt đầu: chưa tính
+        put(v); auto = v;
+      };
+      oEl.addEventListener('change', sync); oEl.addEventListener('input', sync);
+    }
+  }
   const sch = $('[data-sched]', form);
   { const ps = $('[data-psched]', form); if (ps) paySchedEditor(ps, rec.pay_sched || [], form, rec); }
   { const fs = $('[data-fsched]', form); if (fs) paySchedEditor(fs, rec.fin_sched || [], form, rec, { fin: true }); }

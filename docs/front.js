@@ -1034,6 +1034,24 @@ async function openForm(ent, { id, preset = {}, onSaved, title, skip = [], tab, 
   if (ent === 'handover_notice' || ent === 'gcn_notice') $('.modal', m.el).classList.add('full');
   if (ent === 'price_policy') $('.modal', m.el).classList.add('full');   // bảng tiến độ thu tiền rộng như Lần thanh toán HĐMB   // bảng căn bàn giao nhiều cột
   if (ent === 'contract') { bravoLayout(form, HD_LAYOUT); $('.modal', m.el).classList.add('full'); if (rec.kind !== 'hoan_thien') htp = hdPair(form, { ht: htRec, locked: htLocked, tab, draft: htDraft, oldFinish: +rec.finish_value > 0, kind: rec.kind, debt: rec._debt, rec0: rec }); }
+  // thông báo mở bán / cho thuê (19/11/2026): ngày kết thúc nhận hồ sơ = ngày bắt đầu + 30 ngày lịch (addDays: tự qua tháng / năm / năm nhuận,
+  // VD 22/01/2026 → 21/02/2026). Chỉ khi tạo mới / sửa bản nháp — thông báo đã trình / ban hành không tự đổi. Xóa ngày bắt đầu → xóa ngày kết thúc nếu là số tự tính.
+  if (ent === 'sale_notice' && (!id || ['nhap', 'tu_choi'].includes(rec.status))) {
+    const oEl = $('[name=open_on]', form), cEl = $('[name=close_on]', form);
+    if (oEl && cEl && !cEl.readOnly && !cEl.disabled) {
+      $('[data-f=close_on]', form)?.insertAdjacentHTML('beforeend', '<div class="help">Tự động tính bằng ngày bắt đầu + 30 ngày</div>');
+      const iso = () => { try { const v = readField(form, { k: 'open_on', t: 'date' }); return /^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v : null; } catch { return null; } };
+      const calc = () => { const v = iso(); return v ? dmy(addDays(v, 30)) : null; };
+      let auto = cEl.value && cEl.value === calc() ? cEl.value : null;   // bản nháp mở lại: ngày kết thúc đang đúng = số tự tính
+      const put = v => { if (cEl.value === v) return; cEl.value = v; cEl.dispatchEvent(new Event('change', { bubbles: true })); };
+      const sync = () => {
+        if (!oEl.value.trim()) { if (auto !== null && cEl.value === auto) put(''); auto = null; return; }
+        const v = calc(); if (!v) return;   // đang gõ dở ngày bắt đầu: chưa tính
+        put(v); auto = v;
+      };
+      oEl.addEventListener('change', sync); oEl.addEventListener('input', sync);
+    }
+  }
   const sch = $('[data-sched]', form);
   { const ps = $('[data-psched]', form); if (ps) paySchedEditor(ps, rec.pay_sched || [], form, rec); }
   { const fs = $('[data-fsched]', form); if (fs) paySchedEditor(fs, rec.fin_sched || [], form, rec, { fin: true }); }
@@ -2565,7 +2583,7 @@ async function boot(mustChange) {
     <nav class="side" id="side"><h6>DANH MỤC PHÂN HỆ</h6>${M.menu.map(([no, t, icon, items]) => items.length === 1   // phân hệ chỉ một màn: bấm thẳng tên phân hệ, không xổ mục con
       ? `<div class="mod" data-mod="${no}"><a class="solo" href="${items[0][0].startsWith('e:') ? '#/e/' + items[0][0].slice(2) : '#/v/' + items[0][0]}" data-nav="${items[0][0]}"><span class="n">${no}</span>${esc(t)}</a></div>`
       : `<div class="mod" data-mod="${no}"><button>${`<span class="n">${no}</span>`}${esc(t)}<i class="fa-solid fa-chevron-right chev"></i></button><div class="items">${items.map(([id, l]) => `<a href="${id.startsWith('e:') ? '#/e/' + id.slice(2) : '#/v/' + id}" data-nav="${id}">${esc(l)}</a>`).join('')}</div></div>`).join('')}
-    <div class="foot">${ico('fa-database')} Bravo: ${M.settings.bravo?.last_sync ? 'đồng bộ ' + dmyhm(M.settings.bravo.last_sync) : 'nhập tệp chứng từ'}${M.demo ? `<br>${ico('fa-flask')} Đang có <b>dữ liệu thử</b>` : ''}</div></nav>
+    ${M.demo ? `<div class="foot">${ico('fa-flask')} Đang có <b>dữ liệu thử</b></div>` : ''}</nav>
     <main class="main" id="main"></main>`;
   $$('.mod > button').forEach(b => b.onclick = () => b.parentElement.classList.toggle('open'));
   $('#burger').onclick = () => document.body.classList.toggle('nav-open');

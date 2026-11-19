@@ -677,7 +677,7 @@ function ptShell() {
   scan();
   // --- In / Bản gốc / Word
   B('print').onclick = () => print();
-  B('reset').onclick = () => { if (dirty && !confirm('Bỏ mọi chỗ đã sửa trên bản in này và tải lại bản gốc theo dữ liệu?')) return; H.dataset.ptLeave = '1'; location.reload(); };
+  B('reset').onclick = () => { if (dirty && !confirm('Bỏ mọi chỗ đã sửa trên bản in này và tải lại bản gốc theo dữ liệu?')) return; H.dataset.ptLeave = '1'; if (location.protocol === 'blob:') return location.reload(); const u = new URL(location.href); u.searchParams.set('goc', '1'); location.href = u.href; };   // goc=1: theo dữ liệu, bỏ qua bản đã «Lưu chỉnh sửa»
   const safe = s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').replace(/[^\w.-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'ban-in';
   const dl = (blob, name) => { const a = document.createElement('a'), u = URL.createObjectURL(blob); a.href = u; a.download = name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 6e4); };
   const docx = bar.dataset.docx;
@@ -701,7 +701,7 @@ function ptShell() {
   // --- phím tắt
   addEventListener('keydown', e => {
     if (e.key === 'F3') { e.preventDefault(); go(e.shiftKey ? -1 : 1); }
-    else if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 's') { e.preventDefault(); const s = document.getElementById('hsSave'); s ? s.click() : B('word').click(); }
+    else if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 's') { e.preventDefault(); const s = document.getElementById('hsKeep') || document.getElementById('hsSave'); s ? s.click() : B('word').click(); }
   });
 }
 const ptBtn = (k, ico, label, title, cls = '') => `<button type="button" class="pt-b ${cls}" data-pt="${k}" title="${title}">${ICON[ico]}${label ? `<span class="t">${label}</span>` : ''}</button>`;
