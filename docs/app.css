@@ -247,6 +247,10 @@ table.t.noclick tbody tr { cursor: default; }
 .fld .help { font-size: 11.5px; color: var(--muted); }
 .fld input[type=text], .fld input[type=password], .fld select, .fld textarea, .fld input:not([type]) { width: 100%; height: 38px; border: 1px solid #cfdbe8; border-radius: 10px; padding: 0 11px; background: #fff; }
 .fld textarea { height: auto; min-height: 78px; padding: 9px 11px; resize: vertical; }
+.pwbox { position: relative; display: block; }
+.pwbox input { padding-right: 42px !important; }
+.pwbox .eye { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
+.pwbox .eye:hover { background: var(--cobalt-50); color: var(--cobalt); }
 .fld.err input, .fld.err select, .fld.err textarea { border-color: var(--r-c); background: #fffafa; }
 .fld.err .cklist [data-ck=note] { border-color: var(--line2); background: var(--card); }   /* ghi chú giấy tờ không bắt buộc — không tô đỏ khi mục báo lỗi */
 .fld .ro { padding: 8px 11px; background: #f5f8fb; border-radius: 10px; border: 1px dashed #d4dfeb; min-height: 38px; }
@@ -540,9 +544,6 @@ a, button, input, select, textarea { transition: border-color .22s ease, backgro
 .cat-tile b { color: var(--cobalt-d); } .cat-tile.red { border-color: rgba(192, 57, 43, .22); }
 .tower:hover { box-shadow: inset 0 1px 0 #fff, 0 12px 24px rgba(30, 78, 140, .14); border-color: rgba(30, 78, 140, .3); }
 .tower.on { background: linear-gradient(180deg, #fff, #eaf2fc); }
-.u { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7); }
-.u:hover { transform: translateY(-3px) scale(1.03); box-shadow: 0 12px 24px rgba(15, 27, 45, .14), inset 0 1px 0 rgba(255, 255, 255, .8); }
-.floor .fl { background: linear-gradient(180deg, #f5f8fc, #eaf0f7); box-shadow: inset 0 1px 0 #fff; }
 .alert-row { transition: background .22s ease, padding-left .22s ease; }
 .alert-row:hover { background: linear-gradient(90deg, rgba(30, 78, 140, .06), transparent); padding-left: 16px; }
 .alert-row .lv.r { box-shadow: 0 0 0 3px rgba(192, 57, 43, .14); animation: pulseRed 2.4s ease-in-out infinite; }

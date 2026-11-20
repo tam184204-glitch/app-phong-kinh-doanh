@@ -362,7 +362,10 @@ async function board(db, user, f) {
   // khách hàng: chỉ người có quyền xem khách mới thấy tên
   if (!can(user, E.customer, 'r')) units.forEach(u => { u.customer = u.customer ? '•••' : null; });
   const policy = await db.one("SELECT code, version, start_on, end_on, src_file FROM kd_price_policy WHERE $1 = ANY(project_ids) AND status = 'phat_hanh' AND start_on <= $2 AND end_on >= $2 ORDER BY start_on DESC LIMIT 1", [pid, today()]);
-  return { projects, project: pid, buildings, building: bid, units, policy };
+  // 18/11/2026: trạng thái mở bán / cho thuê theo thông báo đang áp dụng — từng căn + số căn cả dự án
+  const am = await B.activeNoticeMap(db, pid); units.forEach(u => { u.nts = am.get(u.id) || []; });
+  const ob = { ban: 0, thue: 0, none: 0 }; for (const x of await db.q('SELECT id FROM kd_unit WHERE project_id = $1', [pid])) { const ns = am.get(x.id) || []; if (ns.some(n => n.deal === 'ban')) ob.ban++; if (ns.some(n => n.deal === 'thue')) ob.thue++; if (!ns.length) ob.none++; }
+  return { projects, project: pid, buildings, building: bid, units, policy, ob };
 }
 
 // 18/11/2026: BẢNG HÀNG CHO KHÁCH XEM — chỉ căn thuộc thông báo mở bán / cho thuê ĐÃ PHÁT HÀNH (đã duyệt); không tên khách, không thông tin nội bộ.
@@ -374,7 +377,8 @@ async function boardPub(db, user, f) {
   const pid = byP.has(+f.project) ? +f.project : projects[0]?.id;
   if (!pid) return { projects, buildings: [], units: [], notices: [] };
   const pub = new Map();   // id căn → { thông báo bán, thông báo thuê, tiền thuê/tháng }
-  for (const n of byP.get(pid)) {
+  // gộp thanh-dung 19/11/2026: chỉ thông báo ĐANG ÁP DỤNG (ban hành sau cùng của từng hình thức, chưa thu hồi) — thông báo đã bị thay thế không hiện cho khách
+  for (const n of (await B.latestNotices(db, [pid])).live) {
     const us = await B.noticeUnits(db, n), rs = n.deal === 'thue' ? await B.noticeRent(db, pid, n.policy_id, us) : us;
     for (const u of rs) { const x = pub.get(u.id) || {}; if (n.deal === 'thue') { x.rentN = n; x.rent = u.rent_month || null; } else x.saleN = n; pub.set(u.id, x); }
   }

@@ -1,7 +1,7 @@
 // Định nghĩa nghiệp vụ App Phòng Kinh doanh — một nguồn cho cả CSDL (tự tạo bảng/cột), máy chủ (kiểm tra, quyền, phê duyệt) và giao diện (form, danh sách).
 // Căn cứ: «Bản mô tả chức năng chi tiết» (12 phân hệ) + «Bộ mẫu biểu nghiệp vụ» v2.0 26/10/2026 (18 mẫu) + «Cấu trúc App» (ma trận phân quyền).
 //
-// Trường: { k, l, t, req, o|opt, ref, ro, pii, show, help, def }
+// Trường: { k, l, t, req, reqUnless, o|opt, ref, ro, pii, show, help, def }   (reqUnless: không bắt buộc khi trường kia đã có giá trị)
 //   t: text | long | int | num | money | date | dt | month | sel | ref | user | bool | check (checklist JSON) | json | code (tự sinh)
 //   o: [[giá trị, nhãn, màu]] — màu: g xanh lá, b xanh dương, a vàng, r đỏ, s xám, v tím, t xanh ngọc
 //   opt: tên danh mục dùng chung (bảng kd_lookup, quản trị sửa được)
@@ -119,7 +119,7 @@ def('price_policy', {
     { k: 'project_ids', l: 'Dự án', t: 'refs', ref: 'project', req: 1, help: 'Chọn được nhiều dự án cùng áp dụng một chính sách' },
     { k: 'project_id', l: 'Dự án chính', t: 'ref', ref: 'project', hide: 1 },
     // 18/11/2026: Loại chính sách → Dự án → Thông báo đang áp dụng → Tòa → Căn; notice_snap = thông tin thông báo lúc lưu (chính sách đã duyệt giữ nguyên khi thông báo đổi)
-    { k: 'notice_ids', l: 'Thông báo đang áp dụng', t: 'text', pick: 'notices', help: 'Tự áp dụng — không cần chọn: chính sách bán lấy mọi thông báo mở bán, chính sách cho thuê lấy mọi thông báo cho thuê đang có hiệu lực của từng dự án (đã ban hành, chưa hết hạn, chưa hủy / thu hồi). Căn hộ áp dụng chỉ lấy trong các thông báo này' },
+    { k: 'notice_ids', l: 'Thông báo đang áp dụng', t: 'text', pick: 'notices', help: 'Tự áp dụng — không cần chọn: chính sách bán lấy thông báo mở bán, chính sách cho thuê lấy thông báo cho thuê BAN HÀNH SAU CÙNG của từng dự án (thông báo mới thay thế thông báo trước; thông báo sau cùng bị thu hồi = chưa có thông báo áp dụng). Căn hộ áp dụng chỉ lấy trong thông báo này' },
     { k: 'notice_snap', l: 'Thông báo áp dụng (lúc lưu)', t: 'json', hide: 1, ro: 1 },   // = dự án đầu tiên trong project_ids (giữ cho chỗ cần 1 dự án)
     { k: 'mode', l: 'Cách tính giá', t: 'sel', hide: 1, def: 'bang_hang', o: [['bang_hang', 'Theo giá từng căn trên bảng hàng'], ['don_gia', 'Đơn giá × diện tích thông thủy']] },
     money('unit_price', 'Đơn giá (đ/m² thông thủy)', { show: { mode: ['don_gia'] } }),
@@ -162,7 +162,7 @@ def('price_policy', {
     { k: 'ref_fee_val', l: 'Mức hưởng', t: 'num', show: PT, help: 'Số tháng / % / số tiền theo cách tính ở trên' },
     { k: 'ref_fee_types', l: 'Đối tượng hưởng', t: 'tags', o: SELLER_T.filter(x => x[0] !== 'truc_tiep'), show: PT },
     { k: 'ref_fee_terms', l: 'Điều kiện và thời điểm chi trả', t: 'long', show: PT },
-    { k: 'unit_group', l: 'Căn hộ áp dụng', t: 'text', req: 1, def: '', pick: 'units', help: 'Chỉ hiện căn thuộc các thông báo đang có hiệu lực (gộp căn trùng), còn trong bảng hàng (chưa ký HĐMB / vay / thuê). Bấm Tòa để lọc, tích từng căn hoặc cả tòa; «Chọn tất cả» = cả dự án.' },
+    { k: 'unit_group', l: 'Căn hộ áp dụng', t: 'text', req: 1, def: '', pick: 'units', help: 'Chỉ hiện căn thuộc thông báo đang áp dụng (ban hành sau cùng), còn trong bảng hàng (chưa ký HĐMB / vay / thuê). Bấm Tòa để lọc, tích từng căn hoặc cả tòa; «Chọn tất cả» = cả dự án.' },
     // 14/11/2026: giá trị hoàn thiện từng căn khai ở bảng chọn căn { 'CTS-O-0103': 120000000 } — chính sách có hiệu lực thì cập nhật căn chưa bán / phiếu / HĐMB dự thảo
     { k: 'finish_vals', l: 'Căn hộ có hoàn thiện / nội thất', t: 'json', pick: 'finish', help: 'Bán: giá trị hoàn thiện (nội thất) từng căn · Cho thuê: tiền thuê nội thất/tháng của căn (nếu có — cộng vào tiền thuê/tháng). Tích nhiều căn rồi nhập 1 lần và bấm «Áp cho căn đã tích»; xóa số ở ô của căn = bỏ' },
     // tiến độ thu tiền (16/11/2026): HĐMB của các căn đã tích tự lấy «Lần thanh toán» theo đây — hạn = ngày ký HĐMB + số ngày; đợt bàn giao theo thông báo bàn giao
@@ -206,7 +206,7 @@ def('customer', {
   c: ['ban_hang', 'truong_phong', 'ho_so', 'cskh'], own: ['ban_hang'], search: ['code', 'full_name', 'phone', 'phone2'], listPii: 1, fields: [   // listPii: danh mục hiện đủ STK, CCCD, MST… cho vai trò được xem định danh (07/11/2026)
     { k: 'code', l: 'Mã khách hàng', t: 'code', prefix: 'KH', pad: 6, manual: 1, help: 'Để trống → hệ thống tự cấp (KH000001…)' },   // hiện lại ở phiếu khách hàng 07/11/2026 (VD mã = mã căn CTS-K-101)
     { k: 'full_name', l: 'Họ tên', t: 'text', req: 1 },
-    { k: 'phone', l: 'Điện thoại', t: 'text', req: 1, help: '09xxxxxxxx' },
+    { k: 'phone', l: 'Điện thoại', t: 'text', req: 1, reqUnless: 'fb_psid', help: '09xxxxxxxx' },
     { k: 'phone2', l: 'Điện thoại khác', t: 'text' },
     // reqForm: bắt buộc khi tạo khách trên phiếu khách hàng (07/11/2026) — khách tự tạo từ phiếu đăng ký / nhập Excel / lead không bị chặn
     { k: 'email', l: 'Email', t: 'text' },   // 14/11/2026: Email không bắt buộc
@@ -231,6 +231,7 @@ def('customer', {
     { k: 'noxh_group', l: 'Nhóm đối tượng NOXH', t: 'sel', opt: 'nhom_noxh', noForm: 1 },
     owner(undefined, { noForm: 1 }),   // không hiện trong form tạo / sửa — tự lấy người tạo
     { k: 'note', l: 'Ghi chú', t: 'long' },
+    { k: 'fb_psid', l: 'Mã Messenger (PSID)', t: 'text', ro: 1, help: 'Tự ghi khi khách nhắn Page Facebook — dùng nhận ra khách cũ khi chưa có số điện thoại' },
   ], list: ['code', 'full_name', 'address', 'phone', 'email', 'tax_code', 'stage'],
 });
 def('contact_log', {

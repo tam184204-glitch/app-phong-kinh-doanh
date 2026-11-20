@@ -65,6 +65,10 @@ CREATE TABLE IF NOT EXISTS kd_approval (
 );
 CREATE INDEX IF NOT EXISTS kd_approval_rec ON kd_approval (ent, rec_id);
 CREATE UNIQUE INDEX IF NOT EXISTS kd_approval_one_open ON kd_approval (ent, rec_id) WHERE status = 'cho_duyet';
+-- 18/11/2026: lịch sử căn được đưa vào / ngừng áp dụng thông báo mở bán / cho thuê (phát hành, rút căn, hủy thông báo)
+CREATE TABLE IF NOT EXISTS kd_unit_notice_log (
+  id serial PRIMARY KEY, unit_id integer NOT NULL, notice_id integer NOT NULL, deal text, action text NOT NULL, at timestamptz NOT NULL DEFAULT now(), user_id integer, note text);
+CREATE INDEX IF NOT EXISTS kd_unit_notice_log_u ON kd_unit_notice_log (unit_id);
 CREATE TABLE IF NOT EXISTS kd_year_plan (
   id serial PRIMARY KEY, code text NOT NULL, name text NOT NULL, year integer NOT NULL, from_on date NOT NULL, to_on date NOT NULL, project_id integer, asof date NOT NULL,
   version integer NOT NULL DEFAULT 1, root_id integer, status text NOT NULL DEFAULT 'nhap' CHECK (status IN ('nhap','cho_duyet','da_duyet','yeu_cau_sua','thay_the')),
@@ -156,6 +160,8 @@ const PRE = [
   `UPDATE kd_noxh_check n SET bank_account = c.bank_account FROM kd_customer c WHERE n.customer_id = c.id AND n.bank_account IS NULL AND nullif(c.bank_account, '') IS NOT NULL`,
   `UPDATE kd_reservation r SET bank_account = c.bank_account FROM kd_customer c WHERE r.customer_id = c.id AND nullif(r.bank_account, '') IS NULL AND nullif(c.bank_account, '') IS NOT NULL AND r.status NOT IN ('huy', 'het_han')`,
   `UPDATE kd_contract t SET b_bank_acc = split_part(c.bank_account, ' - ', 1), b_bank_name = coalesce(nullif(t.b_bank_name, ''), nullif(substr(c.bank_account, length(split_part(c.bank_account, ' - ', 1)) + 4), '')) FROM kd_customer c WHERE t.customer_id = c.id AND nullif(t.b_bank_acc, '') IS NULL AND nullif(c.bank_account, '') IS NOT NULL`,
+  // gộp thuy-ngan: 1 khách Messenger (PSID) — 1 hồ sơ (chỉ mục trùng SĐT / CCCD của thuy-ngan không lấy: main đã bỏ để cho bản sao khách)
+  `CREATE UNIQUE INDEX IF NOT EXISTS kd_customer_psid ON kd_customer (fb_psid) WHERE fb_psid IS NOT NULL`,
 ];
 // CHECK nghiệp vụ thêm (ngoài money ≥ 0 và giá trị danh sách chọn)
 const CHECKS = {

@@ -30,8 +30,12 @@ await build({
 // giao diện: nối ui → screens → ai, đường dẫn ảnh tương đối (Pages chạy trong thư mục con)
 const front = ['ui', 'screens', 'ai'].map(f => `// ---- ${f}.js\n` + fs.readFileSync(path.join(ROOT, 'public', f + '.js'), 'utf8').replace(/(["'(])\/logo\.png/g, '$1logo.png')).join('\n');
 fs.writeFileSync(path.join(OUT, 'front.js'), front);
-for (const [from, to] of [['public/app.css', 'app.css'], ['public/logo.png', 'logo.png'], ['demo/fa.css', 'fa.css']]) fs.copyFileSync(path.join(ROOT, from), path.join(OUT, to));
+for (const [from, to] of [['public/app.css', 'app.css'], ['public/logo.png', 'logo.png'], ['demo/fa.css', 'fa.css'], ['public/gioi-thieu.html', 'gioi-thieu.html'], ['public/favicon.ico', 'favicon.ico']]) fs.copyFileSync(path.join(ROOT, from), path.join(OUT, to));
 fs.cpSync(path.join(ROOT, 'public/fonts'), path.join(OUT, 'fonts'), { recursive: true });   // font chữ chạy trong app (15/11/2026)
+for (const d of ['cong-khai', 'marketing']) {   // gộp thuy-ngan: trang công khai + tài nguyên chép từ trang gốc (node demo/cong-khai.mjs)
+  fs.rmSync(path.join(OUT, d), { recursive: true, force: true });
+  fs.cpSync(path.join(ROOT, 'public', d), path.join(OUT, d), { recursive: true });
+}
 // gắn ?v=<mã băm nội dung> → bản mới lên Pages thì trình duyệt tải lại ngay, không dùng tệp cũ trong bộ nhớ đệm (Pages cho giữ 10 phút)
 const ver = f => createHash('sha1').update(fs.readFileSync(path.join(OUT, f))).digest('hex').slice(0, 10);
 fs.writeFileSync(path.join(OUT, 'index.html'), fs.readFileSync(path.join(ROOT, 'demo/index.html'), 'utf8')

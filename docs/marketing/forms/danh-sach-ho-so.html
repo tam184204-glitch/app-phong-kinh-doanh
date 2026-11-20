@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Danh sách hồ sơ cần chuẩn bị — Cát Tường Group</title>
+<style>
+  :root { --cobalt:#1E4E8C; --cobalt-dark:#143866; --amber:#F5A623; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Times New Roman', Times, serif; color:#111; max-width:820px; margin:24px auto; padding:0 28px; line-height:1.55; }
+  .top { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid var(--cobalt); padding-bottom:8px; }
+  .brand { color:var(--cobalt-dark); font-weight:bold; font-size:15px; text-transform:uppercase; }
+  .brand small { display:block; font-weight:normal; font-size:12px; color:#444; text-transform:none; }
+  h1 { text-align:center; color:var(--cobalt-dark); font-size:20px; margin:22px 0 14px; }
+  h3 { color:var(--cobalt-dark); border-left:4px solid var(--amber); padding-left:8px; margin-top:22px; }
+  table { width:100%; border-collapse:collapse; margin:8px 0; }
+  th, td { border:1px solid #333; padding:7px 8px; font-size:14px; vertical-align:top; }
+  th { background:#eef3fa; color:var(--cobalt-dark); }
+  td.chk { text-align:center; width:60px; }
+  .req { color:#c0392b; font-weight:bold; }
+  .note { font-size:12px; color:#666; font-style:italic; margin-top:24px; border-top:1px solid #ccc; padding-top:8px; }
+  .btn-print { position:fixed; top:16px; right:16px; background:var(--amber); color:#111; border:none; padding:10px 16px; border-radius:8px; font-family:Arial; font-weight:bold; cursor:pointer; }
+  @media print { .btn-print { display:none; } body { margin:0; } }
+</style>
+</head>
+<body>
+<button class="btn-print" onclick="window.print()">🖨️ In / Lưu PDF</button>
+<div class="top">
+  <div class="brand">CÁT TƯỜNG GROUP<small>Khối Home — Bộ phận Kinh doanh & Pháp lý</small></div>
+  <div style="text-align:right; font-size:13px;">Mẫu: DS-HS-01</div>
+</div>
+
+<h1>DANH SÁCH HỒ SƠ CẦN CHUẨN BỊ</h1>
+<p style="text-align:center; font-style:italic; color:#555">(<span class="req">*</span> Giấy tờ bắt buộc)</p>
+
+<h3>A. Khách hàng CÁ NHÂN</h3>
+<table>
+  <tr><th>STT</th><th>Giấy tờ</th><th class="chk">Đã có</th></tr>
+  <tr><td>1</td><td><span class="req">*</span> Phiếu đăng ký mua / Tờ khai thông tin khách hàng (theo mẫu)</td><td class="chk">☐</td></tr>
+  <tr><td>2</td><td><span class="req">*</span> CMND/CCCD hoặc Hộ chiếu còn hiệu lực (bản sao công chứng)</td><td class="chk">☐</td></tr>
+  <tr><td>3</td><td>Sổ hộ khẩu / Giấy xác nhận cư trú</td><td class="chk">☐</td></tr>
+  <tr><td>4</td><td>Giấy đăng ký kết hôn hoặc Giấy xác nhận độc thân</td><td class="chk">☐</td></tr>
+  <tr><td>5</td><td>Hợp đồng đặt cọc / Phiếu thu tiền đặt cọc (nếu đã đặt cọc)</td><td class="chk">☐</td></tr>
+</table>
+
+<h3>B. Khách hàng TỔ CHỨC (Doanh nghiệp)</h3>
+<table>
+  <tr><th>STT</th><th>Giấy tờ</th><th class="chk">Đã có</th></tr>
+  <tr><td>1</td><td><span class="req">*</span> Giấy chứng nhận đăng ký doanh nghiệp (bản sao công chứng)</td><td class="chk">☐</td></tr>
+  <tr><td>2</td><td><span class="req">*</span> Quyết định/Biên bản họp về việc mua bất động sản</td><td class="chk">☐</td></tr>
+  <tr><td>3</td><td><span class="req">*</span> Giấy tờ tùy thân của người đại diện theo pháp luật</td><td class="chk">☐</td></tr>
+  <tr><td>4</td><td>Giấy ủy quyền (nếu người ký không phải người đại diện theo PL)</td><td class="chk">☐</td></tr>
+</table>
+
+<h3>C. Hồ sơ VAY NGÂN HÀNG (nếu có nhu cầu)</h3>
+<table>
+  <tr><th>STT</th><th>Giấy tờ</th><th class="chk">Đã có</th></tr>
+  <tr><td>1</td><td><span class="req">*</span> Giấy tờ chứng minh thu nhập (sao kê lương / HĐLĐ / giấy tờ kinh doanh)</td><td class="chk">☐</td></tr>
+  <tr><td>2</td><td><span class="req">*</span> Hồ sơ theo yêu cầu của ngân hàng cho vay</td><td class="chk">☐</td></tr>
+</table>
+
+<div class="note">Lưu ý: Giấy tờ bản sao cần công chứng/chứng thực trong thời hạn quy định; thông tin phải thống nhất giữa các giấy tờ. Đây là danh mục MẪU minh họa, danh mục chính thức theo hướng dẫn của bộ phận Kinh doanh/Pháp lý Cát Tường Group.</div>
+</body>
+</html>
